@@ -19,6 +19,14 @@ type ResultModel struct {
 	rows    []int
 	sortCol int
 	asc     bool
+	onReset func() // erzwingt Neuzeichnen (walk invalidiert beim Zurücksetzen nicht alle Zeilen)
+}
+
+func (m *ResultModel) reset() {
+	m.PublishRowsReset()
+	if m.onReset != nil {
+		m.onReset()
+	}
 }
 
 func (m *ResultModel) RowCount() int { return len(m.rows) }
@@ -52,7 +60,7 @@ func (m *ResultModel) Sort(col int, order walk.SortOrder) error {
 	if m.ix != nil {
 		m.ix.SortResults(m.rows, m.sortCol, m.asc)
 	}
-	m.PublishRowsReset()
+	m.reset()
 	return m.SorterBase.Sort(col, order)
 }
 
@@ -61,7 +69,7 @@ func (m *ResultModel) set(ix *Index, rows []int) {
 	if ix != nil && m.sortCol >= 0 {
 		ix.SortResults(m.rows, m.sortCol, m.asc)
 	}
-	m.PublishRowsReset()
+	m.reset()
 }
 
 func formatSize(n int64) string {

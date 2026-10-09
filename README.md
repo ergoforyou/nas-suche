@@ -19,6 +19,11 @@ Ab dann läuft die Suche im Hintergrund (Symbol unten rechts neben der Uhr) und 
 * **Strg+Alt+Leertaste** (einstellbar) öffnet die Suche von überall – tippen, Ergebnis ist sofort da.
 * **Esc** leert das Suchfeld, zweimal Esc blendet das Fenster aus. Das X schließt nur das Fenster;
   **Beenden** über Rechtsklick auf das Symbol neben der Uhr.
+* **Schnellfilter** unter dem Suchfeld: **Alle · PDF · Bilder · Office · Ordner** (auch Strg+1 … Strg+5).
+  Die Zahl auf jedem Knopf zeigt sofort, wie viele Treffer es dort gibt. Der Filter kann *vor* dem Tippen
+  gewählt werden, ohne Suchbegriff werden alle Dateien dieses Typs gelistet. Die Auswahl bleibt gespeichert.
+  * Bilder: jpg, png, gif, tif, heic, webp, bmp, svg, psd, RAW-Formate …
+  * Office: Word, Excel, PowerPoint, OpenDocument, csv, rtf, Visio, OneNote, E-Mails (msg/eml)
 * Mehrere Wörter: alle müssen im Namen vorkommen – `angebot müller`
 * Platzhalter: `*.pdf`, `rechnung 2026*`
 * „Auch im Ordnerpfad suchen“: Wörter dürfen auch im Ordnernamen stehen

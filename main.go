@@ -21,19 +21,19 @@ import (
 const maxResults = 100000
 
 type App struct {
-	mw        *walk.MainWindow
-	header    *walk.CustomWidget
-	banner    *banner
-	search    *walk.LineEdit
-	kind      *walk.ComboBox
-	inPath    *walk.CheckBox
-	refreshBt *walk.PushButton
-	tv        *walk.TableView
-	copyMenu  *walk.Menu
-	status    *walk.StatusBarItem
-	model     *ResultModel
-	icon      *walk.Icon
-	tray      *walk.NotifyIcon
+	mw         *walk.MainWindow
+	header     *walk.CustomWidget
+	banner     *banner
+	search     *walk.LineEdit
+	filterBtns [CatFolder + 1]*walk.RadioButton
+	inPath     *walk.CheckBox
+	refreshBt  *walk.PushButton
+	tv         *walk.TableView
+	copyMenu   *walk.Menu
+	status     *walk.StatusBarItem
+	model      *ResultModel
+	icon       *walk.Icon
+	tray       *walk.NotifyIcon
 
 	cfg       *Config
 	ix        *Index
@@ -124,12 +124,6 @@ func (a *App) run() {
 								OnTextChanged: a.scheduleSearch,
 								OnKeyDown:     a.searchKey,
 							},
-							ComboBox{
-								AssignTo:              &a.kind,
-								Model:                 []string{"Dateien und Ordner", "Nur Dateien", "Nur Ordner"},
-								CurrentIndex:          0,
-								OnCurrentIndexChanged: a.scheduleSearch,
-							},
 							CheckBox{
 								AssignTo:         &a.inPath,
 								Text:             "Auch im Ordnerpfad suchen",
@@ -138,6 +132,18 @@ func (a *App) run() {
 							},
 							PushButton{AssignTo: &a.refreshBt, Text: "Aktualisieren (F5)", OnClicked: a.toggleIndex},
 							PushButton{Text: "Einstellungen …", OnClicked: a.showSettings},
+						},
+					},
+					Composite{
+						Layout:  HBox{MarginsZero: true, Spacing: 4},
+						MaxSize: Size{Height: 30},
+						Children: []Widget{
+							Label{Text: "Schnellfilter:", TextColor: grey},
+							Composite{
+								Layout:   HBox{MarginsZero: true, Spacing: 2},
+								Children: a.filterItems(),
+							},
+							HSpacer{},
 						},
 					},
 					TableView{
@@ -195,6 +201,15 @@ func (a *App) run() {
 		a.mw.ShortcutActions().Add(act)
 	}
 	shortcut(walk.KeyF5, a.toggleIndex)
+	for c := CatAll; c <= CatFolder; c++ {
+		c := c
+		act := walk.NewAction()
+		act.SetShortcut(walk.Shortcut{Modifiers: walk.ModControl, Key: walk.Key1 + walk.Key(c)})
+		act.Triggered().Attach(func() { a.setFilter(c) })
+		a.mw.ShortcutActions().Add(act)
+	}
+	a.styleFilterButtons()
+	a.updateFilterButtons(nil)
 	shortcut(walk.KeyEscape, func() {
 		// Esc: erst Suchfeld leeren, beim zweiten Mal Fenster ausblenden
 		if a.search.Text() != "" {
@@ -204,6 +219,7 @@ func (a *App) run() {
 			a.mw.Hide()
 		}
 	})
+	a.model.onReset = func() { a.tv.Invalidate() }
 	a.setupDrag()
 	a.setupTray()
 	a.applyHotkey()
@@ -650,9 +666,10 @@ func (a *App) runSearch(gen int64) {
 		return
 	}
 	ix := a.ix
-	q := Query{Text: a.search.Text(), Kind: a.kind.CurrentIndex(), InPath: a.inPath.Checked(), MaxResult: maxResults}
-	if ix == nil || strings.TrimSpace(q.Text) == "" {
+	q := Query{Text: a.search.Text(), Filter: a.cfg.Filter, InPath: a.inPath.Checked(), MaxResult: maxResults}
+	if ix == nil || (strings.TrimSpace(q.Text) == "" && q.Filter == CatAll) {
 		a.model.set(ix, nil)
+		a.updateFilterButtons(nil)
 		if !a.indexing {
 			a.setStatus(a.lastInfo)
 		}
@@ -660,7 +677,7 @@ func (a *App) runSearch(gen int64) {
 	}
 	go func() {
 		start := time.Now()
-		res, total := ix.Search(q, func() bool { return gen != a.searchGen.Load() })
+		res, total, counts := ix.Search(q, func() bool { return gen != a.searchGen.Load() })
 		if gen != a.searchGen.Load() {
 			return
 		}
@@ -670,8 +687,12 @@ func (a *App) runSearch(gen int64) {
 				return
 			}
 			a.model.set(ix, res)
+			a.updateFilterButtons(&counts)
 			if !a.indexing {
 				msg := fmt.Sprintf("%s Treffer (%d ms)", thousands(int64(total)), el.Milliseconds())
+				if q.Filter != CatAll {
+					msg = CatNames[q.Filter] + ": " + msg
+				}
 				if total > len(res) {
 					msg += fmt.Sprintf(" – nur die ersten %s werden angezeigt, bitte Suche verfeinern", thousands(int64(len(res))))
 				}
@@ -679,6 +700,63 @@ func (a *App) runSearch(gen int64) {
 			}
 		})
 	}()
+}
+
+// ---------- Schnellfilter ----------
+
+func (a *App) filterItems() []Widget {
+	var items []Widget
+	for c := CatAll; c <= CatFolder; c++ {
+		c := c
+		items = append(items, RadioButton{
+			AssignTo:  &a.filterBtns[c],
+			Text:      CatNames[c],
+			MinSize:   Size{Width: 92, Height: 26},
+			OnClicked: func() { a.setFilter(c) },
+		})
+	}
+	return items
+}
+
+// styleFilterButtons macht aus den Optionsfeldern Umschaltknöpfe (eingedrückt = aktiv).
+func (a *App) styleFilterButtons() {
+	const bsPushLike = 0x1000
+	for _, b := range a.filterBtns {
+		h := b.Handle()
+		win.SetWindowLong(h, win.GWL_STYLE, win.GetWindowLong(h, win.GWL_STYLE)|bsPushLike)
+		b.Invalidate()
+	}
+}
+
+// setFilter wählt den Schnellfilter (wird gespeichert und gilt auch beim nächsten Start).
+func (a *App) setFilter(c int) {
+	if c < CatAll || c > CatFolder {
+		c = CatAll
+	}
+	a.cfg.Filter = c
+	a.cfg.Save()
+	for i, b := range a.filterBtns {
+		if b != nil {
+			b.SetChecked(i == c)
+		}
+	}
+	a.scheduleSearch()
+	a.search.SetFocus()
+}
+
+// updateFilterButtons zeigt die Trefferzahl je Kategorie auf den Knöpfen.
+func (a *App) updateFilterButtons(counts *[NumCats]int) {
+	for c, b := range a.filterBtns {
+		if b == nil {
+			continue
+		}
+		text := CatNames[c]
+		if counts != nil {
+			text += " (" + thousands(int64(counts[c])) + ")"
+		}
+		b.SetText(text)
+		b.SetChecked(c == a.cfg.Filter)
+	}
 }
 
 // ---------- Aktionen ----------

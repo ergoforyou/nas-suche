@@ -34,6 +34,7 @@ type Index struct {
 
 	lowerNames []string // nicht gespeichert, wird beim Laden berechnet
 	lowerDirs  []string
+	cats       []uint8
 }
 
 func normLower(s string) string {
@@ -42,8 +43,10 @@ func normLower(s string) string {
 
 func (ix *Index) prepare() {
 	ix.lowerNames = make([]string, len(ix.Entries))
+	ix.cats = make([]uint8, len(ix.Entries))
 	for i := range ix.Entries {
 		ix.lowerNames[i] = normLower(ix.Entries[i].Name)
+		ix.cats[i] = categoryOf(ix.lowerNames[i], ix.Entries[i].IsDir)
 	}
 	ix.lowerDirs = make([]string, len(ix.Dirs))
 	for i, d := range ix.Dirs {
@@ -208,15 +211,45 @@ func LoadIndex(path string) (*Index, error) {
 
 // ---------- Suche ----------
 
+// Kategorien für den Schnellfilter.
 const (
-	KindAll = iota
-	KindFiles
-	KindFolders
+	CatAll = iota // nur als Filter: alles
+	CatPDF
+	CatImage
+	CatOffice
+	CatFolder
+	CatOther
+	NumCats
 )
+
+var CatNames = [NumCats]string{"Alle", "PDF", "Bilder", "Office", "Ordner", "Sonstige"}
+
+var extCat = func() map[string]uint8 {
+	m := map[string]uint8{"pdf": CatPDF}
+	for _, e := range strings.Fields("jpg jpeg jpe png gif bmp tif tiff heic heif webp svg ico raw cr2 cr3 nef arw dng orf rw2 psd ai eps") {
+		m[e] = CatImage
+	}
+	for _, e := range strings.Fields("doc docx docm dot dotx odt rtf xls xlsx xlsm xlsb xlt xltx csv ods ppt pptx pptm pps ppsx pot potx odp vsd vsdx one msg eml") {
+		m[e] = CatOffice
+	}
+	return m
+}()
+
+func categoryOf(lowerName string, isDir bool) uint8 {
+	if isDir {
+		return CatFolder
+	}
+	if i := strings.LastIndexByte(lowerName, '.'); i >= 0 {
+		if c, ok := extCat[lowerName[i+1:]]; ok {
+			return c
+		}
+	}
+	return CatOther
+}
 
 type Query struct {
 	Text      string
-	Kind      int
+	Filter    int // CatAll oder eine Kategorie
 	InPath    bool
 	MaxResult int
 }
@@ -234,20 +267,19 @@ func parseTerms(q string) []term {
 	return ts
 }
 
-// Search liefert die Indizes passender Einträge. truncated = mehr als MaxResult Treffer.
-func (ix *Index) Search(q Query, cancel func() bool) (res []int, total int) {
+// Search liefert die Indizes passender Einträge, die Gesamtzahl im gewählten Filter und
+// die Trefferzahl je Kategorie (für die Zahlen auf den Filter-Knöpfen).
+// Ohne Suchbegriff werden bei gesetztem Filter alle Einträge dieser Kategorie geliefert.
+func (ix *Index) Search(q Query, cancel func() bool) (res []int, total int, counts [NumCats]int) {
 	ts := parseTerms(q.Text)
-	if len(ts) == 0 {
-		return nil, 0
+	if len(ts) == 0 && q.Filter == CatAll {
+		return nil, 0, counts
 	}
 	for i := range ix.Entries {
 		if i&0xFFFF == 0 && cancel() {
-			return nil, 0
+			return nil, 0, counts
 		}
 		e := &ix.Entries[i]
-		if (q.Kind == KindFiles && e.IsDir) || (q.Kind == KindFolders && !e.IsDir) {
-			continue
-		}
 		name := ix.lowerNames[i]
 		ok := true
 		for _, t := range ts {
@@ -267,14 +299,21 @@ func (ix *Index) Search(q Query, cancel func() bool) (res []int, total int) {
 			ok = false
 			break
 		}
-		if ok {
-			total++
-			if q.MaxResult <= 0 || len(res) < q.MaxResult {
-				res = append(res, i)
-			}
+		if !ok {
+			continue
+		}
+		cat := int(ix.cats[i])
+		counts[cat]++
+		counts[CatAll]++
+		if q.Filter != CatAll && cat != q.Filter {
+			continue
+		}
+		total++
+		if q.MaxResult <= 0 || len(res) < q.MaxResult {
+			res = append(res, i)
 		}
 	}
-	return res, total
+	return res, total, counts
 }
 
 // globMatch prüft Muster mit * und ? gegen den ganzen Namen.

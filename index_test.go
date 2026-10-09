@@ -43,14 +43,18 @@ func TestBuildAndSearch(t *testing.T) {
 		{Query{Text: "angebot"}, 2},
 		{Query{Text: "ANGEBOT *.pdf"}, 1},
 		{Query{Text: "müller"}, 2}, // NFC + NFD
-		{Query{Text: "müller", Kind: KindFiles}, 0},
+		{Query{Text: "müller", Filter: CatPDF}, 0},
+		{Query{Text: "müller", Filter: CatFolder}, 2},
+		{Query{Filter: CatPDF}, 2},
+		{Query{Text: "angebot", Filter: CatOffice}, 1},
 		{Query{Text: "rechnung müller", InPath: true}, 1},
 		{Query{Text: "rechnung müller"}, 0},
 		{Query{Text: "thumb"}, 0},
-		{Query{Text: "*.pdf", Kind: KindFiles}, 2},
+		{Query{Text: "*.pdf", Filter: CatPDF}, 2},
+		{Query{}, 0},
 	}
 	for _, c := range cases {
-		res, total := ix.Search(c.q, never)
+		res, total, _ := ix.Search(c.q, never)
 		if total != c.expect || len(res) != total {
 			t.Errorf("%+v: %d Treffer, erwartet %d", c.q, total, c.expect)
 		}
@@ -74,6 +78,16 @@ func TestNaturalLess(t *testing.T) {
 	}
 }
 
+func TestCounts(t *testing.T) {
+	ix := &Index{Dirs: []string{`x`}, Entries: []Entry{{Name: "Plan.PDF"}, {Name: "Foto.JPG"}, {Name: "Liste.xlsx"},
+		{Name: "Plan", IsDir: true}, {Name: "plan.txt"}}}
+	ix.prepare()
+	_, total, c := ix.Search(Query{Text: "plan", Filter: CatPDF}, func() bool { return false })
+	if total != 1 || c[CatAll] != 3 || c[CatPDF] != 1 || c[CatFolder] != 1 || c[CatOther] != 1 || c[CatImage] != 0 {
+		t.Fatalf("total=%d counts=%v", total, c)
+	}
+}
+
 func TestSearchSpeed(t *testing.T) {
 	ix := &Index{Dirs: []string{`\\nas\daten\projekte`}}
 	for i := 0; i < 1_000_000; i++ {
@@ -81,6 +95,6 @@ func TestSearchSpeed(t *testing.T) {
 	}
 	ix.prepare()
 	start := time.Now()
-	_, total := ix.Search(Query{Text: "kunde 12 pdf", MaxResult: 100000}, func() bool { return false })
+	_, total, _ := ix.Search(Query{Text: "kunde 12 pdf", MaxResult: 100000}, func() bool { return false })
 	t.Logf("1 Mio. Einträge: %d Treffer in %s", total, time.Since(start))
 }
