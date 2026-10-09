@@ -1,11 +1,11 @@
-# Ergo4U NAS-Suche – wenn es schnell gehen muss
+# ERGOFORYOU NAS-Suche – wenn es schnell gehen muss
 
 Schnelle Dateisuche für Synology-Netzlaufwerke (oder beliebige Ordner) unter Windows 10/11.
 **Eine einzige Datei `NasSuche.exe`. Keine Installation, keine Zusatzsoftware.**
 
 ## Einrichten (einmalig)
 
-1. `NasSuche.exe` auf den PC kopieren (z. B. `C:\Programme\Ergo4U\`) oder vom NAS starten.
+1. `NasSuche.exe` auf den PC kopieren (z. B. `C:\Programme\ERGOFORYOU\`) oder vom NAS starten.
 2. Beim ersten Start unter **Einstellungen** festlegen:
    * **Suchordner** – z. B. `\\DiskStation\Daten` oder `Z:\`
    * **Netzlaufwerke** – werden bei jedem Start automatisch verbunden (z. B. `Z:` → `\\DiskStation\Daten`).
@@ -19,9 +19,10 @@ Ab dann läuft die Suche im Hintergrund (Symbol unten rechts neben der Uhr) und 
 * **Strg+Alt+Leertaste** (einstellbar) öffnet die Suche von überall – tippen, Ergebnis ist sofort da.
 * **Esc** leert das Suchfeld, zweimal Esc blendet das Fenster aus. Das X schließt nur das Fenster;
   **Beenden** über Rechtsklick auf das Symbol neben der Uhr.
-* **Schnellfilter** unter dem Suchfeld: **Alle · PDF · Bilder · Office · Ordner** (auch Strg+1 … Strg+5).
-  Die Zahl auf jedem Knopf zeigt sofort, wie viele Treffer es dort gibt. Der Filter kann *vor* dem Tippen
-  gewählt werden, ohne Suchbegriff werden alle Dateien dieses Typs gelistet. Die Auswahl bleibt gespeichert.
+* **Haken „Nur anzeigen“** unter dem Suchfeld: **PDF · Bilder · Office · Ordner** – beliebig kombinierbar,
+  kein Haken = alles. Die Zahl neben jedem Haken zeigt sofort, wie viele Treffer es dort gibt. Die Haken
+  können *vor* dem Tippen gesetzt werden; ohne Suchbegriff werden alle Dateien dieser Typen gelistet.
+  Die Auswahl bleibt gespeichert.
   * Bilder: jpg, png, gif, tif, heic, webp, bmp, svg, psd, RAW-Formate …
   * Office: Word, Excel, PowerPoint, OpenDocument, csv, rtf, Visio, OneNote, E-Mails (msg/eml)
 * Mehrere Wörter: alle müssen im Namen vorkommen – `angebot müller`

@@ -10,7 +10,7 @@ import (
 
 // Branding an einer Stelle – Name, Slogan und Farben hier anpassen.
 const (
-	brandName    = "Ergo4U"
+	brandName    = "ERGOFORYOU"
 	brandProduct = "NAS-Suche"
 	brandSlogan  = "Wenn es schnell gehen muss."
 )
@@ -62,12 +62,10 @@ func (b *banner) paint(cw **walk.CustomWidget) walk.PaintFunc {
 		x := px(20)
 		white := walk.RGB(255, 255, 255)
 		fmtV := walk.TextLeft | walk.TextVCenter | walk.TextSingleLine
-		w := px(110)
-		if m, _, err := c.MeasureTextPixels(brandName, b.big, walk.Rectangle{Width: px(600), Height: r.Height},
-			walk.TextLeft|walk.TextSingleLine); err == nil && m.Width > 0 && m.Width < px(400) {
-			w = m.Width
-		}
-		c.DrawTextPixels(brandName, b.big, white, walk.Rectangle{X: x, Y: 0, Width: w + px(8), Height: r.Height}, fmtV)
+		// Breite grob nach Zeichenzahl (Montserrat SemiBold 20 pt ≈ 21 px je Großbuchstabe),
+		// die Textmessung der Bibliothek liefert hier keine verlässlichen Werte.
+		w := len([]rune(brandName)) * px(21)
+		c.DrawTextPixels(brandName, b.big, white, walk.Rectangle{X: x, Y: 0, Width: w + px(30), Height: r.Height}, fmtV)
 		x += w + px(20)
 
 		// zwei Zeilen: Produkt / Slogan

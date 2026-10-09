@@ -247,9 +247,12 @@ func categoryOf(lowerName string, isDir bool) uint8 {
 	return CatOther
 }
 
+// FilterBit liefert das Bit einer Kategorie für Query.Filter.
+func FilterBit(cat int) uint8 { return 1 << cat }
+
 type Query struct {
 	Text      string
-	Filter    int // CatAll oder eine Kategorie
+	Filter    uint8 // gesetzte Bits = erlaubte Kategorien (FilterBit); 0 = alles
 	InPath    bool
 	MaxResult int
 }
@@ -269,10 +272,10 @@ func parseTerms(q string) []term {
 
 // Search liefert die Indizes passender Einträge, die Gesamtzahl im gewählten Filter und
 // die Trefferzahl je Kategorie (für die Zahlen auf den Filter-Knöpfen).
-// Ohne Suchbegriff werden bei gesetztem Filter alle Einträge dieser Kategorie geliefert.
+// Ohne Suchbegriff werden bei gesetztem Filter alle Einträge dieser Kategorien geliefert.
 func (ix *Index) Search(q Query, cancel func() bool) (res []int, total int, counts [NumCats]int) {
 	ts := parseTerms(q.Text)
-	if len(ts) == 0 && q.Filter == CatAll {
+	if len(ts) == 0 && q.Filter == 0 {
 		return nil, 0, counts
 	}
 	for i := range ix.Entries {
@@ -305,7 +308,7 @@ func (ix *Index) Search(q Query, cancel func() bool) (res []int, total int, coun
 		cat := int(ix.cats[i])
 		counts[cat]++
 		counts[CatAll]++
-		if q.Filter != CatAll && cat != q.Filter {
+		if q.Filter != 0 && q.Filter&FilterBit(cat) == 0 {
 			continue
 		}
 		total++

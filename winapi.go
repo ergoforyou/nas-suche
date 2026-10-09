@@ -303,7 +303,7 @@ func StartHotkey(name string, onPress func()) (stop func(), err error) {
 // SingleInstance: true = wir sind die erste Instanz. onActivate wird aufgerufen,
 // wenn das Programm ein weiteres Mal gestartet wird.
 func SingleInstance(onActivate func()) (first bool, notifyExisting func()) {
-	name := windows.StringToUTF16Ptr(`Local\Ergo4U-NasSuche-Anzeigen`)
+	name := windows.StringToUTF16Ptr(`Local\ERGOFORYOU-NasSuche-Anzeigen`)
 	h, err := windows.CreateEvent(nil, 0, 0, name)
 	if err == windows.ERROR_ALREADY_EXISTS {
 		return false, func() {
@@ -328,7 +328,8 @@ func SingleInstance(onActivate func()) (first bool, notifyExisting func()) {
 // ---------- Autostart ----------
 
 const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
-const runValue = "Ergo4U NAS-Suche"
+const runValue = "ERGOFORYOU NAS-Suche"
+const runValueOld = "Ergo4U NAS-Suche" // frühere Version
 
 func AutostartEnabled() bool {
 	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
@@ -336,7 +337,10 @@ func AutostartEnabled() bool {
 		return false
 	}
 	defer k.Close()
-	_, _, err = k.GetStringValue(runValue)
+	if _, _, err = k.GetStringValue(runValue); err == nil {
+		return true
+	}
+	_, _, err = k.GetStringValue(runValueOld)
 	return err == nil
 }
 
@@ -346,6 +350,7 @@ func SetAutostart(on bool) error {
 		return err
 	}
 	defer k.Close()
+	k.DeleteValue(runValueOld)
 	if !on {
 		if err := k.DeleteValue(runValue); err != nil && err != registry.ErrNotExist {
 			return err

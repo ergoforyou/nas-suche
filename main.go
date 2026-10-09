@@ -25,7 +25,7 @@ type App struct {
 	header     *walk.CustomWidget
 	banner     *banner
 	search     *walk.LineEdit
-	filterBtns [CatFolder + 1]*walk.RadioButton
+	filterBtns [CatFolder + 1]*walk.CheckBox // Index = Kategorie, 0 unbenutzt
 	inPath     *walk.CheckBox
 	refreshBt  *walk.PushButton
 	tv         *walk.TableView
@@ -138,11 +138,12 @@ func (a *App) run() {
 						Layout:  HBox{MarginsZero: true, Spacing: 4},
 						MaxSize: Size{Height: 30},
 						Children: []Widget{
-							Label{Text: "Schnellfilter:", TextColor: grey},
+							Label{Text: "Nur anzeigen:"},
 							Composite{
-								Layout:   HBox{MarginsZero: true, Spacing: 2},
+								Layout:   HBox{MarginsZero: true, Spacing: 14},
 								Children: a.filterItems(),
 							},
+							Label{Text: "(kein Haken = alles)", TextColor: grey},
 							HSpacer{},
 						},
 					},
@@ -201,14 +202,6 @@ func (a *App) run() {
 		a.mw.ShortcutActions().Add(act)
 	}
 	shortcut(walk.KeyF5, a.toggleIndex)
-	for c := CatAll; c <= CatFolder; c++ {
-		c := c
-		act := walk.NewAction()
-		act.SetShortcut(walk.Shortcut{Modifiers: walk.ModControl, Key: walk.Key1 + walk.Key(c)})
-		act.Triggered().Attach(func() { a.setFilter(c) })
-		a.mw.ShortcutActions().Add(act)
-	}
-	a.styleFilterButtons()
 	a.updateFilterButtons(nil)
 	shortcut(walk.KeyEscape, func() {
 		// Esc: erst Suchfeld leeren, beim zweiten Mal Fenster ausblenden
@@ -667,7 +660,7 @@ func (a *App) runSearch(gen int64) {
 	}
 	ix := a.ix
 	q := Query{Text: a.search.Text(), Filter: a.cfg.Filter, InPath: a.inPath.Checked(), MaxResult: maxResults}
-	if ix == nil || (strings.TrimSpace(q.Text) == "" && q.Filter == CatAll) {
+	if ix == nil || (strings.TrimSpace(q.Text) == "" && q.Filter == 0) {
 		a.model.set(ix, nil)
 		a.updateFilterButtons(nil)
 		if !a.indexing {
@@ -690,8 +683,8 @@ func (a *App) runSearch(gen int64) {
 			a.updateFilterButtons(&counts)
 			if !a.indexing {
 				msg := fmt.Sprintf("%s Treffer (%d ms)", thousands(int64(total)), el.Milliseconds())
-				if q.Filter != CatAll {
-					msg = CatNames[q.Filter] + ": " + msg
+				if names := a.filterNames(); names != "" {
+					msg = names + ": " + msg
 				}
 				if total > len(res) {
 					msg += fmt.Sprintf(" – nur die ersten %s werden angezeigt, bitte Suche verfeinern", thousands(int64(len(res))))
@@ -706,47 +699,49 @@ func (a *App) runSearch(gen int64) {
 
 func (a *App) filterItems() []Widget {
 	var items []Widget
-	for c := CatAll; c <= CatFolder; c++ {
+	for c := CatPDF; c <= CatFolder; c++ {
 		c := c
-		items = append(items, RadioButton{
-			AssignTo:  &a.filterBtns[c],
-			Text:      CatNames[c],
-			MinSize:   Size{Width: 92, Height: 26},
-			OnClicked: func() { a.setFilter(c) },
+		items = append(items, CheckBox{
+			AssignTo:         &a.filterBtns[c],
+			Text:             CatNames[c],
+			Checked:          a.cfg.Filter&FilterBit(c) != 0,
+			MinSize:          Size{Width: 95},
+			OnCheckedChanged: a.filterChanged,
 		})
 	}
 	return items
 }
 
-// styleFilterButtons macht aus den Optionsfeldern Umschaltknöpfe (eingedrückt = aktiv).
-func (a *App) styleFilterButtons() {
-	const bsPushLike = 0x1000
-	for _, b := range a.filterBtns {
-		h := b.Handle()
-		win.SetWindowLong(h, win.GWL_STYLE, win.GetWindowLong(h, win.GWL_STYLE)|bsPushLike)
-		b.Invalidate()
-	}
-}
-
-// setFilter wählt den Schnellfilter (wird gespeichert und gilt auch beim nächsten Start).
-func (a *App) setFilter(c int) {
-	if c < CatAll || c > CatFolder {
-		c = CatAll
-	}
-	a.cfg.Filter = c
-	a.cfg.Save()
-	for i, b := range a.filterBtns {
-		if b != nil {
-			b.SetChecked(i == c)
+// filterChanged übernimmt die Haken (werden gespeichert und gelten auch beim nächsten Start).
+func (a *App) filterChanged() {
+	var f uint8
+	for c := CatPDF; c <= CatFolder; c++ {
+		if b := a.filterBtns[c]; b != nil && b.Checked() {
+			f |= FilterBit(c)
 		}
 	}
+	if f == a.cfg.Filter {
+		return
+	}
+	a.cfg.Filter = f
+	a.cfg.Save()
 	a.scheduleSearch()
-	a.search.SetFocus()
 }
 
-// updateFilterButtons zeigt die Trefferzahl je Kategorie auf den Knöpfen.
+func (a *App) filterNames() string {
+	var n []string
+	for c := CatPDF; c <= CatFolder; c++ {
+		if a.cfg.Filter&FilterBit(c) != 0 {
+			n = append(n, CatNames[c])
+		}
+	}
+	return strings.Join(n, " + ")
+}
+
+// updateFilterButtons zeigt die Trefferzahl je Kategorie neben den Haken.
 func (a *App) updateFilterButtons(counts *[NumCats]int) {
-	for c, b := range a.filterBtns {
+	for c := CatPDF; c <= CatFolder; c++ {
+		b := a.filterBtns[c]
 		if b == nil {
 			continue
 		}
@@ -755,7 +750,6 @@ func (a *App) updateFilterButtons(counts *[NumCats]int) {
 			text += " (" + thousands(int64(counts[c])) + ")"
 		}
 		b.SetText(text)
-		b.SetChecked(c == a.cfg.Filter)
 	}
 }
 

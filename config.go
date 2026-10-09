@@ -22,7 +22,7 @@ type Config struct {
 	Hotkey         string     `json:"tastenkombination"`
 	CopyTargets    []string   `json:"kopierziele"`
 	TrayHintShown  bool       `json:"hinweis_hintergrund_gezeigt"`
-	Filter         int        `json:"schnellfilter"` // 0 Alle, 1 PDF, 2 Bilder, 3 Office, 4 Ordner
+	Filter         uint8      `json:"filter_haken"` // Bits: 2 PDF, 4 Bilder, 8 Office, 16 Ordner; 0 = alles
 }
 
 // DriveMap: Netzlaufwerk, das beim Programmstart verbunden wird.
