@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const appName = "NasSuche"
@@ -14,14 +15,57 @@ type Config struct {
 	RefreshHours int      `json:"aktualisieren_alle_stunden"`
 	Workers      int      `json:"parallele_zugriffe"`
 	InPath       bool     `json:"im_pfad_suchen"`
+
+	Drives         []DriveMap `json:"netzlaufwerke"`
+	SharedIndexDir string     `json:"gemeinsamer_index_ordner"`
+	SharedWriter   bool       `json:"gemeinsamen_index_erstellen"`
+	Hotkey         string     `json:"tastenkombination"`
+	CopyTargets    []string   `json:"kopierziele"`
+	TrayHintShown  bool       `json:"hinweis_hintergrund_gezeigt"`
+}
+
+// DriveMap: Netzlaufwerk, das beim Programmstart verbunden wird.
+type DriveMap struct {
+	Letter string `json:"laufwerk"` // "Z:" oder leer
+	Remote string `json:"pfad"`     // \\DiskStation\Daten
+}
+
+func (d DriveMap) String() string {
+	if d.Letter == "" {
+		return d.Remote
+	}
+	return d.Letter + "   →   " + d.Remote
+}
+
+const sharedIndexName = "NasSuche-Index.dat"
+
+func (c *Config) sharedIndexPath() string {
+	if c.SharedIndexDir == "" {
+		return ""
+	}
+	return filepath.Join(c.SharedIndexDir, sharedIndexName)
+}
+
+// sharedReader: Index kommt vom NAS, dieser PC liest selbst nicht ein.
+func (c *Config) sharedReader() bool { return c.SharedIndexDir != "" && !c.SharedWriter }
+
+func (c *Config) addCopyTarget(dir string) {
+	out := []string{dir}
+	for _, t := range c.CopyTargets {
+		if !strings.EqualFold(t, dir) && len(out) < 8 {
+			out = append(out, t)
+		}
+	}
+	c.CopyTargets = out
 }
 
 func defaultConfig() *Config {
 	return &Config{
 		Excludes: []string{"#recycle", "@eaDir", "#snapshot", "@Recycle", "$RECYCLE.BIN",
 			"System Volume Information", ".DS_Store", "Thumbs.db", "desktop.ini"},
-		RefreshHours: 12,
+		RefreshHours: 4,
 		Workers:      16,
+		Hotkey:       "Strg+Alt+Leertaste",
 	}
 }
 
@@ -66,6 +110,9 @@ func readConfig(path string) (*Config, error) {
 	}
 	if c.Workers < 1 {
 		c.Workers = 16
+	}
+	if c.Hotkey == "" {
+		c.Hotkey = "Strg+Alt+Leertaste"
 	}
 	return c, nil
 }

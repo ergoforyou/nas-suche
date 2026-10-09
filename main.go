@@ -4,8 +4,10 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -18,241 +20,489 @@ import (
 
 const maxResults = 100000
 
-// ---------- Tabellenmodell ----------
-
-type ResultModel struct {
-	walk.TableModelBase
-	walk.SorterBase
-	ix      *Index
-	rows    []int
-	sortCol int
-	asc     bool
-}
-
-func (m *ResultModel) RowCount() int { return len(m.rows) }
-
-func (m *ResultModel) Value(row, col int) interface{} {
-	if row >= len(m.rows) {
-		return ""
-	}
-	e := &m.ix.Entries[m.rows[row]]
-	switch col {
-	case 0:
-		return e.Name
-	case 1:
-		return m.ix.Dirs[e.Dir]
-	case 2:
-		if e.IsDir {
-			return "Ordner"
-		}
-		return formatSize(e.Size)
-	case 3:
-		if e.Mod == 0 {
-			return ""
-		}
-		return time.Unix(e.Mod, 0).Format("02.01.2006 15:04")
-	}
-	return ""
-}
-
-func (m *ResultModel) Sort(col int, order walk.SortOrder) error {
-	m.sortCol, m.asc = col, order == walk.SortAscending
-	if m.ix != nil {
-		m.ix.SortResults(m.rows, m.sortCol, m.asc)
-	}
-	m.PublishRowsReset()
-	return m.SorterBase.Sort(col, order)
-}
-
-func (m *ResultModel) set(ix *Index, rows []int) {
-	m.ix, m.rows = ix, rows
-	if ix != nil && m.sortCol >= 0 {
-		ix.SortResults(m.rows, m.sortCol, m.asc)
-	}
-	m.PublishRowsReset()
-}
-
-func formatSize(n int64) string {
-	f := float64(n)
-	switch {
-	case n < 1024:
-		return fmt.Sprintf("%d B", n)
-	case n < 1<<20:
-		return strings.Replace(fmt.Sprintf("%.1f KB", f/1024), ".", ",", 1)
-	case n < 1<<30:
-		return strings.Replace(fmt.Sprintf("%.1f MB", f/(1<<20)), ".", ",", 1)
-	default:
-		return strings.Replace(fmt.Sprintf("%.2f GB", f/(1<<30)), ".", ",", 1)
-	}
-}
-
-func thousands(n int64) string {
-	s := fmt.Sprint(n)
-	var b strings.Builder
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte('.')
-		}
-		b.WriteRune(c)
-	}
-	return b.String()
-}
-
-// ---------- Anwendung ----------
-
 type App struct {
 	mw        *walk.MainWindow
+	header    *walk.CustomWidget
+	banner    *banner
 	search    *walk.LineEdit
 	kind      *walk.ComboBox
 	inPath    *walk.CheckBox
 	refreshBt *walk.PushButton
 	tv        *walk.TableView
+	copyMenu  *walk.Menu
 	status    *walk.StatusBarItem
 	model     *ResultModel
+	icon      *walk.Icon
+	tray      *walk.NotifyIcon
 
 	cfg       *Config
 	ix        *Index
+	ixShared  bool // aktueller Index stammt vom NAS
 	searchGen atomic.Int64
 	debounce  *time.Timer
 
-	indexing  bool
-	stopIndex atomic.Bool
-	lastInfo  string
+	indexing   bool
+	stopIndex  atomic.Bool
+	lastInfo   string
+	quitting   bool
+	startTray  bool
+	stopHotkey func()
+	hotkeyErr  string
+	gdrive     string // erkannter Google-Drive-Ordner
+
+	dragArmed bool
+	dragX     int
+	dragY     int
 }
 
 func main() {
 	app := &App{cfg: LoadConfig(), model: &ResultModel{sortCol: 0, asc: true}}
+	for _, arg := range os.Args[1:] {
+		if strings.EqualFold(arg, "/tray") || strings.EqualFold(arg, "-tray") {
+			app.startTray = true
+		}
+	}
+	first, notify := SingleInstance(func() {
+		dbg("zweiter Start erkannt, mw=%v", app.mw != nil)
+		if app.mw != nil {
+			app.mw.Synchronize(app.showWindow)
+		}
+	})
+	if !first {
+		if !app.startTray {
+			notify()
+		}
+		return
+	}
 	app.run()
 }
 
 func (a *App) run() {
-	var icon interface{}
-	if ic, err := walk.NewIconFromResourceId(1); err == nil {
-		icon = ic
-	} else if ic, err := walk.NewIconFromResource("APP"); err == nil {
-		icon = ic
-	}
+	win.OleInitialize()
+	defer win.OleUninitialize()
 
+	if ic, err := walk.NewIconFromResourceId(1); err == nil {
+		a.icon = ic
+	} else if ic, err := walk.NewIconFromResource("APP"); err == nil {
+		a.icon = ic
+	}
+	a.banner = newBanner()
+	a.updateBannerHint()
+
+	grey := walk.RGB(0x60, 0x6B, 0x78)
 	err := MainWindow{
 		AssignTo: &a.mw,
-		Title:    "NAS-Suche",
-		Icon:     icon,
-		MinSize:  Size{Width: 700, Height: 400},
-		Size:     Size{Width: 1150, Height: 720},
-		Layout:   VBox{},
+		Title:    brandName + " " + brandProduct,
+		Icon:     a.icon,
+		Visible:  !a.startTray,
+		MinSize:  Size{Width: 760, Height: 420},
+		Size:     Size{Width: 1180, Height: 740},
+		Layout:   VBox{MarginsZero: true, SpacingZero: true},
 		Children: []Widget{
+			CustomWidget{
+				AssignTo:            &a.header,
+				StretchFactor:       1,
+				Alignment:           AlignHNearVNear,
+				MinSize:             Size{Height: 62},
+				MaxSize:             Size{Height: 62},
+				InvalidatesOnResize: true,
+				PaintMode:           PaintNoErase,
+				Paint:               a.banner.paint(&a.header),
+			},
 			Composite{
-				Layout: HBox{MarginsZero: true},
+				StretchFactor: 1000,
+				Layout:        VBox{Margins: Margins{Left: 9, Top: 9, Right: 9, Bottom: 4}},
 				Children: []Widget{
-					Label{Text: "Suche:"},
-					LineEdit{
-						AssignTo:      &a.search,
-						CueBanner:     "Dateiname eingeben … (mehrere Wörter = alle müssen vorkommen, z. B. angebot müller *.pdf)",
-						OnTextChanged: a.scheduleSearch,
-						OnKeyDown: func(key walk.Key) {
-							if key == walk.KeyDown || key == walk.KeyReturn {
-								if a.model.RowCount() > 0 {
-									a.tv.SetFocus()
-									a.tv.SetCurrentIndex(0)
-								}
-							}
+					Composite{
+						Layout:  HBox{MarginsZero: true},
+						MaxSize: Size{Height: 34},
+						Children: []Widget{
+							LineEdit{
+								AssignTo:      &a.search,
+								CueBanner:     "Suchen …  z. B.  angebot müller *.pdf",
+								Font:          Font{Family: "Segoe UI", PointSize: 12},
+								OnTextChanged: a.scheduleSearch,
+								OnKeyDown:     a.searchKey,
+							},
+							ComboBox{
+								AssignTo:              &a.kind,
+								Model:                 []string{"Dateien und Ordner", "Nur Dateien", "Nur Ordner"},
+								CurrentIndex:          0,
+								OnCurrentIndexChanged: a.scheduleSearch,
+							},
+							CheckBox{
+								AssignTo:         &a.inPath,
+								Text:             "Auch im Ordnerpfad suchen",
+								Checked:          a.cfg.InPath,
+								OnCheckedChanged: func() { a.cfg.InPath = a.inPath.Checked(); a.cfg.Save(); a.scheduleSearch() },
+							},
+							PushButton{AssignTo: &a.refreshBt, Text: "Aktualisieren (F5)", OnClicked: a.toggleIndex},
+							PushButton{Text: "Einstellungen …", OnClicked: a.showSettings},
 						},
 					},
-					ComboBox{
-						AssignTo:              &a.kind,
-						Model:                 []string{"Dateien und Ordner", "Nur Dateien", "Nur Ordner"},
-						CurrentIndex:          0,
-						OnCurrentIndexChanged: a.scheduleSearch,
+					TableView{
+						AssignTo:         &a.tv,
+						StretchFactor:    1000,
+						AlternatingRowBG: true,
+						MultiSelection:   true,
+						Columns: []TableViewColumn{
+							{Title: "Name", Width: 340},
+							{Title: "Ordner", Width: 500},
+							{Title: "Größe", Width: 90, Alignment: AlignFar},
+							{Title: "Geändert", Width: 120},
+						},
+						Model:           a.model,
+						OnItemActivated: a.openSelected,
+						ContextMenuItems: []MenuItem{
+							Action{Text: "Öffnen\tEnter", OnTriggered: a.openSelected},
+							Action{Text: "Im Ordner anzeigen", OnTriggered: a.showInFolder},
+							Separator{},
+							Action{Text: "Kopieren (Dateien)\tStrg+C", OnTriggered: a.copyFiles},
+							Menu{AssignTo: &a.copyMenu, Text: "Kopieren nach", Items: []MenuItem{
+								Action{Text: "Ordner auswählen …"},
+							}},
+							Separator{},
+							Action{Text: "Pfad kopieren\tStrg+Umschalt+C", OnTriggered: func() { a.copyText(true) }},
+							Action{Text: "Name kopieren", OnTriggered: func() { a.copyText(false) }},
+						},
 					},
-					CheckBox{
-						AssignTo:         &a.inPath,
-						Text:             "Auch im Ordnerpfad suchen",
-						Checked:          a.cfg.InPath,
-						OnCheckedChanged: func() { a.cfg.InPath = a.inPath.Checked(); a.cfg.Save(); a.scheduleSearch() },
+					Label{
+						Text:      "Tipp: Treffer einfach mit der Maus herausziehen – in den Explorer, Outlook, Google Drive oder Claude im Browser.  Strg+C kopiert die Dateien, Rechtsklick → „Kopieren nach“.",
+						TextColor: grey,
 					},
-					PushButton{AssignTo: &a.refreshBt, Text: "Index aktualisieren", OnClicked: a.toggleIndex},
-					PushButton{Text: "Einstellungen …", OnClicked: a.showSettings},
-				},
-			},
-			TableView{
-				AssignTo:         &a.tv,
-				AlternatingRowBG: true,
-				MultiSelection:   true,
-				Columns: []TableViewColumn{
-					{Title: "Name", Width: 340},
-					{Title: "Ordner", Width: 500},
-					{Title: "Größe", Width: 90, Alignment: AlignFar},
-					{Title: "Geändert", Width: 120},
-				},
-				Model:           a.model,
-				OnItemActivated: a.openSelected,
-				ContextMenuItems: []MenuItem{
-					Action{Text: "Öffnen", OnTriggered: a.openSelected},
-					Action{Text: "Im Ordner anzeigen", OnTriggered: a.showInFolder},
-					Separator{},
-					Action{Text: "Pfad kopieren", OnTriggered: func() { a.copySelected(true) }},
-					Action{Text: "Name kopieren", OnTriggered: func() { a.copySelected(false) }},
 				},
 			},
 		},
 		StatusBarItems: []StatusBarItem{{AssignTo: &a.status, Width: 1100}},
 	}.Create()
 	if err != nil {
-		walk.MsgBox(nil, "NAS-Suche", "Fehler beim Start: "+err.Error(), walk.MsgBoxIconError)
+		walk.MsgBox(nil, brandProduct, "Fehler beim Start: "+err.Error(), walk.MsgBoxIconError)
 		return
 	}
 
 	a.tv.KeyDown().Attach(func(key walk.Key) {
 		switch {
+		case key == walk.KeyC && walk.ControlDown() && walk.ShiftDown():
+			a.copyText(true)
 		case key == walk.KeyC && walk.ControlDown():
-			a.copySelected(true)
-		case key == walk.KeyF5:
-			a.toggleIndex()
+			a.copyFiles()
 		}
 	})
-	a.mw.KeyDown().Attach(func(key walk.Key) {
-		if key == walk.KeyF5 {
-			a.toggleIndex()
+	shortcut := func(key walk.Key, f func()) {
+		act := walk.NewAction()
+		act.SetShortcut(walk.Shortcut{Key: key})
+		act.Triggered().Attach(f)
+		a.mw.ShortcutActions().Add(act)
+	}
+	shortcut(walk.KeyF5, a.toggleIndex)
+	shortcut(walk.KeyEscape, func() {
+		// Esc: erst Suchfeld leeren, beim zweiten Mal Fenster ausblenden
+		if a.search.Text() != "" {
+			a.search.SetText("")
+			a.search.SetFocus()
+		} else if a.tray != nil {
+			a.mw.Hide()
 		}
 	})
+	a.setupDrag()
+	a.setupTray()
+	a.applyHotkey()
+	a.rebuildCopyMenu()
 
 	a.setStatus("Lade Index …")
 	go a.startup()
 	a.search.SetFocus()
 	a.mw.Run()
 	a.stopIndex.Store(true)
+	if a.stopHotkey != nil {
+		a.stopHotkey()
+	}
+	if a.tray != nil {
+		a.tray.Dispose()
+	}
 }
 
 func (a *App) setStatus(s string) { a.status.SetText(" " + s) }
 
+func (a *App) updateBannerHint() {
+	switch {
+	case a.hotkeyErr != "":
+		a.banner.hintText = a.hotkeyErr
+	case a.cfg.Hotkey != "" && a.cfg.Hotkey != "Keine":
+		a.banner.hintText = a.cfg.Hotkey + " öffnet die Suche jederzeit"
+	default:
+		a.banner.hintText = ""
+	}
+	if a.header != nil {
+		a.header.Invalidate()
+	}
+}
+
+// ---------- Hintergrundbetrieb ----------
+
+func (a *App) setupTray() {
+	ni, err := walk.NewNotifyIcon(a.mw)
+	if err != nil {
+		return // ohne Infobereich: Schließen beendet das Programm
+	}
+	a.tray = ni
+	if a.icon != nil {
+		ni.SetIcon(a.icon)
+	}
+	ni.SetToolTip(brandName + " " + brandProduct)
+	ni.MouseDown().Attach(func(x, y int, b walk.MouseButton) {
+		dbg("tray click %v", b)
+		if b == walk.LeftButton {
+			a.showWindow()
+		}
+	})
+	add := func(text string, f func()) {
+		act := walk.NewAction()
+		act.SetText(text)
+		act.Triggered().Attach(f)
+		ni.ContextMenu().Actions().Add(act)
+	}
+	add("Suche öffnen", a.showWindow)
+	add("Index aktualisieren", a.toggleIndex)
+	add("Einstellungen …", func() { a.showWindow(); a.showSettings() })
+	ni.ContextMenu().Actions().Add(walk.NewSeparatorAction())
+	add("Beenden", a.quit)
+	if err := ni.SetVisible(true); err != nil {
+		ni.Dispose()
+		a.tray = nil
+		return
+	}
+
+	a.mw.Closing().Attach(func(canceled *bool, _ walk.CloseReason) {
+		if a.quitting || a.tray == nil {
+			return
+		}
+		*canceled = true
+		a.mw.Hide()
+		if !a.cfg.TrayHintShown {
+			a.cfg.TrayHintShown = true
+			a.cfg.Save()
+			msg := "Die Suche läuft im Hintergrund weiter und hält den Index aktuell."
+			if a.hotkeyErr == "" && a.cfg.Hotkey != "Keine" {
+				msg += "\nÖffnen mit " + a.cfg.Hotkey + " oder über dieses Symbol."
+			}
+			ni.ShowInfo(brandName+" "+brandProduct, msg)
+		}
+	})
+}
+
+func (a *App) quit() {
+	a.quitting = true
+	a.mw.Close()
+}
+
+func (a *App) showWindow() {
+	dbg("showWindow")
+	if a.mw == nil {
+		return
+	}
+	a.mw.Show()
+	hwnd := a.mw.Handle()
+	if win.IsIconic(hwnd) {
+		win.ShowWindow(hwnd, win.SW_RESTORE)
+	} else {
+		win.ShowWindow(hwnd, win.SW_SHOW)
+	}
+	win.SetForegroundWindow(hwnd)
+	a.search.SetFocus()
+	a.search.SetTextSelection(0, -1)
+}
+
+func (a *App) applyHotkey() {
+	if a.stopHotkey != nil {
+		a.stopHotkey()
+		a.stopHotkey = nil
+	}
+	a.hotkeyErr = ""
+	stop, err := StartHotkey(a.cfg.Hotkey, func() { a.mw.Synchronize(a.showWindow) })
+	if err != nil {
+		a.hotkeyErr = err.Error() + " – bitte in den Einstellungen eine andere wählen"
+	}
+	a.stopHotkey = stop
+	a.updateBannerHint()
+}
+
+func (a *App) searchKey(key walk.Key) {
+	switch key {
+	case walk.KeyDown, walk.KeyReturn:
+		if a.model.RowCount() > 0 {
+			a.tv.SetFocus()
+			a.tv.SetCurrentIndex(0)
+		}
+	}
+}
+
+// ---------- Start & Hintergrund-Aktualisierung ----------
+
 func (a *App) startup() {
 	ix, _ := LoadIndex(indexPath())
+	firstRun := false
+	decided := make(chan struct{})
 	a.mw.Synchronize(func() {
-		a.ix = ix
+		a.ix, a.ixShared = ix, ix != nil && a.cfg.sharedReader()
 		a.updateInfo()
-		if len(a.cfg.Folders) == 0 {
-			walk.MsgBox(a.mw, "NAS-Suche – Willkommen",
+		a.scheduleSearch()
+		firstRun = len(a.cfg.Folders) == 0 && a.cfg.SharedIndexDir == ""
+		close(decided)
+		if firstRun {
+			a.showWindow()
+			walk.MsgBox(a.mw, brandName+" "+brandProduct+" – Willkommen",
 				"Bitte legen Sie zuerst fest, welche Ordner bzw. Netzlaufwerke durchsucht werden sollen\n"+
 					"(z. B. Z:\\ oder \\\\DiskStation\\Daten).", walk.MsgBoxIconInformation)
 			a.showSettings()
-			return
 		}
-		if a.ix == nil || !sameRoots(a.ix.Roots, a.cfg.Folders) ||
-			(a.cfg.RefreshHours > 0 && time.Since(a.ix.Built) > time.Duration(a.cfg.RefreshHours)*time.Hour) {
-			a.startIndex()
-		}
-		a.scheduleSearch()
 	})
 
-	// Automatische Aktualisierung, solange das Programm offen ist.
-	for range time.Tick(5 * time.Minute) {
-		a.mw.Synchronize(func() {
-			if !a.indexing && a.ix != nil && a.cfg.RefreshHours > 0 &&
-				time.Since(a.ix.Built) > time.Duration(a.cfg.RefreshHours)*time.Hour {
-				a.startIndex()
-			}
-		})
+	<-decided
+	if !firstRun {
+		a.connectDrives(false)
+		a.mw.Synchronize(func() { a.maintain(a.cfg.sharedIndexPath()) })
 	}
+
+	if d := detectGoogleDrive(); d != "" {
+		a.mw.Synchronize(func() { a.gdrive = d; a.rebuildCopyMenu() })
+	}
+
+	for range time.Tick(5 * time.Minute) {
+		a.mw.Synchronize(func() { a.maintain(a.cfg.sharedIndexPath()) })
+	}
+}
+
+// maintain: läuft beim Start und alle 5 Minuten. Holt einen neueren gemeinsamen Index
+// bzw. liest neu ein, wenn der Index zu alt ist.
+func (a *App) maintain(sharedPath string) {
+	if a.indexing {
+		return
+	}
+	if a.cfg.sharedReader() {
+		go a.pullShared(sharedPath, false)
+		return
+	}
+	stale := a.ix == nil || a.ixShared || !sameRoots(a.ix.Roots, a.cfg.Folders) ||
+		(a.cfg.RefreshHours > 0 && time.Since(a.ix.Built) > time.Duration(a.cfg.RefreshHours)*time.Hour)
+	if stale && len(a.cfg.Folders) > 0 {
+		a.startIndex()
+	}
+}
+
+func fileMod(p string) time.Time {
+	fi, err := os.Stat(p)
+	if err != nil {
+		return time.Time{}
+	}
+	return fi.ModTime()
+}
+
+// pullShared lädt den gemeinsamen Index vom NAS, wenn er neuer ist als die lokale Kopie.
+func (a *App) pullShared(sharedPath string, force bool) {
+	sm := fileMod(sharedPath)
+	if sm.IsZero() {
+		if force {
+			a.mw.Synchronize(func() {
+				a.setStatus("Gemeinsamer Index nicht gefunden: " + sharedPath + " – lese selbst ein …")
+				a.startIndex()
+			})
+		}
+		return
+	}
+	if !force && !sm.After(fileMod(indexPath())) && a.ix != nil {
+		return
+	}
+	a.mw.Synchronize(func() { a.setStatus("Lade gemeinsamen Index vom NAS …") })
+	ix, err := LoadIndex(sharedPath)
+	if err != nil {
+		a.mw.Synchronize(func() { a.setStatus("Gemeinsamer Index konnte nicht geladen werden: " + err.Error()) })
+		return
+	}
+	copyFile(sharedPath, indexPath())
+	a.mw.Synchronize(func() {
+		a.ix, a.ixShared = ix, true
+		a.updateInfo()
+		a.scheduleSearch()
+	})
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	os.MkdirAll(filepath.Dir(dst), 0o755)
+	tmp := dst + ".tmp"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err = out.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	// Ziel kann kurz von einem anderen PC gelesen werden → mehrere Versuche.
+	for i := 0; i < 10; i++ {
+		if err = os.Rename(tmp, dst); err == nil {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	os.Remove(tmp)
+	return err
+}
+
+// connectDrives verbindet die gespeicherten Netzlaufwerke (und die Freigaben der
+// Suchordner). Windows fragt bei Bedarf selbst nach Benutzername/Kennwort.
+func (a *App) connectDrives(report bool) {
+	var hwnd uintptr
+	var drives []DriveMap
+	var extra []string
+	done := make(chan struct{})
+	a.mw.Synchronize(func() {
+		hwnd = uintptr(a.mw.Handle())
+		drives = append(drives, a.cfg.Drives...)
+		for _, f := range append(append([]string(nil), a.cfg.Folders...), a.cfg.SharedIndexDir) {
+			if r := ShareRoot(f); r != "" {
+				extra = append(extra, r)
+			}
+		}
+		close(done)
+	})
+	<-done
+
+	var problems []string
+	for _, d := range drives {
+		if err := ConnectShare(hwnd, d.Letter, d.Remote); err != nil {
+			problems = append(problems, err.Error())
+		}
+	}
+	for _, r := range extra {
+		ConnectShare(hwnd, "", r)
+	}
+	if len(problems) > 0 || report {
+		msg := "Netzlaufwerke verbunden."
+		if len(problems) > 0 {
+			msg = "Netzlaufwerk-Problem: " + strings.Join(problems, "; ")
+		}
+		a.mw.Synchronize(func() { a.setStatus(msg) })
+	}
+}
+
+func detectGoogleDrive() string {
+	for _, p := range []string{`G:\Meine Ablage`, `G:\My Drive`} {
+		if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+			return p
+		}
+	}
+	return ""
 }
 
 func sameRoots(a, b []string) bool {
@@ -270,8 +520,15 @@ func sameRoots(a, b []string) bool {
 func (a *App) updateInfo() {
 	if a.ix == nil {
 		a.lastInfo = "Noch kein Index vorhanden."
+		if a.cfg.sharedReader() {
+			a.lastInfo = "Noch kein gemeinsamer Index auf dem NAS – F5 liest selbst ein."
+		}
 	} else {
-		a.lastInfo = fmt.Sprintf("Index: %s Einträge, Stand %s", thousands(int64(len(a.ix.Entries))),
+		src := "Index"
+		if a.ixShared {
+			src = "Gemeinsamer Index (NAS)"
+		}
+		a.lastInfo = fmt.Sprintf("%s: %s Einträge, Stand %s", src, thousands(int64(len(a.ix.Entries))),
 			a.ix.Built.Format("02.01.2006 15:04"))
 		if a.ix.Errors > 0 {
 			a.lastInfo += fmt.Sprintf(" (%d Ordner nicht lesbar)", a.ix.Errors)
@@ -290,7 +547,12 @@ func (a *App) toggleIndex() {
 		a.setStatus("Breche ab …")
 		return
 	}
+	if a.cfg.sharedReader() {
+		go a.pullShared(a.cfg.sharedIndexPath(), true)
+		return
+	}
 	if len(a.cfg.Folders) == 0 {
+		a.showWindow()
 		a.showSettings()
 		return
 	}
@@ -301,12 +563,20 @@ func (a *App) startIndex() {
 	if a.indexing {
 		return
 	}
+	folders := append([]string(nil), a.cfg.Folders...)
+	if len(folders) == 0 {
+		a.setStatus("Keine Ordner eingestellt – bitte unter „Einstellungen“ festlegen.")
+		return
+	}
 	a.indexing = true
 	a.stopIndex.Store(false)
 	a.refreshBt.SetText("Abbrechen")
-	folders := append([]string(nil), a.cfg.Folders...)
 	excludes := append([]string(nil), a.cfg.Excludes...)
 	workers := a.cfg.Workers
+	sharedPath := ""
+	if a.cfg.SharedWriter {
+		sharedPath = a.cfg.sharedIndexPath()
+	}
 
 	p := &Progress{}
 	p.Current.Store("")
@@ -332,20 +602,32 @@ func (a *App) startIndex() {
 		ix := BuildIndex(folders, excludes, workers, &a.stopIndex, p)
 		close(done)
 		cancelled := a.stopIndex.Load()
+		var shareErr error
 		if !cancelled {
 			SaveIndex(ix, indexPath())
+			if sharedPath != "" {
+				shareErr = copyFile(indexPath(), sharedPath)
+			}
 		}
 		a.mw.Synchronize(func() {
 			a.indexing = false
-			a.refreshBt.SetText("Index aktualisieren")
+			a.refreshBt.SetText("Aktualisieren (F5)")
 			if cancelled {
 				a.updateInfo()
 				a.setStatus("Einlesen abgebrochen. " + a.lastInfo)
 				return
 			}
-			a.ix = ix
+			a.ix, a.ixShared = ix, false
 			a.updateInfo()
-			a.setStatus(fmt.Sprintf("%s (eingelesen in %s)", a.lastInfo, time.Since(start).Round(time.Second)))
+			msg := fmt.Sprintf("%s (eingelesen in %s)", a.lastInfo, time.Since(start).Round(time.Second))
+			if sharedPath != "" {
+				if shareErr != nil {
+					msg += " – gemeinsamer Index konnte NICHT gespeichert werden: " + shareErr.Error()
+				} else {
+					msg += " – auf dem NAS für alle bereitgestellt"
+				}
+			}
+			a.setStatus(msg)
 			a.scheduleSearch()
 		})
 	}()
@@ -358,7 +640,7 @@ func (a *App) scheduleSearch() {
 	if a.debounce != nil {
 		a.debounce.Stop()
 	}
-	a.debounce = time.AfterFunc(150*time.Millisecond, func() {
+	a.debounce = time.AfterFunc(120*time.Millisecond, func() {
 		a.mw.Synchronize(func() { a.runSearch(gen) })
 	})
 }
@@ -419,14 +701,14 @@ func (a *App) selectedPaths() []string {
 func (a *App) openSelected() {
 	paths := a.selectedPaths()
 	if len(paths) > 10 {
-		if walk.MsgBox(a.mw, "NAS-Suche", fmt.Sprintf("%d Dateien öffnen?", len(paths)),
+		if walk.MsgBox(a.mw, brandProduct, fmt.Sprintf("%d Dateien öffnen?", len(paths)),
 			walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
 			return
 		}
 	}
 	for _, p := range paths {
 		if _, err := os.Stat(p); err != nil {
-			walk.MsgBox(a.mw, "NAS-Suche", "Nicht mehr vorhanden oder kein Zugriff:\n"+p+
+			walk.MsgBox(a.mw, brandProduct, "Nicht mehr vorhanden oder kein Zugriff:\n"+p+
 				"\n\nTipp: Index aktualisieren (F5).", walk.MsgBoxIconWarning)
 			continue
 		}
@@ -445,7 +727,7 @@ func (a *App) showInFolder() {
 	cmd.Start()
 }
 
-func (a *App) copySelected(full bool) {
+func (a *App) copyText(full bool) {
 	paths := a.selectedPaths()
 	if !full {
 		for i, p := range paths {
@@ -454,138 +736,106 @@ func (a *App) copySelected(full bool) {
 	}
 	if len(paths) > 0 {
 		walk.Clipboard().SetText(strings.Join(paths, "\r\n"))
+		a.setStatus(fmt.Sprintf("%d %s in die Zwischenablage kopiert.", len(paths), map[bool]string{true: "Pfad(e)", false: "Name(n)"}[full]))
 	}
 }
 
-// ---------- Einstellungen ----------
-
-func (a *App) showSettings() {
-	var (
-		dlg      *walk.Dialog
-		lb       *walk.ListBox
-		pathEdit *walk.LineEdit
-		exclEdit *walk.LineEdit
-		hours    *walk.NumberEdit
-		workers  *walk.NumberEdit
-	)
-	folders := append([]string(nil), a.cfg.Folders...)
-	// Werte werden beim Klick auf „Speichern" übernommen (danach sind die Felder nicht mehr verfügbar).
-	var (
-		newExcl    []string
-		newHours   int
-		newWorkers int
-	)
-
-	addFolder := func(p string) {
-		p = strings.TrimSpace(strings.Trim(strings.TrimSpace(p), `"`))
-		if p == "" {
-			return
-		}
-		if _, err := os.Stat(p); err != nil {
-			if walk.MsgBox(dlg, "Ordner hinzufügen", "Der Ordner ist gerade nicht erreichbar:\n"+p+
-				"\n\nTrotzdem hinzufügen?", walk.MsgBoxYesNo|walk.MsgBoxIconWarning) != walk.DlgCmdYes {
-				return
-			}
-		}
-		for _, f := range folders {
-			if strings.EqualFold(f, p) {
-				return
-			}
-		}
-		folders = append(folders, p)
-		lb.SetModel(folders)
-	}
-
-	res, err := Dialog{
-		AssignTo: &dlg,
-		Title:    "Einstellungen",
-		MinSize:  Size{Width: 620, Height: 480},
-		Layout:   VBox{},
-		Children: []Widget{
-			Label{Text: "Diese Ordner / Netzlaufwerke werden durchsucht (inkl. aller Unterordner):"},
-			ListBox{AssignTo: &lb, Model: folders, MinSize: Size{Height: 140}},
-			Composite{
-				Layout: HBox{MarginsZero: true},
-				Children: []Widget{
-					PushButton{Text: "Ordner auswählen …", OnClicked: func() {
-						fd := &walk.FileDialog{Title: "Ordner zum Durchsuchen auswählen"}
-						if ok, _ := fd.ShowBrowseFolder(dlg); ok {
-							addFolder(fd.FilePath)
-						}
-					}},
-					PushButton{Text: "Entfernen", OnClicked: func() {
-						if i := lb.CurrentIndex(); i >= 0 && i < len(folders) {
-							folders = append(folders[:i], folders[i+1:]...)
-							lb.SetModel(folders)
-						}
-					}},
-					HSpacer{},
-				},
-			},
-			Composite{
-				Layout: HBox{MarginsZero: true},
-				Children: []Widget{
-					Label{Text: "Oder Pfad eintippen:"},
-					LineEdit{AssignTo: &pathEdit, CueBanner: `z. B. \\DiskStation\Daten oder Z:\`},
-					PushButton{Text: "Hinzufügen", OnClicked: func() {
-						addFolder(pathEdit.Text())
-						pathEdit.SetText("")
-					}},
-				},
-			},
-			VSpacer{Size: 8},
-			Label{Text: "Ignorieren (Datei-/Ordnernamen, durch ; getrennt):"},
-			LineEdit{AssignTo: &exclEdit, Text: strings.Join(a.cfg.Excludes, "; ")},
-			Composite{
-				Layout: Grid{Columns: 2, MarginsZero: true},
-				Children: []Widget{
-					Label{Text: "Index automatisch aktualisieren alle (Stunden, 0 = nie):"},
-					NumberEdit{AssignTo: &hours, Value: float64(a.cfg.RefreshHours), MinValue: 0, MaxValue: 720, Decimals: 0, MaxSize: Size{Width: 80}},
-					Label{Text: "Gleichzeitige Zugriffe beim Einlesen (1–64):"},
-					NumberEdit{AssignTo: &workers, Value: float64(a.cfg.Workers), MinValue: 1, MaxValue: 64, Decimals: 0, MaxSize: Size{Width: 80}},
-				},
-			},
-			Label{Text: "Hinweis: Der Index wird lokal auf diesem PC gespeichert. Die Suche selbst greift nicht auf das NAS zu\nund ist deshalb sofort da. Neue Dateien erscheinen nach der nächsten Aktualisierung (F5)."},
-			VSpacer{},
-			Composite{
-				Layout: HBox{MarginsZero: true},
-				Children: []Widget{
-					HSpacer{},
-					PushButton{Text: "Speichern", OnClicked: func() {
-						for _, e := range strings.Split(exclEdit.Text(), ";") {
-							if e = strings.TrimSpace(e); e != "" {
-								newExcl = append(newExcl, e)
-							}
-						}
-						newHours = int(hours.Value())
-						newWorkers = int(workers.Value())
-						dlg.Accept()
-					}},
-					PushButton{Text: "Abbrechen", OnClicked: func() { dlg.Cancel() }},
-				},
-			},
-		},
-	}.Run(a.mw)
-	if err != nil || res != walk.DlgCmdOK {
+// copyFiles legt die Dateien wie im Explorer in die Zwischenablage (Einfügen mit Strg+V).
+func (a *App) copyFiles() {
+	paths := a.selectedPaths()
+	if len(paths) == 0 {
 		return
 	}
+	if err := CopyFilesToClipboard(uintptr(a.mw.Handle()), paths); err != nil {
+		a.setStatus("Kopieren fehlgeschlagen: " + err.Error())
+		return
+	}
+	a.setStatus(fmt.Sprintf("%d Datei(en) kopiert – mit Strg+V im Explorer, in E-Mails, Google Drive usw. einfügen.", len(paths)))
+}
 
-	changed := !sameRoots(folders, a.cfg.Folders) || strings.Join(newExcl, ";") != strings.Join(a.cfg.Excludes, ";")
-	a.cfg.Folders = folders
-	a.cfg.Excludes = newExcl
-	a.cfg.RefreshHours = newHours
-	if newWorkers > 0 {
-		a.cfg.Workers = newWorkers
-	}
-	if err := a.cfg.Save(); err != nil {
-		walk.MsgBox(a.mw, "NAS-Suche", "Einstellungen konnten nicht gespeichert werden:\n"+err.Error(), walk.MsgBoxIconError)
-	}
-	if changed && len(folders) > 0 {
-		if a.indexing {
-			a.stopIndex.Store(true)
-			walk.MsgBox(a.mw, "NAS-Suche", "Bitte nach dem Abbruch des laufenden Einlesens erneut „Index aktualisieren“ klicken.", walk.MsgBoxIconInformation)
+func (a *App) setupDrag() {
+	a.tv.MouseDown().Attach(func(x, y int, b walk.MouseButton) {
+		a.dragArmed = b == walk.LeftButton
+		a.dragX, a.dragY = x, y
+	})
+	a.tv.MouseUp().Attach(func(x, y int, b walk.MouseButton) { a.dragArmed = false })
+	a.tv.MouseMove().Attach(func(x, y int, b walk.MouseButton) {
+		if !a.dragArmed || b&walk.LeftButton == 0 {
 			return
 		}
-		a.startIndex()
+		dx, dy := x-a.dragX, y-a.dragY
+		if dx*dx+dy*dy < 25 {
+			return
+		}
+		a.dragArmed = false
+		paths := a.selectedPaths()
+		if len(paths) == 0 {
+			return
+		}
+		if err := DragFiles(uintptr(a.mw.Handle()), paths); err != nil {
+			a.setStatus("Ziehen nicht möglich: " + err.Error())
+		}
+	})
+}
+
+func (a *App) rebuildCopyMenu() {
+	if a.copyMenu == nil {
+		return
 	}
+	acts := a.copyMenu.Actions()
+	acts.Clear()
+	add := func(text string, f func()) {
+		act := walk.NewAction()
+		act.SetText(text)
+		act.Triggered().Attach(f)
+		acts.Add(act)
+	}
+	targets := append([]string(nil), a.cfg.CopyTargets...)
+	if a.gdrive != "" {
+		known := false
+		for _, t := range targets {
+			known = known || strings.EqualFold(t, a.gdrive)
+		}
+		if !known {
+			targets = append(targets, a.gdrive)
+		}
+	}
+	for _, t := range targets {
+		t := t
+		label := strings.ReplaceAll(t, "&", "&&")
+		if strings.EqualFold(t, a.gdrive) {
+			label = "Google Drive  (" + label + ")"
+		}
+		add(label, func() { a.copyTo(t) })
+	}
+	if len(targets) > 0 {
+		acts.Add(walk.NewSeparatorAction())
+	}
+	add("Ordner auswählen …", func() {
+		fd := &walk.FileDialog{Title: "Wohin sollen die Dateien kopiert werden?"}
+		if ok, _ := fd.ShowBrowseFolder(a.mw); ok && fd.FilePath != "" {
+			a.copyTo(fd.FilePath)
+		}
+	})
+}
+
+func (a *App) copyTo(target string) {
+	paths := a.selectedPaths()
+	if len(paths) == 0 {
+		return
+	}
+	a.cfg.addCopyTarget(target)
+	a.cfg.Save()
+	a.rebuildCopyMenu()
+	a.setStatus(fmt.Sprintf("Kopiere %d Element(e) nach %s …", len(paths), target))
+	go func() {
+		err := CopyFilesTo(paths, target)
+		a.mw.Synchronize(func() {
+			if err != nil {
+				a.setStatus(err.Error())
+			} else {
+				a.setStatus(fmt.Sprintf("%d Element(e) nach %s kopiert.", len(paths), target))
+			}
+		})
+	}()
 }

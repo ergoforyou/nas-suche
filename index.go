@@ -112,7 +112,7 @@ func BuildIndex(roots, excludes []string, workers int, stop *atomic.Bool, p *Pro
 			var subdirs []string
 			for _, de := range ents {
 				name := de.Name()
-				if excl[strings.ToLower(name)] {
+				if excl[strings.ToLower(name)] || strings.HasPrefix(name, "NasSuche-Index.dat") {
 					continue
 				}
 				e := Entry{Name: name, IsDir: de.IsDir()}
@@ -323,7 +323,10 @@ func (ix *Index) SortResults(res []int, col int, asc bool) {
 				return ea.Mod < eb.Mod
 			}
 		}
-		return naturalLess(ix.lowerNames[a], ix.lowerNames[b])
+		if ix.lowerNames[a] != ix.lowerNames[b] {
+			return naturalLess(ix.lowerNames[a], ix.lowerNames[b])
+		}
+		return naturalLess(ix.lowerDirs[ea.Dir], ix.lowerDirs[eb.Dir])
 	}
 	sort.SliceStable(res, func(i, j int) bool {
 		if asc {

@@ -1,40 +1,63 @@
-# NAS-Suche
+# Ergo4U NAS-Suche – wenn es schnell gehen muss
 
 Schnelle Dateisuche für Synology-Netzlaufwerke (oder beliebige Ordner) unter Windows 10/11.
 **Eine einzige Datei `NasSuche.exe`. Keine Installation, keine Zusatzsoftware.**
 
+## Einrichten (einmalig)
+
+1. `NasSuche.exe` auf den PC kopieren (z. B. `C:\Programme\Ergo4U\`) oder vom NAS starten.
+2. Beim ersten Start unter **Einstellungen** festlegen:
+   * **Suchordner** – z. B. `\\DiskStation\Daten` oder `Z:\`
+   * **Netzlaufwerke** – werden bei jedem Start automatisch verbunden (z. B. `Z:` → `\\DiskStation\Daten`).
+     Fehlen Zugangsdaten, fragt Windows einmal nach („Anmeldedaten speichern“ anhaken).
+   * **Allgemein → Mit Windows starten** anhaken.
+
+Ab dann läuft die Suche im Hintergrund (Symbol unten rechts neben der Uhr) und hält den Index aktuell.
+
 ## Benutzung
 
-1. `NasSuche.exe` auf den PC kopieren (z. B. Desktop) **oder** direkt vom NAS starten.
-2. Beim ersten Start die Ordner festlegen, die durchsucht werden sollen,
-   z. B. `Z:\` oder `\\DiskStation\Daten` („Ordner auswählen …“ oder Pfad eintippen).
-3. Das Programm liest einmal alle Datei- und Ordnernamen ein (Fortschritt unten in der Statusleiste).
-   Danach erscheinen Suchergebnisse **sofort beim Tippen**, auch bei Millionen Dateien.
-
-### Suchen
+* **Strg+Alt+Leertaste** (einstellbar) öffnet die Suche von überall – tippen, Ergebnis ist sofort da.
+* **Esc** leert das Suchfeld, zweimal Esc blendet das Fenster aus. Das X schließt nur das Fenster;
+  **Beenden** über Rechtsklick auf das Symbol neben der Uhr.
 * Mehrere Wörter: alle müssen im Namen vorkommen – `angebot müller`
-* Platzhalter: `*.pdf`, `rechnung 2026*`, `bericht_??.docx`
-* „Auch im Ordnerpfad suchen“: Wörter dürfen auch im Ordnernamen stehen – `kunden müller *.pdf`
-* Auswahl „Nur Dateien“ / „Nur Ordner“
-* Groß-/Kleinschreibung egal; Umlaute von Mac-Rechnern werden korrekt gefunden.
+* Platzhalter: `*.pdf`, `rechnung 2026*`
+* „Auch im Ordnerpfad suchen“: Wörter dürfen auch im Ordnernamen stehen
+* **F5**: Index sofort aktualisieren
 
-### Ergebnisse
-* Doppelklick oder Enter: Datei öffnen
-* Rechtsklick: Öffnen, Im Ordner anzeigen, Pfad kopieren, Name kopieren
-* Strg+C: Pfad(e) kopieren · Spaltenkopf anklicken: sortieren
-* **F5** bzw. „Index aktualisieren“: Ordner neu einlesen (passiert sonst automatisch alle 12 Stunden,
-  einstellbar).
+### Mit den Treffern weiterarbeiten
+* **Herausziehen** (Drag & Drop): Treffer mit der Maus in den Explorer, Outlook, Teams, oder in den
+  Browser (Google Drive, Claude, …) ziehen – mehrere Dateien gleichzeitig möglich.
+* **Strg+C** kopiert die Dateien selbst (wie im Explorer) → mit Strg+V einfügen.
+* **Rechtsklick → Kopieren nach**: merkt sich die zuletzt benutzten Zielordner; Google Drive für
+  Desktop (`G:\Meine Ablage`) wird automatisch angeboten.
+* Doppelklick/Enter öffnet, „Im Ordner anzeigen“, „Pfad kopieren“ (Strg+Umschalt+C).
 
-Synology-Systemordner (`#recycle`, `@eaDir`, `#snapshot` …) werden ignoriert (einstellbar).
+## Gemeinsamer Index für das ganze Team
+
+Statt dass jeder PC das NAS selbst einliest:
+1. An **einem** PC unter *Einstellungen → Gemeinsamer Index* einen Ordner auf dem NAS wählen
+   (z. B. `\\DiskStation\Daten\_NasSuche`) und den Haken **„Dieser PC erstellt … den gemeinsamen Index“** setzen.
+   Suchordner dort als Netzwerkpfad (`\\DiskStation\…`) eintragen.
+2. An allen anderen PCs nur denselben Ordner eintragen (ohne Haken). Sie laden den fertigen Index
+   in Sekunden und prüfen alle 5 Minuten, ob es einen neueren gibt.
+
+**Für alle vorkonfigurieren:** `NasSuche.json` neben die EXE legen, z. B.
+```json
+{
+  "gemeinsamer_index_ordner": "\\\\DiskStation\\Daten\\_NasSuche",
+  "netzlaufwerke": [{ "laufwerk": "Z:", "pfad": "\\\\DiskStation\\Daten" }]
+}
+```
+Wer noch keine eigenen Einstellungen hat, übernimmt diese Vorgabe.
 
 ## Gut zu wissen
-* Der Index liegt pro Benutzer lokal unter `%LOCALAPPDATA%\NasSuche\index.dat`,
-  die Einstellungen unter `%APPDATA%\NasSuche\einstellungen.json`.
-* **Für alle Kollegen vorkonfigurieren:** Eine Datei `NasSuche.json` neben die EXE legen
-  (gleicher Aufbau wie `einstellungen.json`). Wer noch keine eigenen Einstellungen hat, übernimmt diese.
-* Das Programm ist nicht digital signiert. Beim ersten Start zeigt Windows ggf.
+* Gesucht wird nach Datei- und Ordnernamen, nicht im Inhalt.
+* Synology-Systemordner (`#recycle`, `@eaDir`, `#snapshot` …) werden ignoriert.
+* Dateien: Index `%LOCALAPPDATA%\NasSuche\index.dat`, Einstellungen `%APPDATA%\NasSuche\einstellungen.json`.
+  Kennwörter speichert das Programm nicht – das übernimmt Windows.
+* Das Programm ist nicht digital signiert. Beim ersten Start ggf.
   „Der Computer wurde durch Windows geschützt“ → **Weitere Informationen → Trotzdem ausführen**.
-* Gesucht wird nach Datei- und Ordnernamen, nicht im Inhalt der Dateien.
+* Branding (Name, Slogan, Farben) steht zentral in `branding.go`. Schrift: Montserrat (SIL Open Font License).
 
 ## Selbst bauen (nur für Entwickler)
 Benötigt Go ≥ 1.22: `./build.sh` erzeugt `NasSuche.exe` (funktioniert auch unter Linux/macOS).
