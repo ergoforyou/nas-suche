@@ -258,11 +258,13 @@ func (a *App) showSettings() {
 											SharedIndexDir: strings.TrimSpace(sharedEdit.Text()),
 											Hotkey:         hotkeyNames[max(0, hotkeyCB.CurrentIndex())],
 											RefreshHours:   int(hours.Value()), Workers: int(workers.Value()),
+											Favorites:      a.cfg.Favorites, StartFolder: a.cfg.StartFolder,
 										})
 									}},
 									HSpacer{},
 								}},
-								note("Speichert Suchordner, Netzlaufwerke und gemeinsamen Index als NasSuche.json neben die EXE.\n" +
+								note("Speichert Suchordner, Netzlaufwerke, feste Ordner (z. B. Digitale Eingänge), Startordner\n" +
+									"und gemeinsamen Index als NasSuche.json neben die EXE.\n" +
 									"Wer die EXE von dort startet und noch nichts eingestellt hat, übernimmt alles automatisch."),
 							}},
 							VSpacer{ColumnSpan: 2},

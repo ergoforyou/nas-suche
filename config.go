@@ -33,6 +33,15 @@ type Config struct {
 	SortCol2       int        `json:"sortierung_spalte_rechts"`
 	SortDesc2      bool       `json:"sortierung_absteigend_rechts"`
 	Version        int        `json:"einstellungen_version"`
+	Favorites      []Favorite `json:"ordner_favoriten"`
+	StartFolder    string     `json:"startordner_links"`
+	StartFolder2   string     `json:"startordner_rechts"`
+}
+
+// Favorite: fester Ordner im Menü „★ Ordner“ (z. B. Digitale Eingänge).
+type Favorite struct {
+	Name string `json:"name"`
+	Path string `json:"pfad"`
 }
 
 // DriveMap: Netzlaufwerk, das beim Programmstart verbunden wird.

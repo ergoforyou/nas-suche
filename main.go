@@ -43,6 +43,7 @@ type App struct {
 	gdrive     string // erkannter Google-Drive-Ordner
 
 	stickyUntil time.Time // bis dahin überschreiben die Ansichten die Statuszeile nicht
+	dragSource  bool      // gerade werden Dateien aus dem Programm gezogen
 }
 
 func main() {
@@ -305,7 +306,11 @@ func (a *App) startup() {
 			}
 		})
 		a.connectDrives(false)
-		a.mw.Synchronize(func() { a.maintain(a.cfg.sharedIndexPath()) })
+		a.mw.Synchronize(func() {
+			a.openStartFolders()
+			a.maintain(a.cfg.sharedIndexPath())
+		})
+		go a.autoRefreshFolders()
 	}
 
 	if d := detectGoogleDrive(); d != "" {

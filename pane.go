@@ -30,6 +30,7 @@ type Pane struct {
 	pathLabel     *walk.Label
 	crumbs        *walk.Composite // Pfad als anklickbare Teilstücke mit Unterordner-Auswahl
 	crumbSlots    []*crumbSlot
+	favBtn        *walk.PushButton
 	crumbMore     *walk.PushButton
 	crumbMorePath string
 	tv            *walk.TableView
@@ -98,6 +99,7 @@ func (p *Pane) widget() Widget {
 				Layout:  HBox{MarginsZero: true},
 				MaxSize: Size{Height: 34},
 				Children: []Widget{
+					PushButton{AssignTo: &p.favBtn, Text: "Ordner ▼", MaxSize: Size{Width: 90}, OnClicked: p.showFolderMenu},
 					LineEdit{
 						AssignTo:      &p.search,
 						CueBanner:     cue,
@@ -341,7 +343,11 @@ func (p *Pane) openFolder(dir string) {
 	p.refreshFolder()
 }
 
-func (p *Pane) refreshFolder() {
+func (p *Pane) refreshFolder() { p.loadFolder(false) }
+
+// loadFolder liest den geöffneten Ordner. silent = automatische Aktualisierung im Hintergrund:
+// keine Statusmeldung, nur bei Änderungen neu anzeigen, Auswahl bleibt erhalten.
+func (p *Pane) loadFolder(silent bool) {
 	dir := p.model.folder
 	// Der Haken „Ordner“ dient zum Finden von Ordnern – in der Ordneransicht zählen nur Dateitypen.
 	filter := *p.filter &^ FilterBit(CatFolder)
@@ -349,9 +355,14 @@ func (p *Pane) refreshFolder() {
 	for _, e := range p.app.cfg.Excludes {
 		excl[strings.ToLower(e)] = true
 	}
-	p.setStatus("Lese Ordner " + dir + " …")
+	if !silent {
+		p.setStatus("Lese Ordner " + dir + " …")
+	}
 	go func() {
 		ents, err := os.ReadDir(dir)
+		if silent && err != nil {
+			return
+		}
 		var items []Entry
 		var counts [NumCats]int
 		for _, de := range ents {
@@ -377,6 +388,16 @@ func (p *Pane) refreshFolder() {
 		}
 		p.app.mw.Synchronize(func() {
 			if !p.model.folderMode || p.model.folder != dir {
+				return
+			}
+			if silent {
+				if p.dragging() || sameItems(p.model.items, items) {
+					return
+				}
+				sel := p.selectedPaths()
+				p.model.setFolder(dir, items)
+				p.updateFilterButtons(&counts)
+				p.reselect(sel)
 				return
 			}
 			p.model.setFolder(dir, items)
@@ -587,7 +608,8 @@ func (p *Pane) setupDrag() {
 		if len(paths) == 0 {
 			return
 		}
-		dbg("Ziehen startet: %d Dateien", len(paths))
+		p.app.dragSource = true
+		defer func() { p.app.dragSource = false }()
 		if err := DragFiles(uintptr(p.app.mw.Handle()), paths); err != nil {
 			p.setStatus("Ziehen nicht möglich: " + err.Error())
 		}

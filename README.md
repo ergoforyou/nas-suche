@@ -44,6 +44,15 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
 * „Auch im Ordnerpfad suchen“: Wörter dürfen auch im Ordnernamen stehen
 * **F5**: Index sofort aktualisieren
 
+### Feste Ordner (z. B. „Digitale Eingänge“)
+* Knopf **„Ordner ▼“** links neben jedem Suchfeld: feste Ordner mit einem Klick anzeigen – ohne Suchen.
+* Ordner anzeigen (Doppelklick oder „Ordner auswählen und anzeigen …“), dann im Menü
+  **„Angezeigten Ordner als festen Ordner merken …“** – Name vergeben, fertig (gilt für beide Seiten).
+* **„Angezeigten Ordner beim Start links/rechts öffnen“**: z. B. links immer die digitalen Eingänge.
+* Geöffnete Ordner aktualisieren sich alle 10 Sekunden von selbst – neue Scans erscheinen automatisch
+  (nicht während man zieht; die Auswahl bleibt erhalten).
+* Feste Ordner und Startordner werden mit „Als Vorgabe für alle Kollegen speichern“ mitgegeben.
+
 ### Zwei Ansichten nebeneinander (Dateien verschieben)
 * Knopf **„Zweite Ansicht einblenden“** – rechts erscheint eine zweite, unabhängige Suche
   (eigene Haken, eigener Suchbegriff). Ausblenden mit demselben Knopf, die Wahl bleibt gespeichert.
