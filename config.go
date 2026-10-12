@@ -83,7 +83,8 @@ func (c *Config) addCopyTarget(dir string) {
 func defaultConfig() *Config {
 	return &Config{
 		Excludes: []string{"#recycle", "@eaDir", "#snapshot", "@Recycle", "$RECYCLE.BIN",
-			"System Volume Information", ".DS_Store", "Thumbs.db", "desktop.ini"},
+			"System Volume Information", ".DS_Store", "Thumbs.db", "desktop.ini",
+			".Spotlight-V100", ".Trashes", ".fseventsd", ".TemporaryItems", ".AppleDouble"},
 		RefreshHours: 4,
 		Workers:      16,
 		Hotkey:       defaultHotkey,

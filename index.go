@@ -115,7 +115,8 @@ func BuildIndex(roots, excludes []string, workers int, stop *atomic.Bool, p *Pro
 			var subdirs []string
 			for _, de := range ents {
 				name := de.Name()
-				if excl[strings.ToLower(name)] || strings.HasPrefix(name, "NasSuche-Index.dat") {
+				// "._…" = Mac-Begleitdateien auf dem NAS, nicht suchen
+				if excl[strings.ToLower(name)] || strings.HasPrefix(name, "NasSuche-Index.dat") || strings.HasPrefix(name, "._") {
 					continue
 				}
 				e := Entry{Name: name, IsDir: de.IsDir()}

@@ -3,9 +3,7 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -192,61 +190,4 @@ func (m *ResultModel) setFolder(dir string, items []Entry) {
 	m.applySort()
 	m.rebuild()
 	m.reset()
-}
-
-// sortFolderItems: Ordner immer zuerst, dann nach Spalte.
-func sortFolderItems(items []Entry, col int, asc bool) {
-	sort.SliceStable(items, func(i, j int) bool {
-		a, b := &items[i], &items[j]
-		if a.IsDir != b.IsDir && foldersFirst(col) {
-			return a.IsDir
-		}
-		less := func(x, y *Entry) bool {
-			switch col {
-			case 2:
-				if x.Size != y.Size {
-					return x.Size < y.Size
-				}
-			case 3:
-				if x.Mod != y.Mod {
-					return x.Mod < y.Mod
-				}
-			case 4:
-				if tx, ty := fileExt(strings.ToLower(x.Name)), fileExt(strings.ToLower(y.Name)); tx != ty {
-					return tx < ty
-				}
-			}
-			return naturalLess(strings.ToLower(x.Name), strings.ToLower(y.Name))
-		}
-		if asc {
-			return less(a, b)
-		}
-		return less(b, a)
-	})
-}
-
-func formatSize(n int64) string {
-	f := float64(n)
-	switch {
-	case n < 1024:
-		return fmt.Sprintf("%d B", n)
-	case n < 1<<20:
-		return strings.Replace(fmt.Sprintf("%.1f KB", f/1024), ".", ",", 1)
-	case n < 1<<30:
-		return strings.Replace(fmt.Sprintf("%.1f MB", f/(1<<20)), ".", ",", 1)
-	default:
-		return strings.Replace(fmt.Sprintf("%.2f GB", f/(1<<30)), ".", ",", 1)
-	}
-}
-
-func thousands(n int64) string {
-	s := fmt.Sprint(n)
-	var b strings.Builder
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte('.')
-		}
-		b.WriteRune(c)
-	}
-	return b.String()
 }

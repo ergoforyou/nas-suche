@@ -13,31 +13,6 @@ import (
 
 // Darstellung der Trefferliste: Windows-Symbole, farbige Typ-Spalte, hervorgehobene Ordner.
 
-var typeNames = map[string]string{
-	"pdf": "PDF", "doc": "Word", "docx": "Word", "docm": "Word", "dot": "Word", "dotx": "Word", "odt": "Text (ODT)", "rtf": "Text (RTF)",
-	"xls": "Excel", "xlsx": "Excel", "xlsm": "Excel", "xlsb": "Excel", "xlt": "Excel", "xltx": "Excel", "csv": "CSV", "ods": "Tabelle (ODS)",
-	"ppt": "PowerPoint", "pptx": "PowerPoint", "pptm": "PowerPoint", "pps": "PowerPoint", "ppsx": "PowerPoint", "odp": "Präsentation",
-	"msg": "E-Mail", "eml": "E-Mail", "vsd": "Visio", "vsdx": "Visio", "one": "OneNote",
-	"jpg": "Bild (JPG)", "jpeg": "Bild (JPG)", "png": "Bild (PNG)", "gif": "Bild (GIF)", "bmp": "Bild (BMP)", "tif": "Bild (TIF)",
-	"tiff": "Bild (TIF)", "heic": "Bild (HEIC)", "webp": "Bild (WEBP)", "svg": "Grafik (SVG)", "psd": "Photoshop",
-	"zip": "ZIP-Archiv", "rar": "RAR-Archiv", "7z": "7-Zip-Archiv", "txt": "Text", "mp4": "Video", "mov": "Video",
-	"mp3": "Audio", "wav": "Audio", "exe": "Programm", "dwg": "CAD (DWG)", "dxf": "CAD (DXF)",
-}
-
-func typeLabel(name string, isDir bool) string {
-	if isDir {
-		return "Ordner"
-	}
-	ext := fileExt(strings.ToLower(name))
-	if t, ok := typeNames[ext]; ok {
-		return t
-	}
-	if ext == "" {
-		return "Datei"
-	}
-	return strings.ToUpper(ext) + "-Datei"
-}
-
 var (
 	colorFolderBG = walk.RGB(0xFF, 0xF4, 0xD6) // zartes Gelb für Ordnerzeilen
 	colorTreeBG   = walk.RGB(0xEA, 0xF3, 0xFC) // aufgeklappte Unterordner beim Ziehen
