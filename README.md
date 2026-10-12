@@ -31,6 +31,18 @@ Ab dann läuft die Suche im Hintergrund (Symbol unten rechts neben der Uhr) und 
 * „Auch im Ordnerpfad suchen“: Wörter dürfen auch im Ordnernamen stehen
 * **F5**: Index sofort aktualisieren
 
+### Zwei Ansichten nebeneinander (Dateien verschieben)
+* Knopf **„Zweite Ansicht einblenden“** – rechts erscheint eine zweite, unabhängige Suche
+  (eigene Haken, eigener Suchbegriff). Ausblenden mit demselben Knopf, die Wahl bleibt gespeichert.
+* **Doppelklick auf einen Ordner** zeigt seinen Inhalt (live vom NAS) – mit „↑ Nach oben“,
+  „Im Explorer“ und „× Zurück zur Suche“. Rücktaste = eine Ebene höher.
+* **Ziehen zwischen den Ansichten = verschieben**, mit gedrückter **Strg**-Taste = kopieren.
+  Ziel ist der geöffnete Ordner oder ein Ordner in der Trefferliste, auf den man direkt zieht.
+  Die Statuszeile zeigt beim Ziehen, was beim Loslassen passiert.
+* Verschobene Dateien werden sofort am neuen Ort gefunden (ohne neu einzulesen).
+* Auch aus dem Windows-Explorer kann man Dateien in eine geöffnete Ordneransicht ziehen.
+* Rechtsklick → **„In der anderen Ansicht öffnen“** öffnet den Ordner eines Treffers auf der anderen Seite.
+
 ### Mit den Treffern weiterarbeiten
 * **Herausziehen** (Drag & Drop): Treffer mit der Maus in den Explorer, Outlook, Teams, oder in den
   Browser (Google Drive, Claude, …) ziehen – mehrere Dateien gleichzeitig möglich.

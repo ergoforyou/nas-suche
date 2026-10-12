@@ -25,6 +25,9 @@ type Config struct {
 	CopyTargets    []string   `json:"kopierziele"`
 	TrayHintShown  bool       `json:"hinweis_hintergrund_gezeigt"`
 	Filter         uint8      `json:"filter_haken"` // Bits: 2 PDF, 4 Bilder, 8 Office, 16 Ordner; 0 = alles
+	Filter2        uint8      `json:"filter_haken_rechts"`
+	InPath2        bool       `json:"im_pfad_suchen_rechts"`
+	SecondPane     bool       `json:"zweite_ansicht"`
 }
 
 // DriveMap: Netzlaufwerk, das beim Programmstart verbunden wird.

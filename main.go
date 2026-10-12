@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/lxn/walk"
@@ -21,25 +19,19 @@ import (
 const maxResults = 100000
 
 type App struct {
-	mw         *walk.MainWindow
-	header     *walk.CustomWidget
-	banner     *banner
-	search     *walk.LineEdit
-	filterBtns [CatFolder + 1]*walk.CheckBox // Index = Kategorie, 0 unbenutzt
-	inPath     *walk.CheckBox
-	refreshBt  *walk.PushButton
-	tv         *walk.TableView
-	copyMenu   *walk.Menu
-	status     *walk.StatusBarItem
-	model      *ResultModel
-	icon       *walk.Icon
-	tray       *walk.NotifyIcon
+	mw        *walk.MainWindow
+	header    *walk.CustomWidget
+	banner    *banner
+	panes     [2]*Pane
+	secondBt  *walk.PushButton
+	refreshBt *walk.PushButton
+	status    *walk.StatusBarItem
+	icon      *walk.Icon
+	tray      *walk.NotifyIcon
 
-	cfg       *Config
-	ix        *Index
-	ixShared  bool // aktueller Index stammt vom NAS
-	searchGen atomic.Int64
-	debounce  *time.Timer
+	cfg      *Config
+	ix       *Index
+	ixShared bool // aktueller Index stammt vom NAS
 
 	indexing   bool
 	stopIndex  atomic.Bool
@@ -50,13 +42,12 @@ type App struct {
 	hotkeyErr  string
 	gdrive     string // erkannter Google-Drive-Ordner
 
-	dragArmed bool
-	dragX     int
-	dragY     int
+	stickyUntil time.Time // bis dahin überschreiben die Ansichten die Statuszeile nicht
 }
 
 func main() {
-	app := &App{cfg: LoadConfig(), model: &ResultModel{sortCol: 0, asc: true}}
+	app := &App{cfg: LoadConfig()}
+	app.panes = [2]*Pane{newPane(app, 0), newPane(app, 1)}
 	for _, arg := range os.Args[1:] {
 		if strings.EqualFold(arg, "/tray") || strings.EqualFold(arg, "-tray") {
 			app.startTray = true
@@ -111,70 +102,25 @@ func (a *App) run() {
 			},
 			Composite{
 				StretchFactor: 1000,
-				Layout:        VBox{Margins: Margins{Left: 9, Top: 9, Right: 9, Bottom: 4}},
+				Layout:        VBox{Margins: Margins{Left: 9, Top: 6, Right: 9, Bottom: 4}, Spacing: 4},
 				Children: []Widget{
 					Composite{
 						Layout:  HBox{MarginsZero: true},
-						MaxSize: Size{Height: 34},
+						MaxSize: Size{Height: 30},
 						Children: []Widget{
-							LineEdit{
-								AssignTo:      &a.search,
-								CueBanner:     "Suchen …  z. B.  angebot müller *.pdf",
-								Font:          Font{Family: "Segoe UI", PointSize: 12},
-								OnTextChanged: a.scheduleSearch,
-								OnKeyDown:     a.searchKey,
-							},
-							CheckBox{
-								AssignTo:         &a.inPath,
-								Text:             "Auch im Ordnerpfad suchen",
-								Checked:          a.cfg.InPath,
-								OnCheckedChanged: func() { a.cfg.InPath = a.inPath.Checked(); a.cfg.Save(); a.scheduleSearch() },
-							},
+							HSpacer{},
+							PushButton{AssignTo: &a.secondBt, MinSize: Size{Width: 170}, Text: "Zweite Ansicht einblenden", OnClicked: func() { a.setSecondPane(!a.cfg.SecondPane) }},
 							PushButton{AssignTo: &a.refreshBt, Text: "Aktualisieren (F5)", OnClicked: a.toggleIndex},
 							PushButton{Text: "Einstellungen …", OnClicked: a.showSettings},
 						},
 					},
 					Composite{
-						Layout:  HBox{MarginsZero: true, Spacing: 4},
-						MaxSize: Size{Height: 30},
-						Children: []Widget{
-							Label{Text: "Nur anzeigen:"},
-							Composite{
-								Layout:   HBox{MarginsZero: true, Spacing: 14},
-								Children: a.filterItems(),
-							},
-							Label{Text: "(kein Haken = alles)", TextColor: grey},
-							HSpacer{},
-						},
-					},
-					TableView{
-						AssignTo:         &a.tv,
-						StretchFactor:    1000,
-						AlternatingRowBG: true,
-						MultiSelection:   true,
-						Columns: []TableViewColumn{
-							{Title: "Name", Width: 340},
-							{Title: "Ordner", Width: 500},
-							{Title: "Größe", Width: 90, Alignment: AlignFar},
-							{Title: "Geändert", Width: 120},
-						},
-						Model:           a.model,
-						OnItemActivated: a.openSelected,
-						ContextMenuItems: []MenuItem{
-							Action{Text: "Öffnen\tEnter", OnTriggered: a.openSelected},
-							Action{Text: "Im Ordner anzeigen", OnTriggered: a.showInFolder},
-							Separator{},
-							Action{Text: "Kopieren (Dateien)\tStrg+C", OnTriggered: a.copyFiles},
-							Menu{AssignTo: &a.copyMenu, Text: "Kopieren nach", Items: []MenuItem{
-								Action{Text: "Ordner auswählen …"},
-							}},
-							Separator{},
-							Action{Text: "Pfad kopieren\tStrg+Umschalt+C", OnTriggered: func() { a.copyText(true) }},
-							Action{Text: "Name kopieren", OnTriggered: func() { a.copyText(false) }},
-						},
+						StretchFactor: 1000,
+						Layout:        HBox{MarginsZero: true, Spacing: 12},
+						Children:      []Widget{a.panes[0].widget(), a.panes[1].widget()},
 					},
 					Label{
-						Text:      "Tipp: Treffer einfach mit der Maus herausziehen – in den Explorer, Outlook, Google Drive oder Claude im Browser.  Strg+C kopiert die Dateien, Rechtsklick → „Kopieren nach“.",
+						Text:      "Tipp: Treffer mit der Maus herausziehen – in den Explorer, Outlook, Google Drive oder Claude im Browser. Doppelklick auf einen Ordner zeigt seinen Inhalt. Zwischen den Ansichten ziehen = verschieben (Strg = kopieren).",
 						TextColor: grey,
 					},
 				},
@@ -187,14 +133,6 @@ func (a *App) run() {
 		return
 	}
 
-	a.tv.KeyDown().Attach(func(key walk.Key) {
-		switch {
-		case key == walk.KeyC && walk.ControlDown() && walk.ShiftDown():
-			a.copyText(true)
-		case key == walk.KeyC && walk.ControlDown():
-			a.copyFiles()
-		}
-	})
 	shortcut := func(key walk.Key, f func()) {
 		act := walk.NewAction()
 		act.SetShortcut(walk.Shortcut{Key: key})
@@ -202,25 +140,26 @@ func (a *App) run() {
 		a.mw.ShortcutActions().Add(act)
 	}
 	shortcut(walk.KeyF5, a.toggleIndex)
-	a.updateFilterButtons(nil)
 	shortcut(walk.KeyEscape, func() {
-		// Esc: erst Suchfeld leeren, beim zweiten Mal Fenster ausblenden
-		if a.search.Text() != "" {
-			a.search.SetText("")
-			a.search.SetFocus()
+		// Esc: erst Suchfeld der aktiven Hälfte leeren, beim zweiten Mal Fenster ausblenden
+		p := a.activePane()
+		if p.search.Text() != "" {
+			p.search.SetText("")
+			p.search.SetFocus()
 		} else if a.tray != nil {
 			a.mw.Hide()
 		}
 	})
-	a.model.onReset = func() { a.tv.Invalidate() }
-	a.setupDrag()
+	for _, p := range a.panes {
+		p.init()
+	}
+	a.setSecondPane(a.cfg.SecondPane)
 	a.setupTray()
 	a.applyHotkey()
-	a.rebuildCopyMenu()
 
 	a.setStatus("Lade Index …")
 	go a.startup()
-	a.search.SetFocus()
+	a.panes[0].search.SetFocus()
 	a.mw.Run()
 	a.stopIndex.Store(true)
 	if a.stopHotkey != nil {
@@ -318,8 +257,8 @@ func (a *App) showWindow() {
 		win.ShowWindow(hwnd, win.SW_SHOW)
 	}
 	win.SetForegroundWindow(hwnd)
-	a.search.SetFocus()
-	a.search.SetTextSelection(0, -1)
+	a.panes[0].search.SetFocus()
+	a.panes[0].search.SetTextSelection(0, -1)
 }
 
 func (a *App) applyHotkey() {
@@ -334,16 +273,6 @@ func (a *App) applyHotkey() {
 	}
 	a.stopHotkey = stop
 	a.updateBannerHint()
-}
-
-func (a *App) searchKey(key walk.Key) {
-	switch key {
-	case walk.KeyDown, walk.KeyReturn:
-		if a.model.RowCount() > 0 {
-			a.tv.SetFocus()
-			a.tv.SetCurrentIndex(0)
-		}
-	}
 }
 
 // ---------- Start & Hintergrund-Aktualisierung ----------
@@ -374,7 +303,7 @@ func (a *App) startup() {
 	}
 
 	if d := detectGoogleDrive(); d != "" {
-		a.mw.Synchronize(func() { a.gdrive = d; a.rebuildCopyMenu() })
+		a.mw.Synchronize(func() { a.gdrive = d; a.rebuildCopyMenus() })
 	}
 
 	for range time.Tick(5 * time.Minute) {
@@ -642,272 +571,103 @@ func (a *App) startIndex() {
 	}()
 }
 
-// ---------- Suche ----------
+// ---------- Zwei Ansichten ----------
 
 func (a *App) scheduleSearch() {
-	gen := a.searchGen.Add(1)
-	if a.debounce != nil {
-		a.debounce.Stop()
+	for _, p := range a.panes {
+		p.scheduleSearch()
 	}
-	a.debounce = time.AfterFunc(120*time.Millisecond, func() {
-		a.mw.Synchronize(func() { a.runSearch(gen) })
-	})
 }
 
-func (a *App) runSearch(gen int64) {
-	if gen != a.searchGen.Load() {
-		return
+func (a *App) rebuildCopyMenus() {
+	for _, p := range a.panes {
+		p.rebuildCopyMenu()
 	}
-	ix := a.ix
-	q := Query{Text: a.search.Text(), Filter: a.cfg.Filter, InPath: a.inPath.Checked(), MaxResult: maxResults}
-	if ix == nil || (strings.TrimSpace(q.Text) == "" && q.Filter == 0) {
-		a.model.set(ix, nil)
-		a.updateFilterButtons(nil)
-		if !a.indexing {
-			a.setStatus(a.lastInfo)
-		}
-		return
-	}
-	go func() {
-		start := time.Now()
-		res, total, counts := ix.Search(q, func() bool { return gen != a.searchGen.Load() })
-		if gen != a.searchGen.Load() {
-			return
-		}
-		el := time.Since(start)
-		a.mw.Synchronize(func() {
-			if gen != a.searchGen.Load() {
-				return
-			}
-			a.model.set(ix, res)
-			a.updateFilterButtons(&counts)
-			if !a.indexing {
-				msg := fmt.Sprintf("%s Treffer (%d ms)", thousands(int64(total)), el.Milliseconds())
-				if names := a.filterNames(); names != "" {
-					msg = names + ": " + msg
-				}
-				if total > len(res) {
-					msg += fmt.Sprintf(" – nur die ersten %s werden angezeigt, bitte Suche verfeinern", thousands(int64(len(res))))
-				}
-				a.setStatus(msg + "   |   " + a.lastInfo)
-			}
-		})
-	}()
 }
 
-// ---------- Schnellfilter ----------
-
-func (a *App) filterItems() []Widget {
-	var items []Widget
-	for c := CatPDF; c <= CatFolder; c++ {
-		c := c
-		items = append(items, CheckBox{
-			AssignTo:         &a.filterBtns[c],
-			Text:             CatNames[c],
-			Checked:          a.cfg.Filter&FilterBit(c) != 0,
-			MinSize:          Size{Width: 95},
-			OnCheckedChanged: a.filterChanged,
-		})
-	}
-	return items
-}
-
-// filterChanged übernimmt die Haken (werden gespeichert und gelten auch beim nächsten Start).
-func (a *App) filterChanged() {
-	var f uint8
-	for c := CatPDF; c <= CatFolder; c++ {
-		if b := a.filterBtns[c]; b != nil && b.Checked() {
-			f |= FilterBit(c)
+// activePane: die Hälfte, in der zuletzt gearbeitet wurde (Fokus), sonst links.
+func (a *App) activePane() *Pane {
+	f := win.GetFocus()
+	for _, p := range a.panes {
+		if p.root.Visible() && (f == p.root.Handle() || win.IsChild(p.root.Handle(), f)) {
+			return p
 		}
 	}
-	if f == a.cfg.Filter {
-		return
-	}
-	a.cfg.Filter = f
-	a.cfg.Save()
-	a.scheduleSearch()
+	return a.panes[0]
 }
 
-func (a *App) filterNames() string {
-	var n []string
-	for c := CatPDF; c <= CatFolder; c++ {
-		if a.cfg.Filter&FilterBit(c) != 0 {
-			n = append(n, CatNames[c])
+// setSecondPane blendet die rechte Hälfte ein oder aus (wird gespeichert).
+func (a *App) setSecondPane(on bool) {
+	changed := on != a.cfg.SecondPane
+	a.cfg.SecondPane = on
+	a.panes[1].root.SetVisible(on)
+	if on {
+		a.secondBt.SetText("Zweite Ansicht ausblenden")
+		// bei schmalem Fenster etwas verbreitern
+		if b := a.mw.Bounds(); b.Width < 1500 {
+			b.Width = 1500
+			a.mw.SetBounds(b)
 		}
+		a.panes[1].scheduleSearch()
+	} else {
+		a.secondBt.SetText("Zweite Ansicht einblenden")
 	}
-	return strings.Join(n, " + ")
+	if changed {
+		a.cfg.Save()
+	}
 }
 
-// updateFilterButtons zeigt die Trefferzahl je Kategorie neben den Haken.
-func (a *App) updateFilterButtons(counts *[NumCats]int) {
-	for c := CatPDF; c <= CatFolder; c++ {
-		b := a.filterBtns[c]
-		if b == nil {
+// transfer verschiebt oder kopiert Dateien in einen Ordner (Windows-Fortschrittsdialog),
+// aktualisiert danach den Index im Speicher und beide Ansichten.
+func (a *App) transfer(paths []string, target string, move bool) {
+	var todo []string
+	for _, s := range paths {
+		if strings.EqualFold(filepath.Dir(s), target) || strings.EqualFold(s, target) {
 			continue
 		}
-		text := CatNames[c]
-		if counts != nil {
-			text += " (" + thousands(int64(counts[c])) + ")"
-		}
-		b.SetText(text)
+		todo = append(todo, s)
 	}
-}
-
-// ---------- Aktionen ----------
-
-func (a *App) selectedPaths() []string {
-	var out []string
-	for _, i := range a.tv.SelectedIndexes() {
-		if i < len(a.model.rows) {
-			out = append(out, a.model.ix.Path(&a.model.ix.Entries[a.model.rows[i]]))
-		}
-	}
-	if len(out) == 0 {
-		if i := a.tv.CurrentIndex(); i >= 0 && i < len(a.model.rows) {
-			out = append(out, a.model.ix.Path(&a.model.ix.Entries[a.model.rows[i]]))
-		}
-	}
-	return out
-}
-
-func (a *App) openSelected() {
-	paths := a.selectedPaths()
-	if len(paths) > 10 {
-		if walk.MsgBox(a.mw, brandProduct, fmt.Sprintf("%d Dateien öffnen?", len(paths)),
-			walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
-			return
-		}
-	}
-	for _, p := range paths {
-		if _, err := os.Stat(p); err != nil {
-			walk.MsgBox(a.mw, brandProduct, "Nicht mehr vorhanden oder kein Zugriff:\n"+p+
-				"\n\nTipp: Index aktualisieren (F5).", walk.MsgBoxIconWarning)
-			continue
-		}
-		win.ShellExecute(a.mw.Handle(), syscall.StringToUTF16Ptr("open"),
-			syscall.StringToUTF16Ptr(p), nil, nil, win.SW_SHOWNORMAL)
-	}
-}
-
-func (a *App) showInFolder() {
-	paths := a.selectedPaths()
-	if len(paths) == 0 {
+	if len(todo) == 0 {
 		return
 	}
-	cmd := exec.Command("explorer.exe")
-	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `explorer.exe /select,"` + paths[0] + `"`}
-	cmd.Start()
-}
-
-func (a *App) copyText(full bool) {
-	paths := a.selectedPaths()
-	if !full {
-		for i, p := range paths {
-			paths[i] = p[strings.LastIndexAny(p, `\/`)+1:]
-		}
-	}
-	if len(paths) > 0 {
-		walk.Clipboard().SetText(strings.Join(paths, "\r\n"))
-		a.setStatus(fmt.Sprintf("%d %s in die Zwischenablage kopiert.", len(paths), map[bool]string{true: "Pfad(e)", false: "Name(n)"}[full]))
-	}
-}
-
-// copyFiles legt die Dateien wie im Explorer in die Zwischenablage (Einfügen mit Strg+V).
-func (a *App) copyFiles() {
-	paths := a.selectedPaths()
-	if len(paths) == 0 {
-		return
-	}
-	if err := CopyFilesToClipboard(uintptr(a.mw.Handle()), paths); err != nil {
-		a.setStatus("Kopieren fehlgeschlagen: " + err.Error())
-		return
-	}
-	a.setStatus(fmt.Sprintf("%d Datei(en) kopiert – mit Strg+V im Explorer, in E-Mails, Google Drive usw. einfügen.", len(paths)))
-}
-
-func (a *App) setupDrag() {
-	a.tv.MouseDown().Attach(func(x, y int, b walk.MouseButton) {
-		a.dragArmed = b == walk.LeftButton
-		a.dragX, a.dragY = x, y
-	})
-	a.tv.MouseUp().Attach(func(x, y int, b walk.MouseButton) { a.dragArmed = false })
-	a.tv.MouseMove().Attach(func(x, y int, b walk.MouseButton) {
-		if !a.dragArmed || b&walk.LeftButton == 0 {
-			return
-		}
-		dx, dy := x-a.dragX, y-a.dragY
-		if dx*dx+dy*dy < 25 {
-			return
-		}
-		a.dragArmed = false
-		paths := a.selectedPaths()
-		if len(paths) == 0 {
-			return
-		}
-		if err := DragFiles(uintptr(a.mw.Handle()), paths); err != nil {
-			a.setStatus("Ziehen nicht möglich: " + err.Error())
-		}
-	})
-}
-
-func (a *App) rebuildCopyMenu() {
-	if a.copyMenu == nil {
-		return
-	}
-	acts := a.copyMenu.Actions()
-	acts.Clear()
-	add := func(text string, f func()) {
-		act := walk.NewAction()
-		act.SetText(text)
-		act.Triggered().Attach(f)
-		acts.Add(act)
-	}
-	targets := append([]string(nil), a.cfg.CopyTargets...)
-	if a.gdrive != "" {
-		known := false
-		for _, t := range targets {
-			known = known || strings.EqualFold(t, a.gdrive)
-		}
-		if !known {
-			targets = append(targets, a.gdrive)
-		}
-	}
-	for _, t := range targets {
-		t := t
-		label := strings.ReplaceAll(t, "&", "&&")
-		if strings.EqualFold(t, a.gdrive) {
-			label = "Google Drive  (" + label + ")"
-		}
-		add(label, func() { a.copyTo(t) })
-	}
-	if len(targets) > 0 {
-		acts.Add(walk.NewSeparatorAction())
-	}
-	add("Ordner auswählen …", func() {
-		fd := &walk.FileDialog{Title: "Wohin sollen die Dateien kopiert werden?"}
-		if ok, _ := fd.ShowBrowseFolder(a.mw); ok && fd.FilePath != "" {
-			a.copyTo(fd.FilePath)
-		}
-	})
-}
-
-func (a *App) copyTo(target string) {
-	paths := a.selectedPaths()
-	if len(paths) == 0 {
-		return
-	}
-	a.cfg.addCopyTarget(target)
-	a.cfg.Save()
-	a.rebuildCopyMenu()
-	a.setStatus(fmt.Sprintf("Kopiere %d Element(e) nach %s …", len(paths), target))
+	verb := map[bool]string{true: "Verschiebe", false: "Kopiere"}[move]
+	a.setStatus(fmt.Sprintf("%s %d Element(e) nach %s …", verb, len(todo), target))
 	go func() {
-		err := CopyFilesTo(paths, target)
-		a.mw.Synchronize(func() {
-			if err != nil {
-				a.setStatus(err.Error())
-			} else {
-				a.setStatus(fmt.Sprintf("%d Element(e) nach %s kopiert.", len(paths), target))
+		var err error
+		if move {
+			err = MoveFilesTo(todo, target)
+		} else {
+			err = CopyFilesTo(todo, target)
+		}
+		// Was ist tatsächlich passiert? (Abbruch, Konflikte …)
+		moves := map[string]string{}
+		done := 0
+		for _, s := range todo {
+			dst := filepath.Join(target, filepath.Base(s))
+			if _, e := os.Stat(dst); e != nil {
+				continue
 			}
+			done++
+			if move {
+				if _, e := os.Stat(s); os.IsNotExist(e) {
+					moves[s] = dst
+				}
+			}
+		}
+		a.mw.Synchronize(func() {
+			if len(moves) > 0 && a.ix != nil {
+				a.ix = a.ix.WithMoves(moves)
+			}
+			for _, p := range a.panes {
+				p.scheduleSearch()
+			}
+			msg := fmt.Sprintf("%d Element(e) nach %s %s.", done, target,
+				map[bool]string{true: "verschoben", false: "kopiert"}[move])
+			if err != nil && done == 0 {
+				msg = err.Error()
+			}
+			a.setStatus(msg)
+			a.stickyUntil = time.Now().Add(4 * time.Second)
 		})
 	}()
 }

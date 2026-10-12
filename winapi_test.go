@@ -6,22 +6,9 @@ import (
 	"syscall"
 	"testing"
 	"unsafe"
-
-	"golang.org/x/sys/windows"
 )
 
-var procDragQueryFileW = shell32.NewProc("DragQueryFileW")
-
-func hdropFiles(h uintptr) []string {
-	n, _, _ := procDragQueryFileW.Call(h, 0xFFFFFFFF, 0, 0)
-	var out []string
-	for i := uintptr(0); i < n; i++ {
-		buf := make([]uint16, 1024)
-		procDragQueryFileW.Call(h, i, uintptr(unsafe.Pointer(&buf[0])), 1024)
-		out = append(out, windows.UTF16ToString(buf))
-	}
-	return out
-}
+func hdropFiles(h uintptr) []string { return hdropPaths(h) }
 
 // Paketvariablen liegen fest im Speicher (Go-Stapelvariablen können wandern).
 var (

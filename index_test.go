@@ -100,3 +100,40 @@ func TestSearchSpeed(t *testing.T) {
 	_, total, _ := ix.Search(Query{Text: "kunde 12 pdf", MaxResult: 100000}, func() bool { return false })
 	t.Logf("1 Mio. Einträge: %d Treffer in %s", total, time.Since(start))
 }
+
+func TestWithMoves(t *testing.T) {
+	ix := &Index{
+		Dirs: []string{filepath.FromSlash("/nas/Kunden"), filepath.FromSlash("/nas/Kunden/Müller"), filepath.FromSlash("/nas/Archiv")},
+		Entries: []Entry{
+			{Name: "Müller", Dir: 0, IsDir: true},
+			{Name: "Angebot.pdf", Dir: 1},
+			{Name: "Rechnung.pdf", Dir: 0},
+			{Name: "Archiv", Dir: 0, IsDir: true},
+		},
+	}
+	ix.prepare()
+	nx := ix.WithMoves(map[string]string{
+		filepath.FromSlash("/nas/Kunden/Rechnung.pdf"): filepath.FromSlash("/nas/Archiv/Rechnung.pdf"),
+		filepath.FromSlash("/nas/Kunden/Müller"):       filepath.FromSlash("/nas/Archiv/Müller"),
+	})
+	never := func() bool { return false }
+	path := func(x *Index, q string) string {
+		res, _, _ := x.Search(Query{Text: q}, never)
+		if len(res) != 1 {
+			return fmt.Sprint(len(res), " Treffer")
+		}
+		return x.Path(&x.Entries[res[0]])
+	}
+	if p := path(nx, "rechnung"); p != filepath.FromSlash("/nas/Archiv/Rechnung.pdf") {
+		t.Errorf("Rechnung: %s", p)
+	}
+	if p := path(nx, "angebot"); p != filepath.FromSlash("/nas/Archiv/Müller/Angebot.pdf") {
+		t.Errorf("Angebot im verschobenen Ordner: %s", p)
+	}
+	if p := path(nx, "müller"); p != filepath.FromSlash("/nas/Archiv/Müller") {
+		t.Errorf("Ordner: %s", p)
+	}
+	if p := path(ix, "rechnung"); p != filepath.FromSlash("/nas/Kunden/Rechnung.pdf") {
+		t.Errorf("alter Index verändert: %s", p)
+	}
+}

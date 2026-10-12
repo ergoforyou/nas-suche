@@ -79,9 +79,9 @@ func DragFiles(hwnd uintptr, paths []string) error {
 		return dragFilesSimple(paths) // z. B. ältere Systeme: eigenes Datenobjekt
 	}
 	defer comRelease(obj)
-	const dropEffectCopy, dropEffectLink = 1, 4
+	const dropEffectLink = 4
 	var effect uint32
-	procSHDoDragDrop.Call(hwnd, obj, 0, dropEffectCopy|dropEffectLink, uintptr(unsafe.Pointer(&effect)))
+	procSHDoDragDrop.Call(hwnd, obj, 0, dropEffectCopy|dropEffectMove|dropEffectLink, uintptr(unsafe.Pointer(&effect)))
 	return nil
 }
 
@@ -149,18 +149,23 @@ func doubleNull(list []string) *uint16 {
 }
 
 // CopyFilesTo kopiert Dateien/Ordner in den Zielordner (blockiert bis fertig).
-func CopyFilesTo(paths []string, target string) error {
+func CopyFilesTo(paths []string, target string) error { return fileOp(2, paths, target) }
+
+// MoveFilesTo verschiebt Dateien/Ordner in den Zielordner (blockiert bis fertig).
+func MoveFilesTo(paths []string, target string) error { return fileOp(1, paths, target) }
+
+// fileOp: 1 = verschieben, 2 = kopieren – mit dem Windows-eigenen Fortschrittsdialog.
+func fileOp(fn uint32, paths []string, target string) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED)
 	defer windows.CoUninitialize()
-	const foCopy = 2
 	const fofAllowUndo, fofNoConfirmMkdir = 0x40, 0x200
-	op := shFileOpStruct{Func: foCopy, From: doubleNull(paths), To: doubleNull([]string{target}),
+	op := shFileOpStruct{Func: fn, From: doubleNull(paths), To: doubleNull([]string{target}),
 		Flags: fofAllowUndo | fofNoConfirmMkdir}
 	r, _, _ := procSHFileOperationW.Call(uintptr(unsafe.Pointer(&op)))
 	if r != 0 && op.AnyOperationsAborted == 0 {
-		return fmt.Errorf("Kopieren fehlgeschlagen (Code %d)", r)
+		return fmt.Errorf("Vorgang fehlgeschlagen (Code %d)", r)
 	}
 	return nil
 }

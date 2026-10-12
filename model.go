@@ -4,6 +4,8 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 
 // ---------- Tabellenmodell ----------
 
+// ResultModel zeigt entweder Suchtreffer aus dem Index oder den Inhalt eines Ordners.
 type ResultModel struct {
 	walk.TableModelBase
 	walk.SorterBase
@@ -20,6 +23,10 @@ type ResultModel struct {
 	sortCol int
 	asc     bool
 	onReset func() // erzwingt Neuzeichnen (walk invalidiert beim Zurücksetzen nicht alle Zeilen)
+
+	folderMode bool
+	folder     string  // angezeigter Ordner (Ordneransicht)
+	items      []Entry // Inhalt des Ordners
 }
 
 func (m *ResultModel) reset() {
@@ -29,18 +36,46 @@ func (m *ResultModel) reset() {
 	}
 }
 
-func (m *ResultModel) RowCount() int { return len(m.rows) }
+func (m *ResultModel) RowCount() int {
+	if m.folderMode {
+		return len(m.items)
+	}
+	return len(m.rows)
+}
 
-func (m *ResultModel) Value(row, col int) interface{} {
-	if row >= len(m.rows) {
-		return ""
+// entry liefert Eintrag und Ordner einer Zeile.
+func (m *ResultModel) entry(row int) (*Entry, string) {
+	if m.folderMode {
+		if row < 0 || row >= len(m.items) {
+			return nil, ""
+		}
+		return &m.items[row], m.folder
+	}
+	if row < 0 || row >= len(m.rows) || m.ix == nil {
+		return nil, ""
 	}
 	e := &m.ix.Entries[m.rows[row]]
+	return e, m.ix.Dirs[e.Dir]
+}
+
+func (m *ResultModel) path(row int) string {
+	e, dir := m.entry(row)
+	if e == nil {
+		return ""
+	}
+	return filepath.Join(dir, e.Name)
+}
+
+func (m *ResultModel) Value(row, col int) interface{} {
+	e, dir := m.entry(row)
+	if e == nil {
+		return ""
+	}
 	switch col {
 	case 0:
 		return e.Name
 	case 1:
-		return m.ix.Dirs[e.Dir]
+		return dir
 	case 2:
 		if e.IsDir {
 			return "Ordner"
@@ -57,19 +92,57 @@ func (m *ResultModel) Value(row, col int) interface{} {
 
 func (m *ResultModel) Sort(col int, order walk.SortOrder) error {
 	m.sortCol, m.asc = col, order == walk.SortAscending
-	if m.ix != nil {
-		m.ix.SortResults(m.rows, m.sortCol, m.asc)
-	}
+	m.applySort()
 	m.reset()
 	return m.SorterBase.Sort(col, order)
 }
 
-func (m *ResultModel) set(ix *Index, rows []int) {
-	m.ix, m.rows = ix, rows
-	if ix != nil && m.sortCol >= 0 {
-		ix.SortResults(m.rows, m.sortCol, m.asc)
+func (m *ResultModel) applySort() {
+	if m.folderMode {
+		sortFolderItems(m.items, m.sortCol, m.asc)
+	} else if m.ix != nil && m.sortCol >= 0 {
+		m.ix.SortResults(m.rows, m.sortCol, m.asc)
 	}
+}
+
+func (m *ResultModel) set(ix *Index, rows []int) {
+	m.folderMode, m.items = false, nil
+	m.ix, m.rows = ix, rows
+	m.applySort()
 	m.reset()
+}
+
+func (m *ResultModel) setFolder(dir string, items []Entry) {
+	m.folderMode, m.folder, m.items = true, dir, items
+	m.applySort()
+	m.reset()
+}
+
+// sortFolderItems: Ordner immer zuerst, dann nach Spalte.
+func sortFolderItems(items []Entry, col int, asc bool) {
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := &items[i], &items[j]
+		if a.IsDir != b.IsDir {
+			return a.IsDir
+		}
+		less := func(x, y *Entry) bool {
+			switch col {
+			case 2:
+				if x.Size != y.Size {
+					return x.Size < y.Size
+				}
+			case 3:
+				if x.Mod != y.Mod {
+					return x.Mod < y.Mod
+				}
+			}
+			return naturalLess(strings.ToLower(x.Name), strings.ToLower(y.Name))
+		}
+		if asc {
+			return less(a, b)
+		}
+		return less(b, a)
+	})
 }
 
 func formatSize(n int64) string {

@@ -411,3 +411,68 @@ func naturalLess(a, b string) bool {
 }
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+// WithMoves liefert einen neuen Index, in dem verschobene Dateien/Ordner (alter → neuer
+// vollständiger Pfad) bereits am neuen Ort stehen – ohne das NAS neu einzulesen.
+// Der alte Index bleibt unverändert (laufende Suchen lesen ihn weiter).
+func (ix *Index) WithMoves(moves map[string]string) *Index {
+	if len(moves) == 0 {
+		return ix
+	}
+	nx := *ix
+	nx.Dirs = append([]string(nil), ix.Dirs...)
+	nx.lowerDirs = append([]string(nil), ix.lowerDirs...)
+	nx.Entries = append([]Entry(nil), ix.Entries...)
+	dirIdx := make(map[string]int32, len(nx.lowerDirs))
+	for i, d := range nx.lowerDirs {
+		dirIdx[d] = int32(i)
+	}
+	getDir := func(d string) int32 {
+		ld := normLower(d)
+		if i, ok := dirIdx[ld]; ok {
+			return i
+		}
+		i := int32(len(nx.Dirs))
+		nx.Dirs = append(nx.Dirs, d)
+		nx.lowerDirs = append(nx.lowerDirs, ld)
+		dirIdx[ld] = i
+		return i
+	}
+	type key struct {
+		dir  int32
+		name string
+	}
+	sep := string(filepath.Separator)
+	targets := map[key]int32{}
+	for old, nw := range moves {
+		old, nw = filepath.Clean(old), filepath.Clean(nw)
+		od, ok := dirIdx[normLower(filepath.Dir(old))]
+		if !ok {
+			continue
+		}
+		targets[key{od, normLower(filepath.Base(old))}] = getDir(filepath.Dir(nw))
+		// war es ein Ordner: alle Pfade darunter mitziehen
+		lo := normLower(old)
+		for i, ld := range nx.lowerDirs {
+			if ld != lo && !strings.HasPrefix(ld, lo+sep) {
+				continue
+			}
+			rest := len(ld) - len(lo)
+			orig := nx.Dirs[i]
+			if rest > len(orig) {
+				continue
+			}
+			nd := nw + orig[len(orig)-rest:]
+			delete(dirIdx, ld)
+			nx.Dirs[i], nx.lowerDirs[i] = nd, normLower(nd)
+			dirIdx[nx.lowerDirs[i]] = int32(i)
+		}
+	}
+	for i := range nx.Entries {
+		e := &nx.Entries[i]
+		if t, ok := targets[key{e.Dir, ix.lowerNames[i]}]; ok {
+			e.Dir = t
+		}
+	}
+	return &nx
+}
