@@ -238,6 +238,7 @@ type hotkeyDef struct {
 }
 
 var hotkeys = map[string]hotkeyDef{
+	"Strg+Umschalt+F":         {0x2 | 0x4, 'F'},
 	"Strg+Alt+Leertaste":      {0x2 | 0x1, 0x20},
 	"Strg+Umschalt+Leertaste": {0x2 | 0x4, 0x20},
 	"Strg+Alt+F":              {0x2 | 0x1, 'F'},
@@ -245,7 +246,7 @@ var hotkeys = map[string]hotkeyDef{
 	"Win+Umschalt+F":          {0x8 | 0x4, 'F'},
 }
 
-var hotkeyNames = []string{"Strg+Alt+Leertaste", "Strg+Umschalt+Leertaste", "Strg+Alt+F", "Strg+Alt+S", "Win+Umschalt+F", "Keine"}
+var hotkeyNames = []string{"Strg+Umschalt+F", "Strg+Alt+Leertaste", "Strg+Umschalt+Leertaste", "Strg+Alt+F", "Strg+Alt+S", "Win+Umschalt+F", "Keine"}
 
 type msgT struct {
 	Hwnd    uintptr

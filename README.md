@@ -16,7 +16,8 @@ Ab dann läuft die Suche im Hintergrund (Symbol unten rechts neben der Uhr) und 
 
 ## Benutzung
 
-* **Strg+Alt+Leertaste** (einstellbar) öffnet die Suche von überall – tippen, Ergebnis ist sofort da.
+* **Strg+Umschalt+F** (einstellbar) öffnet die Suche von überall – tippen, Ergebnis ist sofort da.
+  Voraussetzung: das Programm läuft (Symbol neben der Uhr), am besten über „Mit Windows starten“.
 * **Esc** leert das Suchfeld, zweimal Esc blendet das Fenster aus. Das X schließt nur das Fenster;
   **Beenden** über Rechtsklick auf das Symbol neben der Uhr.
 * **Haken „Nur anzeigen“** unter dem Suchfeld: **PDF · Bilder · Office · Ordner** – beliebig kombinierbar,

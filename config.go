@@ -9,6 +9,8 @@ import (
 
 const appName = "NasSuche"
 
+const defaultHotkey = "Strg+Umschalt+F"
+
 type Config struct {
 	Folders      []string `json:"ordner"`
 	Excludes     []string `json:"ausschluesse"`
@@ -66,7 +68,7 @@ func defaultConfig() *Config {
 			"System Volume Information", ".DS_Store", "Thumbs.db", "desktop.ini"},
 		RefreshHours: 4,
 		Workers:      16,
-		Hotkey:       "Strg+Alt+Leertaste",
+		Hotkey:       defaultHotkey,
 	}
 }
 
@@ -112,8 +114,9 @@ func readConfig(path string) (*Config, error) {
 	if c.Workers < 1 {
 		c.Workers = 16
 	}
-	if c.Hotkey == "" {
-		c.Hotkey = "Strg+Alt+Leertaste"
+	// Leer oder alte Vorgabe → neue Vorgabe Strg+Umschalt+F
+	if c.Hotkey == "" || c.Hotkey == "Strg+Alt+Leertaste" {
+		c.Hotkey = defaultHotkey
 	}
 	return c, nil
 }
