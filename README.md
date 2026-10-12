@@ -22,6 +22,16 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
 * **Einstellungen → Allgemein → „Als Vorgabe für alle Kollegen speichern …“** legt eine `NasSuche.json`
   neben die EXE. Kollegen, die die EXE von dort starten, haben alles sofort eingerichtet.
 
+## Portable Version (USB-Stick)
+* `NasSuche-Portable.zip` entpacken und den Ordner auf den Stick kopieren – `NasSuche.exe` starten.
+* Liegt die EXE auf einem USB-Stick oder neben ihr eine Datei `portable.txt`, arbeitet das Programm
+  **portabel**: Einstellungen und Index im Ordner `NasSuche-Daten` neben der EXE, keine Registry-Einträge,
+  kein Autostart. Der Fenstertitel zeigt „(portabel)“.
+* Keine Firewall-Abfrage: das Programm öffnet keine Netzwerk-Ports.
+* Die Download-Markierung der EXE wird beim ersten Start entfernt – die Windows-Sicherheitsabfrage
+  erscheint danach nicht mehr bei jedem Start.
+* Neue Versionen lösen ältere sanft ab (Beenden-Signal statt hartem Abbruch).
+
 ## Benutzung
 
 * **Strg+Umschalt+F** (einstellbar) öffnet die Suche von überall – tippen, Ergebnis ist sofort da.

@@ -58,10 +58,17 @@ func main() {
 			app.startTray = true
 		}
 	}
+	clearDownloadMark()
 	first, notify := SingleInstance(func() {
-		dbg("zweiter Start erkannt, mw=%v", app.mw != nil)
 		if app.mw != nil {
 			app.mw.Synchronize(app.showWindow)
+		}
+	}, func() {
+		// eine neuere Version übernimmt: sauber beenden (Einstellungen sind schon gespeichert)
+		if app.mw != nil {
+			app.mw.Synchronize(app.quit)
+		} else {
+			os.Exit(0)
 		}
 	})
 	if !first {
@@ -88,7 +95,7 @@ func (a *App) run() {
 	grey := walk.RGB(0x60, 0x6B, 0x78)
 	err := MainWindow{
 		AssignTo: &a.mw,
-		Title:    brandName + " " + brandProduct,
+		Title:    windowTitle(),
 		Icon:     a.icon,
 		Visible:  !a.startTray,
 		MinSize:  Size{Width: 760, Height: 420},
@@ -709,4 +716,12 @@ func (a *App) transfer(paths []string, target string, move bool) {
 			a.stickyUntil = time.Now().Add(4 * time.Second)
 		})
 	}()
+}
+
+func windowTitle() string {
+	t := brandName + " " + brandProduct
+	if portableMode() {
+		t += " (portabel)"
+	}
+	return t
 }

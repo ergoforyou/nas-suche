@@ -312,12 +312,51 @@ var buildVersion = "0"
 
 const instanceEvent = `Local\ERGOFORYOU-NasSuche-Anzeigen`
 
-func instanceInfoPath() string { return filepath.Join(filepath.Dir(indexPath()), "instanz.txt") }
+// instanceInfoPath liegt im Temp-Ordner, damit portable und installierte Version sich gegenseitig sehen.
+func instanceInfoPath() string { return filepath.Join(os.TempDir(), "ERGOFORYOU-NasSuche-instanz.txt") }
+
+const quitEvent = `Local\ERGOFORYOU-NasSuche-Beenden`
+
+func init() {
+	isRemovable = func(dir string) bool {
+		vol := filepath.VolumeName(dir)
+		if vol == "" || strings.HasPrefix(vol, `\\`) {
+			return false
+		}
+		return windows.GetDriveType(windows.StringToUTF16Ptr(vol+`\`)) == windows.DRIVE_REMOVABLE
+	}
+}
+
+// clearDownloadMark entfernt die Download-Markierung („aus dem Internet“) von der eigenen EXE –
+// wie der Haken „Zulassen“ in den Dateieigenschaften. Danach fragt Windows nicht bei jedem Start.
+func clearDownloadMark() {
+	if exe, err := os.Executable(); err == nil {
+		os.Remove(exe + ":Zone.Identifier")
+	}
+}
+
+// askToQuit bittet eine laufende (neuere) Instanz, sich selbst zu beenden. false = kennt das Signal nicht.
+func askToQuit(pid uint32) bool {
+	h, err := windows.OpenEvent(windows.EVENT_MODIFY_STATE, false, windows.StringToUTF16Ptr(quitEvent))
+	if err != nil {
+		return false
+	}
+	windows.SetEvent(h)
+	windows.CloseHandle(h)
+	if pid == 0 {
+		return true
+	}
+	if p, err := windows.OpenProcess(windows.SYNCHRONIZE, false, pid); err == nil {
+		windows.WaitForSingleObject(p, 6000)
+		windows.CloseHandle(p)
+	}
+	return !pidAlive(pid)
+}
 
 // SingleInstance: true = wir sind (jetzt) die einzige Instanz. onActivate wird aufgerufen,
 // wenn das Programm ein weiteres Mal gestartet wird. Läuft noch eine ÄLTERE Version
 // (z. B. nach einem Update), wird sie beendet und diese Version übernimmt.
-func SingleInstance(onActivate func()) (first bool, notifyExisting func()) {
+func SingleInstance(onActivate, onQuit func()) (first bool, notifyExisting func()) {
 	// Versionen vor dem Umbenennen hatten ein anderes Signal – immer ablösen.
 	killWindowsTitled("Ergo4U NAS-Suche")
 
@@ -336,7 +375,12 @@ func SingleInstance(onActivate func()) (first bool, notifyExisting func()) {
 		if pid == 0 {
 			pid = pidOfWindow(brandName + " " + brandProduct)
 		}
-		killPID(pid)
+		if pid == 0 {
+			pid = pidOfWindow(brandName + " " + brandProduct + " (portabel)")
+		}
+		if !askToQuit(pid) { // erst höflich bitten, nur alte Versionen ohne Signal hart beenden
+			killPID(pid)
+		}
 		h, err = windows.CreateEvent(nil, 0, 0, name)
 		if err == windows.ERROR_ALREADY_EXISTS {
 			return false, func() { windows.SetEvent(h) }
@@ -344,6 +388,13 @@ func SingleInstance(onActivate func()) (first bool, notifyExisting func()) {
 	}
 	os.MkdirAll(filepath.Dir(instanceInfoPath()), 0o755)
 	os.WriteFile(instanceInfoPath(), []byte(fmt.Sprintf("%s\n%d\n", buildVersion, os.Getpid())), 0o644)
+	if q, err := windows.CreateEvent(nil, 0, 0, windows.StringToUTF16Ptr(quitEvent)); err == nil || q != 0 {
+		go func() {
+			if ev, _ := windows.WaitForSingleObject(q, windows.INFINITE); ev == windows.WAIT_OBJECT_0 {
+				onQuit()
+			}
+		}()
+	}
 	if h != 0 {
 		go func() {
 			for {
@@ -458,6 +509,9 @@ func AutostartEnabled() bool {
 }
 
 func SetAutostart(on bool) error {
+	if portableMode() && on {
+		return errors.New("im portablen Betrieb (USB-Stick) wird nichts auf dem PC eingetragen")
+	}
 	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
 	if err != nil {
 		return err

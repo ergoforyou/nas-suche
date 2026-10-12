@@ -98,8 +98,47 @@ func exeDir() string {
 	return filepath.Dir(exe)
 }
 
-// userConfigPath: persönliche Einstellungen (%APPDATA%\NasSuche\einstellungen.json).
+// ---------- Portabler Betrieb (USB-Stick) ----------
+
+// isRemovable wird unter Windows gesetzt (Laufwerkstyp „Wechseldatenträger“).
+var isRemovable = func(dir string) bool { return false }
+
+var portableChecked, portable bool
+
+// portableMode: Das Programm läuft vom USB-Stick oder neben der EXE liegt „portable.txt“.
+// Dann liegen Einstellungen und Index im Ordner „NasSuche-Daten“ neben der EXE – nichts auf dem PC.
+func portableMode() bool {
+	if portableChecked {
+		return portable
+	}
+	portableChecked = true
+	dir := exeDir()
+	_, err1 := os.Stat(filepath.Join(dir, "portable.txt"))
+	_, err2 := os.Stat(filepath.Join(dir, "NasSuche.portable"))
+	if err1 != nil && err2 != nil && !isRemovable(dir) {
+		return false
+	}
+	// nur wenn neben der EXE geschrieben werden kann
+	data := portableDataDir()
+	if os.MkdirAll(data, 0o755) != nil {
+		return false
+	}
+	probe := filepath.Join(data, ".schreibtest")
+	if os.WriteFile(probe, []byte("x"), 0o644) != nil {
+		return false
+	}
+	os.Remove(probe)
+	portable = true
+	return true
+}
+
+func portableDataDir() string { return filepath.Join(exeDir(), "NasSuche-Daten") }
+
+// userConfigPath: persönliche Einstellungen (%APPDATA%\NasSuche\einstellungen.json, portabel neben der EXE).
 func userConfigPath() string {
+	if portableMode() {
+		return filepath.Join(portableDataDir(), "einstellungen.json")
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		dir = exeDir()
@@ -113,6 +152,9 @@ func sharedConfigPath() string {
 }
 
 func indexPath() string {
+	if portableMode() {
+		return filepath.Join(portableDataDir(), "index.dat")
+	}
 	dir, err := os.UserCacheDir() // %LOCALAPPDATA%
 	if err != nil {
 		dir = exeDir()
