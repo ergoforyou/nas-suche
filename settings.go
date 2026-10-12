@@ -258,7 +258,7 @@ func (a *App) showSettings() {
 											SharedIndexDir: strings.TrimSpace(sharedEdit.Text()),
 											Hotkey:         hotkeyNames[max(0, hotkeyCB.CurrentIndex())],
 											RefreshHours:   int(hours.Value()), Workers: int(workers.Value()),
-											Favorites:      a.cfg.Favorites, StartFolder: a.cfg.StartFolder,
+											Favorites: a.cfg.Favorites, StartFolder: a.cfg.StartFolder,
 										})
 									}},
 									HSpacer{},
