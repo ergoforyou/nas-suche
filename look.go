@@ -91,13 +91,21 @@ func (p *Pane) styleCell(style *walk.CellStyle) {
 			style.Font = boldFont
 		}
 	}
+	if style.Row() == p.dropRow {
+		style.BackgroundColor = colorDropRow
+		style.TextColor = colorDropText
+		if boldFont == nil {
+			boldFont, _ = walk.NewFont("Segoe UI", 9, walk.FontBold)
+		}
+		style.Font = boldFont
+	}
 	switch style.Col() {
 	case 0:
 		if ic := shellIcon(e.Name, e.IsDir, p.tv.DPI()); ic != nil {
 			style.Image = ic
 		}
 	case 1:
-		if c, ok := catColors[cat]; ok {
+		if c, ok := catColors[cat]; ok && style.Row() != p.dropRow {
 			style.TextColor = c
 		}
 	}

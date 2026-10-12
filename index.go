@@ -375,8 +375,9 @@ func (ix *Index) SortResults(res []int, col int, asc bool) {
 		return naturalLess(ix.lowerDirs[ea.Dir], ix.lowerDirs[eb.Dir])
 	}
 	sort.SliceStable(res, func(i, j int) bool {
-		// Ordner stehen immer oben (wie im Explorer)
-		if di, dj := ix.Entries[res[i]].IsDir, ix.Entries[res[j]].IsDir; di != dj {
+		// Ordner oben (wie im Explorer) – außer bei Sortierung nach Datum/Größe,
+		// damit z. B. „zuletzt geändert“ wirklich die neueste Datei oben zeigt
+		if di, dj := ix.Entries[res[i]].IsDir, ix.Entries[res[j]].IsDir; di != dj && foldersFirst(col) {
 			return di
 		}
 		if asc {
@@ -385,6 +386,9 @@ func (ix *Index) SortResults(res []int, col int, asc bool) {
 		return less(res[j], res[i])
 	})
 }
+
+// foldersFirst: bei Name, Ordner und Typ stehen Ordner oben.
+func foldersFirst(sortKey int) bool { return sortKey == 0 || sortKey == 1 || sortKey == 4 }
 
 // fileExt liefert die Endung ohne Punkt ("" wenn keine).
 func fileExt(lowerName string) string {

@@ -34,6 +34,11 @@ type Pane struct {
 
 	filter    *uint8 // zeigt in die Einstellungen (links/rechts getrennt)
 	inPathCfg *bool
+	sortCol   *int
+	sortDesc  *bool
+
+	dropRow   int  // beim Ziehen hervorgehobene Ordnerzeile (-1 = keine)
+	dropWhole bool // ganzer geöffneter Ordner ist Ziel
 
 	searchGen atomic.Int64
 	debounce  *time.Timer
@@ -46,10 +51,13 @@ type Pane struct {
 
 func newPane(a *App, idx int) *Pane {
 	p := &Pane{app: a, idx: idx, model: &ResultModel{sortCol: 0, asc: true}}
+	p.dropRow = -1
 	if idx == 0 {
 		p.filter, p.inPathCfg = &a.cfg.Filter, &a.cfg.InPath
+		p.sortCol, p.sortDesc = &a.cfg.SortCol, &a.cfg.SortDesc
 	} else {
 		p.filter, p.inPathCfg = &a.cfg.Filter2, &a.cfg.InPath2
+		p.sortCol, p.sortDesc = &a.cfg.SortCol2, &a.cfg.SortDesc2
 	}
 	return p
 }
@@ -152,6 +160,21 @@ func (p *Pane) widget() Widget {
 func (p *Pane) init() {
 	p.model.onReset = func() { p.tv.Invalidate() }
 	onlyNameIcons(p.tv)
+	// gespeicherte Sortierung wiederherstellen (z. B. „Geändert“ absteigend = neueste zuerst)
+	order := walk.SortAscending
+	if *p.sortDesc {
+		order = walk.SortDescending
+	}
+	if *p.sortCol < 0 || *p.sortCol >= len(colSortKey) {
+		*p.sortCol = 0
+	}
+	p.model.Sort(*p.sortCol, order)
+	p.model.onSort = func(col int, asc bool) {
+		if col != *p.sortCol || asc == *p.sortDesc {
+			*p.sortCol, *p.sortDesc = col, !asc
+			p.app.cfg.Save()
+		}
+	}
 	p.tv.KeyDown().Attach(func(key walk.Key) {
 		switch {
 		case key == walk.KeyC && walk.ControlDown() && walk.ShiftDown():
@@ -602,14 +625,23 @@ func (p *Pane) rowAtScreen(x, y int32) int {
 func (p *Pane) DropEffect(paths []string, keys uint32, x, y int32) uint32 {
 	target := p.dropFolder(x, y)
 	if target == "" {
+		p.setDropHighlight(-1, false)
 		p.showDropStatus("Hier ablegen geht nicht – erst einen Ordner öffnen (Doppelklick) oder direkt auf einen Ordner ziehen.")
 		return dropEffectNone
 	}
 	for _, s := range paths {
 		if strings.EqualFold(filepath.Dir(s), target) || strings.EqualFold(s, target) {
+			p.setDropHighlight(-1, false)
 			p.showDropStatus("Liegt bereits in " + target)
 			return dropEffectNone
 		}
+	}
+	// Ziel sichtbar machen: Ordnerzeile blau – oder die Pfadleiste des geöffneten Ordners
+	row := p.rowAtScreen(x, y)
+	if e, _ := p.model.entry(row); e != nil && e.IsDir {
+		p.setDropHighlight(row, false)
+	} else {
+		p.setDropHighlight(-1, true)
 	}
 	if keys&mkControl != 0 {
 		p.showDropStatus("Loslassen = KOPIEREN nach " + target)
@@ -617,6 +649,35 @@ func (p *Pane) DropEffect(paths []string, keys uint32, x, y int32) uint32 {
 	}
 	p.showDropStatus("Loslassen = VERSCHIEBEN nach " + target + "   (Strg gedrückt halten = kopieren)")
 	return dropEffectMove
+}
+
+var (
+	colorDropRow   = walk.RGB(0xCC, 0xE8, 0xFF) // Explorer-Blau
+	colorDropText  = walk.RGB(0x00, 0x3E, 0x8A)
+	dropBarBrush   *walk.SolidColorBrush
+	normalBarBrush *walk.SolidColorBrush
+)
+
+// setDropHighlight hebt das aktuelle Ablageziel hervor (nur bei Änderung neu zeichnen).
+func (p *Pane) setDropHighlight(row int, whole bool) {
+	if row != p.dropRow {
+		p.dropRow = row
+		p.tv.Invalidate()
+	}
+	if whole != p.dropWhole {
+		p.dropWhole = whole
+		if dropBarBrush == nil {
+			dropBarBrush, _ = walk.NewSolidColorBrush(colorDropRow)
+			normalBarBrush, _ = walk.NewSolidColorBrush(walk.RGB(0xF0, 0xF0, 0xF0))
+		}
+		if whole {
+			p.pathBar.SetBackground(dropBarBrush)
+			p.pathLabel.SetText("▼ Hier ablegen:  " + p.model.folder)
+		} else {
+			p.pathBar.SetBackground(normalBarBrush)
+			p.pathLabel.SetText(p.model.folder)
+		}
+	}
 }
 
 func (p *Pane) showDropStatus(s string) {
@@ -628,6 +689,7 @@ func (p *Pane) showDropStatus(s string) {
 
 func (p *Pane) Drop(paths []string, effect uint32, x, y int32) {
 	p.dropStatus = ""
+	defer p.setDropHighlight(-1, false)
 	target := p.dropFolder(x, y)
 	if target == "" {
 		return
@@ -639,5 +701,6 @@ func (p *Pane) Drop(paths []string, effect uint32, x, y int32) {
 
 func (p *Pane) DragLeave() {
 	p.dropStatus = ""
+	p.setDropHighlight(-1, false)
 	p.setStatus(p.app.lastInfo)
 }

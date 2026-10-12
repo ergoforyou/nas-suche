@@ -36,6 +36,9 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
   * Office: Word, Excel, PowerPoint, OpenDocument, csv, rtf, Visio, OneNote, E-Mails (msg/eml)
 * **Trefferliste:** Ordner stehen immer oben, fett und gelb hinterlegt. Jede Zeile hat das Windows-Symbol
   ihres Dateityps, die Spalte **Typ** ist farbig: PDF rot, Bilder grün, Office blau, Ordner braun.
+* **Sortierung bleibt stehen:** Ein Klick auf eine Spaltenüberschrift (z. B. zweimal „Geändert“ = neueste
+  zuerst) gilt dauerhaft – für jede neue Suche und nach dem Neustart, links und rechts getrennt.
+  Beim Sortieren nach Datum oder Größe stehen Ordner nicht mehr automatisch oben.
 * Mehrere Wörter: alle müssen im Namen vorkommen – `angebot müller`
 * Platzhalter: `*.pdf`, `rechnung 2026*`
 * „Auch im Ordnerpfad suchen“: Wörter dürfen auch im Ordnernamen stehen
@@ -48,7 +51,8 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
   „Im Explorer“ und „× Zurück zur Suche“. Rücktaste = eine Ebene höher.
 * **Ziehen zwischen den Ansichten = verschieben**, mit gedrückter **Strg**-Taste = kopieren.
   Ziel ist der geöffnete Ordner oder ein Ordner in der Trefferliste, auf den man direkt zieht.
-  Die Statuszeile zeigt beim Ziehen, was beim Loslassen passiert.
+  Das Ziel wird beim Ziehen wie im Explorer **blau markiert**: die Ordnerzeile unter der Maus bzw. die
+  Pfadleiste „▼ Hier ablegen“ des geöffneten Ordners. Die Statuszeile zeigt, was beim Loslassen passiert.
 * Verschobene Dateien werden sofort am neuen Ort gefunden (ohne neu einzulesen).
 * Auch aus dem Windows-Explorer kann man Dateien in eine geöffnete Ordneransicht ziehen.
 * Rechtsklick → **„In der anderen Ansicht öffnen“** öffnet den Ordner eines Treffers auf der anderen Seite.

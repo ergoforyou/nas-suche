@@ -28,6 +28,10 @@ type Config struct {
 	Filter2        uint8      `json:"filter_haken_rechts"`
 	InPath2        bool       `json:"im_pfad_suchen_rechts"`
 	SecondPane     bool       `json:"zweite_ansicht"`
+	SortCol        int        `json:"sortierung_spalte"` // links: Spalte der Trefferliste
+	SortDesc       bool       `json:"sortierung_absteigend"`
+	SortCol2       int        `json:"sortierung_spalte_rechts"`
+	SortDesc2      bool       `json:"sortierung_absteigend_rechts"`
 	Version        int        `json:"einstellungen_version"`
 }
 

@@ -22,7 +22,8 @@ type ResultModel struct {
 	rows    []int
 	sortCol int
 	asc     bool
-	onReset func() // erzwingt Neuzeichnen (walk invalidiert beim Zurücksetzen nicht alle Zeilen)
+	onReset func()                  // erzwingt Neuzeichnen (walk invalidiert beim Zurücksetzen nicht alle Zeilen)
+	onSort  func(col int, asc bool) // merkt sich die gewählte Sortierung
 
 	folderMode bool
 	folder     string  // angezeigter Ordner (Ordneransicht)
@@ -102,6 +103,9 @@ func (m *ResultModel) Sort(col int, order walk.SortOrder) error {
 	}
 	m.applySort()
 	m.reset()
+	if m.onSort != nil {
+		m.onSort(col, m.asc)
+	}
 	return m.SorterBase.Sort(col, order)
 }
 
@@ -130,7 +134,7 @@ func (m *ResultModel) setFolder(dir string, items []Entry) {
 func sortFolderItems(items []Entry, col int, asc bool) {
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := &items[i], &items[j]
-		if a.IsDir != b.IsDir {
+		if a.IsDir != b.IsDir && foldersFirst(col) {
 			return a.IsDir
 		}
 		less := func(x, y *Entry) bool {
