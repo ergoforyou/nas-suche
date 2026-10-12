@@ -56,6 +56,10 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
   Ziel ist der geöffnete Ordner oder ein Ordner in der Trefferliste, auf den man direkt zieht.
   Das Ziel wird beim Ziehen wie im Explorer **blau markiert**: die Ordnerzeile unter der Maus bzw. die
   Pfadleiste „▼ Hier ablegen“ des geöffneten Ordners. Die Statuszeile zeigt, was beim Loslassen passiert.
+* **Ordner springen beim Ziehen auf:** Mit der Datei kurz (ca. ½ Sekunde) über einem Ordner verweilen –
+  seine Unterordner klappen direkt darunter als Baum auf (`└─ Schaden`, `└─ Anträge` …), beliebig tief.
+  So legt man gezielt beim richtigen Kunden im richtigen Unterordner ab; der Kunde bleibt darüber sichtbar.
+  Am oberen/unteren Rand rollt die Liste automatisch weiter. Nach dem Loslassen klappt alles wieder zu.
 * Verschobene Dateien werden sofort am neuen Ort gefunden (ohne neu einzulesen).
 * Auch aus dem Windows-Explorer kann man Dateien in eine geöffnete Ordneransicht ziehen.
 * Rechtsklick → **„In der anderen Ansicht öffnen“** öffnet den Ordner eines Treffers auf der anderen Seite.

@@ -40,6 +40,7 @@ func typeLabel(name string, isDir bool) string {
 
 var (
 	colorFolderBG = walk.RGB(0xFF, 0xF4, 0xD6) // zartes Gelb für Ordnerzeilen
+	colorTreeBG   = walk.RGB(0xEA, 0xF3, 0xFC) // aufgeklappte Unterordner beim Ziehen
 	catColors     = map[uint8]walk.Color{
 		CatFolder: walk.RGB(0x9A, 0x67, 0x00), // dunkles Gelb/Braun
 		CatPDF:    walk.RGB(0xC6, 0x28, 0x28), // Rot
@@ -82,7 +83,10 @@ func (p *Pane) styleCell(style *walk.CellStyle) {
 		return
 	}
 	cat := categoryOf(strings.ToLower(e.Name), e.IsDir)
-	if e.IsDir {
+	if p.model.depthOf(style.Row()) > 0 {
+		style.BackgroundColor = colorTreeBG // aufgeklappte Unterordner (Baum) hellblau
+		style.TextColor = walk.RGB(0x10, 0x3A, 0x6B)
+	} else if e.IsDir {
 		style.BackgroundColor = colorFolderBG
 		if boldFont == nil {
 			boldFont, _ = walk.NewFont("Segoe UI", 9, walk.FontBold)

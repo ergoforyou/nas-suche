@@ -41,8 +41,12 @@ type Pane struct {
 	sortCol   *int
 	sortDesc  *bool
 
-	dropRow   int  // beim Ziehen hervorgehobene Ordnerzeile (-1 = keine)
-	dropWhole bool // ganzer geöffneter Ordner ist Ziel
+	dropRow    int // beim Ziehen hervorgehobene Ordnerzeile (-1 = keine)
+	hoverRow   int // Ordnerzeile, über der beim Ziehen verweilt wird
+	hoverAt    time.Time
+	noSubs     map[string]bool // Ordner ohne Unterordner (nicht erneut lesen)
+	lastScroll time.Time
+	dropWhole  bool // ganzer geöffneter Ordner ist Ziel
 
 	searchGen atomic.Int64
 	debounce  *time.Timer
@@ -55,7 +59,8 @@ type Pane struct {
 
 func newPane(a *App, idx int) *Pane {
 	p := &Pane{app: a, idx: idx, model: &ResultModel{sortCol: 0, asc: true}}
-	p.dropRow = -1
+	p.dropRow, p.hoverRow = -1, -1
+	p.noSubs = map[string]bool{}
 	if idx == 0 {
 		p.filter, p.inPathCfg = &a.cfg.Filter, &a.cfg.InPath
 		p.sortCol, p.sortDesc = &a.cfg.SortCol, &a.cfg.SortDesc
@@ -628,6 +633,8 @@ func (p *Pane) rowAtScreen(x, y int32) int {
 
 // DropEffect: Standard = verschieben, mit gedrückter Strg-Taste = kopieren.
 func (p *Pane) DropEffect(paths []string, keys uint32, x, y int32) uint32 {
+	p.autoScroll(x, y)
+	p.springLoad(p.rowAtScreen(x, y))
 	target := p.dropFolder(x, y)
 	if target == "" {
 		p.setDropHighlight(-1, false)
@@ -694,7 +701,7 @@ func (p *Pane) showDropStatus(s string) {
 
 func (p *Pane) Drop(paths []string, effect uint32, x, y int32) {
 	p.dropStatus = ""
-	defer p.setDropHighlight(-1, false)
+	defer p.endDrag()
 	target := p.dropFolder(x, y)
 	if target == "" {
 		return
@@ -706,6 +713,75 @@ func (p *Pane) Drop(paths []string, effect uint32, x, y int32) {
 
 func (p *Pane) DragLeave() {
 	p.dropStatus = ""
-	p.setDropHighlight(-1, false)
+	p.endDrag()
 	p.setStatus(p.app.lastInfo)
+}
+
+// ---------- Aufspringende Ordner beim Ziehen ----------
+
+const springDelay = 600 * time.Millisecond
+
+// springLoad: verweilt man mit Dateien über einem Ordner, klappen seine Unterordner
+// darunter als Baum auf – so kann man direkt in „Kunde › Schaden“ ablegen.
+func (p *Pane) springLoad(row int) {
+	e, _ := p.model.entry(row)
+	if e == nil || !e.IsDir || p.model.isOpen(row) || p.noSubs[p.model.path(row)] {
+		p.hoverRow = -1
+		return
+	}
+	if row != p.hoverRow {
+		p.hoverRow, p.hoverAt = row, time.Now()
+		return
+	}
+	if time.Since(p.hoverAt) < springDelay {
+		return
+	}
+	p.hoverRow = -1
+	path := p.model.path(row)
+	subs := p.subfolders(path)
+	if len(subs) == 0 {
+		p.noSubs[path] = true
+		return
+	}
+	if len(subs) > 300 {
+		subs = subs[:300]
+	}
+	p.model.expandRow(row, subs)
+}
+
+var procGetClientRect = user32.NewProc("GetClientRect")
+
+// autoScroll rollt die Liste beim Ziehen am oberen/unteren Rand weiter.
+func (p *Pane) autoScroll(x, y int32) {
+	h, _, _ := procWindowFromPoint.Call(uintptr(uint32(x)) | uintptr(uint32(y))<<32)
+	hwnd := win.HWND(h)
+	if h == 0 || (hwnd != p.tv.Handle() && !win.IsChild(p.tv.Handle(), hwnd)) {
+		return
+	}
+	if time.Since(p.lastScroll) < 80*time.Millisecond {
+		return
+	}
+	pt := win.POINT{X: x, Y: y}
+	win.ScreenToClient(hwnd, &pt)
+	var rc win.RECT
+	procGetClientRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&rc)))
+	dpi := int32(p.tv.DPI())
+	zone, step := 45*dpi/96, 18*dpi/96
+	const lvmScroll = 0x1000 + 20
+	switch {
+	case pt.Y < rc.Top+zone:
+		win.SendMessage(hwnd, lvmScroll, 0, uintptr(-step))
+	case pt.Y > rc.Bottom-zone/2:
+		win.SendMessage(hwnd, lvmScroll, 0, uintptr(step))
+	default:
+		return
+	}
+	p.lastScroll = time.Now()
+}
+
+// endDrag: Markierung entfernen und aufgeklappte Ordner wieder zuklappen.
+func (p *Pane) endDrag() {
+	p.setDropHighlight(-1, false)
+	p.hoverRow = -1
+	p.model.collapseAll()
 }

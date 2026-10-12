@@ -28,6 +28,71 @@ type ResultModel struct {
 	folderMode bool
 	folder     string  // angezeigter Ordner (Ordneransicht)
 	items      []Entry // Inhalt des Ordners
+
+	view     []vrow // angezeigte Zeilen inkl. beim Ziehen aufgeklappter Unterordner
+	expanded bool   // mindestens ein Ordner ist aufgeklappt
+}
+
+// vrow ist eine angezeigte Zeile. depth > 0 = beim Ziehen aufgeklappter Unterordner (Baum).
+type vrow struct {
+	e     *Entry
+	dir   string
+	depth int
+	open  bool
+}
+
+// rebuild baut die Anzeige aus den Treffern bzw. dem Ordnerinhalt neu auf (alles zugeklappt).
+func (m *ResultModel) rebuild() {
+	m.expanded = false
+	m.view = m.view[:0]
+	if m.folderMode {
+		for i := range m.items {
+			m.view = append(m.view, vrow{e: &m.items[i], dir: m.folder})
+		}
+		return
+	}
+	if m.ix == nil {
+		return
+	}
+	for _, r := range m.rows {
+		e := &m.ix.Entries[r]
+		m.view = append(m.view, vrow{e: e, dir: m.ix.Dirs[e.Dir]})
+	}
+}
+
+// expandRow klappt unter einem Ordner seine Unterordner als Baum auf.
+func (m *ResultModel) expandRow(row int, subdirs []string) {
+	if row < 0 || row >= len(m.view) || m.view[row].open {
+		return
+	}
+	parent := m.view[row]
+	m.view[row].open = true
+	m.expanded = true
+	dir := filepath.Join(parent.dir, parent.e.Name)
+	kids := make([]Entry, len(subdirs))
+	ins := make([]vrow, len(subdirs))
+	for i, s := range subdirs {
+		kids[i] = Entry{Name: s, IsDir: true}
+		ins[i] = vrow{e: &kids[i], dir: dir, depth: parent.depth + 1}
+	}
+	m.view = append(m.view[:row+1], append(ins, m.view[row+1:]...)...)
+	m.reset()
+}
+
+// collapseAll klappt alles wieder zu.
+func (m *ResultModel) collapseAll() {
+	if m.expanded {
+		m.rebuild()
+		m.reset()
+	}
+}
+
+func (m *ResultModel) isOpen(row int) bool { return row >= 0 && row < len(m.view) && m.view[row].open }
+func (m *ResultModel) depthOf(row int) int {
+	if row < 0 || row >= len(m.view) {
+		return 0
+	}
+	return m.view[row].depth
 }
 
 func (m *ResultModel) reset() {
@@ -37,26 +102,14 @@ func (m *ResultModel) reset() {
 	}
 }
 
-func (m *ResultModel) RowCount() int {
-	if m.folderMode {
-		return len(m.items)
-	}
-	return len(m.rows)
-}
+func (m *ResultModel) RowCount() int { return len(m.view) }
 
 // entry liefert Eintrag und Ordner einer Zeile.
 func (m *ResultModel) entry(row int) (*Entry, string) {
-	if m.folderMode {
-		if row < 0 || row >= len(m.items) {
-			return nil, ""
-		}
-		return &m.items[row], m.folder
-	}
-	if row < 0 || row >= len(m.rows) || m.ix == nil {
+	if row < 0 || row >= len(m.view) {
 		return nil, ""
 	}
-	e := &m.ix.Entries[m.rows[row]]
-	return e, m.ix.Dirs[e.Dir]
+	return m.view[row].e, m.view[row].dir
 }
 
 func (m *ResultModel) path(row int) string {
@@ -74,7 +127,15 @@ func (m *ResultModel) Value(row, col int) interface{} {
 	}
 	switch col {
 	case 0:
-		return e.Name
+		v := m.view[row]
+		name := e.Name
+		if v.open {
+			name = "▼ " + name
+		}
+		if v.depth > 0 {
+			name = strings.Repeat("      ", v.depth-1) + "   └─ " + name
+		}
+		return name
 	case 1:
 		return typeLabel(e.Name, e.IsDir)
 	case 2:
@@ -102,6 +163,7 @@ func (m *ResultModel) Sort(col int, order walk.SortOrder) error {
 		m.sortCol = colSortKey[col]
 	}
 	m.applySort()
+	m.rebuild()
 	m.reset()
 	if m.onSort != nil {
 		m.onSort(col, m.asc)
@@ -121,12 +183,14 @@ func (m *ResultModel) set(ix *Index, rows []int) {
 	m.folderMode, m.items = false, nil
 	m.ix, m.rows = ix, rows
 	m.applySort()
+	m.rebuild()
 	m.reset()
 }
 
 func (m *ResultModel) setFolder(dir string, items []Entry) {
 	m.folderMode, m.folder, m.items = true, dir, items
 	m.applySort()
+	m.rebuild()
 	m.reset()
 }
 
