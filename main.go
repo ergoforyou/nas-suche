@@ -26,6 +26,7 @@ type App struct {
 	nav       *Navigator
 	lastPane  *Pane // zuletzt benutzte Ansicht (Ziel für Klicks im Navigationsbaum)
 	secondBt  *walk.PushButton
+	navBt     *walk.PushButton
 	refreshBt *walk.PushButton
 	status    *walk.StatusBarItem
 	icon      *walk.Icon
@@ -113,6 +114,7 @@ func (a *App) run() {
 						MaxSize: Size{Height: 30},
 						Children: []Widget{
 							HSpacer{},
+							PushButton{AssignTo: &a.navBt, MinSize: Size{Width: 170}, Text: "Navigation ausblenden", OnClicked: func() { a.setNavVisible(a.cfg.HideNav) }},
 							PushButton{AssignTo: &a.secondBt, MinSize: Size{Width: 170}, Text: "Zweite Ansicht einblenden", OnClicked: func() { a.setSecondPane(!a.cfg.SecondPane) }},
 							PushButton{AssignTo: &a.refreshBt, Text: "Aktualisieren (F5)", OnClicked: a.toggleIndex},
 							PushButton{Text: "Einstellungen …", OnClicked: a.showSettings},
@@ -161,6 +163,7 @@ func (a *App) run() {
 		p.init()
 	}
 	a.nav.init()
+	a.setNavVisible(!a.cfg.HideNav)
 	a.setSecondPane(a.cfg.SecondPane)
 	a.setupTray()
 	a.applyHotkey()
@@ -615,6 +618,21 @@ func (a *App) activePane() *Pane {
 		return a.lastPane
 	}
 	return a.panes[0]
+}
+
+// setNavVisible blendet die Navigationsleiste (Schnellzugriff, Netzlaufwerke, Dieser PC) ein/aus.
+func (a *App) setNavVisible(on bool) {
+	changed := on == a.cfg.HideNav
+	a.cfg.HideNav = !on
+	a.nav.tv.SetVisible(on)
+	if on {
+		a.navBt.SetText("Navigation ausblenden")
+	} else {
+		a.navBt.SetText("Navigation einblenden")
+	}
+	if changed {
+		a.cfg.Save()
+	}
 }
 
 // setSecondPane blendet die rechte Hälfte ein oder aus (wird gespeichert).

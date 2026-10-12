@@ -11,6 +11,7 @@ import (
 
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
+	"golang.org/x/sys/windows"
 )
 
 // Navigationsbaum links wie im Windows-Explorer: „Schnellzugriff“ (angeheftete Ordner)
@@ -80,6 +81,7 @@ type Navigator struct {
 	tv    *walk.TreeView
 	model *navModel
 	quick *navItem
+	pc    *navItem
 	nets  *navItem
 
 	dropItem  win.HANDLE
@@ -90,8 +92,9 @@ type Navigator struct {
 func newNavigator(a *App) *Navigator {
 	n := &Navigator{app: a, model: &navModel{}}
 	n.quick = &navItem{name: "Schnellzugriff", group: 1, nav: n, loaded: true}
+	n.pc = &navItem{name: "Dieser PC", group: 3, nav: n, loaded: true}
 	n.nets = &navItem{name: "Netzlaufwerke", group: 2, nav: n, loaded: true}
-	n.model.roots = []*navItem{n.quick, n.nets}
+	n.model.roots = []*navItem{n.quick, n.nets, n.pc}
 	n.fill()
 	return n
 }
@@ -122,6 +125,49 @@ func (n *Navigator) fill() {
 	}
 	for _, f := range c.Folders {
 		add(f, f)
+	}
+	n.fillPC()
+}
+
+// fillPC: wie „Dieser PC“ im Explorer – persönliche Ordner und alle Laufwerke.
+func (n *Navigator) fillPC() {
+	n.pc.children = nil
+	known := []struct {
+		name string
+		id   *windows.KNOWNFOLDERID
+	}{
+		{"Desktop", windows.FOLDERID_Desktop},
+		{"Downloads", windows.FOLDERID_Downloads},
+		{"Dokumente", windows.FOLDERID_Documents},
+		{"Bilder", windows.FOLDERID_Pictures},
+	}
+	for _, k := range known {
+		if p, err := windows.KnownFolderPath(k.id, 0); err == nil && p != "" {
+			n.pc.children = append(n.pc.children, &navItem{name: k.name, path: p, parent: n.pc, nav: n})
+		}
+	}
+	mask, _ := windows.GetLogicalDrives()
+	for i := 0; i < 26; i++ {
+		if mask&(1<<uint(i)) == 0 || i < 2 { // A:/B: (Diskette) auslassen
+			continue
+		}
+		root := string(rune('A'+i)) + `:\`
+		label := root[:2]
+		switch windows.GetDriveType(windows.StringToUTF16Ptr(root)) {
+		case windows.DRIVE_REMOTE:
+			if r := CurrentConnection(root[:2]); r != "" {
+				label += "  (" + r + ")"
+			} else {
+				label += "  (Netzlaufwerk)"
+			}
+		case windows.DRIVE_CDROM:
+			label += "  (DVD)"
+		case windows.DRIVE_REMOVABLE:
+			label += "  (Wechseldatenträger)"
+		default:
+			label += "  (Lokaler Datenträger)"
+		}
+		n.pc.children = append(n.pc.children, &navItem{name: label, path: root, parent: n.pc, nav: n})
 	}
 }
 

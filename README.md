@@ -45,7 +45,9 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
 * **F5**: Index sofort aktualisieren
 
 ### Navigationsleiste wie im Explorer
-* Links im Fenster: **Schnellzugriff** (angeheftete Ordner) und **Netzlaufwerke**, beliebig aufklappbar.
+* Links im Fenster: **Schnellzugriff** (angeheftete Ordner), **Netzlaufwerke** und **Dieser PC**
+  (Desktop, Downloads, Dokumente, Bilder, alle Laufwerke) – beliebig aufklappbar.
+* Knopf **„Navigation ausblenden / einblenden“** oben – die Wahl bleibt gespeichert.
 * **Klick auf einen Ordner** zeigt ihn in der Ansicht, in der zuletzt gearbeitet wurde (links oder rechts).
 * **Anheften:** Rechtsklick auf einen Ordner (im Baum oder in der Trefferliste) → **„An Schnellzugriff
   anheften“** – oder den Ordner einfach auf „Schnellzugriff“ ziehen. Lösen: Rechtsklick → „Vom Schnellzugriff lösen“.

@@ -36,6 +36,7 @@ type Config struct {
 	Favorites      []Favorite `json:"ordner_favoriten"`
 	StartFolder    string     `json:"startordner_links"`
 	StartFolder2   string     `json:"startordner_rechts"`
+	HideNav        bool       `json:"navigation_ausgeblendet"`
 }
 
 // Favorite: fester Ordner im Menü „★ Ordner“ (z. B. Digitale Eingänge).
