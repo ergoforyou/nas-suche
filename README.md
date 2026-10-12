@@ -32,6 +32,19 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
   erscheint danach nicht mehr bei jedem Start.
 * Neue Versionen lösen ältere sanft ab (Beenden-Signal statt hartem Abbruch).
 
+## Mac-Version (MacBook Air & Co.)
+* `NasSuche-Mac.zip` doppelklicken → **„ERGOFORYOU NAS-Suche“** in den Ordner *Programme* ziehen.
+  Läuft auf Apple Silicon (M1–M4) und Intel-Macs ab macOS 11.
+* **Erster Start:** Rechtsklick auf die App → **Öffnen** → „Öffnen“ bestätigen (die App ist nicht bei
+  Apple registriert). Klappt das nicht: *Systemeinstellungen → Datenschutz & Sicherheit → „Dennoch öffnen“*.
+* **Einstellungen:** NAS-Freigabe eintragen, z. B. `smb://DiskStation/Daten` – wird bei jedem Start
+  verbunden (Kennwort einmal im Schlüsselbund sichern). Als Suchordner dann `/Volumes/Daten` wählen.
+* Enthalten: Suche, Haken PDF/Bilder/Office/Ordner, zwei Ansichten, Ordner anzeigen, feste Ordner,
+  Ziehen zwischen den Ansichten (= verschieben, **⌥ Wahltaste** = kopieren) mit aufspringenden
+  Unterordnern, Dateien aus dem Finder hineinziehen, Rechtsklick-Menü (Öffnen, Im Finder zeigen,
+  Datei/Pfad kopieren). Fenster schließen = läuft weiter (Symbol oben in der Menüleiste).
+* Noch nicht enthalten: Navigationsleiste/Schnellzugriff, globale Tastenkombination.
+
 ## Benutzung
 
 * **Strg+Umschalt+F** (einstellbar) öffnet die Suche von überall – tippen, Ergebnis ist sofort da.
