@@ -1,0 +1,72 @@
+name: Mac-Version bauen
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/windows-synology-search-app-s8os42]
+    paths: ['mac_*.go', 'index.go', 'config.go', 'common.go', 'go.mod', 'go.sum', 'icon.png', '.github/workflows/mac.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.7'
+      - name: Universal-Binary bauen (Apple Silicon + Intel)
+        run: |
+          V=$(date -u +%Y%m%d%H%M%S)
+          export CGO_ENABLED=1 MACOSX_DEPLOYMENT_TARGET=11.0
+          GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.buildVersion=$V" -o nas-arm64 .
+          GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.buildVersion=$V" -o nas-amd64 .
+          lipo -create -output NasSuche nas-arm64 nas-amd64
+          lipo -info NasSuche
+          echo "V=$V" >> $GITHUB_ENV
+      - name: App-Paket erstellen
+        run: |
+          APP="ERGOFORYOU NAS-Suche.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" icon.iconset
+          cp NasSuche "$APP/Contents/MacOS/NasSuche"
+          for s in 16 32 128 256 512; do
+            sips -z $s $s icon.png --out icon.iconset/icon_${s}x${s}.png >/dev/null
+            d=$((s*2)); sips -z $d $d icon.png --out icon.iconset/icon_${s}x${s}@2x.png >/dev/null
+          done
+          iconutil -c icns icon.iconset -o "$APP/Contents/Resources/icon.icns"
+          cat > "$APP/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>ERGOFORYOU NAS-Suche</string>
+            <key>CFBundleDisplayName</key><string>ERGOFORYOU NAS-Suche</string>
+            <key>CFBundleIdentifier</key><string>de.ergoforyou.nassuche</string>
+            <key>CFBundleExecutable</key><string>NasSuche</string>
+            <key>CFBundleIconFile</key><string>icon</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>${V}</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>NSAppleEventsUsageDescription</key><string>Zum Verbinden der NAS-Freigaben und Kopieren in die Zwischenablage.</string>
+          </dict></plist>
+          PLIST
+          plutil -lint "$APP/Contents/Info.plist"
+          codesign --force --deep -s - "$APP"
+          mkdir -p mac
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "mac/NasSuche-Mac.zip"
+          ls -la mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NasSuche-Mac
+          path: mac/NasSuche-Mac.zip
+      - name: Fertige App ins Repository legen
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -f mac/NasSuche-Mac.zip
+          git commit -m "Mac-App gebaut (${V})" || exit 0
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
