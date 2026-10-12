@@ -49,6 +49,9 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
   (eigene Haken, eigener Suchbegriff). Ausblenden mit demselben Knopf, die Wahl bleibt gespeichert.
 * **Doppelklick auf einen Ordner** zeigt seinen Inhalt (live vom NAS) – mit „↑ Nach oben“,
   „Im Explorer“ und „× Zurück zur Suche“. Rücktaste = eine Ebene höher.
+* **Pfadleiste wie im Explorer:** `Y: › Kunden › PW › Wrobel ›` – Klick auf eine Ebene springt dorthin,
+  Klick auf **„›“** klappt alle Unterordner dieser Ebene auf (der aktuelle ist abgehakt). So wechselt man
+  z. B. vom Kunden direkt in „Schaden“ oder zum nächsten Kunden.
 * **Ziehen zwischen den Ansichten = verschieben**, mit gedrückter **Strg**-Taste = kopieren.
   Ziel ist der geöffnete Ordner oder ein Ordner in der Trefferliste, auf den man direkt zieht.
   Das Ziel wird beim Ziehen wie im Explorer **blau markiert**: die Ordnerzeile unter der Maus bzw. die

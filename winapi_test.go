@@ -63,3 +63,14 @@ func TestShareRoot(t *testing.T) {
 		t.Fatal("ShareRoot")
 	}
 }
+
+func TestPathCrumbs(t *testing.T) {
+	cs := pathCrumbs(`Y:\Kunden\PW\Wrobel`)
+	if len(cs) != 4 || cs[0].label != "Y:" || cs[0].path != `Y:\` || cs[3].path != `Y:\Kunden\PW\Wrobel` || cs[2].label != "PW" {
+		t.Fatalf("%+v", cs)
+	}
+	cs = pathCrumbs(`\\DiskStation\Daten\Kunden`)
+	if len(cs) != 2 || cs[0].label != `\\DiskStation\Daten` || cs[1].path != `\\DiskStation\Daten\Kunden` {
+		t.Fatalf("%+v", cs)
+	}
+}

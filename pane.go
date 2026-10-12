@@ -20,17 +20,21 @@ import (
 
 // Pane ist eine Suchhälfte: Suchfeld, Haken, Trefferliste – oder der Inhalt eines Ordners.
 type Pane struct {
-	app        *App
-	idx        int // 0 = links, 1 = rechts
-	root       *walk.Composite
-	search     *walk.LineEdit
-	inPath     *walk.CheckBox
-	filterBtns [CatFolder + 1]*walk.CheckBox // Index = Kategorie, 0 unbenutzt
-	pathBar    *walk.Composite
-	pathLabel  *walk.Label
-	tv         *walk.TableView
-	copyMenu   *walk.Menu
-	model      *ResultModel
+	app           *App
+	idx           int // 0 = links, 1 = rechts
+	root          *walk.Composite
+	search        *walk.LineEdit
+	inPath        *walk.CheckBox
+	filterBtns    [CatFolder + 1]*walk.CheckBox // Index = Kategorie, 0 unbenutzt
+	pathBar       *walk.Composite
+	pathLabel     *walk.Label
+	crumbs        *walk.Composite // Pfad als anklickbare Teilstücke mit Unterordner-Auswahl
+	crumbSlots    []*crumbSlot
+	crumbMore     *walk.PushButton
+	crumbMorePath string
+	tv            *walk.TableView
+	copyMenu      *walk.Menu
+	model         *ResultModel
 
 	filter    *uint8 // zeigt in die Einstellungen (links/rechts getrennt)
 	inPathCfg *bool
@@ -117,7 +121,8 @@ func (p *Pane) widget() Widget {
 				MaxSize:  Size{Height: 30},
 				Children: []Widget{
 					PushButton{Text: "↑ Nach oben", OnClicked: p.goUp},
-					Label{AssignTo: &p.pathLabel, Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, EllipsisMode: EllipsisEnd},
+					Composite{AssignTo: &p.crumbs, Layout: HBox{MarginsZero: true, Spacing: 0}},
+					Label{AssignTo: &p.pathLabel, Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, TextColor: walk.RGB(0x00, 0x3E, 0x8A)},
 					HSpacer{},
 					PushButton{Text: "Im Explorer", OnClicked: func() { openExplorer(p.model.folder, false) }},
 					PushButton{Text: "× Zurück zur Suche", OnClicked: p.backToSearch},
@@ -326,7 +331,7 @@ func (p *Pane) updateFilterButtons(counts *[NumCats]int) {
 func (p *Pane) openFolder(dir string) {
 	p.model.folder = dir
 	p.model.folderMode = true
-	p.pathLabel.SetText(dir)
+	p.buildCrumbs(dir)
 	p.pathBar.SetVisible(true)
 	p.refreshFolder()
 }
@@ -672,10 +677,10 @@ func (p *Pane) setDropHighlight(row int, whole bool) {
 		}
 		if whole {
 			p.pathBar.SetBackground(dropBarBrush)
-			p.pathLabel.SetText("▼ Hier ablegen:  " + p.model.folder)
+			p.pathLabel.SetText("   ▼ Hier ablegen")
 		} else {
 			p.pathBar.SetBackground(normalBarBrush)
-			p.pathLabel.SetText(p.model.folder)
+			p.pathLabel.SetText("")
 		}
 	}
 }
