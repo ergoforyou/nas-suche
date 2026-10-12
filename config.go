@@ -28,6 +28,7 @@ type Config struct {
 	Filter2        uint8      `json:"filter_haken_rechts"`
 	InPath2        bool       `json:"im_pfad_suchen_rechts"`
 	SecondPane     bool       `json:"zweite_ansicht"`
+	Version        int        `json:"einstellungen_version"`
 }
 
 // DriveMap: Netzlaufwerk, das beim Programmstart verbunden wird.
@@ -117,9 +118,12 @@ func readConfig(path string) (*Config, error) {
 	if c.Workers < 1 {
 		c.Workers = 16
 	}
-	// Leer oder alte Vorgabe → neue Vorgabe Strg+Umschalt+F
-	if c.Hotkey == "" || c.Hotkey == "Strg+Alt+Leertaste" {
-		c.Hotkey = defaultHotkey
+	// Einmalige Umstellung auf die neue Vorgabe Strg+Umschalt+F
+	if c.Version < 2 {
+		if c.Hotkey == "" || strings.HasSuffix(c.Hotkey, "Leertaste") {
+			c.Hotkey = defaultHotkey
+		}
+		c.Version = 2
 	}
 	return c, nil
 }

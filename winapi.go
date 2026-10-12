@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -306,17 +307,43 @@ func StartHotkey(name string, onPress func()) (stop func(), err error) {
 
 // ---------- Nur eine Instanz ----------
 
-// SingleInstance: true = wir sind die erste Instanz. onActivate wird aufgerufen,
-// wenn das Programm ein weiteres Mal gestartet wird.
+// buildVersion wird beim Bauen gesetzt (Zeitstempel, z. B. 20261012103000).
+var buildVersion = "0"
+
+const instanceEvent = `Local\ERGOFORYOU-NasSuche-Anzeigen`
+
+func instanceInfoPath() string { return filepath.Join(filepath.Dir(indexPath()), "instanz.txt") }
+
+// SingleInstance: true = wir sind (jetzt) die einzige Instanz. onActivate wird aufgerufen,
+// wenn das Programm ein weiteres Mal gestartet wird. Läuft noch eine ÄLTERE Version
+// (z. B. nach einem Update), wird sie beendet und diese Version übernimmt.
 func SingleInstance(onActivate func()) (first bool, notifyExisting func()) {
-	name := windows.StringToUTF16Ptr(`Local\ERGOFORYOU-NasSuche-Anzeigen`)
+	// Versionen vor dem Umbenennen hatten ein anderes Signal – immer ablösen.
+	killWindowsTitled("Ergo4U NAS-Suche")
+
+	name := windows.StringToUTF16Ptr(instanceEvent)
 	h, err := windows.CreateEvent(nil, 0, 0, name)
 	if err == windows.ERROR_ALREADY_EXISTS {
-		return false, func() {
-			procAllowSetForegroundWindow.Call(^uintptr(0)) // ASFW_ANY
-			windows.SetEvent(h)
+		if !runningIsOlder() {
+			return false, func() {
+				procAllowSetForegroundWindow.Call(^uintptr(0)) // ASFW_ANY
+				windows.SetEvent(h)
+			}
+		}
+		// ältere Version ablösen
+		windows.CloseHandle(h)
+		pid := runningPID()
+		if pid == 0 {
+			pid = pidOfWindow(brandName + " " + brandProduct)
+		}
+		killPID(pid)
+		h, err = windows.CreateEvent(nil, 0, 0, name)
+		if err == windows.ERROR_ALREADY_EXISTS {
+			return false, func() { windows.SetEvent(h) }
 		}
 	}
+	os.MkdirAll(filepath.Dir(instanceInfoPath()), 0o755)
+	os.WriteFile(instanceInfoPath(), []byte(fmt.Sprintf("%s\n%d\n", buildVersion, os.Getpid())), 0o644)
 	if h != 0 {
 		go func() {
 			for {
@@ -329,6 +356,86 @@ func SingleInstance(onActivate func()) (first bool, notifyExisting func()) {
 		}()
 	}
 	return true, nil
+}
+
+func readInstanceInfo() (version string, pid uint32) {
+	b, err := os.ReadFile(instanceInfoPath())
+	if err != nil {
+		return "", 0
+	}
+	parts := strings.Fields(string(b))
+	if len(parts) >= 2 {
+		var p uint32
+		fmt.Sscan(parts[1], &p)
+		return parts[0], p
+	}
+	return "", 0
+}
+
+// runningIsOlder: die laufende Instanz ist eine ältere Programmversion.
+func runningIsOlder() bool {
+	v, pid := readInstanceInfo()
+	if v == "" || pid == 0 || !pidAlive(pid) {
+		return true // Versionen ohne Info-Datei sind älter
+	}
+	return v < buildVersion
+}
+
+func runningPID() uint32 {
+	_, pid := readInstanceInfo()
+	if pid != 0 && pidAlive(pid) {
+		return pid
+	}
+	return 0
+}
+
+func pidAlive(pid uint32) bool {
+	h, err := windows.OpenProcess(windows.SYNCHRONIZE, false, pid)
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(h)
+	ev, _ := windows.WaitForSingleObject(h, 0)
+	return ev == uint32(windows.WAIT_TIMEOUT)
+}
+
+var (
+	procFindWindowW              = user32.NewProc("FindWindowW")
+	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
+)
+
+func pidOfWindow(title string) uint32 {
+	hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(title))))
+	if hwnd == 0 {
+		return 0
+	}
+	var pid uint32
+	procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	return pid
+}
+
+func killWindowsTitled(title string) {
+	for i := 0; i < 5; i++ {
+		pid := pidOfWindow(title)
+		if pid == 0 {
+			return
+		}
+		killPID(pid)
+	}
+}
+
+// killPID beendet eine alte Instanz und wartet, bis sie weg ist.
+func killPID(pid uint32) {
+	if pid == 0 || pid == uint32(os.Getpid()) {
+		return
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_TERMINATE|windows.SYNCHRONIZE, false, pid)
+	if err != nil {
+		return
+	}
+	defer windows.CloseHandle(h)
+	windows.TerminateProcess(h, 0)
+	windows.WaitForSingleObject(h, 5000)
 }
 
 // ---------- Autostart ----------
