@@ -154,6 +154,7 @@ func (p *Pane) widget() Widget {
 					Action{Text: "Öffnen\tEnter", OnTriggered: p.activate},
 					Action{Text: "In der anderen Ansicht öffnen", OnTriggered: p.openInOther},
 					Action{Text: "Im Explorer anzeigen", OnTriggered: p.showInFolder},
+					Action{Text: "An Schnellzugriff anheften", OnTriggered: p.pinSelected},
 					Separator{},
 					Action{Text: "Kopieren (Dateien)\tStrg+C", OnTriggered: p.copyFiles},
 					Menu{AssignTo: &p.copyMenu, Text: "Kopieren nach", Items: []MenuItem{
@@ -198,6 +199,17 @@ func (p *Pane) init() {
 		}
 	})
 	p.setupDrag()
+	mark := func() { p.app.lastPane = p }
+	p.search.FocusedChanged().Attach(func() {
+		if p.search.Focused() {
+			mark()
+		}
+	})
+	p.tv.FocusedChanged().Attach(func() {
+		if p.tv.Focused() {
+			mark()
+		}
+	})
 	err := RegisterDropTarget(uintptr(p.tv.Handle()), p)
 	dbg("RegisterDropTarget pane=%d: %v", p.idx, err)
 	p.updateFilterButtons(nil)
@@ -806,4 +818,17 @@ func (p *Pane) endDrag() {
 	p.setDropHighlight(-1, false)
 	p.hoverRow = -1
 	p.model.collapseAll()
+}
+
+// pinSelected heftet den gewählten Ordner (bzw. den Ordner der Datei) an den Schnellzugriff an.
+func (p *Pane) pinSelected() {
+	paths := p.selectedPaths()
+	if len(paths) == 0 {
+		return
+	}
+	dir := paths[0]
+	if e, _ := p.model.entry(p.tv.CurrentIndex()); e == nil || !e.IsDir {
+		dir = filepath.Dir(dir)
+	}
+	p.app.nav.pin(dir)
 }

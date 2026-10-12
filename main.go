@@ -23,6 +23,8 @@ type App struct {
 	header    *walk.CustomWidget
 	banner    *banner
 	panes     [2]*Pane
+	nav       *Navigator
+	lastPane  *Pane // zuletzt benutzte Ansicht (Ziel für Klicks im Navigationsbaum)
 	secondBt  *walk.PushButton
 	refreshBt *walk.PushButton
 	status    *walk.StatusBarItem
@@ -49,6 +51,7 @@ type App struct {
 func main() {
 	app := &App{cfg: LoadConfig()}
 	app.panes = [2]*Pane{newPane(app, 0), newPane(app, 1)}
+	app.nav = newNavigator(app)
 	for _, arg := range os.Args[1:] {
 		if strings.EqualFold(arg, "/tray") || strings.EqualFold(arg, "-tray") {
 			app.startTray = true
@@ -117,8 +120,11 @@ func (a *App) run() {
 					},
 					Composite{
 						StretchFactor: 1000,
-						Layout:        HBox{MarginsZero: true, Spacing: 12},
-						Children:      []Widget{a.panes[0].widget(), a.panes[1].widget()},
+						Layout:        HBox{MarginsZero: true, Spacing: 10},
+						Children: []Widget{
+							TreeView{AssignTo: &a.nav.tv, MinSize: Size{Width: 190}, MaxSize: Size{Width: 270}},
+							a.panes[0].widget(), a.panes[1].widget(),
+						},
 					},
 					Label{
 						Text:      "Tipp: Treffer mit der Maus herausziehen – in den Explorer, Outlook, Google Drive oder Claude im Browser. Doppelklick auf einen Ordner zeigt seinen Inhalt. Zwischen den Ansichten ziehen = verschieben (Strg = kopieren).",
@@ -154,6 +160,7 @@ func (a *App) run() {
 	for _, p := range a.panes {
 		p.init()
 	}
+	a.nav.init()
 	a.setSecondPane(a.cfg.SecondPane)
 	a.setupTray()
 	a.applyHotkey()
@@ -603,6 +610,9 @@ func (a *App) activePane() *Pane {
 		if p.root.Visible() && (f == p.root.Handle() || win.IsChild(p.root.Handle(), f)) {
 			return p
 		}
+	}
+	if a.lastPane != nil && a.lastPane.root.Visible() {
+		return a.lastPane
 	}
 	return a.panes[0]
 }

@@ -44,6 +44,15 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
 * „Auch im Ordnerpfad suchen“: Wörter dürfen auch im Ordnernamen stehen
 * **F5**: Index sofort aktualisieren
 
+### Navigationsleiste wie im Explorer
+* Links im Fenster: **Schnellzugriff** (angeheftete Ordner) und **Netzlaufwerke**, beliebig aufklappbar.
+* **Klick auf einen Ordner** zeigt ihn in der Ansicht, in der zuletzt gearbeitet wurde (links oder rechts).
+* **Anheften:** Rechtsklick auf einen Ordner (im Baum oder in der Trefferliste) → **„An Schnellzugriff
+  anheften“** – oder den Ordner einfach auf „Schnellzugriff“ ziehen. Lösen: Rechtsklick → „Vom Schnellzugriff lösen“.
+* **Dateien auf einen Ordner im Baum ziehen** = verschieben (Strg = kopieren). Beim Verweilen klappt der
+  Ordner auf, das Ziel ist markiert – wie im Explorer.
+* Rechtsklick im Baum: „In linker / rechter Ansicht öffnen“, „Im Explorer öffnen“.
+
 ### Feste Ordner (z. B. „Digitale Eingänge“)
 * Knopf **„Ordner ▼“** links neben jedem Suchfeld: feste Ordner mit einem Klick anzeigen – ohne Suchen.
 * Ordner anzeigen (Doppelklick oder „Ordner auswählen und anzeigen …“), dann im Menü
