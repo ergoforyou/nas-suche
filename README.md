@@ -13,6 +13,14 @@ Schnelle Dateisuche für Synology-Netzlaufwerke (oder beliebige Ordner) unter Wi
    * **Allgemein → Mit Windows starten** anhaken.
 
 Ab dann läuft die Suche im Hintergrund (Symbol unten rechts neben der Uhr) und hält den Index aktuell.
+Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversionen).
+
+**Suchordner und Netzlaufwerke hängen zusammen:**
+* Wird ein Netzlaufwerk wie `Y:\` als Suchordner eingetragen, merkt sich das Programm automatisch,
+  wohin `Y:` zeigt, und verbindet es bei jedem Start – auch bei bereits eingetragenen Ordnern.
+* Unter „Netzlaufwerke“ hinzugefügte Freigaben werden mit dem Haken „auch durchsuchen“ direkt Suchordner.
+* **Einstellungen → Allgemein → „Als Vorgabe für alle Kollegen speichern …“** legt eine `NasSuche.json`
+  neben die EXE. Kollegen, die die EXE von dort starten, haben alles sofort eingerichtet.
 
 ## Benutzung
 

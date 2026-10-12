@@ -3,7 +3,9 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/lxn/walk"
@@ -25,6 +27,7 @@ func (a *App) showSettings() {
 		writerCB   *walk.CheckBox
 		hotkeyCB   *walk.ComboBox
 		autoCB     *walk.CheckBox
+		alsoCB     *walk.CheckBox
 	)
 	folders := append([]string(nil), a.cfg.Folders...)
 	drives := append([]DriveMap(nil), a.cfg.Drives...)
@@ -76,6 +79,11 @@ func (a *App) showSettings() {
 		}
 		folders = append(folders, p)
 		lb.SetModel(folders)
+		// Netzlaufwerk-Buchstabe? Dann Verbindung merken, damit er bei jedem Start verbunden wird.
+		if d, ok := driveForPath(p, drives); ok {
+			drives = append(drives, d)
+			driveLB.SetModel(driveStrings())
+		}
 	}
 
 	note := func(text string) Widget {
@@ -161,7 +169,22 @@ func (a *App) showSettings() {
 										drives = append(drives, DriveMap{Letter: l, Remote: r})
 										driveLB.SetModel(driveStrings())
 										remoteEdit.SetText("")
+										if alsoCB.Checked() {
+											f := r
+											if l != "" {
+												f = l + `\`
+											}
+											known := false
+											for _, x := range folders {
+												known = known || strings.EqualFold(strings.TrimRight(x, `\`), strings.TrimRight(f, `\`))
+											}
+											if !known {
+												folders = append(folders, f)
+												lb.SetModel(folders)
+											}
+										}
 									}},
+									CheckBox{AssignTo: &alsoCB, Text: "auch durchsuchen", Checked: true},
 									PushButton{Text: "Entfernen", OnClicked: func() {
 										if i := driveLB.CurrentIndex(); i >= 0 && i < len(drives) {
 											drives = append(drives[:i], drives[i+1:]...)
@@ -172,6 +195,7 @@ func (a *App) showSettings() {
 							},
 							note("Fehlen Benutzername oder Kennwort, fragt Windows einmal nach. Mit „Anmeldedaten speichern“\n" +
 								"merkt sich Windows diese sicher in der Anmeldeinformationsverwaltung – das Programm speichert keine Kennwörter."),
+							note("Tipp: Wird unter „Suchordner“ ein Netzlaufwerk wie Y:\\ eingetragen, landet es hier automatisch."),
 							VSpacer{},
 						},
 					},
@@ -219,6 +243,27 @@ func (a *App) showSettings() {
 								VSpacer{Size: 8},
 								note("Das Fenster-Schließen (X) beendet das Programm nicht – es läuft unten rechts neben der Uhr weiter.\n" +
 									"Beenden: Rechtsklick auf das Symbol → „Beenden“."),
+								VSpacer{Size: 12},
+								Label{Text: "Für Kollegen:"},
+								Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
+									PushButton{Text: "Als Vorgabe für alle Kollegen speichern …", OnClicked: func() {
+										var excl []string
+										for _, e := range strings.Split(exclEdit.Text(), ";") {
+											if e = strings.TrimSpace(e); e != "" {
+												excl = append(excl, e)
+											}
+										}
+										exportDefaults(dlg, &Config{
+											Folders: folders, Drives: drives, Excludes: excl,
+											SharedIndexDir: strings.TrimSpace(sharedEdit.Text()),
+											Hotkey:         hotkeyNames[max(0, hotkeyCB.CurrentIndex())],
+											RefreshHours:   int(hours.Value()), Workers: int(workers.Value()),
+										})
+									}},
+									HSpacer{},
+								}},
+								note("Speichert Suchordner, Netzlaufwerke und gemeinsamen Index als NasSuche.json neben die EXE.\n" +
+									"Wer die EXE von dort startet und noch nichts eingestellt hat, übernimmt alles automatisch."),
 							}},
 							VSpacer{ColumnSpan: 2},
 						},
@@ -299,4 +344,68 @@ func (a *App) showSettings() {
 			}
 		})
 	}()
+}
+
+// driveForPath: ist p ein Pfad auf einem verbundenen Netzlaufwerk (z. B. Y:\Kunden), das noch
+// nicht in der Liste steht, wird die Verbindung (Y: → \\Server\Freigabe) zurückgegeben.
+func driveForPath(p string, drives []DriveMap) (DriveMap, bool) {
+	if len(p) < 2 || p[1] != ':' {
+		return DriveMap{}, false
+	}
+	letter := strings.ToUpper(p[:1]) + ":"
+	for _, d := range drives {
+		if strings.EqualFold(d.Letter, letter) {
+			return DriveMap{}, false
+		}
+	}
+	remote := CurrentConnection(letter)
+	if remote == "" {
+		return DriveMap{}, false // lokales Laufwerk
+	}
+	return DriveMap{Letter: letter, Remote: strings.TrimRight(remote, `\`)}, true
+}
+
+// learnDrives ergänzt beim Start fehlende Netzlaufwerke der Suchordner (für bestehende Einstellungen).
+func (c *Config) learnDrives() bool {
+	changed := false
+	for _, f := range c.Folders {
+		if d, ok := driveForPath(f, c.Drives); ok {
+			c.Drives = append(c.Drives, d)
+			changed = true
+		}
+	}
+	return changed
+}
+
+// exportDefaults schreibt eine Vorgabe-Datei NasSuche.json (neben die EXE oder an einen gewählten Ort).
+func exportDefaults(owner walk.Form, c *Config) {
+	fd := &walk.FileDialog{
+		Title:          "Vorgabe für alle Kollegen speichern (neben die NasSuche.exe)",
+		Filter:         "Vorgabe (NasSuche.json)|NasSuche.json",
+		InitialDirPath: exeDir(),
+		FilePath:       filepath.Join(exeDir(), "NasSuche.json"),
+	}
+	if ok, _ := fd.ShowSave(owner); !ok || fd.FilePath == "" {
+		return
+	}
+	path := fd.FilePath
+	if !strings.EqualFold(filepath.Base(path), "NasSuche.json") {
+		path = filepath.Join(filepath.Dir(path), "NasSuche.json")
+	}
+	c.Version = 2
+	b, _ := json.MarshalIndent(c, "", "  ")
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		walk.MsgBox(owner, brandProduct, "Konnte nicht gespeichert werden:\n"+err.Error(), walk.MsgBoxIconError)
+		return
+	}
+	msg := "Gespeichert: " + path + "\n\nLegen Sie die NasSuche.exe in denselben Ordner (z. B. auf dem NAS). " +
+		"Kollegen starten sie von dort – Suchordner und Netzlaufwerke sind dann schon eingerichtet."
+	for _, f := range c.Folders {
+		if len(f) >= 2 && f[1] == ':' {
+			msg += "\n\nHinweis: Laufwerksbuchstaben (z. B. " + f[:2] + ") werden bei den Kollegen automatisch " +
+				"verbunden, sofern sie in der Liste „Netzlaufwerke“ stehen."
+			break
+		}
+	}
+	walk.MsgBox(owner, brandProduct, msg, walk.MsgBoxIconInformation)
 }

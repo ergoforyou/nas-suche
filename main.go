@@ -298,6 +298,12 @@ func (a *App) startup() {
 
 	<-decided
 	if !firstRun {
+		// Netzlaufwerke der Suchordner (z. B. Y:\) merken, damit sie künftig automatisch verbunden werden
+		a.mw.Synchronize(func() {
+			if a.cfg.learnDrives() {
+				a.cfg.Save()
+			}
+		})
 		a.connectDrives(false)
 		a.mw.Synchronize(func() { a.maintain(a.cfg.sharedIndexPath()) })
 	}
