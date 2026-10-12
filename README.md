@@ -34,6 +34,8 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
   Die Auswahl bleibt gespeichert.
   * Bilder: jpg, png, gif, tif, heic, webp, bmp, svg, psd, RAW-Formate …
   * Office: Word, Excel, PowerPoint, OpenDocument, csv, rtf, Visio, OneNote, E-Mails (msg/eml)
+* **Trefferliste:** Ordner stehen immer oben, fett und gelb hinterlegt. Jede Zeile hat das Windows-Symbol
+  ihres Dateityps, die Spalte **Typ** ist farbig: PDF rot, Bilder grün, Office blau, Ordner braun.
 * Mehrere Wörter: alle müssen im Namen vorkommen – `angebot müller`
 * Platzhalter: `*.pdf`, `rechnung 2026*`
 * „Auch im Ordnerpfad suchen“: Wörter dürfen auch im Ordnernamen stehen

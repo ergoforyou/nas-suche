@@ -75,13 +75,15 @@ func (m *ResultModel) Value(row, col int) interface{} {
 	case 0:
 		return e.Name
 	case 1:
-		return dir
+		return typeLabel(e.Name, e.IsDir)
 	case 2:
+		return dir
+	case 3:
 		if e.IsDir {
-			return "Ordner"
+			return ""
 		}
 		return formatSize(e.Size)
-	case 3:
+	case 4:
 		if e.Mod == 0 {
 			return ""
 		}
@@ -90,8 +92,14 @@ func (m *ResultModel) Value(row, col int) interface{} {
 	return ""
 }
 
+// Tabellenspalte → Sortierschlüssel (siehe Index.SortResults)
+var colSortKey = []int{0, 4, 1, 2, 3}
+
 func (m *ResultModel) Sort(col int, order walk.SortOrder) error {
-	m.sortCol, m.asc = col, order == walk.SortAscending
+	m.sortCol, m.asc = 0, order == walk.SortAscending
+	if col >= 0 && col < len(colSortKey) {
+		m.sortCol = colSortKey[col]
+	}
 	m.applySort()
 	m.reset()
 	return m.SorterBase.Sort(col, order)
@@ -134,6 +142,10 @@ func sortFolderItems(items []Entry, col int, asc bool) {
 			case 3:
 				if x.Mod != y.Mod {
 					return x.Mod < y.Mod
+				}
+			case 4:
+				if tx, ty := fileExt(strings.ToLower(x.Name)), fileExt(strings.ToLower(y.Name)); tx != ty {
+					return tx < ty
 				}
 			}
 			return naturalLess(strings.ToLower(x.Name), strings.ToLower(y.Name))

@@ -347,7 +347,7 @@ func globMatch(pat, s string) bool {
 	return pi == len(p)
 }
 
-// SortResults sortiert Trefferliste nach Spalte.
+// SortResults sortiert die Trefferliste. col: 0 Name, 1 Ordner, 2 Größe, 3 Geändert, 4 Typ.
 func (ix *Index) SortResults(res []int, col int, asc bool) {
 	less := func(a, b int) bool {
 		ea, eb := &ix.Entries[a], &ix.Entries[b]
@@ -364,6 +364,10 @@ func (ix *Index) SortResults(res []int, col int, asc bool) {
 			if ea.Mod != eb.Mod {
 				return ea.Mod < eb.Mod
 			}
+		case 4:
+			if ta, tb := fileExt(ix.lowerNames[a]), fileExt(ix.lowerNames[b]); ta != tb {
+				return ta < tb
+			}
 		}
 		if ix.lowerNames[a] != ix.lowerNames[b] {
 			return naturalLess(ix.lowerNames[a], ix.lowerNames[b])
@@ -371,11 +375,23 @@ func (ix *Index) SortResults(res []int, col int, asc bool) {
 		return naturalLess(ix.lowerDirs[ea.Dir], ix.lowerDirs[eb.Dir])
 	}
 	sort.SliceStable(res, func(i, j int) bool {
+		// Ordner stehen immer oben (wie im Explorer)
+		if di, dj := ix.Entries[res[i]].IsDir, ix.Entries[res[j]].IsDir; di != dj {
+			return di
+		}
 		if asc {
 			return less(res[i], res[j])
 		}
 		return less(res[j], res[i])
 	})
+}
+
+// fileExt liefert die Endung ohne Punkt ("" wenn keine).
+func fileExt(lowerName string) string {
+	if i := strings.LastIndexByte(lowerName, '.'); i > 0 {
+		return lowerName[i+1:]
+	}
+	return ""
 }
 
 // naturalLess sortiert wie der Windows-Explorer: "Ordner 2" vor "Ordner 10".

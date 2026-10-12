@@ -121,12 +121,14 @@ func (p *Pane) widget() Widget {
 				AlternatingRowBG: true,
 				MultiSelection:   true,
 				Columns: []TableViewColumn{
-					{Title: "Name", Width: 250},
-					{Title: "Ordner", Width: 260},
+					{Title: "Name", Width: 260},
+					{Title: "Typ", Width: 85},
+					{Title: "Ordner", Width: 250},
 					{Title: "Größe", Width: 70, Alignment: AlignFar},
 					{Title: "Geändert", Width: 105},
 				},
 				Model:           p.model,
+				StyleCell:       p.styleCell,
 				OnItemActivated: p.activate,
 				ContextMenuItems: []MenuItem{
 					Action{Text: "Öffnen\tEnter", OnTriggered: p.activate},
@@ -149,6 +151,7 @@ func (p *Pane) widget() Widget {
 // init wird nach dem Erzeugen des Fensters aufgerufen.
 func (p *Pane) init() {
 	p.model.onReset = func() { p.tv.Invalidate() }
+	onlyNameIcons(p.tv)
 	p.tv.KeyDown().Attach(func(key walk.Key) {
 		switch {
 		case key == walk.KeyC && walk.ControlDown() && walk.ShiftDown():
