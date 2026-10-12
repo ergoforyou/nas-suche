@@ -190,43 +190,11 @@ func (a *MacApp) startup() {
 		a.showSettings()
 		return
 	}
-	a.mountShares()
+	a.connectAndCheck(false)
 	a.openStartFolders()
 	a.maintain()
 	for range time.Tick(5 * time.Minute) {
 		a.maintain()
-	}
-}
-
-// smbURL wandelt \\Server\Freigabe oder smb://Server/Freigabe in eine smb-Adresse.
-func smbURL(remote string) string {
-	r := strings.TrimSpace(remote)
-	if strings.HasPrefix(strings.ToLower(r), "smb://") {
-		return r
-	}
-	r = strings.TrimLeft(strings.ReplaceAll(r, `\`, "/"), "/")
-	if r == "" {
-		return ""
-	}
-	return "smb://" + r
-}
-
-// mountShares verbindet die eingetragenen NAS-Freigaben (macOS fragt einmal nach dem Kennwort
-// und bietet an, es im Schlüsselbund zu sichern).
-func (a *MacApp) mountShares() {
-	if runtime.GOOS != "darwin" {
-		return
-	}
-	for _, d := range a.cfg.Drives {
-		u := smbURL(d.Remote)
-		if u == "" {
-			continue
-		}
-		share := u[strings.LastIndex(u, "/")+1:]
-		if _, err := os.Stat(filepath.Join("/Volumes", share)); err == nil {
-			continue
-		}
-		exec.Command("osascript", "-e", `mount volume "`+u+`"`).Run()
 	}
 }
 

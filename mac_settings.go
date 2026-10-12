@@ -3,6 +3,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -25,11 +26,28 @@ func (a *MacApp) showSettings() {
 	list.OnSelected = func(i widget.ListItemID) { sel = i }
 
 	pathEntry := widget.NewEntry()
-	pathEntry.SetPlaceHolder("z. B. /Volumes/Daten")
+	pathEntry.SetPlaceHolder("z. B. /Volumes/Daten oder smb://DiskStation/Daten")
+	var sharesEntry *widget.Entry
 	addPath := func(p string) {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			return
+		}
+		// smb://Server/Freigabe/… → Freigabe beim Start verbinden, gesucht wird unter /Volumes/Freigabe/…
+		if isNetworkPath(p) {
+			u, sub := splitSMB(p)
+			if shareName(u) == "" {
+				dialog.ShowInformation("Freigabe fehlt", "Bitte die Freigabe mit angeben, z. B. "+u+"/Daten", a.w)
+				return
+			}
+			if !strings.Contains(strings.ToLower(sharesEntry.Text), strings.ToLower(u)) {
+				sharesEntry.SetText(strings.TrimSpace(sharesEntry.Text + "\n" + u))
+			}
+			local := mountPoint(u)
+			if local == "" {
+				local = filepath.Join("/Volumes", shareName(u))
+			}
+			p = filepath.Join(local, sub)
 		}
 		for _, f := range folders {
 			if f == p {
@@ -40,6 +58,10 @@ func (a *MacApp) showSettings() {
 		list.Refresh()
 	}
 	choose := widget.NewButton("Ordner auswählen …", func() {
+		if p, handled := chooseFolder("Suchordner auswählen (NAS-Freigaben stehen unter dem Servernamen bzw. /Volumes)"); handled {
+			addPath(p)
+			return
+		}
 		dialog.NewFolderOpen(func(u fyne.ListableURI, err error) {
 			if err == nil && u != nil {
 				addPath(u.Path())
@@ -60,7 +82,7 @@ func (a *MacApp) showSettings() {
 	for _, d := range c.Drives {
 		shares = append(shares, smbURL(d.Remote))
 	}
-	sharesEntry := widget.NewMultiLineEntry()
+	sharesEntry = widget.NewMultiLineEntry()
 	sharesEntry.SetText(strings.Join(shares, "\n"))
 	sharesEntry.SetPlaceHolder("smb://DiskStation/Daten   (eine Freigabe pro Zeile)")
 	sharesEntry.SetMinRowsVisible(3)
@@ -113,7 +135,7 @@ func (a *MacApp) showSettings() {
 			}
 			c.Save()
 			go func() {
-				a.mountShares()
+				a.connectAndCheck(true)
 				if changed && len(c.Folders) > 0 {
 					a.startIndex()
 				}
