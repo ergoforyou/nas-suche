@@ -119,6 +119,68 @@ async function sourcesFromTab(tabId, mode, useTarget) {
   return { raws: res.sources.map((s) => base64ToBytes(s.base64)), separate: !!res.separate };
 }
 
+// ---------- an .eml the user downloaded from Outlook/Gmail ----------
+
+const MAIL_TAB_PATTERNS = [
+  'https://outlook.office.com/*', 'https://outlook.office365.com/*', 'https://outlook.live.com/*',
+  'https://outlook.cloud.microsoft/*', 'https://mail.google.com/*',
+];
+
+function waitForDownload(id) {
+  return new Promise((resolve) => {
+    const check = () => chrome.downloads.search({ id }, ([item]) => {
+      if (!item || item.state !== 'in_progress') resolve(item);
+      else setTimeout(check, 300);
+    });
+    check();
+  });
+}
+
+function readLocalFile(path) {
+  const url = 'file:///' + path.replace(/\\/g, '/').replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:');
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url);
+    xhr.responseType = 'arraybuffer';
+    xhr.onload = () => (xhr.response && xhr.response.byteLength ? resolve(new Uint8Array(xhr.response)) : reject(new Error('Datei leer')));
+    xhr.onerror = () => reject(new Error('Datei nicht lesbar'));
+    xhr.send();
+  });
+}
+
+async function rawFromDownload(id) {
+  let [item] = await chrome.downloads.search({ id });
+  if (!item) throw new Error('Download nicht gefunden.');
+  const url = item.finalUrl || item.url;
+  const errors = [];
+
+  if (url.startsWith('data:')) return new Uint8Array(await (await fetch(url)).arrayBuffer());
+
+  // 1. ask the mail tab to read the file it offered (blob: or https: URL)
+  const tabs = await chrome.tabs.query({ url: MAIL_TAB_PATTERNS });
+  const blobOrigin = url.startsWith('blob:') ? url.slice(5).replace(/^(https?:\/\/[^/]+).*$/, '$1') : null;
+  tabs.sort((a, b) => Number(!!blobOrigin && !a.url.startsWith(blobOrigin)) - Number(!!blobOrigin && !b.url.startsWith(blobOrigin)));
+  for (const tab of tabs) {
+    if (blobOrigin && !tab.url.startsWith(blobOrigin)) continue;
+    try {
+      const r = await chrome.tabs.sendMessage(tab.id, { type: 'MAILPDF_FETCH_URL', url });
+      if (r && r.ok) return base64ToBytes(r.base64);
+      errors.push(r ? r.error : 'keine Antwort');
+    } catch (e) {
+      errors.push(e.message);
+    }
+  }
+
+  // 2. read the finished download from disk (needs "Zugriff auf Datei-URLs zulassen")
+  item = await waitForDownload(id);
+  if (item && item.state === 'complete' && await chrome.extension.isAllowedFileSchemeAccess()) {
+    try { return await readLocalFile(item.filename); } catch (e) { errors.push(e.message); }
+  }
+  const err = new Error('Die heruntergeladene .eml-Datei konnte nicht gelesen werden. Bitte in chrome://extensions → Details dieser Erweiterung „Zugriff auf Datei-URLs zulassen“ einschalten – oder die Datei hier hineinziehen.');
+  err.details = [`URL: ${url.slice(0, 60)}`, ...errors];
+  throw err;
+}
+
 // ---------- main pipeline ----------
 
 async function convert(rawList, settings) {
@@ -185,8 +247,8 @@ function showError(err) {
   showResult('error', `<p><strong>Das hat leider nicht geklappt.</strong></p><p>${escapeHtml(err.message || String(err))}</p>` +
     (err.details ? `<details open><summary>Technische Details</summary><pre id="diag">${escapeHtml(err.details.join('\n'))}</pre>` +
       '<button id="copydiag">Details kopieren</button></details>' : '') +
-    '<p class="hint">Alternative: In Outlook/Gmail die E-Mail als <b>.eml</b> herunterladen ' +
-    '(Outlook: „…“ → „Speichern unter“/„Herunterladen“, Gmail: „⋮“ → „Nachricht herunterladen“) und unten ablegen.</p>');
+    '<p class="hint">Alternative, die immer geht: In Outlook Rechtsklick auf die E-Mail → „Herunterladen“ → „Als EML herunterladen“ ' +
+    '(Gmail: „⋮“ → „Nachricht herunterladen“). Daraus macht die Erweiterung automatisch die PDF. Oder die .eml-Datei unten ablegen.</p>');
   const copy = document.getElementById('copydiag');
   if (copy) {
     copy.onclick = () => navigator.clipboard.writeText(document.getElementById('diag').textContent)
@@ -242,6 +304,20 @@ function showDropZone() {
 // ---------- start ----------
 
 (async () => {
+  const downloadId = params.get('download') ? Number(params.get('download')) : null;
+  if (downloadId != null) {
+    const settings = await mailPdfGetSettings();
+    try {
+      step('Heruntergeladene E-Mail (.eml) wird gelesen …');
+      const raw = await rawFromDownload(downloadId);
+      stepDone();
+      await runAndSave([raw], settings);
+      if (settings.autoClose && !settings.saveAs) setTimeout(() => window.close(), 2500);
+    } catch (e) {
+      showError(e);
+    }
+    return;
+  }
   const tabId = params.get('tab') ? Number(params.get('tab')) : null;
   if (tabId == null) {
     showDropZone();

@@ -18,6 +18,16 @@
   }, true);
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (!msg || msg.type !== 'MAILPDF_FETCH_URL') return;
+    // a file this page offered for download (blob: URLs only work inside the page's origin)
+    fetch(msg.url, { credentials: 'include' })
+      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then((buf) => sendResponse({ ok: true, base64: bytesToBase64(new Uint8Array(buf)) }))
+      .catch((e) => sendResponse({ ok: false, error: String(e.message || e) }));
+    return true;
+  });
+
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg || msg.type !== 'MAILPDF_GET_SOURCES') return;
     const target = msg.useTarget && Date.now() - lastTargetAt < 120000 ? lastTarget : null;
     getSources(msg.mode || 'single', target)
@@ -219,7 +229,7 @@
   function jwtInfo(tok) {
     try {
       const p = JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-      return { exp: p.exp, aud: p.aud || '' };
+      return { exp: p.exp, aud: p.aud || '', upn: p.preferred_username || p.upn || p.unique_name || p.email || '' };
     } catch (e) {
       return {};
     }
@@ -229,10 +239,12 @@
     const now = Date.now() / 1000;
     const out = [];
     for (const [host, val] of Object.entries(captured || {})) {
-      const t = String(val).replace(/^bearer\s+/i, '');
-      const j = jwtInfo(t);
+      const raw = String(val);
+      const isBearer = /^bearer\s/i.test(raw);
+      const t = raw.replace(/^bearer\s+/i, '');
+      const j = isBearer ? jwtInfo(t) : {};
       if (j.exp && j.exp < now + 30) continue;
-      out.push({ bearer: 'Bearer ' + t, aud: `${j.aud || ''} ${host}`, source: 'Seite' });
+      out.push({ bearer: isBearer ? 'Bearer ' + t : raw, aud: `${j.aud || ''} ${host}`, source: 'Seite', serviceOnly: !isBearer });
     }
     for (const store of [window.localStorage, window.sessionStorage]) {
       let keys = [];
@@ -288,10 +300,10 @@
     const separate = ids.length > 1;
 
     const outlookTokens = tokens.filter((t) => OUTLOOK_AUD.test(t.aud));
-    const graphTokens = tokens.filter((t) => GRAPH_AUD.test(t.aud));
+    const graphTokens = tokens.filter((t) => GRAPH_AUD.test(t.aud) && !t.serviceOnly);
     const strategies = [
       serviceStrategy(canary, outlookTokens, st.anchorMailbox, diag),
-      restStrategy(outlookTokens, diag),
+      restStrategy(outlookTokens.filter((t) => !t.serviceOnly), diag),
       graphStrategy(graphTokens, diag),
     ].filter(Boolean);
 
@@ -446,7 +458,14 @@
       for (const c of combos) {
         let res;
         try {
-          res = await fetch(c.b + path, { headers: { Authorization: c.t.bearer, Accept: asBytes ? '*/*' : 'application/json' } });
+          const headers = { Authorization: c.t.bearer, Accept: asBytes ? '*/*' : 'application/json' };
+          if (fields.anchor) {
+            // like Outlook itself: route the request to the user's mailbox server
+            const upn = jwtInfo(c.t.bearer.replace(/^bearer\s+/i, '')).upn;
+            if (upn) headers['X-AnchorMailbox'] = upn;
+            headers['X-PreferServerAffinity'] = 'true';
+          }
+          res = await fetch(c.b + path, { headers });
         } catch (e) {
           errors.push(`${new URL(c.b).host}: ${e.message}`);
           continue;
@@ -477,8 +496,8 @@
   }
 
   function restStrategy(tokens) {
-    const bases = uniq([`${location.origin}/api/v2.0`, 'https://outlook.office.com/api/v2.0']);
-    return httpApiStrategy('Outlook-REST', tokens, bases, { conv: 'ConversationId', id: 'Id', date: 'ReceivedDateTime' });
+    const bases = uniq([`${location.origin}/api/v2.0`, 'https://outlook.office.com/api/v2.0', 'https://outlook.office.com/api/beta']);
+    return httpApiStrategy('Outlook-REST', tokens, bases, { conv: 'ConversationId', id: 'Id', date: 'ReceivedDateTime', anchor: true });
   }
 
   function graphStrategy(tokens) {

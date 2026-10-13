@@ -9,6 +9,7 @@ const MAILPDF_DEFAULTS = {
   embedOriginals: false,
   embedEml: false,
   autoClose: true,
+  autoEml: true,
 };
 
 function mailPdfGetSettings() {

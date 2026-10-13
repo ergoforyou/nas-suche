@@ -80,14 +80,14 @@ chrome.webRequest.onBeforeSendHeaders.addListener((details) => {
   const found = {};
   for (const h of details.requestHeaders || []) {
     const n = h.name.toLowerCase();
-    if (n === 'authorization' && /^bearer\s/i.test(h.value || '')) found.bearer = h.value;
+    if (n === 'authorization' && /^(bearer|msauth)/i.test(h.value || '')) found.bearer = h.value;
     else if (n === 'x-owa-canary') found.canary = h.value;
     else if (n === 'x-anchormailbox') found.anchorMailbox = h.value;
   }
   if (!found.bearer && !found.canary && !found.anchorMailbox) return;
   const host = new URL(details.url).host;
   chrome.storage.session.get({ mailpdfAuth: { tokens: {} } }, ({ mailpdfAuth }) => {
-    if (found.bearer) mailpdfAuth.tokens[host] = found.bearer;
+    if (found.bearer) mailpdfAuth.tokens[host + (/^bearer/i.test(found.bearer) ? '' : '|msauth')] = found.bearer;
     if (found.canary) mailpdfAuth.canary = found.canary;
     if (found.anchorMailbox) mailpdfAuth.anchorMailbox = found.anchorMailbox;
     chrome.storage.session.set({ mailpdfAuth });
@@ -98,4 +98,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.type !== 'MAILPDF_GET_AUTH') return;
   chrome.storage.session.get({ mailpdfAuth: { tokens: {} } }, ({ mailpdfAuth }) => sendResponse(mailpdfAuth));
   return true;
+});
+
+// Plan B: Outlook's own "Herunterladen → Als EML herunterladen" (or Gmail's
+// "Nachricht herunterladen") – every .eml downloaded from a mail site becomes a PDF.
+const handledDownloads = new Set();
+
+async function maybeConvertDownload(id) {
+  if (handledDownloads.has(id)) return;
+  const [item] = await chrome.downloads.search({ id });
+  if (!item || item.byExtensionId === chrome.runtime.id) return;
+  const isEml = /\.eml$/i.test(item.filename || '') || item.mime === 'message/rfc822' || /\.eml(\?|$)/i.test(item.url);
+  if (!isEml) return;
+  const where = `${item.url} ${item.finalUrl || ''} ${item.referrer || ''}`;
+  if (!/outlook\.|office\.net|office365|cloud\.microsoft|mail\.google\.com|googleusercontent/i.test(where)) return;
+  const { autoEml } = await chrome.storage.sync.get({ autoEml: true });
+  if (!autoEml || handledDownloads.has(id)) return;
+  handledDownloads.add(id);
+  openJob({ download: id });
+}
+
+chrome.downloads.onCreated.addListener((item) => maybeConvertDownload(item.id));
+chrome.downloads.onChanged.addListener((delta) => {
+  if (delta.filename) maybeConvertDownload(delta.id);
 });

@@ -28,6 +28,16 @@ einen roten **„📄 PDF“-Knopf** ein. Der Knopf lässt sich mit der Maus an 
 | Chrome-Menü | Rechtsklick **in den Text** einer geöffneten E-Mail → „E-Mail als PDF speichern (mit Anhängen)“, sofern die Seite dort das Chrome-Menü zeigt |
 | .eml- oder .msg-Datei (z. B. aus Google Drive) | Rechtsklick auf das Symbol in der Symbolleiste → „EML-/MSG-Datei in PDF umwandeln …“ und die Datei hineinziehen |
 
+
+### Weg 2 – über „Als EML herunterladen“ (funktioniert immer)
+
+In Outlook: Rechtsklick auf die E-Mail → **„Herunterladen“ → „Als EML herunterladen“**
+(Gmail: „⋮“ → „Nachricht herunterladen“). Sobald die .eml-Datei heruntergeladen ist, erstellt die
+Erweiterung **automatisch** die PDF mit allen Anhängen. Das lässt sich in den Einstellungen abschalten.
+
+Falls dabei die Meldung „konnte nicht gelesen werden“ erscheint: In `chrome://extensions` → *Details*
+dieser Erweiterung → **„Zugriff auf Datei-URLs zulassen“** einschalten.
+
 Kurz erscheint ein kleines Fortschrittsfenster. Danach liegt die PDF unter
 `Downloads\E-Mail-Archiv\2026-10-06_Frank Schwartz_Unterlagen.pdf`.
 Ordner und Dateiname lassen sich in den Einstellungen ändern.

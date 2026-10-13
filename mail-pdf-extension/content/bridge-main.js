@@ -15,7 +15,7 @@
     const n = String(name).toLowerCase();
     let host = location.host;
     try { host = new URL(String(url), location.href).host; } catch (e) { /* ignore */ }
-    if (n === 'authorization' && /^bearer\s/i.test(value)) state.tokens[host] = value;
+    if (n === 'authorization' && /^(bearer|msauth)/i.test(value)) state.tokens[host + (/^bearer/i.test(value) ? '' : '|msauth')] = value;
     else if (n === 'x-owa-canary') state.canary = value;
     else if (n === 'x-anchormailbox') state.anchorMailbox = value;
   }
