@@ -247,7 +247,8 @@
         } catch (e) { /* encrypted or not JSON */ }
       }
     }
-    return out;
+    const seenTok = new Set();
+    return out.filter((t) => !seenTok.has(t.bearer) && seenTok.add(t.bearer));
   }
 
   const OUTLOOK_AUD = /outlook\.office(365)?\.com|outlook\.cloud\.microsoft|outlook\.live\.com|00000002-0000-0ff1-ce00-000000000000/i;
@@ -271,8 +272,11 @@
     else if (selectedRows.length) ids = [convOf(selectedRows[0])];
 
     const st = await bridge();
-    const tokens = collectTokens(st.tokens);
-    const canary = st.canary || getCookie('X-OWA-CANARY');
+    let seen = {};
+    try { seen = (await chrome.runtime.sendMessage({ type: 'MAILPDF_GET_AUTH' })) || {}; } catch (e) { /* ignore */ }
+    const tokens = collectTokens({ ...(seen.tokens || {}), ...(st.tokens || {}) });
+    const canary = st.canary || seen.canary || getCookie('X-OWA-CANARY');
+    st.anchorMailbox = st.anchorMailbox || seen.anchorMailbox;
     const diag = [
       `Seite: ${location.host}${location.pathname.slice(0, 40)}`,
       `E-Mail-ID: ${ids.length ? ids.map((i) => `${i.slice(0, 8)}… (${isConversationId(i) ? 'Unterhaltung' : 'Nachricht'})`).join(', ') : 'keine gefunden'}`,
