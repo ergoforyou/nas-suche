@@ -16,13 +16,17 @@ Die Umwandlung läuft komplett lokal im Browser. Es wird nichts an fremde Server
 
 ## Bedienung
 
+Gmail und Outlook haben ein eigenes Rechtsklick-Menü. Deshalb blendet die Erweiterung unten rechts
+einen roten **„📄 PDF“-Knopf** ein. Der Knopf lässt sich mit der Maus an eine andere Stelle ziehen.
+
 | Was | Wie |
 |---|---|
-| Geöffnete E-Mail speichern | Rechtsklick in die E-Mail → **„E-Mail als PDF speichern (mit Anhängen)“** |
-| Ohne Öffnen | Rechtsklick auf die E-Mail in der Liste → derselbe Menüpunkt |
-| Ganzen Verlauf | Rechtsklick → **„Ganzen Verlauf als PDF speichern“** |
-| Per Tastatur | **Alt+Shift+P** (oder das rote Symbol in der Symbolleiste) |
-| .eml- oder .msg-Datei (z. B. aus Google Drive) | Rechtsklick auf das Symbol → „EML-/MSG-Datei in PDF umwandeln …“ und die Datei hineinziehen |
+| Geöffnete E-Mail speichern | E-Mail öffnen → **📄 PDF** klicken |
+| Mehrere E-Mails auf einmal | In der Liste anhaken/markieren → **📄 PDF** → je E-Mail eine eigene PDF |
+| Ganzen Verlauf in eine PDF | **Umschalt + Klick** auf 📄 PDF |
+| Per Tastatur | **Alt+Shift+P** (oder das rote Symbol in der Chrome-Symbolleiste) |
+| Chrome-Menü | Rechtsklick **in den Text** einer geöffneten E-Mail → „E-Mail als PDF speichern (mit Anhängen)“, sofern die Seite dort das Chrome-Menü zeigt |
+| .eml- oder .msg-Datei (z. B. aus Google Drive) | Rechtsklick auf das Symbol in der Symbolleiste → „EML-/MSG-Datei in PDF umwandeln …“ und die Datei hineinziehen |
 
 Kurz erscheint ein kleines Fortschrittsfenster. Danach liegt die PDF unter
 `Downloads\E-Mail-Archiv\2026-10-06_Frank Schwartz_Unterlagen.pdf`.

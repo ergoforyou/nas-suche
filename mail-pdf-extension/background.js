@@ -55,3 +55,10 @@ chrome.action.onClicked.addListener((tab) => {
     openJob({});
   }
 });
+
+// Floating "PDF" button inside Gmail/Outlook
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg && msg.type === 'MAILPDF_START' && sender.tab) {
+    openJob({ tab: sender.tab.id, mode: msg.mode === 'thread' ? 'thread' : 'single', target: '1' });
+  }
+});

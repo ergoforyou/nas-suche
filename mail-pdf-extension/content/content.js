@@ -12,15 +12,67 @@
     lastTarget = e.target;
     lastTargetAt = Date.now();
   }, true);
+  // A normal click elsewhere (e.g. opening another mail) makes the last right-click stale.
+  document.addEventListener('mousedown', (e) => {
+    if (e.button === 0 && !(e.target && e.target.id === 'mailpdf-host')) lastTarget = null;
+  }, true);
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg || msg.type !== 'MAILPDF_GET_SOURCES') return;
     const target = msg.useTarget && Date.now() - lastTargetAt < 120000 ? lastTarget : null;
     getSources(msg.mode || 'single', target)
-      .then((sources) => sendResponse({ ok: true, sources }))
+      .then((r) => sendResponse({ ok: true, ...r }))
       .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
     return true;
   });
+
+  // ---------- floating "PDF" button (Gmail/Outlook use their own context menus) ----------
+
+  function addButton() {
+    if (document.getElementById('mailpdf-host') || !document.body) return;
+    const host = document.createElement('div');
+    host.id = 'mailpdf-host';
+    let pos = {};
+    try { pos = JSON.parse(localStorage.getItem('mailpdf-pos') || '{}'); } catch (e) { /* ignore */ }
+    host.style.cssText = `position:fixed;z-index:2147483000;right:${pos.right ?? 90}px;bottom:${pos.bottom ?? 24}px;`;
+    const root = host.attachShadow({ mode: 'closed' });
+    root.innerHTML = `<style>
+      button{all:initial;display:flex;align-items:center;gap:6px;cursor:pointer;background:#c62828;color:#fff;
+        font:600 13px "Segoe UI",Arial,sans-serif;padding:8px 14px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.35);
+        user-select:none;opacity:.88;transition:opacity .15s}
+      button:hover{opacity:1}
+    </style><button title="Geöffnete bzw. markierte E-Mail(s) als PDF mit allen Anhängen speichern&#10;Umschalt+Klick: ganzen Verlauf&#10;Ziehen zum Verschieben">📄 PDF</button>`;
+    const btn = root.querySelector('button');
+    let drag = null;
+    btn.addEventListener('mousedown', (e) => {
+      const r = host.getBoundingClientRect();
+      drag = { x: e.clientX, y: e.clientY, right: innerWidth - r.right, bottom: innerHeight - r.bottom, moved: false };
+      const move = (ev) => {
+        const dx = ev.clientX - drag.x; const dy = ev.clientY - drag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+        if (!drag.moved) return;
+        host.style.right = Math.max(0, drag.right - dx) + 'px';
+        host.style.bottom = Math.max(0, drag.bottom - dy) + 'px';
+      };
+      const up = () => {
+        removeEventListener('mousemove', move, true);
+        removeEventListener('mouseup', up, true);
+        if (drag.moved) {
+          try { localStorage.setItem('mailpdf-pos', JSON.stringify({ right: parseInt(host.style.right), bottom: parseInt(host.style.bottom) })); } catch (e) { /* ignore */ }
+        }
+      };
+      addEventListener('mousemove', move, true);
+      addEventListener('mouseup', up, true);
+    });
+    btn.addEventListener('click', (e) => {
+      if (drag && drag.moved) return;
+      chrome.runtime.sendMessage({ type: 'MAILPDF_START', mode: e.shiftKey ? 'thread' : 'single' });
+    });
+    document.body.appendChild(host);
+  }
+  addButton();
+  new MutationObserver(() => addButton()).observe(document.documentElement, { childList: true });
+  setInterval(addButton, 3000);
 
   async function getSources(mode, target) {
     if (location.hostname === 'mail.google.com') return gmailSources(mode, target);
@@ -71,36 +123,42 @@
 
   // ---------- Gmail ----------
 
+  const isVisible = (el) => !!(el && (el.offsetParent !== null || el.getClientRects().length));
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+
   async function gmailSources(mode, target) {
     const u = (location.pathname.match(/\/mail\/u\/(\d+)/) || [])[1] || '0';
     const { ik } = await bridge();
 
-    let ids = [];
-    const allMsgs = [...document.querySelectorAll('[data-legacy-message-id]')]
-      .filter((el) => el.offsetParent !== null || el.getClientRects().length);
-    const uniq = (arr) => [...new Set(arr.filter(Boolean))];
-
+    const openMsgs = [...document.querySelectorAll('[data-legacy-message-id]')].filter(isVisible);
+    const rowId = (row) => {
+      const el = row && (row.matches('[data-legacy-last-message-id]') ? row : row.querySelector('[data-legacy-last-message-id]'));
+      return el ? el.getAttribute('data-legacy-last-message-id') : null;
+    };
+    const checkedRows = [...document.querySelectorAll('tr.zA')].filter((r) => isVisible(r) &&
+      (r.classList.contains('x7') || r.querySelector('[role="checkbox"][aria-checked="true"]')));
     const targetMsg = target && target.closest && target.closest('[data-legacy-message-id]');
-    const targetRow = target && target.closest && (target.closest('[data-legacy-last-message-id]') ||
-      (target.closest('tr') && target.closest('tr').querySelector('[data-legacy-last-message-id]')));
+    const targetRow = target && target.closest && target.closest('tr.zA');
 
-    if (mode === 'thread' && allMsgs.length) {
-      ids = uniq(allMsgs.map((el) => el.getAttribute('data-legacy-message-id')));
+    let ids = [];
+    let separate = false;
+    if (mode === 'thread' && openMsgs.length) {
+      ids = uniq(openMsgs.map((el) => el.getAttribute('data-legacy-message-id')));
     } else if (targetMsg) {
       ids = [targetMsg.getAttribute('data-legacy-message-id')];
-    } else if (targetRow) {
-      ids = [targetRow.getAttribute('data-legacy-last-message-id')];
-    } else if (allMsgs.length) {
-      ids = [allMsgs[allMsgs.length - 1].getAttribute('data-legacy-message-id')];
-    } else {
-      const sel = document.querySelector('tr.zA.x7 [data-legacy-last-message-id], tr.zA.btb [data-legacy-last-message-id]');
-      if (sel) ids = [sel.getAttribute('data-legacy-last-message-id')];
+    } else if (targetRow && rowId(targetRow) && !(checkedRows.length > 1 && checkedRows.includes(targetRow))) {
+      ids = [rowId(targetRow)];
+    } else if (checkedRows.length) {
+      ids = uniq(checkedRows.map(rowId));
+      separate = ids.length > 1;
+    } else if (openMsgs.length) {
+      ids = [openMsgs[openMsgs.length - 1].getAttribute('data-legacy-message-id')];
     }
-    if (!ids.length) throw new Error('Keine E-Mail gefunden. Bitte die E-Mail öffnen oder direkt auf die E-Mail rechtsklicken.');
+    if (!ids.length) throw new Error('Keine E-Mail gefunden. Bitte die E-Mail öffnen oder in der Liste anhaken.');
 
     const sources = [];
     for (const id of ids) sources.push({ base64: bytesToBase64(await gmailFetchRaw(u, id, ik)) });
-    return sources;
+    return { sources, separate };
   }
 
   async function gmailFetchRaw(u, legacyId, ik) {
@@ -155,15 +213,17 @@
   const isConversationId = (id) => /^AAQk/.test(id);
 
   async function outlookSources(mode, target) {
-    let id = null;
-    const row = target && target.closest && target.closest('[data-convid]');
-    if (row) id = normalizeEwsId(row.getAttribute('data-convid'));
-    if (!id) id = outlookIdFromUrl();
-    if (!id) {
-      const selected = document.querySelector('[data-convid][aria-selected="true"]');
-      if (selected) id = normalizeEwsId(selected.getAttribute('data-convid'));
-    }
-    if (!id) throw new Error('Keine E-Mail gefunden. Bitte die E-Mail im Lesebereich öffnen oder in der Liste rechtsklicken.');
+    const convOf = (el) => normalizeEwsId(el.getAttribute('data-convid'));
+    const selectedRows = [...document.querySelectorAll('[data-convid][aria-selected="true"]')].filter(isVisible);
+    const targetRow = target && target.closest && target.closest('[data-convid]');
+
+    let ids = [];
+    if (targetRow && !(selectedRows.length > 1 && selectedRows.includes(targetRow))) ids = [convOf(targetRow)];
+    else if (selectedRows.length > 1) ids = uniq(selectedRows.map(convOf));
+    else if (outlookIdFromUrl()) ids = [outlookIdFromUrl()];
+    else if (selectedRows.length) ids = [convOf(selectedRows[0])];
+    if (!ids.length) throw new Error('Keine E-Mail gefunden. Bitte die E-Mail öffnen oder in der Liste markieren.');
+    const separate = ids.length > 1;
 
     const st = await bridge();
     const headers = {
@@ -175,24 +235,27 @@
     if (st.auth) headers['Authorization'] = st.auth;
     if (st.anchorMailbox) headers['X-AnchorMailbox'] = st.anchorMailbox;
 
-    let itemIds = [id];
-    if (isConversationId(id)) {
-      const items = await owaConversationItems(id, headers);
-      if (!items.length) throw new Error('Die Unterhaltung enthält keine Nachrichten.');
-      items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      itemIds = mode === 'thread' ? items.map((i) => i.id) : [items[items.length - 1].id];
-    } else if (mode === 'thread') {
-      const convId = await owaConversationIdOfItem(id, headers).catch(() => null);
-      if (convId) {
-        const items = await owaConversationItems(convId, headers);
+    const itemIds = [];
+    for (const id of ids) {
+      if (isConversationId(id)) {
+        const items = await owaConversationItems(id, headers);
+        if (!items.length) throw new Error('Die Unterhaltung enthält keine Nachrichten.');
         items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-        if (items.length) itemIds = items.map((i) => i.id);
+        if (mode === 'thread' && !separate) itemIds.push(...items.map((i) => i.id));
+        else itemIds.push(items[items.length - 1].id);
+      } else if (mode === 'thread' && !separate) {
+        const convId = await owaConversationIdOfItem(id, headers).catch(() => null);
+        const items = convId ? await owaConversationItems(convId, headers) : [];
+        items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        itemIds.push(...(items.length ? items.map((i) => i.id) : [id]));
+      } else {
+        itemIds.push(id);
       }
     }
 
     const sources = [];
     for (const itemId of itemIds) sources.push({ base64: await owaMime(itemId, headers) });
-    return sources;
+    return { sources, separate };
   }
 
   const OWA_HEADER = { __type: 'JsonRequestHeaders:#Exchange', RequestServerVersion: 'V2018_01_08' };

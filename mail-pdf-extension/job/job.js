@@ -112,7 +112,7 @@ async function sourcesFromTab(tabId, mode, useTarget) {
   }
   if (!res) throw new Error('Keine Antwort vom E-Mail-Tab. Bitte Seite neu laden (F5) und erneut versuchen.');
   if (!res.ok) throw new Error(res.error);
-  return res.sources.map((s) => base64ToBytes(s.base64));
+  return { raws: res.sources.map((s) => base64ToBytes(s.base64)), separate: !!res.separate };
 }
 
 // ---------- main pipeline ----------
@@ -239,9 +239,18 @@ function showDropZone() {
   const settings = await mailPdfGetSettings();
   try {
     step('E-Mail wird aus dem Postfach geladen …');
-    const raw = await sourcesFromTab(tabId, params.get('mode') || 'single', params.get('target') === '1');
+    const { raws, separate } = await sourcesFromTab(tabId, params.get('mode') || 'single', params.get('target') === '1');
     stepDone();
-    await runAndSave(raw, settings);
+    if (separate) {
+      for (let i = 0; i < raws.length; i++) {
+        step(`E-Mail ${i + 1} von ${raws.length}`);
+        stepDone();
+        await runAndSave([raws[i]], settings);
+      }
+      showResult('ok', `<p><strong>✓ ${raws.length} PDFs gespeichert</strong></p>`);
+    } else {
+      await runAndSave(raws, settings);
+    }
     if (settings.autoClose && !settings.saveAs) setTimeout(() => window.close(), 2500);
   } catch (e) {
     showError(e);
