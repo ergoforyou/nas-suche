@@ -1,0 +1,57 @@
+// Service worker: context menus, toolbar button and shortcut open the job window,
+// which does the actual work (fetching the mail, converting, merging, downloading).
+
+const MAIL_URL_PATTERNS = [
+  'https://outlook.office.com/*',
+  'https://outlook.office365.com/*',
+  'https://outlook.live.com/*',
+  'https://outlook.cloud.microsoft/*',
+  'https://mail.google.com/*',
+];
+
+const MAIL_URL_RE = /^https:\/\/(outlook\.office\.com|outlook\.office365\.com|outlook\.live\.com|outlook\.cloud\.microsoft|mail\.google\.com)\//;
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'mailpdf-single',
+      title: 'E-Mail als PDF speichern (mit Anhängen)',
+      contexts: ['page', 'selection', 'link', 'image'],
+      documentUrlPatterns: MAIL_URL_PATTERNS,
+    });
+    chrome.contextMenus.create({
+      id: 'mailpdf-thread',
+      title: 'Ganzen Verlauf als PDF speichern',
+      contexts: ['page', 'selection', 'link', 'image'],
+      documentUrlPatterns: MAIL_URL_PATTERNS,
+    });
+    chrome.contextMenus.create({
+      id: 'mailpdf-file',
+      title: 'EML-/MSG-Datei in PDF umwandeln …',
+      contexts: ['action'],
+    });
+  });
+});
+
+function openJob(params) {
+  const url = chrome.runtime.getURL('job/job.html?' + new URLSearchParams(params).toString());
+  chrome.windows.create({ url, type: 'popup', width: 520, height: 420 });
+}
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'mailpdf-file') return openJob({});
+  if (!tab || tab.id == null) return;
+  openJob({
+    tab: tab.id,
+    mode: info.menuItemId === 'mailpdf-thread' ? 'thread' : 'single',
+    target: '1',
+  });
+});
+
+chrome.action.onClicked.addListener((tab) => {
+  if (tab && tab.url && MAIL_URL_RE.test(tab.url)) {
+    openJob({ tab: tab.id, mode: 'default' });
+  } else {
+    openJob({});
+  }
+});

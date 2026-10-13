@@ -1,0 +1,34 @@
+:root {
+  --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --panel: #f6f8fa;
+  --accent: #c62828; --ok: #1a7f37; --err: #cf222e;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1b1d21; --fg: #e6e8eb; --muted: #9aa3ad; --line: #3a3f46; --panel: #24272c; --ok: #4ac26b; --err: #ff7b72; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 14px 18px 18px; background: var(--bg); color: var(--fg); font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; }
+h1 { font-size: 17px; margin: 0; }
+.top { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.top .settings { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+#steps { list-style: none; margin: 0; padding: 0; }
+#steps li { padding: 5px 0 5px 26px; position: relative; color: var(--muted); }
+#steps li.active { color: var(--fg); }
+#steps li.done { color: var(--fg); }
+#steps li::before { content: ""; position: absolute; left: 4px; top: 9px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); }
+#steps li.active::before { border-color: var(--accent); border-right-color: transparent; animation: spin .8s linear infinite; }
+#steps li.done::before { content: "✓"; border: 0; color: var(--ok); top: 4px; left: 4px; width: auto; height: auto; font-weight: 700; }
+#steps li.warn::before { content: "!"; border: 0; color: #bf8700; top: 4px; left: 7px; width: auto; height: auto; font-weight: 700; }
+#steps li.error { color: var(--err); }
+#steps li.error::before { content: "✕"; border: 0; color: var(--err); top: 4px; left: 4px; width: auto; height: auto; font-weight: 700; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#result { margin-top: 12px; padding: 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
+#result.ok { border-color: var(--ok); }
+#result.error { border-color: var(--err); }
+#result p { margin: 4px 0; }
+#result code { word-break: break-all; }
+#dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 150px; border: 2px dashed var(--line); border-radius: 10px; cursor: pointer; text-align: center; padding: 16px; background: var(--panel); }
+#dropzone.over { border-color: var(--accent); }
+#dropzone span, .hint { color: var(--muted); font-size: 12.5px; }
+button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

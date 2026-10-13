@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>E-Mail → PDF</title>
+<link rel="stylesheet" href="job.css">
+</head>
+<body>
+<header class="top">
+  <img src="../icons/icon48.png" alt="" width="28" height="28">
+  <h1>E-Mail → PDF</h1>
+  <a href="../options/options.html" target="_blank" class="settings" title="Einstellungen">Einstellungen</a>
+</header>
+
+<section id="progress" hidden>
+  <ul id="steps"></ul>
+</section>
+
+<section id="result" hidden></section>
+
+<section id="drop" hidden>
+  <label id="dropzone" for="file">
+    <strong>.eml- oder .msg-Datei hierher ziehen</strong>
+    <span>oder klicken zum Auswählen (mehrere möglich)</span>
+    <input type="file" id="file" accept=".eml,.msg,message/rfc822,application/vnd.ms-outlook" multiple hidden>
+  </label>
+  <p class="hint">Für E-Mails, die als Datei vorliegen – z. B. aus Google Drive, dem Explorer oder per Drag &amp; Drop aus Outlook gespeichert.</p>
+</section>
+
+<script src="../lib/pdf-lib.min.js"></script>
+<script src="../lib/mailparsers.min.js"></script>
+<script src="../lib/mammoth.browser.min.js"></script>
+<script src="../lib/xlsx.full.min.js"></script>
+<script src="../common/settings.js"></script>
+<script src="mail.js"></script>
+<script src="renderer.js"></script>
+<script src="builder.js"></script>
+<script src="job.js"></script>
+</body>
+</html>

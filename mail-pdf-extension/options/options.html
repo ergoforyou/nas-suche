@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>E-Mail → PDF – Einstellungen</title>
+<link rel="stylesheet" href="../job/job.css">
+<style>
+  body { max-width: 640px; margin: 24px auto; padding: 0 16px; }
+  label { display: block; margin: 14px 0 4px; font-weight: 600; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+  .check input { margin-top: 3px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 3px 0 0; }
+  #saved { color: var(--ok); margin-left: 10px; opacity: 0; transition: opacity .3s; }
+</style>
+</head>
+<body>
+<h1>E-Mail → PDF – Einstellungen</h1>
+
+<label for="folder">Unterordner im Download-Ordner</label>
+<input type="text" id="folder">
+<p class="hint">Leer lassen = direkt in „Downloads“. Tipp: Zeigt Ihr Google-Drive-für-Desktop-Ordner auf diesen Pfad, landen die PDFs automatisch in Drive.</p>
+
+<label for="pattern">Dateiname</label>
+<input type="text" id="pattern">
+<p class="hint">Platzhalter: {datum} (2026-10-06), {zeit} (1140), {absender}, {betreff}</p>
+
+<label class="check"><input type="checkbox" id="stripPrefixes"> „[EXTERN]“, „AW:“, „WG:“, „RE:“, „FW:“ aus dem Dateinamen entfernen</label>
+<label class="check"><input type="checkbox" id="saveAs"> Jedes Mal fragen, wo gespeichert werden soll</label>
+<label class="check"><input type="checkbox" id="pageNumbers"> Seitenzahlen („Seite 3 von 9“) auf jede Seite drucken</label>
+<label class="check"><input type="checkbox" id="loadRemoteImages"> Externe Bilder im E-Mail-Text laden (Logos usw.)</label>
+<label class="check"><input type="checkbox" id="embedOriginals"> Original-Anhänge zusätzlich als Dateien in die PDF einbetten</label>
+<label class="check"><input type="checkbox" id="embedEml"> Original-E-Mail (.eml) in die PDF einbetten (Beweissicherung)</label>
+<label class="check"><input type="checkbox" id="autoClose"> Fortschrittsfenster nach dem Speichern automatisch schließen</label>
+
+<p style="margin-top:22px"><button id="save" class="primary">Speichern</button><span id="saved">Gespeichert ✓</span></p>
+<script src="../common/settings.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
