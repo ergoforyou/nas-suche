@@ -22,7 +22,7 @@
     const target = msg.useTarget && Date.now() - lastTargetAt < 120000 ? lastTarget : null;
     getSources(msg.mode || 'single', target)
       .then((r) => sendResponse({ ok: true, ...r }))
-      .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+      .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err), details: (err && err.details) || null }));
     return true;
   });
 
@@ -192,25 +192,72 @@
   }
 
   // ---------- Outlook Web ----------
+  // The original message (MIME) is requested in up to three ways, in this order:
+  //  1. Outlook's own web service (service.svc, GetItem with IncludeMimeContent)
+  //  2. Outlook REST API  (/api/v2.0/me/messages/{id}/$value)
+  //  3. Microsoft Graph   (/v1.0/me/messages/{id}/$value)
+  // using the sign-in tokens Outlook itself already has in this tab.
+  // Every attempt is logged so a failure can be diagnosed from the job window.
 
   function outlookIdFromUrl() {
     const href = location.href;
     const fromPath = href.match(/\/(?:id|deeplink\/read)\/([^/?#&]+)/);
     let id = fromPath ? fromPath[1] : null;
     if (!id) {
-      const q = new URLSearchParams(location.search).get('ItemID') ||
+      id = new URLSearchParams(location.search).get('ItemID') ||
         new URLSearchParams(location.hash.replace(/^#/, '')).get('ItemID');
-      id = q;
     }
     return id ? normalizeEwsId(decodeURIComponent(id)) : null;
   }
 
-  function normalizeEwsId(id) {
-    // REST ids use - and _ instead of / and +
-    return id.replace(/-/g, '/').replace(/_/g, '+');
+  // EWS ids use + and /, REST/Graph ids use _ and -
+  const normalizeEwsId = (id) => id.replace(/-/g, '/').replace(/_/g, '+');
+  const toRestId = (id) => id.replace(/\//g, '-').replace(/\+/g, '_');
+  const isConversationId = (id) => /^AAQk/.test(id);
+  const byDate = (a, b) => (a.date || '').localeCompare(b.date || '');
+
+  function jwtInfo(tok) {
+    try {
+      const p = JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return { exp: p.exp, aud: p.aud || '' };
+    } catch (e) {
+      return {};
+    }
   }
 
-  const isConversationId = (id) => /^AAQk/.test(id);
+  function collectTokens(captured) {
+    const now = Date.now() / 1000;
+    const out = [];
+    for (const [host, val] of Object.entries(captured || {})) {
+      const t = String(val).replace(/^bearer\s+/i, '');
+      const j = jwtInfo(t);
+      if (j.exp && j.exp < now + 30) continue;
+      out.push({ bearer: 'Bearer ' + t, aud: `${j.aud || ''} ${host}`, source: 'Seite' });
+    }
+    for (const store of [window.localStorage, window.sessionStorage]) {
+      let keys = [];
+      try { keys = Object.keys(store); } catch (e) { /* ignore */ }
+      for (const k of keys) {
+        if (!/accesstoken/i.test(k)) continue;
+        try {
+          const v = JSON.parse(store.getItem(k));
+          if (!v || !v.secret) continue;
+          if (v.expiresOn && Number(v.expiresOn) < now + 30) continue;
+          out.push({ bearer: 'Bearer ' + v.secret, aud: `${v.target || ''} ${jwtInfo(v.secret).aud || ''}`, source: 'MSAL' });
+        } catch (e) { /* encrypted or not JSON */ }
+      }
+    }
+    return out;
+  }
+
+  const OUTLOOK_AUD = /outlook\.office(365)?\.com|outlook\.cloud\.microsoft|outlook\.live\.com|00000002-0000-0ff1-ce00-000000000000/i;
+  const GRAPH_AUD = /graph\.microsoft\.com|00000003-0000-0000-c000-000000000000/i;
+
+  function outlookError(message, diag) {
+    const e = new Error(message);
+    e.details = diag;
+    return e;
+  }
 
   async function outlookSources(mode, target) {
     const convOf = (el) => normalizeEwsId(el.getAttribute('data-convid'));
@@ -222,128 +269,215 @@
     else if (selectedRows.length > 1) ids = uniq(selectedRows.map(convOf));
     else if (outlookIdFromUrl()) ids = [outlookIdFromUrl()];
     else if (selectedRows.length) ids = [convOf(selectedRows[0])];
-    if (!ids.length) throw new Error('Keine E-Mail gefunden. Bitte die E-Mail öffnen oder in der Liste markieren.');
-    const separate = ids.length > 1;
 
     const st = await bridge();
-    const headers = {
-      'Content-Type': 'application/json; charset=utf-8',
-      'X-Req-Source': 'Mail',
-    };
+    const tokens = collectTokens(st.tokens);
     const canary = st.canary || getCookie('X-OWA-CANARY');
-    if (canary) headers['X-OWA-CANARY'] = canary;
-    if (st.auth) headers['Authorization'] = st.auth;
-    if (st.anchorMailbox) headers['X-AnchorMailbox'] = st.anchorMailbox;
+    const diag = [
+      `Seite: ${location.host}${location.pathname.slice(0, 40)}`,
+      `E-Mail-ID: ${ids.length ? ids.map((i) => `${i.slice(0, 8)}… (${isConversationId(i) ? 'Unterhaltung' : 'Nachricht'})`).join(', ') : 'keine gefunden'}`,
+      `Anmeldung: Canary ${canary ? 'ja' : 'nein'}, Tokens ${tokens.length ? tokens.map((t) => t.source + '/' + (OUTLOOK_AUD.test(t.aud) ? 'Outlook' : GRAPH_AUD.test(t.aud) ? 'Graph' : 'andere')).join(', ') : 'keine'}`,
+    ];
+    if (!ids.length) {
+      throw outlookError('Keine E-Mail gefunden. Bitte die E-Mail öffnen (anklicken), sodass sie im Lesebereich steht.', diag);
+    }
+    const separate = ids.length > 1;
 
+    const outlookTokens = tokens.filter((t) => OUTLOOK_AUD.test(t.aud));
+    const graphTokens = tokens.filter((t) => GRAPH_AUD.test(t.aud));
+    const strategies = [
+      serviceStrategy(canary, outlookTokens, st.anchorMailbox, diag),
+      restStrategy(outlookTokens, diag),
+      graphStrategy(graphTokens, diag),
+    ].filter(Boolean);
+
+    for (const strat of strategies) {
+      try {
+        const sources = await runStrategy(strat, ids, mode, separate);
+        return { sources, separate };
+      } catch (e) {
+        diag.push(`${strat.name}: ${e.message}`);
+      }
+    }
+    throw outlookError('Outlook hat das Original der E-Mail nicht herausgegeben.', diag);
+  }
+
+  async function runStrategy(strat, ids, mode, separate) {
     const itemIds = [];
     for (const id of ids) {
       if (isConversationId(id)) {
-        const items = await owaConversationItems(id, headers);
-        if (!items.length) throw new Error('Die Unterhaltung enthält keine Nachrichten.');
-        items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        const items = (await strat.conversationItems(id)).sort(byDate);
+        if (!items.length) throw new Error('Unterhaltung ohne Nachrichten');
         if (mode === 'thread' && !separate) itemIds.push(...items.map((i) => i.id));
         else itemIds.push(items[items.length - 1].id);
       } else if (mode === 'thread' && !separate) {
-        const convId = await owaConversationIdOfItem(id, headers).catch(() => null);
-        const items = convId ? await owaConversationItems(convId, headers) : [];
-        items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        let items = [];
+        try {
+          const conv = await strat.conversationOf(id);
+          if (conv) items = (await strat.conversationItems(conv)).sort(byDate);
+        } catch (e) { /* fall back to the single message */ }
         itemIds.push(...(items.length ? items.map((i) => i.id) : [id]));
       } else {
         itemIds.push(id);
       }
     }
-
     const sources = [];
-    for (const itemId of itemIds) sources.push({ base64: await owaMime(itemId, headers) });
-    return { sources, separate };
+    for (const itemId of itemIds) sources.push({ base64: await strat.mime(itemId) });
+    return sources;
   }
 
-  const OWA_HEADER = { __type: 'JsonRequestHeaders:#Exchange', RequestServerVersion: 'V2018_01_08' };
+  async function shortBody(res) {
+    try { return (await res.text()).replace(/\s+/g, ' ').slice(0, 140); } catch (e) { return ''; }
+  }
 
-  async function owaCall(action, body, headers) {
-    const url = `${location.origin}/owa/service.svc?action=${action}&app=Mail`;
-    const res = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { ...headers, Action: action },
-      body: JSON.stringify(body),
-    });
-    if (res.status === 401 || res.status === 440) {
-      throw new Error('Outlook hat die Anfrage abgelehnt (Anmeldung). Bitte Outlook-Seite neu laden (F5) und erneut versuchen.');
+  // --- 1. service.svc ---
+
+  function serviceStrategy(canary, outlookTokens, anchorMailbox, diag) {
+    const variants = [];
+    const base = { 'Content-Type': 'application/json; charset=utf-8', 'X-Req-Source': 'Mail' };
+    if (anchorMailbox) base['X-AnchorMailbox'] = anchorMailbox;
+    for (const t of outlookTokens) {
+      variants.push({ label: `Token(${t.source})${canary ? '+Canary' : ''}`, headers: { ...base, Authorization: t.bearer, ...(canary ? { 'X-OWA-CANARY': canary } : {}) } });
     }
-    if (!res.ok) throw new Error(`Outlook-Fehler ${res.status} bei ${action}.`);
-    const json = await res.json();
-    const items = json && json.Body && json.Body.ResponseMessages && json.Body.ResponseMessages.Items;
-    const first = items && items[0];
-    if (!first) throw new Error(`Unerwartete Antwort von Outlook (${action}).`);
-    if (first.ResponseClass === 'Error') throw new Error(`Outlook: ${first.MessageText || first.ResponseCode}`);
-    return first;
-  }
+    if (canary) variants.push({ label: 'Canary', headers: { ...base, 'X-OWA-CANARY': canary } });
+    variants.push({ label: 'Cookie', headers: { ...base } });
+    let working = null;
+    const versions = ['V2018_01_08', 'Exchange2013'];
 
-  async function owaConversationItems(convId, headers) {
-    const r = await owaCall('GetConversationItems', {
-      __type: 'GetConversationItemsJsonRequest:#Exchange',
-      Header: OWA_HEADER,
-      Body: {
-        __type: 'GetConversationItemsRequest:#Exchange',
-        Conversations: [{
-          __type: 'ConversationRequestType:#Exchange',
-          ConversationId: { __type: 'ItemId:#Exchange', Id: convId },
-        }],
-        ItemShape: {
-          __type: 'ItemResponseShape:#Exchange',
-          BaseShape: 'IdOnly',
-          AdditionalProperties: [{ __type: 'PropertyUri:#Exchange', FieldURI: 'DateTimeReceived' }],
-        },
-        FoldersToIgnore: [
-          { __type: 'DistinguishedFolderId:#Exchange', Id: 'deleteditems' },
-          { __type: 'DistinguishedFolderId:#Exchange', Id: 'drafts' },
-        ],
-        SortOrder: 'DateOrderAscending',
-        MaxItemsToReturn: 100,
-      },
-    }, headers);
-    const nodes = (r.Conversation && r.Conversation.ConversationNodes) || [];
-    const out = [];
-    for (const n of nodes) {
-      for (const it of n.Items || []) {
-        if (it.ItemId && it.ItemId.Id) out.push({ id: it.ItemId.Id, date: it.DateTimeReceived || '' });
+    async function call(action, body) {
+      const list = working ? [working] : variants;
+      const errors = [];
+      for (const v of list) {
+        for (const ver of versions) {
+          body.Header = { __type: 'JsonRequestHeaders:#Exchange', RequestServerVersion: ver };
+          let res;
+          try {
+            res = await fetch(`${location.origin}/owa/service.svc?action=${action}&app=Mail`, {
+              method: 'POST', credentials: 'include', headers: { ...v.headers, Action: action }, body: JSON.stringify(body),
+            });
+          } catch (e) {
+            errors.push(`${v.label}: ${e.message}`);
+            break;
+          }
+          if (!res.ok) {
+            errors.push(`${v.label}/${ver}: HTTP ${res.status} ${await shortBody(res)}`);
+            if (res.status === 500 || res.status === 400) continue; // maybe the version
+            break;
+          }
+          let json;
+          try { json = await res.json(); } catch (e) { errors.push(`${v.label}: keine JSON-Antwort`); break; }
+          const first = json && json.Body && json.Body.ResponseMessages && json.Body.ResponseMessages.Items && json.Body.ResponseMessages.Items[0];
+          if (!first) { errors.push(`${v.label}/${ver}: unerwartete Antwort ${JSON.stringify(json).slice(0, 120)}`); continue; }
+          if (first.ResponseClass === 'Error') { errors.push(`${v.label}/${ver}: ${first.ResponseCode} ${first.MessageText || ''}`); continue; }
+          working = v;
+          versions.splice(0, versions.length, ver);
+          return first;
+        }
       }
+      throw new Error(`${action} → ${errors.join(' | ')}`);
     }
-    return out;
+
+    return {
+      name: 'Outlook-Webdienst',
+      async conversationItems(convId) {
+        const req = (ignore) => ({
+          __type: 'GetConversationItemsJsonRequest:#Exchange',
+          Body: {
+            __type: 'GetConversationItemsRequest:#Exchange',
+            Conversations: [{ __type: 'ConversationRequestType:#Exchange', ConversationId: { __type: 'ItemId:#Exchange', Id: convId } }],
+            ItemShape: { __type: 'ItemResponseShape:#Exchange', BaseShape: 'IdOnly', AdditionalProperties: [{ __type: 'PropertyUri:#Exchange', FieldURI: 'DateTimeReceived' }] },
+            ...(ignore ? { FoldersToIgnore: [
+              { __type: 'DistinguishedFolderId:#Exchange', Id: 'deleteditems' },
+              { __type: 'DistinguishedFolderId:#Exchange', Id: 'drafts' },
+            ] } : {}),
+            SortOrder: 'DateOrderAscending',
+            MaxItemsToReturn: 100,
+          },
+        });
+        let r;
+        try { r = await call('GetConversationItems', req(true)); } catch (e) { r = await call('GetConversationItems', req(false)); }
+        const out = [];
+        for (const n of (r.Conversation && r.Conversation.ConversationNodes) || []) {
+          for (const it of n.Items || []) if (it.ItemId && it.ItemId.Id) out.push({ id: it.ItemId.Id, date: it.DateTimeReceived || '' });
+        }
+        return out;
+      },
+      async conversationOf(itemId) {
+        const r = await call('GetItem', {
+          __type: 'GetItemJsonRequest:#Exchange',
+          Body: {
+            __type: 'GetItemRequest:#Exchange',
+            ItemShape: { __type: 'ItemResponseShape:#Exchange', BaseShape: 'IdOnly', AdditionalProperties: [{ __type: 'PropertyUri:#Exchange', FieldURI: 'ConversationId' }] },
+            ItemIds: [{ __type: 'ItemId:#Exchange', Id: itemId }],
+          },
+        });
+        const it = r.Items && r.Items[0];
+        return it && it.ConversationId && it.ConversationId.Id;
+      },
+      async mime(itemId) {
+        const r = await call('GetItem', {
+          __type: 'GetItemJsonRequest:#Exchange',
+          Body: {
+            __type: 'GetItemRequest:#Exchange',
+            ItemShape: { __type: 'ItemResponseShape:#Exchange', BaseShape: 'IdOnly', IncludeMimeContent: true },
+            ItemIds: [{ __type: 'ItemId:#Exchange', Id: itemId }],
+          },
+        });
+        const it = r.Items && r.Items[0];
+        const b64 = it && it.MimeContent && it.MimeContent.Value;
+        if (!b64) throw new Error('GetItem lieferte keinen MIME-Inhalt');
+        return b64;
+      },
+    };
   }
 
-  async function owaConversationIdOfItem(itemId, headers) {
-    const r = await owaCall('GetItem', {
-      __type: 'GetItemJsonRequest:#Exchange',
-      Header: OWA_HEADER,
-      Body: {
-        __type: 'GetItemRequest:#Exchange',
-        ItemShape: {
-          __type: 'ItemResponseShape:#Exchange',
-          BaseShape: 'IdOnly',
-          AdditionalProperties: [{ __type: 'PropertyUri:#Exchange', FieldURI: 'ConversationId' }],
-        },
-        ItemIds: [{ __type: 'ItemId:#Exchange', Id: itemId }],
+  // --- 2. Outlook REST / 3. Graph (both: GET …/messages/{id}/$value returns the .eml) ---
+
+  function httpApiStrategy(name, tokens, apiBases, fields) {
+    if (!tokens.length) return null;
+    let working = null;
+    async function get(path, asBytes) {
+      const combos = working ? [working] : apiBases.flatMap((b) => tokens.map((t) => ({ b, t })));
+      const errors = [];
+      for (const c of combos) {
+        let res;
+        try {
+          res = await fetch(c.b + path, { headers: { Authorization: c.t.bearer, Accept: asBytes ? '*/*' : 'application/json' } });
+        } catch (e) {
+          errors.push(`${new URL(c.b).host}: ${e.message}`);
+          continue;
+        }
+        if (!res.ok) { errors.push(`${new URL(c.b).host}: HTTP ${res.status} ${await shortBody(res)}`); continue; }
+        working = c;
+        return asBytes ? new Uint8Array(await res.arrayBuffer()) : res.json();
+      }
+      throw new Error(errors.join(' | '));
+    }
+    return {
+      name,
+      async conversationItems(convId) {
+        const filter = encodeURIComponent(`${fields.conv} eq '${toRestId(convId)}'`);
+        const j = await get(`/me/messages?$filter=${filter}&$select=${fields.id},${fields.date}&$top=100`);
+        return (j.value || []).map((m) => ({ id: m[fields.id] || m.Id || m.id, date: m[fields.date] || '' }));
       },
-    }, headers);
-    const it = r.Items && r.Items[0];
-    return it && it.ConversationId && it.ConversationId.Id;
+      async conversationOf(itemId) {
+        const j = await get(`/me/messages/${toRestId(itemId)}?$select=${fields.conv}`);
+        return j[fields.conv] ? normalizeEwsId(j[fields.conv]) : null;
+      },
+      async mime(itemId) {
+        const bytes = await get(`/me/messages/${toRestId(itemId)}/$value`, true);
+        if (!looksLikeMime(bytes)) throw new Error('Antwort ist keine E-Mail-Datei');
+        return bytesToBase64(bytes);
+      },
+    };
   }
 
-  async function owaMime(itemId, headers) {
-    const r = await owaCall('GetItem', {
-      __type: 'GetItemJsonRequest:#Exchange',
-      Header: OWA_HEADER,
-      Body: {
-        __type: 'GetItemRequest:#Exchange',
-        ItemShape: { __type: 'ItemResponseShape:#Exchange', BaseShape: 'IdOnly', IncludeMimeContent: true },
-        ItemIds: [{ __type: 'ItemId:#Exchange', Id: itemId }],
-      },
-    }, headers);
-    const it = r.Items && r.Items[0];
-    const b64 = it && it.MimeContent && it.MimeContent.Value;
-    if (!b64) throw new Error('Outlook hat keinen E-Mail-Inhalt (MIME) geliefert.');
-    return b64;
+  function restStrategy(tokens) {
+    const bases = uniq([`${location.origin}/api/v2.0`, 'https://outlook.office.com/api/v2.0']);
+    return httpApiStrategy('Outlook-REST', tokens, bases, { conv: 'ConversationId', id: 'Id', date: 'ReceivedDateTime' });
+  }
+
+  function graphStrategy(tokens) {
+    return httpApiStrategy('Microsoft Graph', tokens, ['https://graph.microsoft.com/v1.0'], { conv: 'conversationId', id: 'id', date: 'receivedDateTime' });
   }
 })();

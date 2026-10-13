@@ -35,7 +35,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 function openJob(params) {
   const url = chrome.runtime.getURL('job/job.html?' + new URLSearchParams(params).toString());
-  chrome.windows.create({ url, type: 'popup', width: 520, height: 420 });
+  chrome.windows.create({ url, type: 'popup', width: 540, height: 560 });
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {

@@ -7,13 +7,15 @@
   if (window.__mailPdfBridge) return;
   window.__mailPdfBridge = true;
 
-  const state = { auth: null, canary: null, anchorMailbox: null };
+  const state = { tokens: {}, canary: null, anchorMailbox: null };
   const isOutlook = /outlook\./.test(location.hostname);
 
   function record(url, name, value) {
-    if (!value || !/service\.svc|\/owa\//i.test(String(url))) return;
+    if (!value) return;
     const n = String(name).toLowerCase();
-    if (n === 'authorization' && /^bearer\s/i.test(value)) state.auth = value;
+    let host = location.host;
+    try { host = new URL(String(url), location.href).host; } catch (e) { /* ignore */ }
+    if (n === 'authorization' && /^bearer\s/i.test(value)) state.tokens[host] = value;
     else if (n === 'x-owa-canary') state.canary = value;
     else if (n === 'x-anchormailbox') state.anchorMailbox = value;
   }
@@ -32,7 +34,7 @@
     const origOpen = XMLHttpRequest.prototype.open;
     const origSet = XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.open = function (method, url) {
-      this.__mailPdfUrl = url;
+      this.__mailPdfUrl = String(url);
       return origOpen.apply(this, arguments);
     };
     XMLHttpRequest.prototype.setRequestHeader = function (name, value) {

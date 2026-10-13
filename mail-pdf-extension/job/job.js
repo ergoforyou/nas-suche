@@ -111,7 +111,11 @@ async function sourcesFromTab(tabId, mode, useTarget) {
     res = await ask();
   }
   if (!res) throw new Error('Keine Antwort vom E-Mail-Tab. Bitte Seite neu laden (F5) und erneut versuchen.');
-  if (!res.ok) throw new Error(res.error);
+  if (!res.ok) {
+    const err = new Error(res.error);
+    err.details = res.details;
+    throw err;
+  }
   return { raws: res.sources.map((s) => base64ToBytes(s.base64)), separate: !!res.separate };
 }
 
@@ -179,8 +183,15 @@ function showError(err) {
   stepError();
   console.error(err);
   showResult('error', `<p><strong>Das hat leider nicht geklappt.</strong></p><p>${escapeHtml(err.message || String(err))}</p>` +
+    (err.details ? `<details open><summary>Technische Details</summary><pre id="diag">${escapeHtml(err.details.join('\n'))}</pre>` +
+      '<button id="copydiag">Details kopieren</button></details>' : '') +
     '<p class="hint">Alternative: In Outlook/Gmail die E-Mail als <b>.eml</b> herunterladen ' +
     '(Outlook: „…“ → „Speichern unter“/„Herunterladen“, Gmail: „⋮“ → „Nachricht herunterladen“) und unten ablegen.</p>');
+  const copy = document.getElementById('copydiag');
+  if (copy) {
+    copy.onclick = () => navigator.clipboard.writeText(document.getElementById('diag').textContent)
+      .then(() => { copy.textContent = 'Kopiert ✓'; });
+  }
   showDropZone();
 }
 
