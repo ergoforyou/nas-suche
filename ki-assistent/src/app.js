@@ -1918,11 +1918,16 @@ $('avVrmFile').onchange = async (e) => {
   e.target.value = '';
   if (!file) return;
   if (file.size > 150 * 1024 * 1024) return status('Die VRM-Datei ist zu groß (max. 150 MB).');
+  await useVrm(new Uint8Array(await file.arrayBuffer()), file.name);
+};
+
+/** VRM-Daten speichern und als 3D-Figur der aktuellen Persona verwenden. Wirft bei Ladefehlern. */
+async function useVrm(bytes, name) {
   status('3D-Figur wird geladen …');
   const av = persona().avatar;
   const old = av.vrm;
-  av.vrm = await desktop.saveMedia(new Uint8Array(await file.arrayBuffer()), 'vrm');
-  av.vrmName = file.name;
+  av.vrm = await desktop.saveMedia(bytes, 'vrm');
+  av.vrmName = name;
   try {
     await avatar.setConfig(av);
     if (old) desktop.deleteMedia(old);
@@ -1932,9 +1937,34 @@ $('avVrmFile').onchange = async (e) => {
     if (old) av.vrm = old;
     else delete av.vrm;
     status(`Die Figur konnte nicht geladen werden: ${err.message}`);
+    throw err;
+  } finally {
+    fillSettings();
+    avatarChanged();
   }
-  fillSettings();
-  avatarChanged();
+}
+
+// 3D-Figur aus Bildern (bild2vrm): Bilder werden wie beim Avatar-Bild freigestellt –
+// vorhandene Transparenz, sonst einfarbiger Hintergrund, sonst KI.
+async function prepareFigureImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const canvas = await imageToCanvas(url, 2048);
+    if (hasTransparency(canvas)) return canvas;
+    if (hasUniformBorder(canvas, +$('avTol').value)) {
+      const { canvas: out, removed } = removeBackground(canvas, { tolerance: +$('avTol').value });
+      if (removed >= 0.02) return out;
+    }
+    const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    const rgba = await stt.removeBackground(imageData, progressStatus('Freistellen'));
+    return applyAlpha(canvas, rgba).canvas;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+$('avVrmCreate').onclick = async () => {
+  const { openBild2VrmDialog } = await import('./bild2vrm-dialog.js');
+  openBild2VrmDialog({ prepare: prepareFigureImage, onCreated: useVrm, defaultName: persona().name || 'Meine Figur' });
 };
 $('avVrmYaw').oninput = (e) => setVrmYaw(+e.target.value);
 

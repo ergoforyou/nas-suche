@@ -1,7 +1,7 @@
 {
   "name": "ki-assistent",
   "productName": "KI-Assistent",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Lokaler Desktop-Assistent mit Avatar, Spracherkennung und Sprachausgabe für LM Studio",
   "main": "main.js",
   "author": "ergoforyou",
@@ -12,7 +12,7 @@
     "dist": "node build.mjs && electron-builder --win portable nsis",
     "dist:mac": "node build.mjs && electron-builder --mac dmg",
     "dist:linux": "node build.mjs && electron-builder --linux AppImage",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs && node test/bild2vrm.mjs"
   },
   "devDependencies": {
     "@diffusionstudio/piper-wasm": "1.0.0",

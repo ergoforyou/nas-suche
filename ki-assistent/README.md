@@ -52,6 +52,13 @@ Lippen zur Stimme, Atmen, Blinzeln, Nachdenken, Zuhören. Kostenlos erstellen mi
 **Drehen:** Regler unter ⚙ → Avatar oder Umschalttaste halten und die Figur mit der Maus seitlich ziehen.
 **Bildausschnitt:** Kopf & Schultern, Brustbild oder Ganzkörper.
 
+**Figur aus eigenen Bildern:** ⚙ → Avatar → **„Aus Bildern erstellen …“** baut die 3D-Figur direkt aus einem
+Ganzkörperbild (frontal, stehend). Optional machen eine **Rückansicht** (eigene Rückseite) und eine **Seitenansicht**
+(echtes Körperprofil) die Figur deutlich besser; ein **Turnaround-Blatt** mit Front/Seite/Rücken nebeneinander wird
+automatisch aufgeteilt. Gelenkpunkte und die Kästen um Augen und Mund lassen sich vor dem Erstellen verschieben. Die
+Figur bekommt Blinzeln, Mundformen (A/I/U/E/O) und ein Lächeln; „Als .vrm speichern“ exportiert sie z. B. für VSeeFace.
+Alles läuft lokal – Hintergründe werden wie beim Avatar-Bild freigestellt (Transparenz, einfarbig oder KI).
+
 ### 2D-Figur aus mehreren Bildern
 
 Avatar-Bild plus ② dasselbe Bild mit offenem Mund und ③ mit geschlossenen Augen (gleicher Bildausschnitt). Die
@@ -160,7 +167,7 @@ in `%APPDATA%\KI-Assistent Modelle` (gemeinsam für beide Ausgaben). Im **Offlin
 cd ki-assistent
 npm install
 npm start          # baut die Oberfläche und startet die App
-npm test           # Sprachkette Piper → Whisper im Browser testen (braucht Internet)
+npm test           # Sprachkette Piper → Whisper (braucht Internet) + „3D-Figur aus Bildern“ im Browser testen
 npm run dist       # Windows-Installer + portable .exe nach release/
 ```
 
@@ -175,6 +182,8 @@ preload.js        sichere Brücke zwischen Oberfläche und Hauptprozess
 src/app.js        Oberfläche: Chat, Einstellungen, Personas, Ablaufsteuerung
 src/avatar.js     Avatar-Animation (Canvas): Atmen, Blinzeln, Lippen öffnen
 src/cutout.js     Hintergrund entfernen (freistellen)
+src/bild2vrm/     3D-Figur (VRM mit Mimik) aus Bildern erzeugen – Ursprung: bild2vrm/js im Repo
+src/bild2vrm-dialog.js  Dialog „Aus Bildern erstellen“
 src/windows.js    freischwebende Figur + Ausgabefenster
 src/piper.js      Piper-Anbindung mit korrekter Laut-Zuordnung je Stimme
 src/stt.js        Mikrofon + Sprechpausen-Erkennung
