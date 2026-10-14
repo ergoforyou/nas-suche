@@ -96,7 +96,7 @@ export class FloatingAvatar {
       kind: 'window',
       desktop,
       onActivate: () => this.onActivate?.(),
-      onRotate: (yaw) => this.onRotate?.(yaw),
+      onRotate: (yaw, key) => this.onRotate?.(yaw, key),
       onSelect: (on) => setIgnore(!on && true),
     });
     doc.addEventListener('mousemove', (e) => {

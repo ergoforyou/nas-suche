@@ -211,6 +211,14 @@
       <input id="avMouthFile" type="file" accept="image/*" hidden />
       <input id="avEyesFile" type="file" accept="image/*" hidden />
 
+      <h3>Bild-Figur leicht drehen (2,5D)</h3>
+      <p class="hint">Eine KI schätzt einmalig, wie weit jeder Bildpunkt entfernt ist (Nase vorne, Ohren hinten). Damit lässt
+        sich das Bild bis etwa ±20° drehen, ohne VRM-Datei. Auch: <b>Umschalttaste halten und die Figur seitlich ziehen</b>.</p>
+      <label>Drehung <span id="avTurnYawVal" class="hint"></span>
+        <input id="avTurnYaw" type="range" min="-25" max="25" step="1" /></label>
+      <label class="check"><input id="avTurnAuto" type="checkbox" /> Im Leerlauf und beim Sprechen leicht mitdrehen (lebendiger)</label>
+      <div class="row wrap"><button id="avDepthCalc">Tiefe neu berechnen</button><span id="avDepthInfo" class="hint"></span></div>
+
       <h3>Bewegungsbilder (flüssige Bewegung im Leerlauf)</h3>
       <p class="hint">Bis zu 4 weitere Bilder derselben Figur im <b>gleichen Bildausschnitt</b>, aber leicht anders:
         Kopf etwas geneigt, Blick zur Seite, Lächeln, Schultern leicht gedreht. Die App berechnet, wie sich jeder Bildpunkt

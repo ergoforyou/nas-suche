@@ -10,6 +10,7 @@
 import { borderColor } from './cutout.js';
 import { loadVideoMask } from './videomask.js';
 import { createMorpher } from './morph.js';
+import { createParallax, figureCenterX, imageKey } from './parallax.js';
 
 const MAX_SIDE = 1024;
 const MAX_VIDEO_SIDE = 640; // Videos werden pro Bild verarbeitet – kleiner halten
@@ -75,6 +76,7 @@ export class Avatar {
   destroy() {
     this.active = false;
     this.layers?.forEach((L) => L.morpher?.dispose());
+    this.parallax?.dispose();
     this.layers?.forEach((L) => L.isVideo && L.video.pause());
     this.vrmFigure?.dispose();
     this.vrmFigure = null;
@@ -124,6 +126,8 @@ export class Avatar {
     this.motion = config.motion ?? 1;
     this.idleHead = config.idleHead ?? 0.25; // Kopfbewegung im Leerlauf (0 = still)
     this.vrmYaw = config.vrmYaw ?? 0; // 3D-Figur: Drehung in Grad
+    this.turnYaw = config.turnYaw ?? 0; // Bild-Figur: leichte Drehung in Grad (braucht Tiefenkarte)
+    this.turnAuto = !!config.turnAuto; // Bild-Figur: im Leerlauf leicht mitdrehen
     this.vrmFraming = config.vrmFraming ?? 'brust'; // 3D-Figur: Bildausschnitt
     this.flip = !!config.flip;
     // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
@@ -149,6 +153,17 @@ export class Avatar {
     this.layers = layers;
     const main = layers[0];
     Object.assign(this, { w: main.w, h: main.h, base: main.base, hasAlpha: main.hasAlpha });
+    // Tiefenkarte für das leichte Drehen des Bild-Avatars
+    this.parallax?.dispose();
+    this.parallax = null;
+    if (config.depth && config.depthFor === imageKey(config.image) && !config.vrm && !main.isVideo) {
+      try {
+        const depthImg = await loadImage(config.depth, this.host);
+        this.parallax = createParallax(this.doc, depthImg, figureCenterX(main.base));
+      } catch (e) {
+        console.warn('Tiefenkarte:', e);
+      }
+    }
     this.current = 0;
     this.prev = null;
     this.poseUntil = 0;
@@ -369,6 +384,22 @@ export class Avatar {
       }
     }
     return L;
+  }
+
+  /** Leichtes Mitdrehen im Leerlauf/beim Sprechen (Grad), weich zwischen zufälligen Zielen. */
+  updateAutoTurn(now, dt) {
+    const A = (this.autoTurn ??= { v: 0, target: 0, next: 0 });
+    if (!this.turnAuto) {
+      A.v *= 0.9;
+      return A.v;
+    }
+    if (now > A.next) {
+      const range = this.speaking ? 5 : this.thinking ? 8 : 7;
+      A.target = (Math.random() * 2 - 1) * range * (this.motion ?? 1);
+      A.next = now + (this.speaking ? 1500 + Math.random() * 1800 : 3000 + Math.random() * 4000);
+    }
+    A.v += (A.target - A.v) * Math.min(1, dt / (this.speaking ? 600 : 1400));
+    return A.v;
   }
 
   /** Vorschau im Editor: sofort zu Bewegungsbild i und nach kurzer Zeit zurück. */
@@ -981,6 +1012,13 @@ export class Avatar {
       L.buildFrame();
       return [L, L.renderPose(), a];
     });
+    // Bild-Figur leicht drehen (Grundbild inkl. Mund, Augen und Bewegungsbildern)
+    if (this.parallax) {
+      const yaw = (this.turnYaw ?? 0) + this.updateAutoTurn(now, dt);
+      if (Math.abs(yaw) > 0.15) {
+        for (const d of drawn) if (d[0] === this.layers[0]) d[1] = this.parallax.render(d[1], (yaw * Math.PI) / 180);
+      }
+    }
 
     // Körperbewegung: atmen, wiegen, beim Sprechen nicken (3D-Figuren bewegen sich selbst)
     const m = this.layers[0]?.isVrm ? 0 : this.motion;

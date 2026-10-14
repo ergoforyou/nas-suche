@@ -121,7 +121,7 @@ export class RubberBand {
     const p = this.local(e);
     if (!this.avatar.hitTest(p.x, p.y)) return this.select(false);
     // 3D-Figur: Umschalttaste + Ziehen dreht die Figur
-    if (e.shiftKey && this.avatar.layers?.[0]?.isVrm) return this.rotateStart(e);
+    if (e.shiftKey && (this.avatar.layers?.[0]?.isVrm || this.avatar.parallax)) return this.rotateStart(e);
     this.select(true);
     e.preventDefault();
     const desktop = this.opts.desktop;
@@ -171,17 +171,20 @@ export class RubberBand {
       canvas.setPointerCapture(e.pointerId);
     } catch {}
     const x0 = e.clientX;
-    const yaw0 = this.avatar.vrmYaw ?? 0;
+    // 3D-Figur: volle Drehung; Bild-Figur: nur leicht (±25°)
+    const is3d = !!this.avatar.layers?.[0]?.isVrm;
+    const key = is3d ? 'vrmYaw' : 'turnYaw';
+    const yaw0 = this.avatar[key] ?? 0;
     const move = (ev) => {
-      let yaw = yaw0 + (ev.clientX - x0) * 0.7;
-      yaw = ((((yaw + 180) % 360) + 360) % 360) - 180;
-      this.avatar.vrmYaw = Math.round(yaw);
-      this.opts.onRotating?.(this.avatar.vrmYaw);
+      let yaw = yaw0 + (ev.clientX - x0) * (is3d ? 0.7 : 0.25);
+      yaw = is3d ? ((((yaw + 180) % 360) + 360) % 360) - 180 : Math.max(-25, Math.min(25, yaw));
+      this.avatar[key] = Math.round(yaw);
+      this.opts.onRotating?.(this.avatar[key], key);
     };
     const up = () => {
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
-      this.opts.onRotate?.(this.avatar.vrmYaw);
+      this.opts.onRotate?.(this.avatar[key], key);
     };
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);

@@ -173,6 +173,25 @@ const vidOk = vid.frames > 5 && vid.wall < 60 && vid.lastWall < 60 && vid.face >
 ok &&= vidOk;
 console.log(vidOk ? '✔' : '✘', 'KI-Video-Freistellen', JSON.stringify(vid));
 
+// KI-Tiefenschätzung (für das leichte Drehen von Bild-Avataren): Figur muss sich vom Hintergrund abheben
+const depth = await page.evaluate(async () => {
+  const img = new Image();
+  img.src = 'default-avatar.svg';
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = 300;
+  c.height = 400;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0, 300, 400);
+  const t0 = performance.now();
+  const d = await window.__app.stt.estimateDepth(g.getImageData(0, 0, 300, 400));
+  const at = (fx, fy) => d[Math.round(fy * 400) * 300 + Math.round(fx * 300)];
+  return { ms: Math.round(performance.now() - t0), n: d.length, face: at(0.5, 0.37), wall: at(0.05, 0.05) };
+});
+const depthOk = depth.n === 300 * 400 && depth.face > depth.wall + 20;
+ok &&= depthOk;
+console.log(depthOk ? '✔' : '✘', 'KI-Tiefe', JSON.stringify(depth));
+
 await browser.close();
 server.close();
 if (!ok) {

@@ -61,6 +61,26 @@ async function removeBackground({ rgba, width, height }, progress) {
   return new Uint8ClampedArray(resized.data);
 }
 
+// Tiefenschätzung (Depth Anything V2 Small, Apache-2.0): Wie weit ist jeder Bildpunkt entfernt?
+// Wird einmal pro Avatar-Bild gebraucht, damit sich das Bild leicht "drehen" lässt.
+let depthPipe = null;
+async function estimateDepth({ rgba, width, height }, progress) {
+  depthPipe ??= pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
+    device: 'wasm',
+    dtype: 'q8',
+    progress_callback: progress,
+  }).catch((e) => {
+    depthPipe = null;
+    throw e;
+  });
+  const est = await depthPipe;
+  const img = new RawImage(new Uint8ClampedArray(rgba), width, height, 4);
+  const { depth } = await est(img);
+  const d = depth.width === width && depth.height === height ? depth : await depth.resize(width, height);
+  const gray = d.channels === 1 ? d : d.grayscale();
+  return new Uint8ClampedArray(gray.data);
+}
+
 self.onmessage = async ({ data }) => {
   const { id, type } = data;
   try {
@@ -76,6 +96,9 @@ self.onmessage = async ({ data }) => {
         stride_length_s: 5,
       });
       self.postMessage({ id, type: 'result', text: (out.text || '').trim() });
+    } else if (type === 'depth') {
+      const depth = await estimateDepth(data, (p) => self.postMessage({ id, type: 'progress', progress: p }));
+      self.postMessage({ id, type: 'result', depth }, [depth.buffer]);
     } else if (type === 'cutout') {
       const rgba = await removeBackground(data, (p) => self.postMessage({ id, type: 'progress', progress: p }));
       self.postMessage({ id, type: 'result', rgba }, [rgba.buffer]);

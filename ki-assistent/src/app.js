@@ -6,6 +6,7 @@ import { computeVideoMask } from './videomask.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
 import { RubberBand } from './rubberband.js';
+import { buildDepthMap, imageKey } from './parallax.js';
 import { debugVoice, synthesize, piperState } from './piper.js';
 
 const $ = (id) => document.getElementById(id);
@@ -213,9 +214,19 @@ new RubberBand($('stage'), avatar, {
     persona().avatar.stage = { ...layout };
     save();
   },
-  onRotating: (yaw) => setVrmYaw(yaw, false),
-  onRotate: (yaw) => setVrmYaw(yaw),
+  onRotating: (yaw, key) => (key === 'turnYaw' ? setTurnYaw(yaw, false) : setVrmYaw(yaw, false)),
+  onRotate: (yaw, key) => (key === 'turnYaw' ? setTurnYaw(yaw) : setVrmYaw(yaw)),
 });
+
+/** Leichte Drehung der Bild-Figur überall übernehmen. */
+function setTurnYaw(yaw, persist = true) {
+  persona().avatar.turnYaw = yaw;
+  avatar.turnYaw = yaw;
+  if (floating.avatar) floating.avatar.turnYaw = yaw;
+  $('avTurnYaw').value = yaw;
+  $('avTurnYawVal').textContent = `${yaw}°`;
+  if (persist) save();
+}
 
 /** Drehung der 3D-Figur überall übernehmen (Chatfenster, freie Figur, Regler). */
 function setVrmYaw(yaw, persist = true) {
@@ -229,7 +240,7 @@ function setVrmYaw(yaw, persist = true) {
 
 const floating = new FloatingAvatar({
   onActivate: () => toggleMic(),
-  onRotate: (yaw) => setVrmYaw(yaw),
+  onRotate: (yaw, key) => (key === 'turnYaw' ? setTurnYaw(yaw) : setVrmYaw(yaw)),
   onClosed: () => setFloating(false, { fromWindow: true }),
 });
 const output = new OutputWindow();
@@ -1198,6 +1209,12 @@ function fillSettings() {
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
   $('avVrmOff').hidden = !p.avatar.vrm;
+  $('avTurnYaw').value = p.avatar.turnYaw ?? 0;
+  $('avTurnYawVal').textContent = `${p.avatar.turnYaw ?? 0}°`;
+  $('avTurnAuto').checked = !!p.avatar.turnAuto;
+  $('avDepthInfo').textContent = depthValid(p.avatar)
+    ? `✔ Tiefe vorhanden (${p.avatar.depthSource === 'KI' ? 'KI' : 'aus dem Umriss'})`
+    : 'Tiefe wird beim ersten Drehen automatisch berechnet.';
   renderMorphList();
   $('avVrmOpts').hidden = !p.avatar.vrm;
   $('avVrmYaw').value = p.avatar.vrmYaw ?? 0;
@@ -1920,6 +1937,47 @@ $('avVrmFile').onchange = async (e) => {
   avatarChanged();
 };
 $('avVrmYaw').oninput = (e) => setVrmYaw(+e.target.value);
+
+// ---- Bild-Figur leicht drehen (Tiefenkarte)
+const depthValid = (av) => !!av.depth && av.depthFor === imageKey(av.image);
+let depthJob = null;
+async function ensureDepth({ force = false } = {}) {
+  const av = persona().avatar;
+  if (!force && depthValid(av)) return true;
+  if (depthJob) return depthJob;
+  depthJob = (async () => {
+    try {
+      $('avDepthInfo').textContent = 'Tiefe wird berechnet … (beim ersten Mal wird ein KI-Modell geladen, ca. 25 MB)';
+      const img = await imageToCanvas(av.image);
+      const { url, source } = await buildDepthMap(img, (id) => stt.estimateDepth(id, progressStatus('Tiefenschätzung')));
+      av.depth = url;
+      av.depthFor = imageKey(av.image);
+      av.depthSource = source;
+      status(source === 'KI' ? 'Tiefe per KI berechnet.' : 'KI-Tiefe nicht verfügbar – nutze Tiefe aus dem Umriss.');
+      fillSettings();
+      avatarChanged();
+      return true;
+    } catch (e) {
+      status(`Tiefe konnte nicht berechnet werden: ${e.message}`);
+      return false;
+    } finally {
+      depthJob = null;
+    }
+  })();
+  return depthJob;
+}
+$('avTurnYaw').oninput = (e) => {
+  setTurnYaw(+e.target.value);
+  ensureDepth();
+};
+$('avTurnAuto').onchange = (e) => {
+  persona().avatar.turnAuto = e.target.checked;
+  avatar.turnAuto = e.target.checked;
+  if (floating.avatar) floating.avatar.turnAuto = e.target.checked;
+  save();
+  if (e.target.checked) ensureDepth();
+};
+$('avDepthCalc').onclick = () => ensureDepth({ force: true });
 $('avVrmFraming').onchange = (e) => {
   persona().avatar.vrmFraming = e.target.value;
   avatar.vrmFraming = e.target.value;

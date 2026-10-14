@@ -44,6 +44,13 @@ export class SpeechInput {
     return res.rgba;
   }
 
+  /** KI-Tiefenkarte (0 = weit weg, 255 = nah) in der Größe des Bildes. */
+  async estimateDepth(imageData, onProgress) {
+    const rgba = new Uint8ClampedArray(imageData.data);
+    const res = await this.call({ type: 'depth', rgba, width: imageData.width, height: imageData.height }, onProgress, [rgba.buffer]);
+    return res.depth;
+  }
+
   preload(onProgress) {
     return this.call({ type: 'load', model: this.model }, onProgress);
   }
