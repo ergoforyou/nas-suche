@@ -89,6 +89,17 @@ Sprach-Server **Chatterbox** (MIT-Lizenz) genutzt werden. Er läuft auf der NVID
   Empfohlen: „Thorsten“ (Deutsch) und „Lessac“ (Englisch).
 - **Höchstens vorlesen** begrenzt lange Antworten (der Rest steht im Ausgabefenster).
 
+### Cloud statt lokal (optional): Claude, ChatGPT, OpenAI-Stimme
+
+Ist die eigene Grafikkarte zu langsam, kann das Sprachmodell in der Cloud laufen – alles andere (Avatar, Posen,
+Gedächtnis, Personas, Spracherkennung) bleibt lokal:
+
+- ⚙ → Verbindung → **KI-Anbieter**: *Claude (Anthropic)* oder *ChatGPT (OpenAI)*, API-Schlüssel eintragen.
+  Für Claude ist **Haiku 5.5** (schnell, günstig) voreingestellt, Denktiefe „niedrig“ für flotte Antworten.
+- ⚙ → Sprache → Engine **OpenAI-Stimme**: ausdrucksstarke Stimmen ohne Grafikkarte (z. B. Nova, Shimmer),
+  Sprechstil per Anweisung („warm und lebendig …“).
+- Schlüssel werden mit der Verschlüsselung von Windows gespeichert. Im Offline-Modus sind Cloud-Anbieter gesperrt.
+
 ### Datenschutz
 
 Gespräche, Sprache, Bilder und Personas bleiben auf dem Rechner. Die Oberfläche hat technisch keinen

@@ -1,7 +1,7 @@
 {
   "name": "ki-assistent",
   "productName": "KI-Assistent",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Lokaler Desktop-Assistent mit Avatar, Spracherkennung und Sprachausgabe für LM Studio",
   "main": "main.js",
   "author": "ergoforyou",
@@ -32,6 +32,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "cloud.js",
       "dist/**/*"
     ],
     "directories": {
@@ -58,5 +59,9 @@
         "to": "tts-server"
       }
     ]
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.134.0",
+    "openai": "7.33.0"
   }
 }

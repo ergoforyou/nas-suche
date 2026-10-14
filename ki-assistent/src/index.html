@@ -196,11 +196,35 @@
       <label class="check"><input id="vSpeak" type="checkbox" /> Antworten vorlesen</label>
       <label>Engine
         <select id="vEngine">
+          <option value="cloud">OpenAI-Stimme – ausdrucksstark, ohne Grafikkarte (Cloud, API-Schlüssel)</option>
           <option value="server">Chatterbox – ausdrucksstark, eigene Stimme (lokaler Server, Grafikkarte)</option>
           <option value="piper">Piper – schnell, einfach (direkt in der App)</option>
           <option value="system">Systemstimme (Windows/macOS)</option>
         </select>
       </label>
+      <div id="vCloudWrap" hidden>
+        <p class="hint warn">Der vorzulesende Text wird an OpenAI gesendet.</p>
+        <div id="vCloudKeyInfo" class="hint"></div>
+        <label>Stimme
+          <select id="vCloudVoice">
+            <option value="nova">Nova – weiblich, freundlich</option>
+            <option value="shimmer">Shimmer – weiblich, hell</option>
+            <option value="coral">Coral – weiblich, warm</option>
+            <option value="sage">Sage – weiblich, ruhig</option>
+            <option value="alloy">Alloy – neutral</option>
+            <option value="ballad">Ballad – männlich, sanft</option>
+            <option value="ash">Ash – männlich</option>
+            <option value="echo">Echo – männlich</option>
+            <option value="onyx">Onyx – männlich, tief</option>
+            <option value="verse">Verse – männlich, lebhaft</option>
+            <option value="fable">Fable – erzählend</option>
+          </select>
+        </label>
+        <label>Sprechstil (Anweisung an die Stimme)
+          <textarea id="vCloudStyle" rows="2" placeholder="z. B. Sprich warm, lebendig und mit einem Lächeln."></textarea>
+        </label>
+        <label>Modell <input id="vCloudModel" type="text" placeholder="gpt-4o-mini-tts" /></label>
+      </div>
       <div id="vServerWrap">
         <label>Server-Adresse
           <div class="row">
@@ -265,23 +289,72 @@
     </div>
 
     <div class="tab" data-tab="conn" hidden>
-      <p class="hint">In LM Studio ein Modell laden und unter <b>Developer</b> den lokalen Server starten
-        (Standard: Port 1234).</p>
-      <label>Server-Adresse <input id="cUrl" type="text" placeholder="http://localhost:1234" /></label>
-      <label>Modell
-        <div class="row">
-          <select id="cModel"></select>
-          <button id="cRefresh" title="Aktualisieren">⟳</button>
-        </div>
+      <label>KI-Anbieter
+        <select id="cProvider">
+          <option value="lmstudio">LM Studio – lokal auf diesem Rechner</option>
+          <option value="anthropic">Claude (Anthropic) – Cloud, API-Schlüssel</option>
+          <option value="openai">ChatGPT (OpenAI) – Cloud, API-Schlüssel</option>
+        </select>
       </label>
-      <label>Kreativität (Temperatur) <input id="cTemp" type="range" min="0" max="1.5" step="0.05" /></label>
+      <p class="hint warn" id="cCloudHint">Bei Cloud-Anbietern werden deine Nachrichten, der Systemprompt und das
+        Gedächtnis der Persona an den Anbieter gesendet. Avatar, Spracherkennung und Daten bleiben lokal.</p>
+
+      <div id="cLocalWrap">
+        <p class="hint">In LM Studio ein Modell laden und unter <b>Developer</b> den lokalen Server starten
+          (Standard: Port 1234).</p>
+        <label>Server-Adresse <input id="cUrl" type="text" placeholder="http://localhost:1234" /></label>
+        <label>Modell
+          <div class="row">
+            <select id="cModel"></select>
+            <button id="cRefresh" title="Aktualisieren">⟳</button>
+          </div>
+        </label>
+        <label>Kreativität (Temperatur) <input id="cTemp" type="range" min="0" max="1.5" step="0.05" /></label>
+        <div id="cInfo" class="hint"></div>
+      </div>
+
+      <div id="cClaudeWrap" hidden>
+        <label>API-Schlüssel (console.anthropic.com)
+          <div class="row">
+            <input id="cClaudeKey" type="password" placeholder="sk-ant-…" autocomplete="off" style="flex:1" />
+            <button id="cClaudeKeySave">Speichern</button>
+          </div>
+        </label>
+        <div id="cClaudeKeyInfo" class="hint"></div>
+        <label>Modell <select id="cClaudeModel"></select></label>
+        <label>Denktiefe
+          <select id="cClaudeEffort">
+            <option value="low">niedrig – schnellste Antwort (empfohlen fürs Sprechen)</option>
+            <option value="medium">mittel</option>
+            <option value="high">hoch – gründlicher, langsamer</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="cOpenaiWrap" hidden>
+        <label>API-Schlüssel (platform.openai.com)
+          <div class="row">
+            <input id="cOpenaiKey" type="password" placeholder="sk-…" autocomplete="off" style="flex:1" />
+            <button id="cOpenaiKeySave">Speichern</button>
+          </div>
+        </label>
+        <div id="cOpenaiKeyInfo" class="hint"></div>
+        <label>Modell
+          <div class="row">
+            <select id="cOpenaiModel"></select>
+            <button id="cOpenaiRefresh" title="Aktualisieren">⟳</button>
+          </div>
+        </label>
+        <div id="cOpenaiInfo" class="hint"></div>
+      </div>
+
       <label>Gedächtnis (Nachrichten im Kontext) <input id="cHistory" type="number" min="2" max="100" /></label>
-      <div id="cInfo" class="hint"></div>
 
       <h3>Datenschutz</h3>
-      <label class="check"><input id="cOffline" type="checkbox" /> Offline-Modus: keinerlei Internetverbindungen</label>
-      <p class="hint">Gespräche, Sprache und Bilder verlassen nie den Rechner. Ins Internet geht nur der
-        einmalige Download der Sprachmodelle – im Offline-Modus auch der nicht.</p>
+      <label class="check"><input id="cOffline" type="checkbox" /> Offline-Modus: keinerlei Internetverbindungen (Cloud-Anbieter gesperrt)</label>
+      <p class="hint">Mit LM Studio und lokaler Stimme verlassen Gespräche, Sprache und Bilder nie den Rechner; ins Internet
+        geht nur der einmalige Download der Sprachmodelle. Mit Claude, ChatGPT oder der OpenAI-Stimme werden die
+        Gesprächstexte an den jeweiligen Anbieter gesendet.</p>
       <div id="cModels" class="hint"></div>
       <button id="cOpenModels">Modellordner öffnen</button>
     </div>

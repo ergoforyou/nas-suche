@@ -161,8 +161,9 @@ export class SpeechOutput {
     this.ctx = null;
   }
 
-  configure({ engine, voices, language, systemVoice, rate, maxSentences, server }) {
+  configure({ engine, voices, language, systemVoice, rate, maxSentences, server, cloud }) {
     if (server) this.server = { ...this.server, ...server };
+    if (cloud) this.cloud = { ...this.cloud, ...cloud };
     if (engine) this.engine = engine;
     if (voices) this.voices = { ...DEFAULT_VOICES, ...voices };
     if (language) this.language = language;
@@ -210,6 +211,26 @@ export class SpeechOutput {
     return run;
   }
 
+  /** Cloud-Stimme (OpenAI): ein Satz -> Audio. Anfragen laufen nacheinander, damit die Reihenfolge stimmt. */
+  synthCloud(text) {
+    const c = this.cloud ?? {};
+    const prev = this.cloudChain ?? Promise.resolve();
+    const run = prev.then(async () => {
+      const bytes = await window.desktop.ttsCloudSpeak({
+        text,
+        voice: c.voice,
+        model: c.model,
+        instructions: c.instructions,
+        speed: this.rate,
+      });
+      this.ctx ??= new AudioContext();
+      const buf = await this.ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+      return { audio: buf.getChannelData(0), sampleRate: buf.sampleRate };
+    });
+    this.cloudChain = run.catch(() => {});
+    return run;
+  }
+
   async preload(onProgress) {
     if (this.engine !== 'piper') return;
     for (const id of new Set([this.voices[this.language], this.voices[this.language === 'de' ? 'en' : 'de']])) {
@@ -234,7 +255,9 @@ export class SpeechOutput {
       const job =
         this.engine === 'server'
           ? this.synthServer(clean)
-          : synthesize(clean, this.voiceFor(clean), {
+          : this.engine === 'cloud'
+            ? this.synthCloud(clean)
+            : synthesize(clean, this.voiceFor(clean), {
               rate: this.rate,
               onProgress: ({ loaded, total }) =>
                 total && this.onStatus(`Stimme wird geladen … ${Math.round((loaded / total) * 100)} % (nur beim ersten Mal)`),

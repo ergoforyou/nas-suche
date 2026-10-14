@@ -10,11 +10,13 @@ const {
   screen,
   Menu,
   globalShortcut,
+  safeStorage,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
+const { friendlyCloudError, chatAnthropic, chatOpenAI } = require('./cloud.js');
 
 const DIST = path.join(__dirname, 'dist');
 const SMOKE = process.argv.includes('--smoke-test');
@@ -350,6 +352,10 @@ function runSmokeTest() {
       );
       console.log('Modell-Route:', cfg);
       if (cfg !== 'whisper') return fail('Modell-Download über app:// fehlgeschlagen');
+      // Cloud-SDKs müssen sich im Hauptprozess laden lassen
+      const sdkOk = typeof require('@anthropic-ai/sdk').default === 'function' && typeof require('openai').default === 'function';
+      console.log('Cloud-SDKs geladen:', sdkOk);
+      if (!sdkOk) return fail('Cloud-SDKs fehlen');
       // Sprachkette in der echten App: Piper spricht, Whisper erkennt
       const speech = await js('window.__app.selfTest()');
       console.log('Sprach-Selbsttest:', JSON.stringify(speech));
@@ -627,6 +633,97 @@ ipcMain.handle('lmstudio:prompts', () => {
   return all.filter((p) => !seen.has(p.systemPrompt) && seen.add(p.systemPrompt));
 });
 
+// ---------------------------------------------------------------- API-Schlüssel (Cloud-Anbieter)
+// Schlüssel werden mit der Verschlüsselung des Betriebssystems (Windows: DPAPI) gespeichert und
+// verlassen den Hauptprozess nie – die Oberfläche erfährt nur, ob einer hinterlegt ist.
+const keyFile = () => path.join(app.getPath('userData'), 'schluessel.json');
+
+function readKeyFile() {
+  try {
+    return JSON.parse(fs.readFileSync(keyFile(), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function getKey(provider) {
+  const raw = readKeyFile()[provider];
+  if (!raw) return null;
+  try {
+    const buf = Buffer.from(raw.data, 'base64');
+    return raw.encrypted ? safeStorage.decryptString(buf) : buf.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+ipcMain.handle('keys:status', () => {
+  const k = readKeyFile();
+  return { anthropic: !!k.anthropic, openai: !!k.openai, encrypted: safeStorage.isEncryptionAvailable() };
+});
+
+ipcMain.handle('keys:set', (_e, { provider, key }) => {
+  if (!['anthropic', 'openai'].includes(provider)) throw new Error('Unbekannter Anbieter');
+  const all = readKeyFile();
+  const clean = String(key ?? '').trim();
+  if (!clean) delete all[provider];
+  else {
+    const encrypted = safeStorage.isEncryptionAvailable();
+    all[provider] = {
+      encrypted,
+      data: (encrypted ? safeStorage.encryptString(clean) : Buffer.from(clean, 'utf8')).toString('base64'),
+    };
+  }
+  fs.mkdirSync(path.dirname(keyFile()), { recursive: true });
+  fs.writeFileSync(keyFile(), JSON.stringify(all));
+});
+
+function anthropicClient() {
+  const Anthropic = require('@anthropic-ai/sdk').default;
+  const key = getKey('anthropic');
+  // Ohne hinterlegten Schlüssel liest das SDK ANTHROPIC_API_KEY aus der Umgebung
+  return { Anthropic, client: new Anthropic(key ? { apiKey: key } : {}) };
+}
+
+function openaiClient() {
+  const OpenAI = require('openai').default;
+  const key = getKey('openai');
+  return { OpenAI, client: new OpenAI(key ? { apiKey: key } : {}) };
+}
+
+function cloudBlocked(provider) {
+  return offline && provider !== 'lmstudio' ? 'Offline-Modus ist aktiv – Cloud-Anbieter sind gesperrt (⚙ → Verbindung).' : null;
+}
+
+ipcMain.handle('openai:models', async () => {
+  const { client } = openaiClient();
+  const ids = [];
+  for await (const m of client.models.list()) ids.push(m.id);
+  return ids
+    .filter((id) => /^(gpt|o\d|chatgpt)/i.test(id) && !/(audio|tts|realtime|image|transcribe|search|embedding|instruct)/i.test(id))
+    .sort();
+});
+
+// Cloud-Stimme (OpenAI): ausdrucksstarke Sprachausgabe ohne eigene Grafikkarte
+ipcMain.handle('tts:cloud:speak', async (_e, { text, voice, model, instructions, speed }) => {
+  const blocked = cloudBlocked('openai');
+  if (blocked) throw new Error(blocked);
+  try {
+    const { client } = openaiClient();
+    const res = await client.audio.speech.create({
+      model: model || 'gpt-4o-mini-tts',
+      voice: voice || 'nova',
+      input: text,
+      ...(instructions ? { instructions } : {}),
+      ...(speed && speed !== 1 ? { speed } : {}),
+      response_format: 'wav',
+    });
+    return new Uint8Array(await res.arrayBuffer());
+  } catch (err) {
+    throw new Error(friendlyCloudError(err, 'OpenAI-Stimme', require('openai').default));
+  }
+});
+
 // ---------------------------------------------------------------- LM Studio (OpenAI-kompatible API)
 // Die Anfragen laufen über den Hauptprozess, damit es keine CORS-Probleme gibt.
 function apiUrl(base, p) {
@@ -642,12 +739,31 @@ ipcMain.handle('llm:models', async (_e, baseUrl) => {
 
 const running = new Map();
 
-ipcMain.on('llm:chat', async (e, { id, baseUrl, model, messages, temperature }) => {
+ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, messages, temperature, effort }) => {
   const ctrl = new AbortController();
   running.set(id, ctrl);
   const send = (type, payload) => {
     if (!e.sender.isDestroyed()) e.sender.send('llm:event', { id, type, payload });
   };
+  const blocked = cloudBlocked(provider);
+  if (blocked) {
+    running.delete(id);
+    return send('error', blocked);
+  }
+  if (provider === 'anthropic' || provider === 'openai') {
+    const name = provider === 'anthropic' ? 'Claude' : 'ChatGPT';
+    try {
+      if (provider === 'anthropic') await chatAnthropic(anthropicClient().client, { model, messages, effort }, send, ctrl.signal);
+      else await chatOpenAI(openaiClient().client, { model, messages }, send, ctrl.signal);
+    } catch (err) {
+      const SDK = provider === 'anthropic' ? require('@anthropic-ai/sdk').default : require('openai').default;
+      if (ctrl.signal.aborted || err instanceof SDK.APIUserAbortError) send('done');
+      else send('error', friendlyCloudError(err, name, SDK));
+    } finally {
+      running.delete(id);
+    }
+    return;
+  }
   try {
     const res = await fetch(apiUrl(baseUrl, '/v1/chat/completions'), {
       method: 'POST',

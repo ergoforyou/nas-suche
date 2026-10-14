@@ -41,6 +41,12 @@ contextBridge.exposeInMainWorld('desktop', {
   ttsServerMultilingual: (base) => ipcRenderer.invoke('tts:server:multilingual', base),
   openTtsScripts: () => ipcRenderer.send('tts:server:scripts'),
 
+  // Cloud-Anbieter (Claude / ChatGPT) und Cloud-Stimme
+  keyStatus: () => ipcRenderer.invoke('keys:status'),
+  setKey: (provider, key) => ipcRenderer.invoke('keys:set', { provider, key }),
+  openaiModels: () => ipcRenderer.invoke('openai:models'),
+  ttsCloudSpeak: (opts) => ipcRenderer.invoke('tts:cloud:speak', opts),
+
   // LM Studio
   lmStudioPrompts: () => ipcRenderer.invoke('lmstudio:prompts'),
   listModels: (baseUrl) => ipcRenderer.invoke('llm:models', baseUrl),

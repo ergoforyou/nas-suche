@@ -246,3 +246,7 @@ body.floating .stage { display: none; }
 .pose-opts input[type=range] { width: 90px; }
 .pose-opts select { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; padding: 2px 4px; }
 .pose-opts button { padding: 2px 8px; font-size: 12px; }
+
+.hint.warn { color: #e0b05b; }
+#cClaudeKey, #cOpenaiKey, #vCloudModel { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; color: var(--text); }
+#vCloudModel { display: block; width: 100%; margin-top: 4px; }

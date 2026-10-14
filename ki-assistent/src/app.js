@@ -44,6 +44,7 @@ function defaultPersona() {
       systemVoice: '',
       rate: 1,
       server: { voice: '', exaggeration: 0.6, cfg: 0.5, temperature: 0.8 },
+      cloud: { voice: 'nova', instructions: 'Sprich natürlich, warm und lebendig – wie im persönlichen Gespräch.' },
     },
   };
 }
@@ -57,6 +58,7 @@ function migratePersona(p) {
   p.memory ??= [];
   p.voice = { ...d.voice, ...(p.voice ?? {}) };
   p.voice.server = { ...d.voice.server, ...(p.voice.server ?? {}) };
+  p.voice.cloud = { ...d.voice.cloud, ...(p.voice.cloud ?? {}) };
   if (p.voice.piperVoice) {
     const lang = p.voice.piperVoice.startsWith('en') ? 'en' : 'de';
     p.voice[lang] = p.voice.piperVoice;
@@ -85,7 +87,19 @@ const DEFAULT_SETTINGS = {
   memoryLearn: true,
   ttsServerUrl: 'http://localhost:8004',
   floatingSize: 0.4,
+  provider: 'lmstudio', // 'lmstudio' | 'anthropic' | 'openai'
+  claudeModel: 'claude-haiku-5-5',
+  claudeEffort: 'low',
+  openaiModel: '',
+  cloudTtsModel: 'gpt-4o-mini-tts',
 };
+
+const CLAUDE_MODELS = [
+  ['claude-haiku-5-5', 'Claude Haiku 5.5 – schnell & günstig (empfohlen)'],
+  ['claude-sonnet-5-5', 'Claude Sonnet 5.5 – ausgewogen'],
+  ['claude-opus-5-5', 'Claude Opus 5.5 – am leistungsfähigsten'],
+];
+const PROVIDER_NAMES = { lmstudio: 'LM Studio', anthropic: 'Claude', openai: 'ChatGPT' };
 
 const RULES = {
   de: {
@@ -206,6 +220,7 @@ function applyVoice() {
     rate: p.voice.rate,
     maxSentences: state.settings.maxSentences,
     server: { url: state.settings.ttsServerUrl, ...p.voice.server },
+    cloud: { model: state.settings.cloudTtsModel, ...p.voice.cloud },
   });
   stt.model = state.settings.sttModel;
   // Whisper bekommt immer eine feste Sprache – ohne Angabe übersetzt es teils ins Englische.
@@ -341,7 +356,25 @@ class ThinkFilter {
   }
 }
 
+/** Anfrageparameter für den gewählten KI-Anbieter. */
+function llmParams(model) {
+  const s = state.settings;
+  if (s.provider === 'anthropic') return { provider: 'anthropic', model, effort: s.claudeEffort };
+  if (s.provider === 'openai') return { provider: 'openai', model };
+  return { provider: 'lmstudio', baseUrl: s.baseUrl, model, temperature: s.temperature };
+}
+
 async function ensureModel() {
+  const s = state.settings;
+  if (s.provider === 'anthropic') return s.claudeModel || CLAUDE_MODELS[0][0];
+  if (s.provider === 'openai') {
+    if (s.openaiModel) return s.openaiModel;
+    const models = await desktop.openaiModels();
+    s.openaiModel = models.find((m) => /mini/i.test(m)) ?? models[0];
+    if (!s.openaiModel) throw new Error('Keine Chat-Modelle für diesen Schlüssel gefunden.');
+    save();
+    return s.openaiModel;
+  }
   if (state.settings.model) return state.settings.model;
   const models = await desktop.listModels(state.settings.baseUrl);
   const chat = models.filter((m) => !/embed/i.test(m));
@@ -414,14 +447,16 @@ async function send(text) {
     model = await ensureModel();
   } catch (e) {
     return finish(
-      `Keine Verbindung zu LM Studio (${state.settings.baseUrl}). Läuft der lokale Server? – ${e.message}`,
+      state.settings.provider === 'lmstudio'
+        ? `Keine Verbindung zu LM Studio (${state.settings.baseUrl}). Läuft der lokale Server? – ${e.message}`
+        : `${PROVIDER_NAMES[state.settings.provider]}: ${e.message}`,
     );
   }
 
   const id = newId();
   state.currentChatId = id;
   desktop.chat(
-    { id, baseUrl: state.settings.baseUrl, model, messages: buildMessages(), temperature: state.settings.temperature },
+    { id, ...llmParams(model), messages: buildMessages() },
     (ev) => {
       if (ev.type === 'delta') {
         const visible = think.push(ev.payload);
@@ -496,9 +531,8 @@ async function learn(p, question, answer) {
     desktop.chat(
       {
         id,
-        baseUrl: state.settings.baseUrl,
-        model,
-        temperature: 0,
+        ...llmParams(model),
+        ...(state.settings.provider === 'lmstudio' ? { temperature: 0 } : {}),
         messages: [
           { role: 'system', content: LEARN_PROMPT[lang] },
           { role: 'user', content: excerpt },
@@ -824,7 +858,8 @@ $('tabs').onclick = (e) => {
   if (tab === 'avatar') drawMarkers();
   if (tab === 'memory') renderMemory();
   if (tab === 'conn') {
-    refreshModels();
+    if (state.settings.provider === 'lmstudio') refreshModels();
+    if (state.settings.provider === 'openai') refreshOpenaiModels();
     refreshModelInfo();
   }
 };
@@ -879,6 +914,14 @@ function fillSettings() {
   $('cTemp').value = s.temperature;
   $('cHistory').value = s.historyLimit;
   $('cOffline').checked = s.offline;
+  $('cProvider').value = s.provider;
+  fillSelect($('cClaudeModel'), CLAUDE_MODELS, s.claudeModel);
+  $('cClaudeEffort').value = s.claudeEffort;
+  toggleProviderFields();
+  refreshKeys();
+  $('vCloudVoice').value = p.voice.cloud?.voice ?? 'nova';
+  $('vCloudStyle').value = p.voice.cloud?.instructions ?? '';
+  $('vCloudModel').value = s.cloudTtsModel;
   drawMarkers();
 }
 
@@ -897,6 +940,8 @@ function toggleEngineFields() {
   $('vPiperWrap').hidden = engine !== 'piper';
   $('vSystemWrap').hidden = engine !== 'system';
   $('vServerWrap').hidden = engine !== 'server';
+  $('vCloudWrap').hidden = engine !== 'cloud';
+  if (engine === 'cloud') refreshKeys();
   if (engine === 'server') refreshServer();
 }
 
@@ -945,6 +990,21 @@ $('vSrvUrl').onchange = (e) => {
   refreshServer();
 };
 $('vSrvConnect').onclick = refreshServer;
+$('vCloudVoice').onchange = (e) => {
+  persona().voice.cloud.voice = e.target.value;
+  applyVoice();
+  save();
+};
+$('vCloudStyle').oninput = (e) => {
+  persona().voice.cloud.instructions = e.target.value;
+  applyVoice();
+  save();
+};
+$('vCloudModel').onchange = (e) => {
+  state.settings.cloudTtsModel = e.target.value.trim() || DEFAULT_SETTINGS.cloudTtsModel;
+  applyVoice();
+  save();
+};
 $('vSrvSetup').onclick = () => desktop.openTtsScripts();
 $('vSrvMulti').onclick = async () => {
   $('vSrvMulti').disabled = true;
@@ -1942,6 +2002,73 @@ $('cHistory').onchange = (e) => {
   save();
 };
 $('cRefresh').onclick = () => refreshModels();
+
+// ---- KI-Anbieter (LM Studio lokal oder Cloud)
+function toggleProviderFields() {
+  const p = state.settings.provider;
+  $('cLocalWrap').hidden = p !== 'lmstudio';
+  $('cClaudeWrap').hidden = p !== 'anthropic';
+  $('cOpenaiWrap').hidden = p !== 'openai';
+  $('cCloudHint').hidden = p === 'lmstudio';
+}
+
+async function refreshKeys() {
+  const k = await desktop.keyStatus();
+  const txt = (on) => (on ? `✔ Schlüssel hinterlegt${k.encrypted ? ' (verschlüsselt)' : ''}` : 'Kein Schlüssel hinterlegt');
+  $('cClaudeKeyInfo').textContent = txt(k.anthropic);
+  $('cOpenaiKeyInfo').textContent = txt(k.openai);
+  $('vCloudKeyInfo').textContent = k.openai ? '' : 'Für die OpenAI-Stimme bitte unter ⚙ → Verbindung einen OpenAI-Schlüssel hinterlegen.';
+  return k;
+}
+
+async function refreshOpenaiModels() {
+  const sel = $('cOpenaiModel');
+  try {
+    const models = await desktop.openaiModels();
+    sel.innerHTML = '';
+    for (const m of models) sel.add(new Option(m, m, false, m === state.settings.openaiModel));
+    if (!state.settings.openaiModel && models.length) {
+      state.settings.openaiModel = models.find((m) => /mini/i.test(m)) ?? models[0];
+      sel.value = state.settings.openaiModel;
+      save();
+    }
+    $('cOpenaiInfo').textContent = `✔ ${models.length} Modelle verfügbar.`;
+  } catch (e) {
+    sel.innerHTML = '';
+    if (state.settings.openaiModel) sel.add(new Option(state.settings.openaiModel, state.settings.openaiModel));
+    $('cOpenaiInfo').textContent = `✖ ${e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`;
+  }
+}
+
+$('cProvider').onchange = (e) => {
+  state.settings.provider = e.target.value;
+  save();
+  toggleProviderFields();
+  if (e.target.value === 'lmstudio') refreshModels();
+  if (e.target.value === 'openai') refreshOpenaiModels();
+};
+const saveKey = (provider, inputId) => async () => {
+  await desktop.setKey(provider, $(inputId).value);
+  $(inputId).value = '';
+  await refreshKeys();
+  if (provider === 'openai') refreshOpenaiModels();
+  status('API-Schlüssel gespeichert.');
+};
+$('cClaudeKeySave').onclick = saveKey('anthropic', 'cClaudeKey');
+$('cOpenaiKeySave').onclick = saveKey('openai', 'cOpenaiKey');
+$('cClaudeModel').onchange = (e) => {
+  state.settings.claudeModel = e.target.value;
+  save();
+};
+$('cClaudeEffort').onchange = (e) => {
+  state.settings.claudeEffort = e.target.value;
+  save();
+};
+$('cOpenaiModel').onchange = (e) => {
+  state.settings.openaiModel = e.target.value;
+  save();
+};
+$('cOpenaiRefresh').onclick = refreshOpenaiModels;
 $('cOffline').onchange = (e) => {
   state.settings.offline = e.target.checked;
   desktop.setOffline(e.target.checked);
@@ -1997,7 +2124,10 @@ async function init() {
   if (state.settings.floating) setFloating(true);
   if (state.settings.outputOpen) openOutput();
 
-  desktop
+  if (state.settings.provider !== 'lmstudio') {
+    const keys = await desktop.keyStatus();
+    if (!keys[state.settings.provider]) status(`Für ${PROVIDER_NAMES[state.settings.provider]} ist noch kein API-Schlüssel hinterlegt (⚙ → Verbindung).`);
+  } else desktop
     .listModels(state.settings.baseUrl)
     .then(() => status(''))
     .catch(() =>
