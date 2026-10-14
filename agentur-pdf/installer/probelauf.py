@@ -142,7 +142,7 @@ def main() -> None:
         pruefen(len(funde) >= 2 and not anfrage("GET", f"/api/dokumente/{dok['id']}/suche?q=Pr%C3%A4mie"), "Geschwärzter OCR-Text nicht mehr auffindbar")
         # Komprimieren + Ausgabe ohne Kommentare
         r = anfrage("POST", f"/api/dokumente/{dok['id']}/komprimieren", {"stufe": "stark"})
-        pruefen(r["nachher"] <= r["vorher"], f"Komprimieren: {r['vorher'] // 1024} KB → {r['nachher'] // 1024} KB")
+        pruefen(r["nachher"] <= r["vorher"], f"Komprimieren: {r['vorher'] // 1024} KB -> {r['nachher'] // 1024} KB")
         pruefen(bool(system.get("screenshot_bereit")) or bool(os.environ.get("PROBELAUF_LOKAL")), "Screenshot-Werkzeug (Tk) vorhanden")
         print("\nProbelauf erfolgreich.")
     finally:
