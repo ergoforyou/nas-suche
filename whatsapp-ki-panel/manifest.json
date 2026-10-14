@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "WhatsApp KI-Panel",
+  "version": "1.0.0",
+  "description": "Claude oder ChatGPT als kleines Fenster neben WhatsApp Web – mit eigenem Login, Chatverlauf-Übergabe und festen Vorlagen.",
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "action": { "default_title": "KI-Fenster neben WhatsApp öffnen" },
+  "options_page": "options.html",
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["storage", "scripting", "tabs"],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://claude.ai/*",
+    "https://chatgpt.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*", "https://chatgpt.com/*"],
+      "js": ["ai-toolbar.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+K" },
+      "description": "KI-Fenster neben WhatsApp öffnen"
+    }
+  }
+}
