@@ -2411,3 +2411,59 @@ input[type="range"] {
     flex: 3;
   }
 }
+
+/* Screenshot-Karte */
+.screenshot-karte {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: 90;
+  width: 360px;
+  padding: 10px 12px;
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 10px;
+  box-shadow: var(--schatten-gross);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.screenshot-kopf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.screenshot-kopf button {
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.screenshot-text {
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  max-height: 60px;
+  overflow: hidden;
+}
+
+.screenshot-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.screenshot-knoepfe button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.screenshot-knoepfe button:hover {
+  background: var(--hg-hover);
+}

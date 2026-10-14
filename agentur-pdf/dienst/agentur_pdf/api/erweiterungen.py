@@ -22,7 +22,7 @@ from ..benutzer.speicher import BenutzerSpeicher
 from ..kern import anmerkungen, ausgabe, bilder, formulare, foto
 from ..kern.bearbeitung import Bearbeitung, _atomar_schreiben
 from ..kern.dokumente import DokumentFehler, DokumentSpeicher
-from ..kern.mupdf_thread import im_mupdf_thread
+from ..kern.mupdf_thread import im_mupdf_thread, im_mupdf_thread_sync
 from ..kern.woerterbuch import woerterbuch
 
 WORT = re.compile(r"[A-Za-zÄÖÜäöüß]+(?:-[A-Za-zÄÖÜäöüß]+)*")
@@ -475,6 +475,81 @@ def einrichten(
     async def text_export(dok_id: str):
         text = await im_mupdf_thread(lambda: ausgabe.text_export(dokumente.get(dok_id).doc))
         return Response(text, media_type="text/plain; charset=utf-8")
+
+    @app.post("/api/dokumente/{dok_id}/text")
+    async def text_speichern(dok_id: str, pfad: str = Body(..., embed=True)):
+        text = await im_mupdf_thread(lambda: ausgabe.text_export(dokumente.get(dok_id).doc))
+        ziel = Path(os.path.abspath(pfad))
+        await asyncio.get_running_loop().run_in_executor(None, _atomar_schreiben, ziel, text.encode("utf-8-sig"))
+        return {"pfad": str(ziel)}
+
+    # ============================================================ Screenshots
+    def screenshot_verarbeiten(png: bytes) -> dict:
+        from ..kern import screenshot
+
+        e = benutzer.einstellungen()
+        ergebnis = screenshot.verarbeiten(
+            png, e.get("screenshot_ordner", ""), e.get("kuerzel", ""), bool(e.get("screenshot_ocr", True)),
+            im_mupdf_thread_sync, e.get("ocr_sprachen", "deu+eng"),
+        )
+        app.state.ereignisse.hinzufuegen({"art": "screenshot", **ergebnis})
+        return ergebnis
+
+    app.state.screenshot = None
+
+    def screenshot_starten() -> None:
+        """Nur im echten Programm unter Windows (nicht in Tests): Tastenkürzel anmelden."""
+        from ..windows.screenshot import Steuerung
+
+        fenster = app.state.fenster_vorholen or (lambda: None)
+        steuerung = Steuerung(
+            benutzer.einstellungen,
+            screenshot_verarbeiten,
+            vorher=lambda: (app.state.fenster_minimieren or (lambda: None))(),
+            nachher=fenster,
+        )
+        steuerung.neu_starten()
+        app.state.screenshot = steuerung
+
+    app.state.screenshot_starten = screenshot_starten
+    app.state.fenster_minimieren = None
+
+    @app.get("/api/screenshot/status")
+    async def screenshot_status():
+        from ..kern import screenshot
+
+        s = app.state.screenshot
+        e = benutzer.einstellungen()
+        status = s.status() if s else {"verfuegbar": False, "aktiv": False, "taste": e.get("screenshot_taste", ""), "fehler": None}
+        return {**status, "ordner": e.get("screenshot_ordner") or str(screenshot.standardordner())}
+
+    @app.post("/api/screenshot/aufnehmen")
+    async def screenshot_aufnehmen():
+        s = app.state.screenshot
+        if s is None:
+            raise DokumentFehler("Das Screenshot-Werkzeug gibt es nur im Windows-Programm.")
+        ergebnis = await asyncio.get_running_loop().run_in_executor(None, s.aufnehmen)
+        return ergebnis or {"abgebrochen": True}
+
+    @app.post("/api/screenshot/verarbeiten")
+    async def screenshot_aus_bild(request: Request):
+        """Bild (z. B. aus der Zwischenablage) wie einen Screenshot ablegen."""
+        daten = await request.body()
+        png = await asyncio.get_running_loop().run_in_executor(None, bilder.normalisieren, daten)
+        return await asyncio.get_running_loop().run_in_executor(None, screenshot_verarbeiten, png)
+
+    @app.post("/api/system/ordner_zeigen")
+    async def ordner_zeigen(pfad: str = Body(..., embed=True)):
+        """Datei im Explorer markieren (Windows)."""
+        if os.name != "nt":
+            raise DokumentFehler("Nur unter Windows verfügbar.")
+        import subprocess
+
+        ziel = os.path.abspath(pfad)
+        if not os.path.exists(ziel):
+            raise DokumentFehler("Datei oder Ordner nicht gefunden.")
+        subprocess.Popen(["explorer", "/select,", ziel] if os.path.isfile(ziel) else ["explorer", ziel])  # noqa: S603,S607
+        return {"ok": True}
 
     # ============================================================= Formulare
     @app.get("/api/dokumente/{dok_id}/formular")

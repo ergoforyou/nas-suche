@@ -41,6 +41,28 @@ def anfrage(methode: str, pfad: str, daten: dict | None = None):
         return json.loads(a.read())
 
 
+def roh(pfad: str, daten: bytes):
+    anfrage_ = urllib.request.Request(
+        BASIS + pfad, data=daten, method="POST", headers={"X-Agentur-Token": TOKEN, "Content-Type": "application/octet-stream"}
+    )
+    with urllib.request.urlopen(anfrage_, timeout=300) as a:
+        return json.loads(a.read().decode())
+
+
+def unterschrift_png() -> bytes:
+    import io
+
+    from PIL import Image, ImageDraw
+
+    im = Image.new("RGB", (600, 200), "white")
+    d = ImageDraw.Draw(im)
+    for i in range(5):
+        d.line([(50 + i * 100, 150), (100 + i * 100, 40), (150 + i * 100, 150)], fill=(20, 30, 120), width=6)
+    puffer = io.BytesIO()
+    im.save(puffer, "PNG")
+    return puffer.getvalue()
+
+
 def warten_auf(auftrag_id: str, zeit: float = 300) -> dict:
     ende = time.time() + zeit
     while time.time() < ende:
@@ -101,6 +123,27 @@ def main() -> None:
         pruefen(a["status"] == "fertig", f"PDF + Word zusammengeführt in {time.time() - start:.1f} s ({a.get('fehler', '')})")
         neu = a["ergebnis"]["dokumente"][0]
         pruefen(len(anfrage("GET", f"/api/dokumente/{neu}/suche?q=Wei%C3%9F")) == 1, "Word-Inhalt (mit ß) im Ergebnis gefunden")
+
+        # Bearbeiten: Unterschrift freistellen (OpenCV) und platzieren
+        bild = roh("/api/bilder?freistellen=true", unterschrift_png())
+        pruefen(bild["bild"].startswith("data:image/png"), "Unterschrift freigestellt (OpenCV)")
+        r = anfrage("POST", f"/api/dokumente/{dok['id']}/anmerkungen", {"seite": 0, "art": "unterschrift", "bild_id": bild["id"], "rechteck": [0.1, 0.1, 0.4, 0.2]})
+        pruefen(bool(r.get("id")), "Unterschrift auf der Seite platziert")
+        ecken = anfrage("POST", "/api/foto/ecken", {"bild_id": bild["id"]})
+        pruefen(len(ecken["ecken"]) == 4, "Foto-Kantenerkennung läuft")
+        # Rechtschreibung (Hunspell über spylls)
+        fehler = anfrage("POST", "/api/rechtschreibung", {"text": "Der Versicherugsnehmer zahlt."})
+        vorschlaege = anfrage("POST", "/api/rechtschreibung/vorschlaege", {"wort": "Versicherugsnehmer"})
+        pruefen([f["wort"] for f in fehler] == ["Versicherugsnehmer"] and "Versicherungsnehmer" in vorschlaege, "Rechtschreibprüfung mit Vorschlag")
+        # Schwärzen in der OCR-Textebene
+        funde = anfrage("POST", f"/api/dokumente/{dok['id']}/schwaerzen/suchen", {"muster": "begriff", "begriff": "Prämie"})
+        anfrage("POST", f"/api/dokumente/{dok['id']}/schwaerzen/vormerken", {"eintraege": funde})
+        anfrage("POST", f"/api/dokumente/{dok['id']}/schwaerzen/anwenden", {"metadaten": True})
+        pruefen(len(funde) >= 2 and not anfrage("GET", f"/api/dokumente/{dok['id']}/suche?q=Pr%C3%A4mie"), "Geschwärzter OCR-Text nicht mehr auffindbar")
+        # Komprimieren + Ausgabe ohne Kommentare
+        r = anfrage("POST", f"/api/dokumente/{dok['id']}/komprimieren", {"stufe": "stark"})
+        pruefen(r["nachher"] <= r["vorher"], f"Komprimieren: {r['vorher'] // 1024} KB → {r['nachher'] // 1024} KB")
+        pruefen(bool(system.get("screenshot_bereit")) or bool(os.environ.get("PROBELAUF_LOKAL")), "Screenshot-Werkzeug (Tk) vorhanden")
         print("\nProbelauf erfolgreich.")
     finally:
         prozess.terminate()

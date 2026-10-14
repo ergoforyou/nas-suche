@@ -34,7 +34,8 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    excludes=["tkinter", "matplotlib", "pytest", "IPython"],
+    # tkinter wird für die Bereichsauswahl des Screenshot-Werkzeugs gebraucht
+    excludes=["matplotlib", "pytest", "IPython"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

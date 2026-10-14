@@ -41,6 +41,7 @@ STANDARD_EINSTELLUNGEN: dict[str, Any] = {
     "screenshot_ordner": "",
     "screenshot_ocr": True,
     "screenshot_text_kopieren": False,
+    "screenshot_bild_kopieren": True,
     # zuletzt benutzte Stile je Werkzeug (Farbe, Linienbreite …)
     "werkzeug_stile": {},
 }

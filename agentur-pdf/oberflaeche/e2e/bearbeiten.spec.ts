@@ -272,3 +272,29 @@ test("Kennwortschutz festlegen", async ({ page }) => {
   const info = (await (await page.request.get(`/api/dokumente/${dokId}`, { headers: H })).json()) as { schutz: string };
   expect(info.schutz).toBe("kennwort");
 });
+
+test("Screenshot: Karte erscheint, Bild als Seite einfügen", async ({ page }) => {
+  await start(page);
+  await page.request.put("/api/einstellungen", { headers: H, data: { screenshot_ordner: join(DATEN, "shots"), screenshot_ocr: false } });
+  const dokId = await aktivesDok(page);
+  await page.request.post("/api/screenshot/verarbeiten", { headers: H, data: readFileSync(join(DATEN, "unterschrift.png")) });
+  const karte = page.getByRole("status", { name: "Screenshot gespeichert" });
+  await expect(karte).toBeVisible({ timeout: 10_000 });
+  await foto(page, "screenshot-karte");
+  await karte.getByRole("button", { name: "In Dokument einfügen" }).click();
+  await expect
+    .poll(async () => ((await (await page.request.get(`/api/dokumente/${dokId}`, { headers: H })).json()) as { seitenanzahl: number }).seitenanzahl)
+    .toBe(151);
+});
+
+test("Einstellungen: Kürzel und Screenshot-Ordner speichern", async ({ page }) => {
+  await start(page);
+  await page.locator(".testversion").click();
+  const dialog = page.getByRole("dialog", { name: "Über Agentur-PDF" });
+  await dialog.getByLabel(/Ihr Kürzel/).fill("JK");
+  await dialog.getByRole("button", { name: "Einstellungen speichern" }).click();
+  await expect(page.locator(".meldung")).toContainText("Einstellungen gespeichert");
+  const e = (await (await page.request.get("/api/einstellungen", { headers: H })).json()) as { kuerzel: string };
+  expect(e.kuerzel).toBe("JK");
+  await page.request.put("/api/einstellungen", { headers: H, data: { kuerzel: "" } });
+});

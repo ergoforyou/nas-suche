@@ -1,11 +1,12 @@
 // Register „Konvertieren“: Zusammenführen, In PDF umwandeln, Als PDF speichern.
 
-import { FileDown, FileInput, FolderSync, Layers, ScanText, TextSelect, TriangleAlert } from "lucide-react";
+import { Camera, FileDown, FileInput, FolderSync, Layers, ScanText, TextSelect, TriangleAlert } from "lucide-react";
+import { api } from "../api";
 import { registrieren } from "../befehle/register";
 import { umwandelnDialog, zusammenfuehrenOeffnen } from "../zustand/konvertieren";
 import { speichernUnter } from "../zustand/seitenaktionen";
 import { ocrDialog, unsicherUmschalten } from "../zustand/ocr";
-import { setzen, werkzeugWaehlen } from "../zustand/store";
+import { melden, setzen, werkzeugWaehlen } from "../zustand/store";
 
 registrieren(
   {
@@ -90,5 +91,28 @@ registrieren(
     stichworte: ["scansnap", "scanner", "automatisch", "ordner", "eingang", "watch"],
     beschreibung: "Neue Scans in einem Ordner automatisch durchsuchbar machen.",
     ausfuehren: () => setzen({ dialog: { art: "ueberwachung" } }),
+  },
+  {
+    id: "screenshot.aufnehmen",
+    titel: "Screenshot",
+    register: "konvertieren",
+    gruppe: "Bildschirm",
+    icon: Camera,
+    gross: true,
+    stichworte: ["bildschirmfoto", "screenshot", "sharex", "ausschnitt", "druck", "whatsapp"],
+    beschreibung: "Bereich des Bildschirms aufnehmen – wird mit Texterkennung im Screenshot-Ordner abgelegt. Überall: Strg+Umschalt+Druck.",
+    ausfuehren: () => {
+      api.screenshotAufnehmen().catch((e: Error) => melden(e.message, "fehler"));
+    },
+  },
+  {
+    id: "screenshot.einstellungen",
+    titel: "Screenshot-Einstellungen",
+    register: "konvertieren",
+    gruppe: "Bildschirm",
+    icon: Camera,
+    versteckt: true,
+    stichworte: ["tastenkürzel", "screenshot ordner", "hotkey"],
+    ausfuehren: () => setzen({ dialog: { art: "info" } }),
   },
 );

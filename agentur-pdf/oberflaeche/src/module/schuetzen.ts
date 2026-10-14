@@ -3,8 +3,9 @@
 
 import { Eraser, FileArchive, FileImage, FileOutput, FileText, KeyRound, Layers3, Printer, ScanSearch, ShieldCheck, UserX } from "lucide-react";
 import { registrieren } from "../befehle/register";
-import { api, herunterladen } from "../api";
-import { aenderungAnwenden } from "../zustand/ausgabe";
+import { api } from "../api";
+import { aenderungAnwenden, ausgabeSpeichern } from "../zustand/ausgabe";
+import { namensvorschlag } from "../zustand/seitenaktionen";
 import { holen, melden, setzen, werkzeugWaehlen, type Dialog, type Zustand } from "../zustand/store";
 
 const mitDokument = (z: Zustand) => z.aktiv !== null;
@@ -142,7 +143,10 @@ registrieren(
     stichworte: ["txt", "nur text", "kopieren"],
     ausfuehren: () => {
       const d = holen().dokumente.find((x) => x.id === holen().aktiv);
-      if (d) void herunterladen(`/api/dokumente/${d.id}/text`, d.titel.replace(/\.pdf$/i, "") + ".txt").catch(() => melden("Export fehlgeschlagen.", "fehler"));
+      if (!d) return;
+      void ausgabeSpeichern(namensvorschlag(d).replace(/\.pdf$/i, ".txt"), async (pfad) =>
+        pfad ? api.textSpeichern(d.id, pfad) : { url: `/api/dokumente/${d.id}/text` },
+      );
     },
     aktiv: mitDokument,
   },

@@ -108,6 +108,8 @@ export interface Zustand {
   platzieren: Platzierung | null;
   /** gewählte Stempelvorlage (Index in den Einstellungen) */
   stempelVorlage: number;
+  /** zuletzt aufgenommener Screenshot (Hinweiskarte) */
+  screenshot: { png: string; pdf: string | null; text: string; nonce: number } | null;
   /** markierter Text (Wortindizes) für Kopieren/Hervorheben */
   textAuswahl: { dokId: string; seite: number; von: number; bis: number } | null;
   /** unsichere Wörter je Dokument und Seite (nur wenn eingeblendet) */
@@ -145,6 +147,7 @@ let zustand: Zustand = {
   platzieren: null,
   stempelVorlage: 0,
   textAuswahl: null,
+  screenshot: null,
   register: "start",
   werkzeug: "hand",
   werkzeugFixiert: false,

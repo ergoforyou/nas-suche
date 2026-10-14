@@ -233,7 +233,6 @@ def drehen(bild: np.ndarray, winkel: float) -> np.ndarray:
 
 def vorbereiten(bild: np.ndarray, bildtyp: str, entzerren: bool = True) -> tuple[np.ndarray, float, str]:
     """Bild für Tesseract aufbereiten. Liefert (Bild, Schräglage in Grad, Bildtyp)."""
-    import cv2
 
     if bildtyp != "digital" and np.mean(bild) < 110:
         bild = 255 - bild  # Dunkelmodus (WhatsApp, Apps) → schwarz auf weiß

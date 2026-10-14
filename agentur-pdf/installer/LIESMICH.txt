@@ -23,19 +23,43 @@ RECHTSKLICK IM EXPLORER EINRICHTEN
   Unter Windows 11 unter „Weitere Optionen anzeigen“.
   Wichtig: Den Ordner danach nicht mehr verschieben (sonst neu einrichten).
 
+ERSTE SCHRITTE
+  Oben links auf „Testversion“ klicken → „Ihr Kürzel“ eintragen (z. B. JK).
+  Es erscheint in Stempeln, Kommentaren und Screenshot-Dateinamen.
+
 WAS IN DIESER TESTVERSION GEHT
+  Anzeigen & Seiten
   • Anzeigen, Zoom, Suche, Tabs, Nebeneinander, Miniaturen
   • Seiten verschieben/kopieren (auch zwischen Dokumenten), drehen, löschen,
     einfügen, extrahieren, teilen, Leerseiten entfernen, Rückgängig (Strg+Z)
+  Konvertieren
   • Zusammenführen (PDF, Bilder, Word, Excel, E-Mails) – ohne MS Office
   • Texterkennung (OCR), „Text aus Bereich“ (Taste T), Überwachungsordner
-  • Befehlssuche: Strg+K
+  • Screenshot: überall Strg+Umschalt+Druck → Bereich aufziehen. Bild + PDF
+    mit Texterkennung landen in Bilder\Screenshots\Agentur-PDF (Ordner und
+    Tastenkürzel unter „Testversion“ änderbar, z. B. auf das NAS).
+  Kommentieren
+  • Hervorheben (M), Unterstreichen, Durchstreichen, Text kopieren (V)
+  • Notiz, Textfeld, Rechteck, Ellipse, Linie, Pfeil, Freihand
+  • Stempel mit Datum und Kürzel (eigene Stempel: „Stempel verwalten“)
+  • Kommentarliste in der Seitenleiste
+  Bearbeiten
+  • Text eintragen (S) mit Rechtschreibprüfung: rote Wellenlinie,
+    Rechtsklick zeigt Vorschläge
+  • Bild/Unterschrift einfügen – weißer Hintergrund wird entfernt,
+    Unterschriften werden für später gespeichert
+  • Foto aufbereiten: abfotografiertes Blatt gerade rücken, Schatten weg
+  • Formulare direkt ausfüllen, Abdecken (weiß)
+  Schützen
+  • Schwärzen (Bereich oder Suche nach IBAN, E-Mail, Telefon, Datum):
+    erst vormerken, dann „Schwärzungen anwenden“ = endgültig entfernt
+  • Kennwort (AES-256) und Rechte, Metadaten entfernen
+  • Drucken (Strg+P) und Exportieren – wahlweise ohne Kommentare/Stempel
+  • Komprimieren (z. B. für E-Mail), Seiten als Bilder
+  • Befehlssuche: Strg+K findet jede Funktion
 
-NOCH NICHT ENTHALTEN (folgt)
-  Kommentieren/Markieren, Textfelder, Stempel, Unterschriften/Bilder mit
-  Freistellung, Screenshot-Werkzeug, Schwärzen, Passwort, Drucken,
-  Komprimieren. Die Register „Kommentieren“, „Bearbeiten“, „Schützen“
-  sind deshalb noch leer.
+  Alle Anmerkungen sind echte PDF-Anmerkungen – sie bleiben auch in Acrobat
+  & Co. sichtbar. Kennwortschutz und Komprimierung wirken beim Speichern.
 
 BEI PROBLEMEN
   Das Fehlerprotokoll liegt unter  %APPDATA%\AgenturPDF\protokoll.log

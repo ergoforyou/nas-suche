@@ -181,6 +181,11 @@ export const api = {
     anfrage<{ url?: string; pfad?: string; groesse: number }>("POST", `/api/dokumente/${id}/ausgabe`, o),
   bilderExport: (id: string, seiten: number[], dpi: number, format: string, pfad?: string | null) =>
     anfrage<{ url?: string; name?: string; pfad?: string }>("POST", `/api/dokumente/${id}/bilder_export`, { seiten, dpi, format, pfad }),
+  screenshotStatus: () => anfrage<{ verfuegbar: boolean; aktiv: boolean; taste: string; fehler: string | null; ordner: string }>("GET", "/api/screenshot/status"),
+  screenshotAufnehmen: () => anfrage<{ png?: string; abgebrochen?: boolean }>("POST", "/api/screenshot/aufnehmen"),
+  screenshotAusBild: (bild: Blob) => anfrage<{ png: string; pdf: string | null; text: string }>("POST", "/api/screenshot/verarbeiten", bild),
+  ordnerZeigen: (pfad: string) => anfrage("POST", "/api/system/ordner_zeigen", { pfad }),
+  textSpeichern: (id: string, pfad: string) => anfrage<{ pfad: string }>("POST", `/api/dokumente/${id}/text`, { pfad }),
   formular: (id: string) => anfrage<Record<string, Formularfeld[]>>("GET", `/api/dokumente/${id}/formular`),
   formularSetzen: (id: string, feld: number, seite: number, wert: string | boolean) =>
     anfrage<Aenderungsantwort>("PUT", `/api/dokumente/${id}/formular/${feld}`, { seite, wert }),

@@ -222,6 +222,9 @@ async function ereignisVerarbeiten(e: Ereignis): Promise<void> {
     case "info":
       melden(e.text);
       break;
+    case "screenshot":
+      setzen({ screenshot: { png: e.png, pdf: e.pdf, text: e.text, nonce: Date.now() } });
+      break;
   }
 }
 

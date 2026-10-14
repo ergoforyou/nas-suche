@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import signal
 import socket
@@ -27,6 +28,15 @@ from .kern.dokumente import DokumentSpeicher
 from .windows import instanz
 
 DATEITYPEN = ("PDF und Bilder (*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp)", "Alle Dateien (*.*)")
+
+
+SPEICHER_FILTER = {
+    ".pdf": "PDF-Dokument (*.pdf)",
+    ".png": "PNG-Bild (*.png)",
+    ".jpg": "JPG-Bild (*.jpg)",
+    ".zip": "ZIP-Archiv (*.zip)",
+    ".txt": "Textdatei (*.txt)",
+}
 
 
 def oberflaeche_ordner() -> Path | None:
@@ -111,11 +121,13 @@ def main(argv: list[str] | None = None) -> int:
         if fenster is None:
             return None
         verzeichnis = os.path.dirname(vorschlag) if os.path.isabs(vorschlag) else ""
+        endung = os.path.splitext(vorschlag)[1].lower()
+        filter_ = SPEICHER_FILTER.get(endung, SPEICHER_FILTER[".pdf"])
         ergebnis = fenster.create_file_dialog(
             webview.SAVE_DIALOG,
             directory=verzeichnis,
             save_filename=os.path.basename(vorschlag) or "Dokument.pdf",
-            file_types=("PDF-Dokument (*.pdf)",),
+            file_types=(filter_,),
         )
         if not ergebnis:
             return None
@@ -170,9 +182,12 @@ def main(argv: list[str] | None = None) -> int:
             fenster_ref["fenster"] = webview.create_window(
                 "Agentur-PDF", url, width=1400, height=900, min_size=(900, 600), text_select=True
             )
+            app.state.fenster_minimieren = lambda: fenster_ref["fenster"].minimize()
+            _screenshot_starten(app)
             webview.start()
         else:
             print(f"Agentur-PDF läuft: {url}", flush=True)
+            _screenshot_starten(app)
             webbrowser.open(url)
             thread.join()
     except (KeyboardInterrupt, SystemExit):
@@ -182,6 +197,16 @@ def main(argv: list[str] | None = None) -> int:
             instanz.abmelden()
         server.should_exit = True
     return 0
+
+
+def _screenshot_starten(app) -> None:
+    """Globales Screenshot-Tastenkürzel anmelden (nur Windows)."""
+    if os.name != "nt":
+        return
+    try:
+        app.state.screenshot_starten()
+    except Exception:  # noqa: BLE001 – Programm muss auch ohne Screenshot-Werkzeug laufen
+        logging.getLogger(__name__).exception("Screenshot-Werkzeug nicht gestartet")
 
 
 async def _extern(app, aktion: str, dateien: list[str]) -> None:

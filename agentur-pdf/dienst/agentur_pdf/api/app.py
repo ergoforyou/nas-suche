@@ -475,6 +475,7 @@ def erstelle_app(
             "beste_modelle": ocr.tessdata_finden() is not None,
             "libreoffice": libreoffice_finden(),
             "woerterbuch": woerterbuch().verfuegbar,
+            "screenshot_bereit": _screenshot_bereit(),
         }
 
     @app.post("/api/system/explorer")
@@ -496,7 +497,17 @@ def erstelle_app(
 
     @app.put("/api/einstellungen")
     async def einstellungen_setzen(aenderungen: dict = Body(...)):
-        return benutzer.einstellungen_setzen(aenderungen)
+        if "screenshot_taste" in aenderungen:
+            from ..windows.screenshot import TastenFehler, taste_parsen
+
+            try:
+                taste_parsen(str(aenderungen["screenshot_taste"]))
+            except TastenFehler as fehler:
+                raise DokumentFehler(str(fehler)) from None
+        ergebnis = benutzer.einstellungen_setzen(aenderungen)
+        if any(k.startswith("screenshot_") for k in aenderungen) and getattr(app.state, "screenshot", None):
+            await asyncio.get_running_loop().run_in_executor(None, app.state.screenshot.neu_starten)
+        return ergebnis
 
     @app.get("/api/zuletzt")
     async def zuletzt():
@@ -576,6 +587,19 @@ def erstelle_app(
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
     return app
+
+
+def _screenshot_bereit() -> bool:
+    """Sind die Bausteine für die Bereichsauswahl da (Tk mit Tcl-Bibliothek)?"""
+    try:
+        import tkinter
+
+        from PIL import ImageGrab, ImageTk  # noqa: F401
+
+        tkinter.Tcl().eval("info patchlevel")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 class Ereignisse:

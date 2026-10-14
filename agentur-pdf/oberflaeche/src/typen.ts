@@ -194,6 +194,7 @@ export interface Einstellungen {
   screenshot_ordner: string;
   screenshot_ocr: boolean;
   screenshot_text_kopieren: boolean;
+  screenshot_bild_kopieren: boolean;
   werkzeug_stile: Record<string, Partial<Stil>>;
 }
 
@@ -240,7 +241,8 @@ export type Ereignis =
   | { art: "zusammenfuehren"; dateien: string[] }
   | { art: "oeffnen"; dokumente: string[] }
   | { art: "meldung"; text: string }
-  | { art: "info"; text: string };
+  | { art: "info"; text: string }
+  | { art: "screenshot"; png: string; pdf: string | null; text: string };
 
 export interface OcrStatistik {
   erkannt: number;

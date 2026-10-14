@@ -10,6 +10,7 @@ import { Menueband } from "./ansicht/Menueband";
 import { Eigenschaftsleiste, Meldungen, Passwortdialog, Statusleiste, Tabs } from "./ansicht/Rahmen";
 import { Seitenleiste } from "./ansicht/Seitenleiste";
 import { Startseite } from "./ansicht/Startseite";
+import { ScreenshotKarte } from "./ansicht/ScreenshotKarte";
 import { api } from "./api";
 import { dateienOeffnen, naechsterTreffer, sitzungMerken, starten } from "./zustand/aktionen";
 import { dateienEinfuegen } from "./zustand/seitenaktionen";
@@ -216,6 +217,7 @@ export function App() {
       <Passwortdialog />
       <Auftraege />
       <Meldungen />
+      <ScreenshotKarte />
       {ablage && <div className="ablage-hinweis">Dateien hier ablegen zum Öffnen</div>}
     </div>
   );
