@@ -6,6 +6,8 @@ env.allowLocalModels = false;
 // Modelle kommen über den Hauptprozess (app://local/models/hf/…), der sie auf der Festplatte speichert.
 env.remoteHost = new URL('models/hf/', self.location.href).href;
 env.useBrowserCache = false;
+// Im Worker nur einen Kern für die CPU-Variante: Mehrkern-WASM kann hier blockieren (GPU wird bevorzugt).
+env.backends.onnx.wasm.numThreads = 1;
 env.backends.onnx.wasm.wasmPaths = new URL('wasm/tf/', self.location.href).href;
 
 let asr = null;

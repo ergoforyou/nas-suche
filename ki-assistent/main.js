@@ -202,7 +202,11 @@ function createWindow() {
           transparent: true,
           backgroundColor: '#00000000',
           hasShadow: false,
-          resizable: false,
+          // Muss "true" sein: Unter Windows ignoriert Electron sonst auch Größenänderungen per setBounds.
+          // (Mit der Maus am Rand ziehen geht bei rahmenlosen, transparenten Fenstern ohnehin nicht.)
+          resizable: true,
+          minWidth: 60,
+          minHeight: 100,
           alwaysOnTop: true,
           skipTaskbar: true,
           title: 'Avatar',
@@ -289,6 +293,13 @@ function runSmokeTest() {
       await new Promise((r) => setTimeout(r, 2500));
       if (!avatarWin) return fail('Avatar-Fenster nicht geöffnet');
       if (!(await js('!!window.__app.floatingReady()'))) return fail('Avatar-Fenster nicht bereit');
+      // Größe ändern (wie Mausrad/Eckanfasser) muss das Fenster wirklich vergrößern
+      const before = avatarWin.getBounds();
+      ipcMain.emit('avatar:resize', null, { factor: 1.25 });
+      await new Promise((r) => setTimeout(r, 300));
+      const after = avatarWin.getBounds();
+      console.log('Avatar-Größe:', JSON.stringify(before), '->', JSON.stringify(after));
+      if (after.height <= before.height) return fail('Avatar-Fenster lässt sich nicht vergrößern');
       await js('window.__app.openOutput()');
       await new Promise((r) => setTimeout(r, 1500));
       if (!(await js('!!window.__app.outputReady()'))) return fail('Ausgabefenster nicht bereit');

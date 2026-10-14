@@ -57,6 +57,16 @@ console.log('crossOriginIsolated:', await page.evaluate(() => self.crossOriginIs
 
 console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.debugVoice('de_DE-thorsten-high', 'ich'))));
 
+const quick = await Promise.race([
+  page.evaluate(() => window.__app.selfTest()),
+  new Promise((r) => setTimeout(() => r({ ok: false, error: 'Selbsttest hängt (Zeitüberschreitung)' }), 300000)),
+]);
+console.log('Selbsttest:', JSON.stringify(quick));
+if (!quick.ok) {
+  console.error('Selbsttest fehlgeschlagen');
+  process.exit(1);
+}
+
 const cases = [
   // Standardstimme; "ich", "möchte", "dich" enthalten den ç-Laut, der früher falsch übersetzt wurde
   { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/\bich\b/i, /möchte/i, /frag/i, /kostet/i, /beispiel/i] },

@@ -1852,11 +1852,16 @@ async function init() {
 
 /** Selbsttest der Sprachkette (wird vom automatischen Windows-Test aufgerufen). */
 async function selfTest() {
+  const steps = {};
+  const withTimeout = (name, promise, ms = 150000) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Zeitüberschreitung bei: ${name}`)), ms)),
+    ]).finally(() => (steps[name] = Math.round(performance.now() - t0)));
+  const t0 = performance.now();
   try {
     const text = 'Hallo, das ist ein kurzer Test der Sprachausgabe.';
-    const t0 = performance.now();
-    const res = await synthesize(text, DEFAULT_VOICES.de);
-    const t1 = performance.now();
+    const res = await withTimeout('Piper', synthesize(text, DEFAULT_VOICES.de));
     const off = new OfflineAudioContext(1, Math.ceil((res.audio.length / res.sampleRate) * 16000), 16000);
     const buf = off.createBuffer(1, res.audio.length, res.sampleRate);
     buf.copyToChannel(Float32Array.from(res.audio), 0);
@@ -1866,11 +1871,21 @@ async function selfTest() {
     src.start();
     const audio = (await off.startRendering()).getChannelData(0).slice();
     stt.language = 'german';
-    const heard = await stt.transcribe(audio);
+    const heard = await withTimeout('Whisper', stt.transcribe(audio));
     applyVoice();
-    return { ok: /test/i.test(heard), isolated: self.crossOriginIsolated, samples: res.audio.length, ttsMs: Math.round(t1 - t0), heard };
+    // zweiter Satz: zeigt die Geschwindigkeit, wenn alles geladen ist
+    const t1 = performance.now();
+    await withTimeout('Piper 2. Satz', synthesize('Und noch ein zweiter Satz, ganz ohne Ladezeit.', DEFAULT_VOICES.de));
+    return {
+      ok: /test/i.test(heard),
+      isolated: self.crossOriginIsolated,
+      samples: res.audio.length,
+      secondSentenceMs: Math.round(performance.now() - t1),
+      steps,
+      heard,
+    };
   } catch (e) {
-    return { ok: false, error: String(e?.message ?? e) };
+    return { ok: false, isolated: self.crossOriginIsolated, steps, error: String(e?.message ?? e) };
   }
 }
 
