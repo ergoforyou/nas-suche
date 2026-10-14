@@ -77,7 +77,7 @@ export class SpeechInput {
    */
   // threshold und startMs dürfen Funktionen sein (Live-Gespräch: strenger, solange der Avatar spricht).
   // startMs: so lange muss es laut sein, bis es als Sprechen gilt. onSpeechStart: Beginn des Sprechens.
-  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000, startMs = 0, onSpeechStart } = {}) {
+  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000, startMs = 0, adaptive = true, onSpeechStart } = {}) {
     await this.ensureMic();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
     return new Promise((resolve) => {
@@ -92,6 +92,7 @@ export class SpeechInput {
         silenceMs,
         maxMs,
         startMs,
+        adaptive,
         loudFor: 0,
         onSpeechStart,
         resolve,
@@ -105,12 +106,17 @@ export class SpeechInput {
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
     const rms = Math.sqrt(sum / data.length);
     this.onLevel(rms);
+    // Ruhepegel: fällt sofort mit, steigt nur langsam (Sprechen hebt ihn kaum an)
+    this.floor = this.floor == null ? rms : rms < this.floor ? rms : this.floor + (rms - this.floor) * 0.002;
 
     const r = this.rec;
     if (!r) return;
     const ms = (data.length / SAMPLE_RATE) * 1000;
     const value = (v) => (typeof v === 'function' ? v() : v);
-    const loud = rms > value(r.threshold);
+    // Ruhepegel mitlernen: Leise Headset-Mikrofone erreichen die eingestellte Schwelle oft nie.
+    // Die Schwelle sinkt dann bis auf das Vierfache des Ruhepegels – höher als eingestellt wird sie nie.
+    const th = value(r.threshold);
+    const loud = rms > (value(r.adaptive) ? Math.min(th, Math.max(this.floor * 4, 0.003)) : th);
 
     if (!r.speaking) {
       // Kurzen Vorlauf behalten, damit der Wortanfang nicht abgeschnitten wird.

@@ -181,6 +181,7 @@ const tts = new SpeechOutput({
   onLevel: (v) => (avatarState.level = v),
   onSpeakingChange: (on) => {
     avatarState.speaking = on;
+    if (!on) state.lastSpeakEnd = Date.now();
     updateBadge();
     if (!on) maybeListenHandsFree();
   },
@@ -386,7 +387,8 @@ function updateBadge() {
   } else if (state.transcribing) text = 'versteht …';
   else if (avatarState.thinking) text = 'denkt nach …';
   else if (avatarState.speaking) text = '';
-  else if (state.settings.handsFree) text = 'bereit – sprich einfach';
+  else if (state.hearing) text = '● ich höre dich …';
+  else if (state.settings.handsFree) text = 'Live – sprich einfach';
   b.textContent = text;
   b.hidden = !text;
   avatarState.listening = stt.listening;
@@ -833,13 +835,19 @@ function interrupt() {
   status('Unterbrochen – ich höre zu …');
 }
 
-/** Hat das Mikrofon nur den Avatar selbst gehört (Lautsprecher ohne Kopfhörer)? */
+/**
+ * Hat das Mikrofon nur den Avatar selbst gehört (Lautsprecher ohne Kopfhörer)?
+ * Nur prüfen, wenn das „Sprechen“ begann, während der Avatar redete – und dann Wortpaare vergleichen,
+ * nicht einzelne Wörter (sonst würden normale Fragen wie „Wie geht es dir?“ fälschlich verworfen).
+ */
 function isEcho(text) {
-  const words = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').split(' ').filter((w) => w.length > 2);
-  const heard = words(text);
-  if (!heard.length || !state.spoken) return false;
-  const said = new Set(words(state.spoken));
-  return heard.filter((w) => said.has(w)).length / heard.length >= 0.8;
+  if (!state.spoken) return false;
+  const words = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter(Boolean);
+  const pairs = (w) => w.slice(1).map((x, i) => w[i] + ' ' + x);
+  const heard = pairs(words(text));
+  if (heard.length < 2) return false;
+  const said = new Set(pairs(words(state.spoken.slice(-600))));
+  return heard.filter((p) => said.has(p)).length / heard.length >= 0.6;
 }
 
 const waitIdle = async (ms) => {
@@ -850,15 +858,24 @@ async function listenOnce({ handsFree = false } = {}) {
   if (state.micActive) return;
   state.micActive = true;
   let interrupted = false;
+  let duringSpeech = false; // begann ich zu sprechen, während der Avatar redete?
   try {
     // Während der Avatar spricht, muss es lauter und länger sein (sonst unterbricht er sich durch sein Echo selbst)
     const live = handsFree && liveBargeIn();
     const p = stt.listen({
       waitForSpeech: handsFree,
       threshold: () => state.settings.sensitivity * (live && tts.speaking ? 2.5 : 1),
-      startMs: () => (!live ? 0 : tts.speaking ? 300 : state.busy ? 200 : 60),
+      // während der Avatar spricht keine Absenkung der Schwelle (sonst unterbricht ihn sein eigenes Echo)
+      adaptive: () => !(live && tts.speaking),
+      // im Freihand-Modus mindestens ~¼ s Stimme, damit Tastenklicks nichts auslösen
+      startMs: () => (!handsFree ? 0 : tts.speaking ? 300 : 200),
       silenceMs: handsFree ? state.settings.livePauseMs : 1100,
       onSpeechStart: () => {
+        duringSpeech = tts.speaking || Date.now() - (state.lastSpeakEnd ?? 0) < 1000;
+        if (handsFree) {
+          state.hearing = true;
+          updateBadge();
+        }
         if (live && (tts.speaking || state.busy)) {
           interrupted = true;
           interrupt();
@@ -867,6 +884,7 @@ async function listenOnce({ handsFree = false } = {}) {
     });
     updateBadge();
     const audio = await p;
+    state.hearing = false;
     updateBadge();
     if (!audio || audio.length < 16000 * 0.35) return;
     state.transcribing = true;
@@ -875,8 +893,11 @@ async function listenOnce({ handsFree = false } = {}) {
     status('');
     state.transcribing = false;
     updateBadge();
-    if (!text || NOISE.some((r) => r.test(text.trim()))) return;
-    if (handsFree && isEcho(text)) return;
+    if (!text || NOISE.some((r) => r.test(text.trim()))) {
+      if (handsFree && audio.length > 16000) status('Nicht verstanden – bitte noch einmal sagen.');
+      return;
+    }
+    if (handsFree && duringSpeech && isEcho(text)) return;
     if (interrupted) await waitIdle(2500);
     await send(text);
   } catch (e) {
