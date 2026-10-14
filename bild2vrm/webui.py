@@ -14,10 +14,17 @@ from pathlib import Path
 
 from PIL import Image
 
-from .avatar import Options, analyze, cutout_preview, generate
+from .avatar import Options, Views, analyze, cutout_preview, generate
+from .views import split_sheet
 
 STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD = 60 * 1024 * 1024
+
+
+def _data_url(img: Image.Image) -> str:
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 def _decode_image(data_url: str) -> Image.Image:
@@ -36,6 +43,7 @@ def _options(d: dict) -> Options:
     o.grid = int(d.get("grid", o.grid))
     o.background = str(d.get("background", o.background))
     o.pose = str(d.get("pose", o.pose))
+    o.expressions = bool(d.get("expressions", True))
     o.name = str(d.get("name") or o.name)
     o.author = str(d.get("author") or o.author)
     return o
@@ -81,16 +89,19 @@ class Handler(BaseHTTPRequestHandler):
             opts = _options(data.get("options", {}))
             if self.path == "/api/analyze":
                 mask, kp = analyze(img, opts)
-                buf = io.BytesIO()
                 prev = cutout_preview(img, mask)
                 prev.thumbnail((900, 900))
-                prev.save(buf, format="PNG")
-                return self._json(200, {
-                    "width": img.width, "height": img.height, "keypoints": kp,
-                    "cutout": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode(),
-                })
+                return self._json(200, {"width": img.width, "height": img.height, "keypoints": kp,
+                                        "cutout": _data_url(prev)})
+            if self.path == "/api/split":
+                figs = split_sheet(img, opts.background)
+                return self._json(200, {"figures": [{"role": f["role"], "image": _data_url(f["image"])} for f in figs]})
             if self.path == "/api/generate":
-                res = generate(img, opts, data.get("keypoints"))
+                v = data.get("views") or {}
+                views = Views(back=_decode_image(v["back"]) if v.get("back") else None,
+                              sides=[(_decode_image(sd["image"]), str(sd.get("facing", "auto")))
+                                     for sd in v.get("sides", []) if sd.get("image")])
+                res = generate(img, opts, data.get("keypoints"), views)
                 return self._send(200, res.vrm, "application/octet-stream",
                                   {"X-Stats": json.dumps(res.stats)})
             return self._json(404, {"error": "unbekannter Endpunkt"})

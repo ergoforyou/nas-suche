@@ -86,7 +86,9 @@ _DIAG = np.sqrt(2.0)
 @dataclass
 class FrontMesh:
     xy: np.ndarray        # (N, 2) world positions
-    z: np.ndarray         # (N,) depth of the front surface (back = -z)
+    d: np.ndarray         # (N,) distance to the border of the vertex' part (world units)
+    part: np.ndarray      # (N,) 0 = body, 1 = left arm, 2 = right arm
+    row: np.ndarray       # (N,) grid row of the vertex
     uv: np.ndarray        # (N, 2)
     tris: np.ndarray      # (M, 3)
     allowed: np.ndarray   # (N, B) bones allowed to influence each vertex
@@ -201,13 +203,37 @@ def _smooth_labels(group: np.ndarray, cr, cc, rows: int, cols: int, passes: int 
     return group
 
 
-def build_front_mesh(mask: np.ndarray, cell: int, to_world, skel: Skeleton, height: float, r_torso: float,
-                     depth_radius: float, depth_scale: float) -> FrontMesh:
-    """Grid mesh over the silhouette, 'inflated' towards the viewer.
+def _snap_to_silhouette(px: np.ndarray, border: np.ndarray, mask: np.ndarray, cell: int) -> None:
+    """Move border vertices that lie outside the figure onto the nearest figure pixel (in place).
+
+    Grid cells overlap the silhouette by up to one cell; without snapping that
+    transparent rim would be stretched over the whole body depth when seen
+    from the side."""
+    h, w = mask.shape
+    r = int(np.ceil(1.5 * cell))
+    offs_y, offs_x = np.mgrid[-r:r + 1, -r:r + 1]
+    dist = np.hypot(offs_y + 0.5, offs_x + 0.5)
+    for i in np.nonzero(border)[0]:
+        x, y = int(px[i, 0]), int(px[i, 1])
+        if mask[min(y, h - 1), min(x, w - 1)]:
+            continue
+        ys, xs = y + offs_y, x + offs_x
+        valid = (ys >= 0) & (ys < h) & (xs >= 0) & (xs < w)
+        hit = np.zeros_like(valid)
+        hit[valid] = mask[ys[valid], xs[valid]]
+        if not hit.any():
+            continue
+        k = np.argmin(np.where(hit, dist, np.inf))
+        px[i] = (xs.flat[k] + 0.5, ys.flat[k] + 0.5)
+
+
+def build_front_mesh(mask: np.ndarray, cell: int, to_world, skel: Skeleton, height: float,
+                     r_torso: float) -> FrontMesh:
+    """Grid mesh over the silhouette.
 
     Arms are cut loose from the body (except at the shoulder) so that moving
-    them into T-pose or animating them does not stretch the torso. The depth
-    follows a circular profile of the distance to each part's border."""
+    them into T-pose or animating them does not stretch the torso. For every
+    vertex the distance to the border of its part is stored (used for depth)."""
     h, w = mask.shape
     rows, cols = -(-h // cell), -(-w // cell)
     padded = np.zeros((rows * cell, cols * cell), dtype=bool)
@@ -241,11 +267,10 @@ def build_front_mesh(mask: np.ndarray, cell: int, to_world, skel: Skeleton, heig
         dist = _border_distance(cells).ravel()
         d_cells[vpart == g] = dist[grid_idx[vpart == g]]
     d_world = d_cells * cell * to_world.scale
-    R = depth_radius
-    z = np.where(d_world < R, np.sqrt(np.clip(2 * d_world * R - d_world ** 2, 0, None)), R) * depth_scale
 
     vr, vc = grid_idx // W1, grid_idx % W1
     px = np.stack([np.minimum(vc * cell, w), np.minimum(vr * cell, h)], 1).astype(np.float64)
+    _snap_to_silhouette(px, d_cells == 0, mask, cell)
 
     B = len(BONES)
     allowed = np.ones((len(uniq), B), dtype=bool)
@@ -258,7 +283,30 @@ def build_front_mesh(mask: np.ndarray, cell: int, to_world, skel: Skeleton, heig
         allowed[rows_g] = False
         allowed[np.ix_(rows_g, keep)] = True
 
-    return FrontMesh(xy=to_world(px), z=z, uv=px / np.array([w, h], dtype=np.float64), tris=tris, allowed=allowed)
+    return FrontMesh(xy=to_world(px), d=d_world, part=vpart, row=vr, uv=px / np.array([w, h], dtype=np.float64),
+                     tris=tris, allowed=allowed)
+
+
+def surface_depth(fm: FrontMesh, radius: float, scale: float, profile=None) -> tuple[np.ndarray, np.ndarray]:
+    """Depth of the front (+z) and back (-z) surface per vertex.
+
+    Without a side profile the body gets a rounded edge of `radius` (constant
+    thickness). With a profile (from a side view), body vertices follow an
+    elliptic cross-section per grid row whose front/back extent comes from the
+    side silhouette at that height."""
+    circ = np.where(fm.d < radius, np.sqrt(np.clip(2 * fm.d * radius - fm.d ** 2, 0, None)), radius) * scale
+    front, back = circ.copy(), circ.copy()
+    if profile is not None:
+        body = fm.part == 0
+        rows = fm.row[body]
+        dmax = np.zeros(rows.max() + 1)
+        np.maximum.at(dmax, rows, fm.d[body])
+        t = np.clip(fm.d[body] / np.maximum(dmax[rows], 1e-9), 0, 1)
+        q = np.sqrt(1 - (1 - t) ** 2)
+        f, b = profile.at(fm.xy[body, 1])
+        front[body] = f * q * scale
+        back[body] = b * q * scale
+    return front, back
 
 
 def _segment_distance(points: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndarray:

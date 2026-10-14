@@ -70,28 +70,65 @@ def _flood_mask(rgba: Image.Image, tolerance: int) -> np.ndarray:
 
     filled = np.all(np.asarray(work) == np.array(_SENTINEL), axis=2)
     was_sentinel = np.all(orig == np.array(_SENTINEL), axis=2)
-    mask_small = ~(filled & ~was_sentinel)
+    mask = ~(filled & ~was_sentinel)
     if scale < 1.0:
-        mask_img = Image.fromarray((mask_small * 255).astype(np.uint8)).resize((full_w, full_h), Image.BILINEAR)
-        return np.asarray(mask_img) > 127
-    return mask_small
+        mask_img = Image.fromarray((mask * 255).astype(np.uint8)).resize((full_w, full_h), Image.BILINEAR)
+        mask = np.asarray(mask_img) > 127
+    # Refine the edge at full resolution: background-coloured pixels in a thin band
+    # along the outline are removed (upscaling the mask otherwise leaves a light rim).
+    full = np.asarray(rgba.convert("RGB")).astype(np.int32)
+    near_bg = np.abs(full - bg_color).sum(-1) <= tolerance * 3
+    band = mask & dilate(~mask, max(2, int(round(2 / scale))))
+    return mask & ~(band & near_bg)
 
 
-def bleed_colors(rgb: np.ndarray, mask: np.ndarray, iterations: int = 12) -> np.ndarray:
-    """Spread edge colors into transparent pixels so texture filtering does not show halos."""
+def dilate(mask: np.ndarray, r: int) -> np.ndarray:
+    """Binary dilation with a 4-neighbourhood, r steps."""
+    out = mask.copy()
+    for _ in range(r):
+        p = np.pad(out, 1)
+        out = out | p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:]
+    return out
+
+
+def bleed_colors(rgb: np.ndarray, mask: np.ndarray, iterations: int = 12, fill_all: bool = True) -> np.ndarray:
+    """Spread edge colours into transparent pixels.
+
+    Prevents halos with texture filtering: first a few smooth dilation steps at
+    the edge, then (fill_all) every remaining transparent pixel gets the colour
+    of the nearest region via a push-pull pyramid, so mipmaps seen at grazing
+    angles do not mix in the background colour."""
     out = rgb.astype(np.float32).copy()
-    known = mask.copy()
+    known = mask.astype(bool).copy()
     for _ in range(iterations):
-        acc = np.zeros_like(out)
-        cnt = np.zeros(known.shape, dtype=np.float32)
-        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            shifted_known = np.roll(known, (dy, dx), axis=(0, 1))
-            shifted_col = np.roll(out, (dy, dx), axis=(0, 1))
-            acc += shifted_col * shifted_known[:, :, None]
-            cnt += shifted_known
+        pk = np.pad(known, 1)
+        pc = np.pad(out * known[:, :, None], ((1, 1), (1, 1), (0, 0)))
+        acc = pc[:-2, 1:-1] + pc[2:, 1:-1] + pc[1:-1, :-2] + pc[1:-1, 2:]
+        cnt = (pk[:-2, 1:-1].astype(np.float32) + pk[2:, 1:-1] + pk[1:-1, :-2] + pk[1:-1, 2:])
         grow = (~known) & (cnt > 0)
         if not grow.any():
             break
         out[grow] = acc[grow] / cnt[grow][:, None]
         known = known | grow
+    if fill_all and not known.all() and known.any():
+        out = _push_pull(out, known)
     return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def _push_pull(img: np.ndarray, known: np.ndarray) -> np.ndarray:
+    """Fill unknown pixels from coarser, known-weighted averages."""
+    if known.all() or min(known.shape) <= 1:
+        return img
+    h, w = known.shape
+    H, W = h + h % 2, w + w % 2
+    pi = np.zeros((H, W, img.shape[2]), np.float32)
+    pk = np.zeros((H, W), np.float32)
+    pi[:h, :w] = img * known[:, :, None]
+    pk[:h, :w] = known
+    csum = pi.reshape(H // 2, 2, W // 2, 2, -1).sum((1, 3))
+    ksum = pk.reshape(H // 2, 2, W // 2, 2).sum((1, 3))
+    coarse_known = ksum > 0
+    coarse = np.where(coarse_known[:, :, None], csum / np.maximum(ksum, 1e-9)[:, :, None], 0)
+    coarse = _push_pull(coarse, coarse_known)
+    up = np.repeat(np.repeat(coarse, 2, 0), 2, 1)[:h, :w]
+    return np.where(known[:, :, None], img, up)

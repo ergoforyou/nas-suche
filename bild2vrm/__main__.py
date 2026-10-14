@@ -9,13 +9,19 @@ from pathlib import Path
 
 from PIL import Image
 
-from .avatar import Options, generate
+from .avatar import Options, Views, generate
 from .keypoints import load_keypoints
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="bild2vrm", description="Erzeugt aus einem Ganzkörperbild (Frontalansicht) eine VRM-Datei.")
-    p.add_argument("image", nargs="?", help="Eingabebild (am besten PNG mit transparentem Hintergrund)")
+    p.add_argument("image", nargs="?", help="Frontansicht (am besten PNG mit transparentem Hintergrund)")
+    p.add_argument("--back", help="Rückansicht derselben Figur (optional, ersetzt die gespiegelte Rückseite)")
+    p.add_argument("--side", action="append", default=[], help="Seitenansicht (optional, mehrfach möglich) – liefert das Körperprofil")
+    p.add_argument("--side-facing", choices=["auto", "left", "right"], default="auto",
+                   help="Blickrichtung der Figur in der Seitenansicht (Standard: automatisch)")
+    p.add_argument("--sheet", help="Turnaround-Blatt (Front/Seite/Rücken nebeneinander) – wird automatisch aufgeteilt")
+    p.add_argument("--no-face", action="store_true", help="Keine Gesichtsausdrücke erzeugen")
     p.add_argument("-o", "--output", help="Ziel-Datei (Standard: <bild>.vrm)")
     p.add_argument("--gui", action="store_true", help="Lokale Web-Oberfläche starten")
     p.add_argument("--port", type=int, default=8765, help="Port der Web-Oberfläche (Standard 8765)")
@@ -37,15 +43,30 @@ def main(argv: list[str] | None = None) -> int:
         from .webui import serve
         serve(port=a.port, open_browser=not a.no_browser)
         return 0
-    if not a.image:
-        p.error("Bitte ein Bild angeben oder --gui verwenden.")
+    if not a.image and not a.sheet:
+        p.error("Bitte ein Bild (oder --sheet) angeben oder --gui verwenden.")
 
-    src = Path(a.image)
+    src = Path(a.image or a.sheet)
     opts = Options(height=a.height, vrm_version=a.vrm, tpose=not a.keep_pose, depth=a.depth, grid=a.grid,
-                   background=a.background, pose=a.pose, name=a.name or src.stem, author=a.author)
+                   background=a.background, pose=a.pose, expressions=not a.no_face,
+                   name=a.name or src.stem, author=a.author)
     kp = load_keypoints(a.keypoints) if a.keypoints else None
     try:
-        res = generate(Image.open(src), opts, kp)
+        front = Image.open(a.image) if a.image else None
+        views = Views(back=Image.open(a.back) if a.back else None,
+                      sides=[(Image.open(sp), a.side_facing) for sp in a.side])
+        if a.sheet:
+            from .views import split_sheet
+            for fig in split_sheet(Image.open(a.sheet), a.background):
+                if fig["role"] == "front" and front is None:
+                    front = fig["image"]
+                elif fig["role"] == "back" and views.back is None:
+                    views.back = fig["image"]
+                elif fig["role"] == "side":
+                    views.sides.append((fig["image"], a.side_facing))
+            if front is None:
+                raise RuntimeError("Im Turnaround-Blatt wurde keine Frontansicht erkannt.")
+        res = generate(front, opts, kp, views)
     except (RuntimeError, ValueError) as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
         return 1
@@ -56,6 +77,12 @@ def main(argv: list[str] | None = None) -> int:
     s = res.stats
     print(f"VRM {'0.x' if a.vrm == '0' else '1.0'} gespeichert: {out}  "
           f"({s['vertices']} Vertices, {s['triangles']} Dreiecke, Textur {s['texture']}, {s['bytes'] / 1e6:.1f} MB)")
+    extras = [f"Ausdrücke: {', '.join(s['expressions'])}" if s["expressions"] else "keine Ausdrücke"]
+    if s["back_view"]:
+        extras.append("Rückansicht verwendet")
+    if s["side_views"]:
+        extras.append(f"{s['side_views']} Seitenansicht(en) verwendet")
+    print("  " + " · ".join(extras))
     return 0
 
 

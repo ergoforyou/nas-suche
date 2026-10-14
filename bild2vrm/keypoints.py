@@ -32,7 +32,15 @@ def validate_keypoints(data: dict) -> dict:
     missing = [k for k in KEYPOINT_NAMES if k not in data]
     if missing:
         raise ValueError(f"Fehlende Keypoints: {', '.join(missing)}")
-    return {k: [float(data[k][0]), float(data[k][1])] for k in KEYPOINT_NAMES}
+    out = {k: [float(data[k][0]), float(data[k][1])] for k in KEYPOINT_NAMES}
+    # optional face boxes [x0, y0, x1, y1] for eyes and mouth
+    for k in ("left_eye_box", "right_eye_box", "mouth_box"):
+        if k in data and data[k] is not None:
+            box = [float(v) for v in data[k]]
+            if len(box) != 4 or box[2] <= box[0] or box[3] <= box[1]:
+                raise ValueError(f"Ungültige Box für {k}: {data[k]}")
+            out[k] = box
+    return out
 
 
 def detect_keypoints(img: Image.Image, mask: np.ndarray, method: str = "auto") -> dict:
