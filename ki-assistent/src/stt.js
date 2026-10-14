@@ -1,0 +1,148 @@
+// Mikrofonaufnahme mit einfacher Sprachpausen-Erkennung + Whisper-Worker.
+
+const SAMPLE_RATE = 16000;
+
+export class SpeechInput {
+  constructor({ onLevel, onStatus } = {}) {
+    this.onLevel = onLevel ?? (() => {});
+    this.onStatus = onStatus ?? (() => {});
+    this.worker = new Worker(new URL('stt-worker.js', location.href), { type: 'module' });
+    this.pending = new Map();
+    this.nextId = 1;
+    this.worker.onmessage = ({ data }) => {
+      const p = this.pending.get(data.id);
+      if (!p) return;
+      if (data.type === 'progress') p.onProgress?.(data.progress);
+      else {
+        this.pending.delete(data.id);
+        if (data.type === 'error') p.reject(new Error(data.error));
+        else p.resolve(data);
+      }
+    };
+    this.model = 'onnx-community/whisper-base';
+    this.language = 'german';
+    this.stream = null;
+    this.ctx = null;
+  }
+
+  call(msg, onProgress, transfer) {
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject, onProgress });
+      this.worker.postMessage({ ...msg, id }, transfer ?? []);
+    });
+  }
+
+  preload(onProgress) {
+    return this.call({ type: 'load', model: this.model }, onProgress);
+  }
+
+  async transcribe(audio, onProgress) {
+    const res = await this.call(
+      { type: 'transcribe', model: this.model, language: this.language, audio },
+      onProgress,
+      [audio.buffer],
+    );
+    return res.text;
+  }
+
+  async ensureMic() {
+    if (this.stream) return;
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const src = this.ctx.createMediaStreamSource(this.stream);
+    this.processor = this.ctx.createScriptProcessor(2048, 1, 1);
+    src.connect(this.processor);
+    this.processor.connect(this.ctx.destination);
+    this.processor.onaudioprocess = (ev) => this.handleAudio(ev.inputBuffer.getChannelData(0));
+  }
+
+  /**
+   * Startet das Zuhören. Liefert ein Promise mit den Audiodaten, sobald nach dem
+   * Sprechen eine Pause erkannt wurde oder stop() aufgerufen wird.
+   * waitForSpeech: true = erst aufnehmen, wenn jemand spricht (Freihand-Modus).
+   */
+  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000 } = {}) {
+    await this.ensureMic();
+    if (this.ctx.state === 'suspended') await this.ctx.resume();
+    return new Promise((resolve) => {
+      this.rec = {
+        chunks: [],
+        preroll: [],
+        speaking: !waitForSpeech,
+        heardSpeech: false,
+        silentFor: 0,
+        total: 0,
+        threshold,
+        silenceMs,
+        maxMs,
+        resolve,
+      };
+    });
+  }
+
+  handleAudio(input) {
+    const data = new Float32Array(input);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    const rms = Math.sqrt(sum / data.length);
+    this.onLevel(rms);
+
+    const r = this.rec;
+    if (!r) return;
+    const ms = (data.length / SAMPLE_RATE) * 1000;
+    const loud = rms > r.threshold;
+
+    if (!r.speaking) {
+      // Kurzen Vorlauf behalten, damit der Wortanfang nicht abgeschnitten wird.
+      r.preroll.push(data);
+      if (r.preroll.length > 4) r.preroll.shift();
+      if (loud) {
+        r.speaking = true;
+        r.chunks.push(...r.preroll);
+      }
+      return;
+    }
+
+    r.chunks.push(data);
+    r.total += ms;
+    if (loud) {
+      r.heardSpeech = true;
+      r.silentFor = 0;
+    } else {
+      r.silentFor += ms;
+    }
+    if ((r.heardSpeech && r.silentFor > r.silenceMs) || r.total > r.maxMs) this.finish();
+  }
+
+  finish() {
+    const r = this.rec;
+    if (!r) return;
+    this.rec = null;
+    if (!r.heardSpeech) return r.resolve(null);
+    const len = r.chunks.reduce((n, c) => n + c.length, 0);
+    const audio = new Float32Array(len);
+    let off = 0;
+    for (const c of r.chunks) {
+      audio.set(c, off);
+      off += c.length;
+    }
+    r.resolve(audio);
+  }
+
+  stop() {
+    this.finish();
+  }
+
+  cancel() {
+    const r = this.rec;
+    this.rec = null;
+    r?.resolve(null);
+  }
+
+  get listening() {
+    return !!this.rec;
+  }
+}

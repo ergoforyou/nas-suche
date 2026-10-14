@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self' data: blob: https:" />
+  <title>KI-Assistent</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="titlebar">
+    <span class="title" id="titleName">KI-Assistent</span>
+    <div class="titlebar-buttons">
+      <button id="btnSettings" title="Einstellungen">⚙</button>
+      <button id="btnPin" title="Immer im Vordergrund">📌</button>
+      <button id="btnMin" title="Minimieren">–</button>
+      <button id="btnClose" title="Schließen">✕</button>
+    </div>
+  </header>
+
+  <section class="stage" id="stage">
+    <canvas id="avatar"></canvas>
+    <div class="state-badge" id="stateBadge" hidden></div>
+    <div class="resize-handle" id="stageResize" title="Größe ändern"></div>
+  </section>
+
+  <main class="chat" id="chat"></main>
+
+  <div class="status" id="status"></div>
+
+  <footer class="composer">
+    <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste)">🎤</button>
+    <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
+    <button id="btnSend" class="round primary" title="Senden">➤</button>
+    <button id="btnStop" class="round" title="Stopp" hidden>■</button>
+  </footer>
+
+  <!-- Einstellungen -->
+  <div class="drawer" id="drawer" hidden>
+    <div class="drawer-head">
+      <nav class="tabs" id="tabs">
+        <button data-tab="persona" class="active">Persona</button>
+        <button data-tab="avatar">Avatar</button>
+        <button data-tab="voice">Sprache</button>
+        <button data-tab="conn">Verbindung</button>
+      </nav>
+      <button id="btnCloseDrawer" class="icon" title="Schließen">✕</button>
+    </div>
+
+    <div class="tab" data-tab="persona">
+      <label>Aktive Persona
+        <div class="row">
+          <select id="personaSelect"></select>
+          <button id="personaNew" title="Neue Persona">＋</button>
+          <button id="personaCopy" title="Duplizieren">⧉</button>
+          <button id="personaDelete" title="Löschen">🗑</button>
+        </div>
+      </label>
+      <label>Name <input id="pName" type="text" /></label>
+      <label>Charakter &amp; Rolle
+        <textarea id="pPrompt" rows="7" placeholder="Du bist Max, ein freundlicher Büroassistent …"></textarea>
+      </label>
+      <label>Begrüßung <input id="pGreeting" type="text" placeholder="Hallo! Wie kann ich helfen?" /></label>
+      <div class="row">
+        <button id="personaExport">Persona exportieren</button>
+        <button id="personaImport">Persona importieren</button>
+        <input id="personaImportFile" type="file" accept=".json,application/json" hidden />
+      </div>
+      <button id="clearHistory" class="danger">Gesprächsverlauf löschen</button>
+    </div>
+
+    <div class="tab" data-tab="avatar" hidden>
+      <label>Avatar-Bild
+        <div class="row">
+          <button id="avUpload">Bild hochladen …</button>
+          <button id="avDefault">Standard-Avatar</button>
+        </div>
+        <input id="avFile" type="file" accept="image/*" hidden />
+      </label>
+      <p class="hint">Klicke unten einen Modus an und dann auf die passende Stelle im Bild.
+        Der Mund wird dann beim Sprechen geöffnet, die Augen blinzeln.</p>
+      <div class="row wrap">
+        <button data-mark="mouth" class="mark">👄 Mund</button>
+        <button data-mark="eye0" class="mark">👁 Linkes Auge</button>
+        <button data-mark="eye1" class="mark">👁 Rechtes Auge</button>
+        <button id="avAuto">✨ Automatisch</button>
+      </div>
+      <div class="marker-wrap"><canvas id="markerCanvas"></canvas></div>
+      <label>Mundbreite <input id="avMouthW" type="range" min="0.02" max="0.3" step="0.005" /></label>
+      <label>Augengröße <input id="avEyeR" type="range" min="0.005" max="0.08" step="0.001" /></label>
+      <label>Bewegungsstärke <input id="avMotion" type="range" min="0" max="2.5" step="0.1" /></label>
+      <details>
+        <summary>Fortgeschritten: eigene Bilder für Mund/Augen (PNGtuber-Stil)</summary>
+        <p class="hint">Gleich großes Bild mit offenem Mund bzw. geschlossenen Augen. Ersetzt die automatische Verformung.</p>
+        <div class="row wrap">
+          <button id="avMouthUp">Mund offen …</button>
+          <button id="avMouthClear">entfernen</button>
+          <button id="avEyesUp">Augen zu …</button>
+          <button id="avEyesClear">entfernen</button>
+        </div>
+        <input id="avMouthFile" type="file" accept="image/*" hidden />
+        <input id="avEyesFile" type="file" accept="image/*" hidden />
+      </details>
+      <button id="avTest">▶ Testsprechen</button>
+    </div>
+
+    <div class="tab" data-tab="voice" hidden>
+      <h3>Sprachausgabe</h3>
+      <label class="check"><input id="vSpeak" type="checkbox" /> Antworten vorlesen</label>
+      <label>Engine
+        <select id="vEngine">
+          <option value="piper">Piper (lokal, natürliche Stimme)</option>
+          <option value="system">Systemstimme (Windows/macOS)</option>
+        </select>
+      </label>
+      <label id="vPiperWrap">Piper-Stimme <select id="vPiper"></select></label>
+      <label id="vSystemWrap">Systemstimme <select id="vSystem"></select></label>
+      <label>Tempo <input id="vRate" type="range" min="0.6" max="1.6" step="0.05" /></label>
+      <button id="vTest">▶ Stimme testen</button>
+
+      <h3>Spracherkennung</h3>
+      <label>Whisper-Modell
+        <select id="sModel">
+          <option value="onnx-community/whisper-tiny">Tiny – sehr schnell, ungenauer (~40 MB)</option>
+          <option value="onnx-community/whisper-base">Base – ausgewogen (~80 MB)</option>
+          <option value="onnx-community/whisper-small">Small – genau, langsamer (~250 MB)</option>
+        </select>
+      </label>
+      <label>Sprache
+        <select id="sLang">
+          <option value="german">Deutsch</option>
+          <option value="english">Englisch</option>
+        </select>
+      </label>
+      <label class="check"><input id="sHandsFree" type="checkbox" /> Freihändig: automatisch zuhören, wenn ich spreche</label>
+      <label>Mikrofon-Empfindlichkeit <input id="sSens" type="range" min="0.004" max="0.06" step="0.001" /></label>
+      <div class="meter"><div id="micMeter"></div></div>
+      <button id="sPreload">Sprachmodelle jetzt herunterladen</button>
+    </div>
+
+    <div class="tab" data-tab="conn" hidden>
+      <p class="hint">In LM Studio ein Modell laden und unter <b>Developer</b> den lokalen Server starten
+        (Standard: Port 1234).</p>
+      <label>Server-Adresse <input id="cUrl" type="text" placeholder="http://localhost:1234" /></label>
+      <label>Modell
+        <div class="row">
+          <select id="cModel"></select>
+          <button id="cRefresh" title="Aktualisieren">⟳</button>
+        </div>
+      </label>
+      <label>Kreativität (Temperatur) <input id="cTemp" type="range" min="0" max="1.5" step="0.05" /></label>
+      <label>Gedächtnis (Nachrichten im Kontext) <input id="cHistory" type="number" min="2" max="100" /></label>
+      <div id="cInfo" class="hint"></div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
