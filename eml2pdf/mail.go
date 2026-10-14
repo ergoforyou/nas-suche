@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -76,10 +77,7 @@ func decodeTransfer(r io.Reader, cte string) ([]byte, error) {
 	switch strings.ToLower(strings.TrimSpace(cte)) {
 	case "base64":
 		// Fehlerhafte Zeichen (z. B. Leerzeichen) vorher entfernen
-		raw, err := io.ReadAll(r)
-		if err != nil {
-			return nil, err
-		}
+		raw, _ := io.ReadAll(r) // bei abgeschnittenen Mails: so viel wie möglich retten
 		clean := bytes.Map(func(c rune) rune {
 			if c == '+' || c == '/' || c == '=' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
 				return c
@@ -87,11 +85,16 @@ func decodeTransfer(r io.Reader, cte string) ([]byte, error) {
 			return -1
 		}, raw)
 		clean = bytes.TrimRight(clean, "=")
+		if len(clean)%4 == 1 { // abgeschnitten: unvollständiges Zeichen verwerfen
+			clean = clean[:len(clean)-1]
+		}
 		return base64.RawStdEncoding.DecodeString(string(clean))
 	case "quoted-printable":
-		return io.ReadAll(quotedprintable.NewReader(r))
+		data, _ := io.ReadAll(quotedprintable.NewReader(r))
+		return data, nil
 	default:
-		return io.ReadAll(r)
+		data, _ := io.ReadAll(r)
+		return data, nil
 	}
 }
 
@@ -99,7 +102,8 @@ func decodeTransfer(r io.Reader, cte string) ([]byte, error) {
 func ParseMail(raw []byte) (*Mail, error) {
 	msg, err := mail.ReadMessage(bufio.NewReader(bytes.NewReader(raw)))
 	if err != nil {
-		return nil, fmt.Errorf("keine gültige E-Mail: %w", err)
+		logf("Mail nicht lesbar: %v", err)
+		return nil, errors.New("die Datei ist leer, beschädigt oder keine E-Mail")
 	}
 	h := msg.Header
 	m := &Mail{

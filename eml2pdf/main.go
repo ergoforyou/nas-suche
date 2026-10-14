@@ -31,7 +31,7 @@ import (
 const (
 	appName = "EML zu PDF"
 	exeName = "EML-zu-PDF.exe"
-	version = "1.0.0"
+	version = "1.1.0"
 )
 
 var (

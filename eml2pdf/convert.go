@@ -2,12 +2,9 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"html"
-	"image"
-	"image/png"
 	"io"
 	"net/http"
 	"net/url"
@@ -126,35 +123,81 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
+// browserBroken merkt sich, dass Edge auf diesem Rechner nicht druckt –
+// dann wird es für den Rest des Laufs nicht mehr versucht (spart Wartezeit).
+var browserBroken bool
+
 func htmlToPDF(htmlFile, pdfFile string) error {
+	if browserBroken {
+		return errors.New("Edge steht nicht zur Verfügung")
+	}
 	browser := findBrowser()
 	if browser == "" {
+		browserBroken = true
 		return errors.New("Microsoft Edge wurde nicht gefunden")
 	}
-	profile, err := os.MkdirTemp("", "eml2pdf-browser")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(profile)
-	tmpPDF := filepath.Join(profile, "out.pdf")
 	abs, _ := filepath.Abs(htmlFile)
 	fileURL := (&url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(abs), "/")}).String()
-	args := []string{
-		"--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-		"--disable-extensions", "--user-data-dir=" + profile, "--no-pdf-header-footer",
-		"--run-all-compositor-stages-before-draw", "--virtual-time-budget=10000",
-		"--print-to-pdf=" + tmpPDF, fileURL,
+
+	var lastErr error
+	for _, mode := range []string{"--headless=new", "--headless"} {
+		profile, err := os.MkdirTemp("", "eml2pdf-browser")
+		if err != nil {
+			return err
+		}
+		tmpPDF := filepath.Join(profile, "out.pdf")
+		args := []string{
+			mode, "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+			"--disable-extensions", "--disable-sync", "--disable-features=msEdgeSidebarV2,EdgeCollections",
+			"--user-data-dir=" + filepath.Join(profile, "profil"), "--no-pdf-header-footer",
+			"--print-to-pdf-no-header", "--run-all-compositor-stages-before-draw",
+			"--virtual-time-budget=8000", "--print-to-pdf=" + tmpPDF, fileURL,
+		}
+		if runtime.GOOS != "windows" && os.Geteuid() == 0 {
+			args = append([]string{"--no-sandbox"}, args...)
+		}
+		cmd := exec.Command(browser, args...)
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		runErr := runCmd(cmd, 60*time.Second)
+		// Edge gibt die Arbeit unter Windows teils an einen Unterprozess ab –
+		// deshalb noch bis zu 15 s auf die fertige Datei warten.
+		wait := 15 * time.Second
+		if runErr != nil {
+			wait = 2 * time.Second
+		}
+		ok := waitForFile(tmpPDF, wait)
+		if ok {
+			err = copyFile(tmpPDF, pdfFile)
+			os.RemoveAll(profile)
+			return err
+		}
+		msg := strings.TrimSpace(stderr.String())
+		if len(msg) > 300 {
+			msg = msg[len(msg)-300:]
+		}
+		lastErr = fmt.Errorf("Edge (%s) erzeugte kein PDF: %v %s", mode, runErr, msg)
+		logf("%v", lastErr)
+		os.RemoveAll(profile)
 	}
-	if runtime.GOOS != "windows" && os.Geteuid() == 0 {
-		args = append([]string{"--no-sandbox"}, args...)
+	browserBroken = true
+	return lastErr
+}
+
+// waitForFile wartet, bis die Datei existiert und ihre Größe sich nicht mehr ändert.
+func waitForFile(p string, timeout time.Duration) bool {
+	var last int64 = -1
+	for end := time.Now().Add(timeout); time.Now().Before(end); time.Sleep(300 * time.Millisecond) {
+		st, err := os.Stat(p)
+		if err != nil || st.Size() == 0 {
+			continue
+		}
+		if st.Size() == last {
+			return true
+		}
+		last = st.Size()
 	}
-	if err := runHidden(2*time.Minute, browser, args...); err != nil && !fileExists(tmpPDF) {
-		return fmt.Errorf("PDF-Druck fehlgeschlagen: %w", err)
-	}
-	if st, err := os.Stat(tmpPDF); err != nil || st.Size() == 0 {
-		return errors.New("Edge konnte kein PDF erzeugen")
-	}
-	return copyFile(tmpPDF, pdfFile)
+	return false
 }
 
 func runHidden(timeout time.Duration, name string, args ...string) error {
@@ -194,11 +237,9 @@ pre.text { white-space: pre-wrap; word-wrap: break-word; font-family: Consolas, 
 
 var reStripTags = regexp.MustCompile(`(?is)<!DOCTYPE[^>]*>|</?html[^>]*>|</?body[^>]*>|<meta[^>]*>`)
 
-func dataURI(ctype string, data []byte) string {
-	return "data:" + ctype + ";base64," + base64.StdEncoding.EncodeToString(data)
-}
-
-func buildMailHTML(m *Mail, attachmentNames []string) string {
+// buildMailHTML baut die HTML-Ansicht der Mail. Eingebettete Bilder werden als Dateien
+// in dir abgelegt (das verstehen sowohl Edge als auch Word).
+func buildMailHTML(m *Mail, attachmentNames []string, dir string) string {
 	esc := html.EscapeString
 	type row struct{ k, v string }
 	rows := []row{{"Von", esc(m.From)}, {"An", esc(m.To)}}
@@ -219,10 +260,15 @@ func buildMailHTML(m *Mail, attachmentNames []string) string {
 	var content string
 	if m.HTML != "" {
 		body := m.HTML
+		n := 0
 		for cid, p := range m.Inline {
+			n++
+			name := fmt.Sprintf("bild%d%s", n, sniffExt("", p))
+			if os.WriteFile(filepath.Join(dir, name), p.Data, 0o644) != nil {
+				continue
+			}
 			re := regexp.MustCompile(`(?i)cid:` + regexp.QuoteMeta(cid))
-			uri := dataURI(p.ContentType, p.Data)
-			body = re.ReplaceAllLiteralString(body, uri)
+			body = re.ReplaceAllLiteralString(body, name)
 		}
 		content = `<div class="inhalt">` + reStripTags.ReplaceAllString(body, "") + `</div>`
 	} else {
@@ -237,65 +283,65 @@ func buildMailHTML(m *Mail, attachmentNames []string) string {
 		`</h1><table>` + head.String() + `</table></div>` + content + `</body></html>`
 }
 
+// mailToPDF erzeugt das PDF der E-Mail. Reihenfolge: Edge (schönstes Layout) ->
+// Microsoft Word -> eingebauter PDF-Erzeuger (funktioniert immer).
+func mailToPDF(m *Mail, names []string, out, tmp string) error {
+	dir, err := os.MkdirTemp(tmp, "mail")
+	if err != nil {
+		return err
+	}
+	page := filepath.Join(dir, "mail.html")
+	if err := os.WriteFile(page, []byte(buildMailHTML(m, names, dir)), 0o644); err != nil {
+		return err
+	}
+	if err := htmlToPDF(page, out); err == nil {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		if err := msOfficeToPDF(wordScript, page, out); err == nil {
+			logf("E-Mail über Word gedruckt")
+			return nil
+		}
+	}
+	os.Remove(out)
+	logf("E-Mail mit eingebautem PDF-Erzeuger erstellt")
+	return builtinMailPDF(m, names, out)
+}
+
 // ---------------------------------------------------------------- Anlagen
 
 // convertAttachment wandelt eine Anlage in PDF um. false = Dateityp nicht umwandelbar.
 func convertAttachment(src, pdf, tmp string) (bool, error) {
 	ext := strings.ToLower(filepath.Ext(src))
+	title := filepath.Base(src)
 	switch {
 	case ext == ".pdf":
 		return true, copyFile(src, pdf)
 	case imageExt[ext]:
-		return true, imageToPDF(src, pdf, tmp)
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return true, err
+		}
+		return true, builtinImagePDF(title, data, pdf)
 	case textExt[ext]:
 		data, err := os.ReadFile(src)
 		if err != nil {
 			return true, err
 		}
-		page := `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:15mm}` +
-			`pre{white-space:pre-wrap;word-wrap:break-word;font:10pt Consolas,monospace}</style></head><body><pre>` +
-			html.EscapeString(toUTF8(data, "")) + `</pre></body></html>`
-		return true, printHTMLString(page, pdf, tmp)
+		return true, builtinTextPDF(title, toUTF8(data, ""), pdf)
 	case browserExt[ext]:
-		return true, htmlToPDF(src, pdf)
+		if err := htmlToPDF(src, pdf); err == nil {
+			return true, nil
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return true, err
+		}
+		return true, builtinHTMLPDF(title, toUTF8(data, ""), pdf)
 	case wordExt[ext] || excelExt[ext] || pptExt[ext]:
 		return true, officeToPDF(src, pdf, ext)
 	}
 	return false, nil
-}
-
-func printHTMLString(page, pdf, tmp string) error {
-	f, err := os.CreateTemp(tmp, "seite-*.html")
-	if err != nil {
-		return err
-	}
-	f.WriteString(page)
-	f.Close()
-	return htmlToPDF(f.Name(), pdf)
-}
-
-func imageToPDF(src, pdf, tmp string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	ctype := map[string]string{".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-		".gif": "image/gif", ".webp": "image/webp"}[strings.ToLower(filepath.Ext(src))]
-	if ctype == "" { // TIFF/BMP kann der Browser nicht anzeigen -> nach PNG umwandeln
-		img, _, err := image.Decode(bytes.NewReader(data))
-		if err != nil {
-			return fmt.Errorf("Bild nicht lesbar: %w", err)
-		}
-		var buf bytes.Buffer
-		if err := png.Encode(&buf, img); err != nil {
-			return err
-		}
-		data, ctype = buf.Bytes(), "image/png"
-	}
-	page := `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:10mm}` +
-		`html,body{margin:0;height:100%}img{display:block;margin:0 auto;max-width:100%;max-height:270mm;object-fit:contain}` +
-		`</style></head><body><img src="` + dataURI(ctype, data) + `"></body></html>`
-	return printHTMLString(page, pdf, tmp)
 }
 
 // Office-Skripte: Makros aus, keine Rückfragen, Passwortschutz führt zu Fehler statt Eingabefenster.
@@ -314,6 +360,29 @@ const (
 		`finally{if($n -eq 0){$a.Quit()}}`
 )
 
+// msOfficeToPDF führt eines der Office-Skripte über PowerShell aus.
+func msOfficeToPDF(script, src, pdf string) error {
+	absSrc, _ := filepath.Abs(src)
+	absPDF, _ := filepath.Abs(pdf)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script)
+	cmd.Env = append(os.Environ(), "EML_SRC="+absSrc, "EML_DST="+absPDF)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	err := runCmd(cmd, 3*time.Minute)
+	if err == nil && fileExists(absPDF) {
+		return nil
+	}
+	msg := strings.TrimSpace(stderr.String())
+	if len(msg) > 300 {
+		msg = msg[:300]
+	}
+	logf("Microsoft Office konnte %s nicht umwandeln: %v %s", filepath.Base(src), err, msg)
+	if err == nil {
+		err = errors.New("keine PDF-Datei entstanden")
+	}
+	return err
+}
+
 // officeToPDF nutzt Microsoft Office (über PowerShell), sonst LibreOffice.
 func officeToPDF(src, pdf, ext string) error {
 	absSrc, _ := filepath.Abs(src)
@@ -325,16 +394,9 @@ func officeToPDF(src, pdf, ext string) error {
 		} else if excelExt[ext] {
 			script = excelScript
 		}
-		cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script)
-		cmd.Env = append(os.Environ(), "EML_SRC="+absSrc, "EML_DST="+absPDF)
-		var stderr strings.Builder
-		cmd.Stderr = &stderr
-		err := runCmd(cmd, 3*time.Minute)
-		if err == nil && fileExists(absPDF) {
+		if err := msOfficeToPDF(script, absSrc, absPDF); err == nil {
 			return nil
 		}
-		logf("Microsoft Office konnte %s nicht umwandeln (%v %s), versuche LibreOffice",
-			filepath.Base(src), err, strings.TrimSpace(stderr.String()))
 	}
 	if err := libreOfficeToPDF(absSrc, absPDF); err != nil {
 		if runtime.GOOS == "windows" {
@@ -461,7 +523,7 @@ func ConvertEML(emlPath, outDir, prefix string) (created, warnings []string, err
 	defer os.RemoveAll(tmp)
 
 	mailPDF := uniquePath(filepath.Join(outDir, base+".pdf"))
-	if err := printHTMLString(buildMailHTML(m, names), mailPDF, tmp); err != nil {
+	if err := mailToPDF(m, names, mailPDF, tmp); err != nil {
 		return nil, nil, err
 	}
 	created = append(created, mailPDF)

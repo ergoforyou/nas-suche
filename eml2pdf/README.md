@@ -46,17 +46,20 @@ Falls Windows „Der Computer wurde durch Windows geschützt“ meldet: **Weiter
 | alles andere (ZIP, passwortgeschützte Dokumente …) | Original wird danebengelegt und in der Abschlussmeldung genannt |
 
 Robustheit:
+- **Das E-Mail-PDF entsteht immer.** Reihenfolge: Microsoft Edge (schönstes Layout) → Microsoft Word →
+  eingebauter PDF-Erzeuger (braucht nichts weiter, Schrift ist in der .exe enthalten).
+  Bild- und Textanlagen erzeugt das Programm immer selbst.
+- Beschädigte oder abgeschnittene Mails: Es wird gerettet, was lesbar ist.
 - Office-Dateien werden mit **abgeschalteten Makros** und ohne Rückfragen geöffnet; passwortgeschützte
   Dokumente blockieren nichts, sondern werden als Original abgelegt und gemeldet.
 - Ist kein Microsoft Office installiert, wird automatisch **LibreOffice** benutzt (falls vorhanden).
 - Es geht nie etwas verloren: Was nicht umwandelbar ist, liegt im Original daneben.
-- Für das E-Mail-PDF wird **Microsoft Edge** verwendet (ist bei Windows dabei).
 
 Protokoll bei Problemen: `%LOCALAPPDATA%\EML zu PDF\protokoll.txt` (in die Explorer-Adresszeile einfügen).
 
 ## Für Entwickler
 
-Go-Programm. Bauen (geht auch unter Linux/macOS): `./build.sh` → `dist/EML-zu-PDF.exe`.
+Go-Programm, eingebettete Schrift: DejaVu Sans (freie Lizenz, siehe `fonts/LICENSE.txt`). Bauen (geht auch unter Linux/macOS): `./build.sh` → `dist/EML-zu-PDF.exe`.
 
 ```
 EML-zu-PDF.exe DATEI.eml [...] [--ziel ORDNER] [--still]
