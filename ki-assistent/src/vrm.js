@@ -49,12 +49,15 @@ export async function createVrmFigure(doc, url, { width = 820, height = 900 } = 
     lLower: bone('leftLowerArm'),
     rLower: bone('rightLowerArm'),
   };
+  // VRM-0.x-Figuren werden beim Laden um 180° gedreht (rotateVRM0): Drehungen um die X- und Z-Achse der
+  // normalisierten Knochen kehren sich dadurch um (Y bleibt). Ohne Ausgleich gingen die Arme nach oben.
+  const sx = vrm.meta?.metaVersion === '0' ? -1 : 1;
   // Aus der T-Pose: Arme locker nach unten, Ellbogen leicht gebeugt
   const restArms = () => {
-    if (B.lUpper) B.lUpper.rotation.z = -1.15;
-    if (B.rUpper) B.rUpper.rotation.z = 1.15;
-    if (B.lLower) B.lLower.rotation.z = -0.15;
-    if (B.rLower) B.rLower.rotation.z = 0.15;
+    if (B.lUpper) B.lUpper.rotation.z = sx * (-1.15);
+    if (B.rUpper) B.rUpper.rotation.z = sx * (1.15);
+    if (B.lLower) B.lLower.rotation.z = sx * (-0.15);
+    if (B.rLower) B.rLower.rotation.z = sx * (0.15);
   };
   restArms();
   vrm.update(0);
@@ -134,25 +137,25 @@ export async function createVrmFigure(doc, url, { width = 820, height = 900 } = 
     const talkBob = st.speaking ? Math.sin(S.t * 7) * 0.025 * st.open : 0;
     if (B.head) {
       B.head.rotation.y = S.look * 0.6 * m;
-      B.head.rotation.x = (S.nod + talkBob) * 0.6 * m;
-      B.head.rotation.z = S.tilt * 0.6 * m;
+      B.head.rotation.x = sx * ((S.nod + talkBob) * 0.6 * m);
+      B.head.rotation.z = sx * (S.tilt * 0.6 * m);
     }
     if (B.neck) {
       B.neck.rotation.y = S.look * 0.4 * m;
-      B.neck.rotation.x = S.nod * 0.4 * m;
-      B.neck.rotation.z = S.tilt * 0.4 * m;
+      B.neck.rotation.x = sx * (S.nod * 0.4 * m);
+      B.neck.rotation.z = sx * (S.tilt * 0.4 * m);
     }
     // Atmen und leichtes Wiegen
     const breathe = Math.sin(S.t * 1.6) * 0.018 * m;
-    if (B.chest) B.chest.rotation.x = breathe;
+    if (B.chest) B.chest.rotation.x = sx * (breathe);
     if (B.spine) {
-      B.spine.rotation.x = (st.listening ? 0.05 : 0) * m;
-      B.spine.rotation.z = Math.sin(S.t * 0.5) * 0.015 * m;
+      B.spine.rotation.x = sx * ((st.listening ? 0.05 : 0) * m);
+      B.spine.rotation.z = sx * (Math.sin(S.t * 0.5) * 0.015 * m);
     }
     if (B.hips) B.hips.rotation.y = Math.sin(S.t * 0.35) * 0.02 * m;
     restArms();
-    if (B.lUpper) B.lUpper.rotation.z += Math.sin(S.t * 1.6) * 0.012 * m;
-    if (B.rUpper) B.rUpper.rotation.z -= Math.sin(S.t * 1.6 + 0.4) * 0.012 * m;
+    if (B.lUpper) B.lUpper.rotation.z += sx * (Math.sin(S.t * 1.6) * 0.012 * m);
+    if (B.rUpper) B.rUpper.rotation.z -= sx * (Math.sin(S.t * 1.6 + 0.4) * 0.012 * m);
 
     // Mund: „aa“ folgt der Lautstärke, dazu etwas „oh“ für Abwechslung
     const open = st.speaking ? st.open : 0;
