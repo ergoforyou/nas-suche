@@ -12,8 +12,11 @@ const base = (p) => new URL(p, location.href).href;
 const VOICE_BASE = base('models/hf/diffusionstudio/piper-voices/resolve/main/');
 
 ort.env.wasm.wasmPaths = base('wasm/ort18/');
-// Mehrere CPU-Kerne nutzen, wenn die Seite "cross-origin isolated" ist (setzt der Hauptprozess per Header).
-ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)) : 1;
+// Ein Kern: Mehrkern-WASM im Hauptfenster kann blockieren (der Browser darf dort nicht warten).
+ort.env.wasm.numThreads = 1;
+
+/** Für die Fehlersuche: in welchem Schritt steckt die Sprachausgabe gerade? */
+export const piperState = { step: 'bereit' };
 
 export function voicePath(id) {
   const [locale, name, quality] = id.split('-');
@@ -170,10 +173,13 @@ let synthChain = Promise.resolve();
 /** Erzeugt Sprache. rate > 1 = schneller (ohne Tonhöhe zu verändern). Liefert { audio, sampleRate }. */
 export function synthesize(text, voiceId, { rate = 1, onProgress } = {}) {
   const run = synthChain.then(async () => {
+    piperState.step = 'Stimme laden';
     const { config, session } = await loadVoice(voiceId, onProgress);
     const clean = text.replace(/[\^$_]/g, ' ');
+    piperState.step = 'Lautwandler';
     const ph = await phonemize(clean, config.espeak?.voice ?? 'de');
     const ids = mapPhonemeIds(ph, config.phoneme_id_map);
+    piperState.step = 'Sprachmodell rechnen';
     if (ids.length < 3) return null;
     const inf = config.inference ?? {};
     const feeds = {
@@ -187,6 +193,7 @@ export function synthesize(text, voiceId, { rate = 1, onProgress } = {}) {
     };
     if (config.num_speakers > 1) feeds.sid = new ort.Tensor('int64', BigInt64Array.from([0n]), [1]);
     const { output } = await session.run(feeds);
+    piperState.step = 'fertig';
     return { audio: output.data, sampleRate: config.audio?.sample_rate ?? 22050 };
   });
   synthChain = run.catch(() => {});

@@ -52,6 +52,20 @@ function patchData(patch) {
 ipcMain.handle('data:load', () => loadData());
 ipcMain.handle('data:save', (_e, data) => patchData(data));
 
+// ---------------------------------------------------------------- Medien (Video-Posen)
+// Videos liegen als Dateien im Benutzerordner, nicht in daten.json.
+const mediaDir = () => path.join(app.getPath('userData'), 'medien');
+ipcMain.handle('media:save', (_e, { bytes, ext }) => {
+  fs.mkdirSync(mediaDir(), { recursive: true });
+  const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${String(ext).replace(/[^a-z0-9]/gi, '').toLowerCase() || 'mp4'}`;
+  fs.writeFileSync(path.join(mediaDir(), name), Buffer.from(bytes));
+  return `app://local/media/${name}`;
+});
+ipcMain.handle('media:delete', (_e, url) => {
+  const name = String(url).split('/media/')[1];
+  if (name && !name.includes('..')) fs.rmSync(path.join(mediaDir(), name), { force: true });
+});
+
 // ---------------------------------------------------------------- Modell-Speicher
 // Die Oberfläche selbst hat keinen Internetzugang (CSP). Sprachmodelle werden über
 // app://local/models/hf/<pfad> angefragt; der Hauptprozess liefert sie von der Festplatte
@@ -69,14 +83,35 @@ const MIME = {
   '.wasm': 'application/wasm',
   '.onnx': 'application/octet-stream',
   '.data': 'application/octet-stream',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
 };
 
 // Erlaubt SharedArrayBuffer und damit Mehrkern-Berechnung für Sprachausgabe/-erkennung.
 const ISOLATION = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp' };
 
 // Datei mit korrektem Content-Type ausliefern (WebAssembly lädt sonst nicht per Streaming)
-async function serveFile(file) {
+async function serveFile(file, req) {
   if (!fs.existsSync(file)) return new Response('Nicht gefunden', { status: 404 });
+  const range = req?.headers.get('range');
+  if (range) {
+    const size = fs.statSync(file).size;
+    const [, a, b] = /bytes=(\d*)-(\d*)/.exec(range) ?? [];
+    const start = a ? Number(a) : 0;
+    const end = b ? Math.min(Number(b), size - 1) : size - 1;
+    const stream = fs.createReadStream(file, { start, end });
+    return new Response(require('node:stream').Readable.toWeb(stream), {
+      status: 206,
+      headers: {
+        'Content-Range': `bytes ${start}-${end}/${size}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': String(end - start + 1),
+        'Content-Type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
+        ...ISOLATION,
+      },
+    });
+  }
   const res = await net.fetch(pathToFileURL(file).toString());
   const headers = { 'Content-Length': String(fs.statSync(file).size), ...ISOLATION };
   const type = MIME[path.extname(file).toLowerCase()];
@@ -327,6 +362,11 @@ app.whenReady().then(() => {
     const { pathname } = new URL(req.url);
     const rel = decodeURIComponent(pathname);
     if (rel.startsWith('/models/hf/')) return serveModel(rel.slice('/models/hf/'.length));
+    if (rel.startsWith('/media/')) {
+      const file = path.normalize(path.join(mediaDir(), rel.slice('/media/'.length)));
+      if (!file.startsWith(mediaDir())) return new Response('Verboten', { status: 403 });
+      return serveFile(file, req);
+    }
     const file = path.normalize(path.join(DIST, rel));
     if (!file.startsWith(DIST)) return new Response('Verboten', { status: 403 });
     return serveFile(file);

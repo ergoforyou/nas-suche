@@ -5,7 +5,7 @@ import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha } from 
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
 import { RubberBand } from './rubberband.js';
-import { debugVoice, synthesize } from './piper.js';
+import { debugVoice, synthesize, piperState } from './piper.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
@@ -1468,6 +1468,22 @@ $('avFile').onchange = async (e) => {
   e.target.value = '';
   if (!file) return;
   const av = target();
+  if (file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name)) {
+    if (editIndex < 0) return status('Videos bitte als Pose hinzufügen (⚙ → Avatar → „＋ Pose hinzufügen“).');
+    if (file.size > 60 * 1024 * 1024) return status('Das Video ist zu groß (max. 60 MB). Kurze Clips von 2–5 Sekunden reichen.');
+    status('Video wird gespeichert …');
+    if (av.video) desktop.deleteMedia(av.video);
+    av.video = await desktop.saveMedia(new Uint8Array(await file.arrayBuffer()), file.name.split('.').pop());
+    av.image = null;
+    av.key ??= true;
+    av.keyTol ??= 30;
+    av.loop ??= false;
+    status('Video-Pose hinzugefügt. Hintergrund wird live entfernt – falls nötig „Hintergrund entfernen“ abwählen oder Toleranz anpassen.');
+    avatarChanged();
+    previewEdited();
+    return;
+  }
+  av.video = null;
   av.image = await readImage(file);
   av.original = null;
   av.crop = null;
@@ -1589,7 +1605,8 @@ function setEditIndex(i) {
 function previewEdited() {
   const poses = persona().avatar.poses ?? [];
   let layer = null;
-  if (editIndex >= 0 && poses[editIndex]?.image) layer = 1 + poses.slice(0, editIndex).filter((p) => p.image).length;
+  const usable = (p) => p.image || p.video;
+  if (editIndex >= 0 && usable(poses[editIndex] ?? {})) layer = 1 + poses.slice(0, editIndex).filter(usable).length;
   const drawerOpen = !$('drawer').hidden;
   avatar.previewPose(drawerOpen ? layer ?? (editIndex >= 0 ? null : 0) : null);
   floating.avatar?.previewPose(drawerOpen ? layer ?? (editIndex >= 0 ? null : 0) : null);
@@ -1603,8 +1620,18 @@ function renderPoseList() {
   poses.forEach((pose, i) => {
     const row = document.createElement('div');
     row.className = 'pose-row' + (i === editIndex ? ' editing' : '');
-    const img = document.createElement('img');
-    if (pose.image) img.src = pose.image;
+    let img;
+    if (pose.video) {
+      img = document.createElement('video');
+      img.src = pose.video;
+      img.muted = true;
+      img.loop = true;
+      img.autoplay = true;
+      img.playsInline = true;
+    } else {
+      img = document.createElement('img');
+      if (pose.image) img.src = pose.image;
+    }
     const name = document.createElement('input');
     name.value = pose.name ?? `Pose ${i + 1}`;
     name.oninput = () => {
@@ -1627,6 +1654,7 @@ function renderPoseList() {
     del.title = 'Pose löschen';
     del.onclick = () => {
       if (!confirm(`Pose „${pose.name ?? i + 1}“ löschen?`)) return;
+      if (pose.video) desktop.deleteMedia(pose.video);
       poses.splice(i, 1);
       if (editIndex >= poses.length) editIndex = -1;
       setEditIndex(editIndex === i ? -1 : editIndex > i ? editIndex - 1 : editIndex);
@@ -1634,10 +1662,45 @@ function renderPoseList() {
     };
     row.append(img, name, trig, edit, del);
     list.appendChild(row);
+    if (pose.video) {
+      const opts = document.createElement('div');
+      opts.className = 'pose-opts';
+      const check = (label, key) => {
+        const l = document.createElement('label');
+        const c = document.createElement('input');
+        c.type = 'checkbox';
+        c.checked = !!pose[key];
+        c.onchange = () => {
+          pose[key] = c.checked;
+          save();
+          applyAvatar();
+          previewEdited();
+        };
+        l.append(c, label);
+        return l;
+      };
+      const tol = document.createElement('label');
+      const r = document.createElement('input');
+      r.type = 'range';
+      r.min = 5;
+      r.max = 80;
+      r.value = pose.keyTol ?? 30;
+      r.onchange = () => {
+        pose.keyTol = +r.value;
+        save();
+        applyAvatar();
+        previewEdited();
+      };
+      tol.append('Toleranz', r);
+      opts.append(check('Schleife', 'loop'), check('Hintergrund entfernen', 'key'), tol);
+      list.appendChild(opts);
+    }
   });
   $('editInfo').textContent =
     editIndex >= 0
-      ? `Du bearbeitest: ${poses[editIndex]?.name ?? 'Pose'} – Freistellen, Mund und Augen gelten für diese Pose.`
+      ? poses[editIndex]?.video
+        ? `Du bearbeitest: ${poses[editIndex]?.name ?? 'Pose'} (Video) – Abspielart und Freistellen direkt in der Liste oben.`
+        : `Du bearbeitest: ${poses[editIndex]?.name ?? 'Pose'} – Freistellen, Mund und Augen gelten für diese Pose.`
       : poses.length
         ? 'Du bearbeitest: Grundbild.'
         : '';
@@ -1885,7 +1948,7 @@ async function selfTest() {
       heard,
     };
   } catch (e) {
-    return { ok: false, isolated: self.crossOriginIsolated, steps, error: String(e?.message ?? e) };
+    return { ok: false, isolated: self.crossOriginIsolated, steps, piper: piperState.step, error: String(e?.message ?? e) };
   }
 }
 

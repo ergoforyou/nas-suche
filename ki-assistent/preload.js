@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('desktop', {
   avatarMenu: (state) => ipcRenderer.send('avatar:menu', state),
   avatarResizeStart: (corner, aspect) => ipcRenderer.send('avatar:resizeStart', { corner, aspect }),
 
+  // Medien (Video-Posen)
+  saveMedia: (bytes, ext) => ipcRenderer.invoke('media:save', { bytes, ext }),
+  deleteMedia: (url) => ipcRenderer.invoke('media:delete', url),
+
   // Modelle / Netzwerk
   modelInfo: () => ipcRenderer.invoke('models:info'),
   openModelDir: () => ipcRenderer.send('models:open'),

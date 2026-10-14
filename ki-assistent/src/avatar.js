@@ -7,7 +7,10 @@
 //     verformt das Bild an der Stelle (Kiefer klappt runter, Lider schließen).
 //  2. Bildwechsel: Optional eigene Bilder "Mund offen" und "Augen zu" hochladen.
 
+import { borderColor } from './cutout.js';
+
 const MAX_SIDE = 1024;
+const MAX_VIDEO_SIDE = 640; // Videos werden pro Bild verarbeitet – kleiner halten
 
 function smoothstep(a, b, x) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -69,6 +72,7 @@ export class Avatar {
 
   destroy() {
     this.active = false;
+    this.layers?.forEach((L) => L.isVideo && L.video.pause());
   }
 
   // Kompatibilität: Zustand liegt im gemeinsamen Objekt
@@ -117,7 +121,7 @@ export class Avatar {
     // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
     this.layout = { x: 0, y: 0, scale: 1, ...(this.useLayout ? config.stage ?? {} : {}) };
     // Ebene 0 = Grundbild, danach die Posen. Jede Ebene hat eigene Mund-/Augen-/Kopfdaten.
-    const cfgs = [config, ...(config.poses ?? []).filter((p) => p?.image)];
+    const cfgs = [config, ...(config.poses ?? []).filter((p) => p?.image || p?.video)];
     const layers = [];
     for (const c of cfgs) {
       try {
@@ -126,18 +130,82 @@ export class Avatar {
         if (!layers.length) throw e; // Grundbild muss laden, defekte Posen werden übersprungen
       }
     }
+    this.layers?.forEach((L) => L.isVideo && L.video.pause());
     this.layers = layers;
     const main = layers[0];
     Object.assign(this, { w: main.w, h: main.h, base: main.base, hasAlpha: main.hasAlpha });
-    this.current = Math.min(this.current ?? 0, layers.length - 1);
+    this.current = 0;
     this.prev = null;
     this.poseUntil = 0;
     this.bg = null;
     this.ready = true;
   }
 
+  /** Video-Ebene: kurzer Clip (MP4/WebM), wird Bild für Bild gezeichnet und bei Bedarf freigestellt. */
+  async createVideoLayer(cfg) {
+    const L = Object.create(this);
+    L.config = cfg;
+    L.isVideo = true;
+    L.head = null;
+    const v = this.doc.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    v.loop = !!cfg.loop;
+    v.src = cfg.video;
+    await new Promise((resolve, reject) => {
+      v.onloadeddata = resolve;
+      v.onerror = () => reject(new Error('Video konnte nicht geladen werden (Format?)'));
+    });
+    const scale = Math.min(1, MAX_VIDEO_SIDE / Math.max(v.videoWidth, v.videoHeight));
+    L.w = Math.max(2, Math.round(v.videoWidth * scale));
+    L.h = Math.max(2, Math.round(v.videoHeight * scale));
+    L.video = v;
+    L.frame = this.doc.createElement('canvas');
+    L.frame.width = L.w;
+    L.frame.height = L.h;
+    L.frameCtx = L.frame.getContext('2d', { willReadFrequently: true });
+    L.hasAlpha = !!cfg.key;
+    L.keyColor = null;
+    L.lastVideoTime = -1;
+    return L;
+  }
+
+  /** Aktuelles Videobild zeichnen; einfarbigen Hintergrund (z. B. Greenscreen) entfernen. */
+  buildVideoFrame() {
+    const v = this.video;
+    if (v.readyState < 2 || v.currentTime === this.lastVideoTime) return;
+    this.lastVideoTime = v.currentTime;
+    const g = this.frameCtx;
+    g.clearRect(0, 0, this.w, this.h);
+    g.drawImage(v, 0, 0, this.w, this.h);
+    if (!this.config.key) return;
+    const img = g.getImageData(0, 0, this.w, this.h);
+    const d = img.data;
+    // Hintergrundfarbe aus dem ersten Bild bestimmen und beibehalten (sonst flackert es)
+    this.keyColor ??= borderColor(d, this.w, this.h);
+    const [kr, kg, kb] = this.keyColor;
+    const t1 = ((this.config.keyTol ?? 30) / 100) * 160;
+    const t2 = t1 * 1.6;
+    const greenKey = kg > kr + 30 && kg > kb + 30;
+    for (let i = 0; i < d.length; i += 4) {
+      const dr = d[i] - kr;
+      const dg = d[i + 1] - kg;
+      const db = d[i + 2] - kb;
+      const dist = Math.sqrt(dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11) * 1.7;
+      if (dist <= t1) d[i + 3] = 0;
+      else if (dist < t2) {
+        d[i + 3] = (d[i + 3] * (dist - t1)) / (t2 - t1);
+        // grünen Farbsaum an den Kanten abschwächen
+        if (greenKey) d[i + 1] = Math.min(d[i + 1], Math.max(d[i], d[i + 2]));
+      }
+    }
+    g.putImageData(img, 0, 0);
+  }
+
   /** Eine Bild-Ebene vorbereiten. Die Ebene erbt alles Gemeinsame (Zustand, Bewegung) vom Avatar. */
   async createLayer(cfg) {
+    if (cfg.video) return this.createVideoLayer(cfg);
     const L = Object.create(this);
     L.config = cfg;
     L.lastOpenPx = -1;
@@ -170,6 +238,7 @@ export class Avatar {
 
   /** Mund und Augen der Ebene für den aktuellen Moment einzeichnen. */
   buildFrame() {
+    if (this.isVideo) return this.buildVideoFrame();
     if (this.mouthImg) {
       this.frameCtx.drawImage(this.base, 0, 0);
       if (this.open > 0.08) {
@@ -201,11 +270,38 @@ export class Avatar {
     this.prev = this.current;
     this.current = i;
     this.fadeStart = now;
+    const L = this.layers?.[i];
+    if (L?.isVideo) {
+      L.video.currentTime = 0;
+      L.video.play().catch(() => {});
+    }
+  }
+
+  /** Videos, die gerade nicht zu sehen sind, anhalten. */
+  pauseHiddenVideos() {
+    this.layers?.forEach((L, i) => {
+      if (L.isVideo && i !== this.current && i !== this.prev && !L.video.paused) L.video.pause();
+    });
   }
 
   updatePose(now) {
     const n = this.layers?.length ?? 0;
-    if (this.forcePose != null) return this.switchPose(Math.min(this.forcePose, n - 1), now);
+    const curL = this.layers?.[this.current];
+    if (this.forcePose != null) {
+      this.switchPose(Math.min(this.forcePose, n - 1), now);
+      // Vorschau im Editor: Video immer wieder abspielen
+      if (curL?.isVideo && curL.video.ended) {
+        curL.video.currentTime = 0;
+        curL.video.play().catch(() => {});
+      }
+      return;
+    }
+    // Einmal abgespielte Videos kehren danach zum Grundbild zurück
+    if (curL?.isVideo && !curL.config.loop && curL.video.ended) {
+      this.switchPose(0, now);
+      this.poseUntil = now + 2500 + Math.random() * 4000;
+      return;
+    }
     if (n < 2) return this.switchPose(0, now);
     const st = this.speaking ? 'speak' : this.thinking ? 'think' : this.listening ? 'listen' : 'idle';
     const rnd = (a, b) => a + Math.random() * (b - a);
@@ -234,6 +330,8 @@ export class Avatar {
       next = cand.length ? pick(cand) : 0;
       hold = 1e9; // bleibt, solange der Zustand anhält
     }
+    const nextL = this.layers[next];
+    if (nextL?.isVideo && !nextL.config.loop) hold = 1e9; // endet über "ended"
     this.switchPose(next, now);
     this.poseUntil = now + hold;
   }
@@ -680,6 +778,7 @@ export class Avatar {
     this.updatePose(now);
     const fade = this.prev == null ? 1 : Math.min(1, (now - this.fadeStart) / 380);
     if (fade >= 1) this.prev = null;
+    this.pauseHiddenVideos();
     const visible = [];
     if (this.prev != null && this.layers[this.prev]) visible.push([this.layers[this.prev], 1]);
     const cur = this.layers[this.current] ?? this.layers[0];

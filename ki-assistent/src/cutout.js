@@ -5,7 +5,7 @@
 // auf die Figur zugeschnitten.
 
 /** Häufigste (grob quantisierte) Farbe am Bildrand = Hintergrundfarbe. */
-function borderColor(d, w, h) {
+export function borderColor(d, w, h) {
   const counts = new Map();
   const add = (x, y) => {
     const i = (y * w + x) * 4;
