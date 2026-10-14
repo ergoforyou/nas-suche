@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bild2vrm</title>
+<style>
+  :root {
+    --bg: #f4f5f8; --panel: #ffffff; --text: #1d2130; --muted: #646b80; --line: #dde0e8;
+    --accent: #3d63dd; --accent-text: #ffffff; --left: #e0443e; --right: #2f8f4e; --center: #3d63dd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161c; --panel: #1d2029; --text: #e8eaf0; --muted: #9aa1b5; --line: #2e3240;
+            --accent: #6d8cf0; --accent-text: #0d1020; --left: #ff6b63; --right: #52c27a; --center: #8ea8ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 18px 24px 6px; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 16px 24px 24px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=number], select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+  input[type=range] { width: 100%; }
+  .check { display: flex; gap: 8px; align-items: center; color: var(--text); font-size: 14px; }
+  button { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; background: var(--bg); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 18px; text-align: center; color: var(--muted); cursor: pointer; }
+  #drop.over { border-color: var(--accent); color: var(--accent); }
+  #editorWrap { position: relative; display: flex; justify-content: center; background:
+      repeating-conic-gradient(#8881 0 25%, transparent 0 50%) 0 0 / 20px 20px; border-radius: 8px; min-height: 300px; }
+  #editor { max-width: 100%; touch-action: none; display: block; }
+  #viewer { width: 100%; height: 560px; border-radius: 8px; background: #8881; display: block; }
+  .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  #status { margin-top: 12px; font-size: 13px; min-height: 1.4em; }
+  #status.err { color: var(--left); }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; font-size: 13px; color: var(--muted); }
+  .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  a#download { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>bild2vrm</h1>
+  <p>Ganzkörperbild → geriggter VRM-Avatar. Alles läuft lokal auf diesem Rechner.</p>
+</header>
+<main>
+  <section>
+    <h2>1 · Bild &amp; Einstellungen</h2>
+    <div id="drop">Bild hierher ziehen oder <u>auswählen</u><br><small>Am besten: PNG mit transparentem Hintergrund, Figur frontal, stehend</small></div>
+    <input id="file" type="file" accept="image/*" hidden>
+
+    <label for="name">Name</label><input id="name" type="text" value="Avatar">
+    <label for="author">Autor</label><input id="author" type="text" value="">
+    <label for="vrm">Format</label>
+    <select id="vrm"><option value="0">VRM 0.x (VSeeFace, VMagicMirror, Warudo …)</option><option value="1">VRM 1.0</option></select>
+    <label for="background">Freistellen</label>
+    <select id="background">
+      <option value="auto">Automatisch (Transparenz, sonst einfarbiger Hintergrund)</option>
+      <option value="alpha">Transparenz des PNG</option>
+      <option value="flood">Einfarbigen Hintergrund entfernen</option>
+      <option value="rembg">KI (rembg, muss installiert sein)</option>
+    </select>
+    <label for="pose">Gelenkerkennung</label>
+    <select id="pose"><option value="auto">Automatisch</option><option value="mediapipe">MediaPipe (muss installiert sein)</option><option value="heuristic">Proportionen-Schätzung</option></select>
+    <label for="height">Körpergröße (m)</label><input id="height" type="number" step="0.05" min="0.3" max="3" value="1.6">
+    <label for="depth">Körperdicke: <span id="depthVal">1.0</span></label><input id="depth" type="range" min="0" max="2.5" step="0.1" value="1">
+    <label for="grid">Mesh-Auflösung: <span id="gridVal">140</span></label><input id="grid" type="range" min="40" max="260" step="10" value="140">
+    <label class="check"><input id="tpose" type="checkbox" checked> In T-Pose bringen (empfohlen)</label>
+
+    <div class="row">
+      <button id="btnDetect" disabled>Punkte neu erkennen</button>
+      <button id="btnGen" class="primary" disabled>VRM erzeugen</button>
+    </div>
+    <div id="status"></div>
+    <a id="download">download</a>
+  </section>
+
+  <section>
+    <h2>2 · Gelenkpunkte prüfen</h2>
+    <div class="legend"><span><i style="background:var(--left)"></i>linke Körperseite (im Bild rechts)</span><span><i style="background:var(--right)"></i>rechte Seite</span><span><i style="background:var(--center)"></i>Mitte</span></div>
+    <div id="editorWrap"><canvas id="editor" width="10" height="10"></canvas></div>
+    <p class="hint">Punkte mit der Maus verschieben. Wichtig: Schultern, Ellbogen, Handgelenke, Hüfte, Knie und Knöchel sollten auf den Gelenken liegen.</p>
+  </section>
+
+  <section>
+    <h2>3 · Vorschau</h2>
+    <canvas id="viewer"></canvas>
+    <div class="row">
+      <label class="check"><input id="armsDown" type="checkbox" checked> Arme senken (Rig-Test)</label>
+      <label class="check"><input id="idle" type="checkbox" checked> Kopf bewegen</label>
+    </div>
+    <p class="hint" id="viewerHint">Nach dem Erzeugen erscheint hier der Avatar (drehen: ziehen, zoomen: Mausrad).</p>
+  </section>
+</main>
+
+<script type="importmap">
+{ "imports": {
+    "three": "/vendor/three.module.min.js",
+    "three/addons/": "/vendor/addons/",
+    "@pixiv/three-vrm": "/vendor/three-vrm.module.min.js"
+} }
+</script>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const NAMES = ["head_top","neck","left_shoulder","right_shoulder","left_elbow","right_elbow","left_wrist","right_wrist",
+               "left_hip","right_hip","left_knee","right_knee","left_ankle","right_ankle"];
+const LABEL = {head_top:"Kopf oben", neck:"Hals", shoulder:"Schulter", elbow:"Ellbogen", wrist:"Handgelenk", hip:"Hüfte", knee:"Knie", ankle:"Knöchel"};
+const LINKS = [["head_top","neck"],["neck","left_shoulder"],["neck","right_shoulder"],["left_shoulder","left_elbow"],["left_elbow","left_wrist"],
+  ["right_shoulder","right_elbow"],["right_elbow","right_wrist"],["left_shoulder","left_hip"],["right_shoulder","right_hip"],["left_hip","right_hip"],
+  ["left_hip","left_knee"],["left_knee","left_ankle"],["right_hip","right_knee"],["right_knee","right_ankle"]];
+
+let imageData = null, imgW = 0, imgH = 0, kp = null, cutout = null, drag = null, viewScale = 1, lastFileName = "avatar";
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const color = (n) => n.startsWith("left") ? css("--left") : n.startsWith("right") ? css("--right") : css("--center");
+
+function setStatus(msg, err = false) { $("status").textContent = msg; $("status").className = err ? "err" : ""; }
+function options() {
+  return { name: $("name").value, author: $("author").value, vrm_version: $("vrm").value, background: $("background").value,
+           pose: $("pose").value, height: +$("height").value, depth: +$("depth").value, grid: +$("grid").value, tpose: $("tpose").checked };
+}
+$("depth").oninput = () => $("depthVal").textContent = (+$("depth").value).toFixed(1);
+$("grid").oninput = () => $("gridVal").textContent = $("grid").value;
+
+// ---------- file loading
+$("drop").onclick = () => $("file").click();
+$("file").onchange = () => $("file").files[0] && loadFile($("file").files[0]);
+$("drop").ondragover = (e) => { e.preventDefault(); $("drop").classList.add("over"); };
+$("drop").ondragleave = () => $("drop").classList.remove("over");
+$("drop").ondrop = (e) => { e.preventDefault(); $("drop").classList.remove("over"); e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]); };
+
+function loadFile(file) {
+  lastFileName = file.name.replace(/\.[^.]+$/, "") || "avatar";
+  if ($("name").value === "Avatar" || !$("name").value) $("name").value = lastFileName;
+  const r = new FileReader();
+  r.onload = () => { imageData = r.result; detect(); };
+  r.readAsDataURL(file);
+}
+
+async function post(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) { let m = res.statusText; try { m = (await res.json()).error; } catch {} throw new Error(m); }
+  return res;
+}
+
+async function detect() {
+  if (!imageData) return;
+  setStatus("Analysiere Bild …");
+  $("btnDetect").disabled = $("btnGen").disabled = true;
+  try {
+    const d = await (await post("/api/analyze", { image: imageData, options: options() })).json();
+    imgW = d.width; imgH = d.height; kp = d.keypoints;
+    cutout = new Image();
+    cutout.onload = drawEditor;
+    cutout.src = d.cutout;
+    setStatus("Gelenkpunkte erkannt – bitte prüfen und ggf. verschieben.");
+    $("btnGen").disabled = false;
+  } catch (e) { setStatus("Fehler: " + e.message, true); }
+  $("btnDetect").disabled = false;
+}
+$("btnDetect").onclick = detect;
+
+// ---------- keypoint editor
+const cv = $("editor"), ctx = cv.getContext("2d");
+function drawEditor() {
+  if (!cutout) return;
+  const maxH = Math.min(720, window.innerHeight - 160), maxW = cv.parentElement.clientWidth;
+  viewScale = Math.min(maxH / imgH, maxW / imgW);
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.width = imgW * viewScale + "px"; cv.style.height = imgH * viewScale + "px";
+  cv.width = Math.round(imgW * viewScale * dpr); cv.height = Math.round(imgH * viewScale * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(cutout, 0, 0, imgW * viewScale, imgH * viewScale);
+  const P = (n) => [kp[n][0] * viewScale, kp[n][1] * viewScale];
+  ctx.lineWidth = 3;
+  for (const [a, b] of LINKS) {
+    ctx.strokeStyle = color(a.startsWith("neck") || a === "head_top" ? b : a);
+    ctx.beginPath(); ctx.moveTo(...P(a)); ctx.lineTo(...P(b)); ctx.stroke();
+  }
+  ctx.font = "12px system-ui";
+  for (const n of NAMES) {
+    const [x, y] = P(n);
+    ctx.fillStyle = color(n); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, drag === n ? 9 : 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (drag === n) {
+      const key = n.replace(/^(left|right)_/, "");
+      const txt = (n.startsWith("left") ? "L " : n.startsWith("right") ? "R " : "") + LABEL[key];
+      ctx.fillStyle = "#000a"; ctx.fillRect(x + 12, y - 10, ctx.measureText(txt).width + 10, 20);
+      ctx.fillStyle = "#fff"; ctx.fillText(txt, x + 17, y + 4);
+    }
+  }
+}
+window.addEventListener("resize", drawEditor);
+function pointerPos(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / viewScale, (e.clientY - r.top) / viewScale]; }
+cv.addEventListener("pointerdown", (e) => {
+  if (!kp) return;
+  const [x, y] = pointerPos(e);
+  let best = null, bd = 18 / viewScale;
+  for (const n of NAMES) { const d = Math.hypot(kp[n][0] - x, kp[n][1] - y); if (d < bd) { bd = d; best = n; } }
+  if (best) { drag = best; cv.setPointerCapture(e.pointerId); drawEditor(); }
+});
+cv.addEventListener("pointermove", (e) => { if (!drag) return; kp[drag] = pointerPos(e); drawEditor(); });
+cv.addEventListener("pointerup", () => { drag = null; drawEditor(); });
+
+// ---------- generate
+$("btnGen").onclick = async () => {
+  setStatus("Erzeuge VRM …"); $("btnGen").disabled = true;
+  try {
+    const res = await post("/api/generate", { image: imageData, options: options(), keypoints: kp });
+    const stats = JSON.parse(res.headers.get("X-Stats") || "{}");
+    const buf = await res.arrayBuffer();
+    const blob = new Blob([buf], { type: "application/octet-stream" });
+    const a = $("download");
+    a.href = URL.createObjectURL(blob); a.download = ($("name").value || lastFileName) + ".vrm"; a.click();
+    setStatus(`Fertig: ${a.download} (${stats.vertices} Vertices, ${(buf.byteLength / 1e6).toFixed(1)} MB) wurde heruntergeladen.`);
+    showPreview(buf);
+  } catch (e) { setStatus("Fehler: " + e.message, true); }
+  $("btnGen").disabled = false;
+};
+
+// ---------- 3D preview (three.js + three-vrm, lokal mitgeliefert)
+let viewer = null;
+async function showPreview(buf) {
+  try {
+    if (!viewer) viewer = await createViewer();
+    await viewer.load(buf);
+    $("viewerHint").textContent = "Drehen: ziehen · Zoomen: Mausrad";
+  } catch (e) { $("viewerHint").textContent = "Vorschau nicht möglich: " + e.message; }
+}
+async function createViewer() {
+  const THREE = await import("three");
+  const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+  const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+  const { VRMLoaderPlugin, VRMUtils } = await import("@pixiv/three-vrm");
+  const canvas = $("viewer");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 50);
+  camera.position.set(0, 1.0, 4.2);
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.set(0, 0.85, 0); controls.update();
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 2.5));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.5); dl.position.set(1, 2, 3); scene.add(dl);
+  const grid = new THREE.GridHelper(4, 16, 0x888888, 0x888888); grid.material.opacity = .3; grid.material.transparent = true; scene.add(grid);
+  const loader = new GLTFLoader();
+  loader.register((p) => new VRMLoaderPlugin(p));
+  let vrm = null; const clock = new THREE.Clock();
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize); resize();
+  renderer.setAnimationLoop(() => {
+    const dt = clock.getDelta(), t = clock.elapsedTime;
+    if (vrm) {
+      const h = vrm.humanoid;
+      // three-vrm: bei VRM 0.x sind X- und Z-Rotationen der normalisierten Bones gespiegelt
+      const s = vrm.meta?.metaVersion === "0" ? -1 : 1;
+      const down = $("armsDown").checked ? 1.2 : 0;
+      h.getNormalizedBoneNode("leftUpperArm").rotation.z = -down * s;
+      h.getNormalizedBoneNode("rightUpperArm").rotation.z = down * s;
+      const idle = $("idle").checked;
+      h.getNormalizedBoneNode("head").rotation.y = idle ? Math.sin(t * 0.9) * 0.35 : 0;
+      h.getNormalizedBoneNode("head").rotation.z = idle ? Math.sin(t * 0.6) * 0.1 * s : 0;
+      h.getNormalizedBoneNode("spine").rotation.y = idle ? Math.sin(t * 0.5) * 0.1 : 0;
+      vrm.update(dt);
+    }
+    renderer.render(scene, camera);
+  });
+  return {
+    async load(buf) {
+      if (vrm) { scene.remove(vrm.scene); VRMUtils.deepDispose(vrm.scene); vrm = null; }
+      const gltf = await loader.parseAsync(buf, "");
+      vrm = gltf.userData.vrm;
+      if (!vrm) throw new Error("Datei enthält keine VRM-Daten");
+      VRMUtils.rotateVRM0(vrm);
+      scene.add(vrm.scene);
+      window.__vrm = vrm;
+    },
+  };
+}
+</script>
+</body>
+</html>
