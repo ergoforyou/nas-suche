@@ -156,6 +156,8 @@ func (p *Pane) widget() Widget {
 					Action{Text: "Im Explorer anzeigen", OnTriggered: p.showInFolder},
 					Action{Text: "An Schnellzugriff anheften", OnTriggered: p.pinSelected},
 					Separator{},
+					Action{Text: "Umbenennen …\tF2", OnTriggered: p.rename},
+					Separator{},
 					Action{Text: "Kopieren (Dateien)\tStrg+C", OnTriggered: p.copyFiles},
 					Menu{AssignTo: &p.copyMenu, Text: "Kopieren nach", Items: []MenuItem{
 						Action{Text: "Ordner auswählen …"},
@@ -196,6 +198,8 @@ func (p *Pane) init() {
 			p.copyFiles()
 		case key == walk.KeyBack && p.model.folderMode:
 			p.goUp()
+		case key == walk.KeyF2:
+			p.rename()
 		}
 	})
 	p.setupDrag()

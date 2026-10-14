@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -374,6 +375,8 @@ func (p *MPane) contextMenu(row int, pos fyne.Position) {
 		fyne.NewMenuItem("Öffnen", func() { p.activate(row) }),
 		fyne.NewMenuItem("Im Finder zeigen", func() { revealPath(path) }),
 		fyne.NewMenuItem("In der anderen Ansicht öffnen", func() { p.app.setSecondPane(true); other.openFolder(dir) }),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Umbenennen …", func() { p.renameDialog(path) }),
 		fyne.NewMenuItemSeparator(),
 		fyne.NewMenuItem("Datei kopieren (zum Einfügen im Finder/Mail)", func() {
 			if err := copyFileToClipboard(path); err != nil {
@@ -747,4 +750,33 @@ func (c *cell) MouseOut() {
 		c.p.dropRow = -1
 		c.p.table.Refresh()
 	}
+}
+
+// renameDialog: Datei oder Ordner umbenennen (Name ohne Endung vorausgewählt).
+func (p *MPane) renameDialog(path string) {
+	a := p.app
+	entry := widget.NewEntry()
+	entry.SetText(filepath.Base(path))
+	d := dialog.NewForm("Umbenennen", "Umbenennen", "Abbrechen",
+		[]*widget.FormItem{widget.NewFormItem("Neuer Name", entry)}, func(ok bool) {
+			if !ok {
+				return
+			}
+			dst, err := renamePath(path, entry.Text)
+			if err != nil {
+				dialog.ShowError(err, a.w)
+				return
+			}
+			if dst != path {
+				a.Moved(map[string]string{path: dst})
+				if p.folderMode {
+					p.loadFolder(p.folder, true)
+				}
+				a.setStatus("Umbenannt in „" + filepath.Base(dst) + "“.")
+			}
+		}, a.w)
+	entry.OnSubmitted = func(string) { d.Submit() } // Return = Umbenennen
+	d.Resize(fyne.NewSize(520, 160))
+	d.Show()
+	a.w.Canvas().Focus(entry)
 }

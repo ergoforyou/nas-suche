@@ -867,6 +867,7 @@ class Pane {
       case 'End': e.preventDefault(); move(n - 1); break;
       case 'Enter': e.preventDefault(); if (this.focusIdx >= 0) this.activate(this.focusIdx); break;
       case 'Backspace': e.preventDefault(); this.goUp(); break;
+      case 'F2': e.preventDefault(); this.rename(); break;
       case 'a': case 'A':
         if (ctrl) { e.preventDefault(); this.sel = new Set(this.view.map((v) => v.e.path)); this.render(); }
         break;
@@ -885,6 +886,90 @@ class Pane {
     if (e.isDir) { this.openFolder(e.path); return; }
     const files = this.selected().filter((x) => !x.isDir).map((x) => x.path);
     App.openFiles(files.length && this.sel.has(e.path) ? files : [e.path]);
+  }
+
+  // ----- Umbenennen (F2) -----
+
+  rename() {
+    const sel = this.selected();
+    if (!sel.length) return;
+    if (sel.length > 1) { this.renameMany(sel); return; }
+    const e = sel[0];
+    const idx = this.view.findIndex((v) => v.e.path === e.path);
+    if (idx < 0) return;
+    this.scrollTo(idx);
+    this.editRename(idx, e, e.name);
+  }
+
+  // Eingabefeld direkt über dem Namen (wie im Explorer)
+  editRename(idx, e, value) {
+    if (this.renameBox) this.renameBox.remove();
+    const nameCol = this.thead.children[0];
+    const inp = el('input', 'rename');
+    inp.value = value;
+    inp.spellcheck = false;
+    inp.style.top = (idx * ROW_H + 1) + 'px';
+    inp.style.left = '30px';
+    inp.style.width = Math.max(200, nameCol.getBoundingClientRect().width - 36) + 'px';
+    this.tbody.append(inp);
+    this.renameBox = inp;
+    inp.focus();
+    const dot = e.isDir ? -1 : value.lastIndexOf('.');
+    inp.setSelectionRange(0, dot > 0 ? dot : value.length);
+    let done = false;
+    const finish = async (commit) => {
+      if (done) return;
+      done = true;
+      inp.remove();
+      this.renameBox = null;
+      this.tbody.focus();
+      const name = inp.value.trim();
+      if (!commit || !name || name === e.name) return;
+      if (!e.isDir && ext(name) !== ext(e.name) &&
+          !await confirmBox('Dateiendung ändern?', `Die Endung wird von „.${ext(e.name) || '–'}“ zu „.${ext(name) || '–'}“ geändert. Danach lässt sich die Datei eventuell nicht mehr öffnen.`, 'Ändern')) {
+        this.editRename(idx, e, name);
+        return;
+      }
+      const r = await NAS.api('rename', { path: e.path, name }).catch((err) => ({ error: err.message }));
+      if (r.error) {
+        App.setStatus(r.error, true);
+        this.editRename(idx, e, name);
+        return;
+      }
+      App.setStatus(`Umbenannt in „${name}“.`, true);
+      await App.afterRename({ [e.path]: r.path });
+    };
+    inp.addEventListener('keydown', (ev) => {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+    });
+    inp.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    inp.addEventListener('dblclick', (ev) => ev.stopPropagation());
+    inp.addEventListener('blur', () => finish(true));
+  }
+
+  // Mehrere zusammenfassen: gleicher Name, durchnummeriert – „Rechnung Müller (1).pdf“, „(2)“ …
+  async renameMany(sel) {
+    const first = sel[0];
+    const dot = first.isDir ? -1 : first.name.lastIndexOf('.');
+    const base = await askText(`${sel.length} Elemente umbenennen`,
+      'Gemeinsamer Name – die Elemente werden in der angezeigten Reihenfolge durchnummeriert, die Dateiendungen bleiben:',
+      dot > 0 ? first.name.slice(0, dot) : first.name);
+    if (!base) return;
+    const moves = {};
+    const errs = [];
+    for (let i = 0; i < sel.length; i++) {
+      const e = sel[i];
+      const x = e.isDir ? '' : ext(e.name);
+      const name = `${base} (${i + 1})${x ? '.' + x : ''}`;
+      App.setStatus(`Benenne um ${i + 1}/${sel.length}: ${name} …`);
+      const r = await NAS.api('rename', { path: e.path, name }).catch((err) => ({ error: err.message }));
+      if (r.error) errs.push(`${e.name}: ${r.error}`); else moves[e.path] = r.path;
+    }
+    const n = Object.keys(moves).length;
+    App.setStatus(`${n} Element(e) umbenannt.` + (errs.length ? ' Nicht umbenannt: ' + errs.join('; ') : ''), true);
+    if (n) await App.afterRename(moves);
   }
 
   // ----- Menüs -----
@@ -939,6 +1024,8 @@ class Pane {
       { label: `Im ${App.explorer} zeigen`, action: () => App.reveal(first.path) },
       { label: 'In der anderen Ansicht öffnen', action: () => { App.setSecond(true); App.panes[1 - this.idx].openFolder(dir); } },
       ...(!this.folder ? [{ label: 'Ordner hier anzeigen', action: () => this.openFolder(first.dir, { select: first.path }) }] : []),
+      { sep: true },
+      { label: one ? 'Umbenennen' : `${sel.length} Elemente umbenennen …`, key: 'F2', action: () => this.rename() },
       { sep: true },
       { label: 'Kopieren', key: 'Strg+C', action: () => App.copyFiles(paths) },
       { label: 'Kopieren nach', sub: targetMenu(false) },
@@ -1303,6 +1390,18 @@ const App = {
     if (remember && !r.error) NAS.api('copytarget', { path: target }).then(() => this.refreshHello());
     // verschobene Dateien in der Auswahl mitnehmen
     if (r.moves) this.panes.forEach((p) => { for (const [from, to] of Object.entries(r.moves)) if (p.sel.delete(from)) p.sel.add(to); });
+    await Promise.all(this.panes.map((p) => p.refresh()));
+    this.nav.load();
+  },
+
+  // Nach dem Umbenennen: Auswahl mitnehmen, Ansichten und Navigation auffrischen
+  async afterRename(moves) {
+    this.panes.forEach((p) => {
+      for (const [from, to] of Object.entries(moves)) {
+        if (p.sel.delete(from)) p.sel.add(to);
+        if (p.folder && (sameP(p.folder, from) || isInside(p.folder, from))) p.folder = to + p.folder.slice(from.length);
+      }
+    });
     await Promise.all(this.panes.map((p) => p.refresh()));
     this.nav.load();
   },

@@ -63,15 +63,28 @@ func (a *App) Transfer(paths []string, target string, move bool) (map[string]str
 			}
 		}
 	}
-	a.Sync(func() {
-		if len(moves) > 0 && a.ix != nil {
-			a.ix = a.ix.WithMoves(moves)
-		}
-		for _, p := range a.panes {
-			p.scheduleSearch()
-		}
-	})
+	a.Sync(func() { a.applyMoves(moves) })
 	return moves, done, err
+}
+
+func (a *App) Moved(moves map[string]string) {
+	a.Sync(func() { a.applyMoves(moves) })
+}
+
+// applyMoves (im Oberflächen-Thread): Index nachziehen, Ansichten auffrischen, Index speichern.
+func (a *App) applyMoves(moves map[string]string) {
+	if len(moves) == 0 {
+		return
+	}
+	if a.ix != nil {
+		a.ix = a.ix.WithMoves(moves)
+		if !a.ixShared {
+			saveIndexSoon(func() *Index { return a.ix })
+		}
+	}
+	for _, p := range a.panes {
+		p.scheduleSearch()
+	}
 }
 
 func (a *App) OpenPath(p string) error { return hostOpen(p) }

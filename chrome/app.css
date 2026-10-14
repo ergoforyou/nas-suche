@@ -213,6 +213,19 @@ input[type=checkbox] { margin: 0; accent-color: var(--light); }
 .row.sel { background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--sel-border); }
 .row.drop { background: var(--drop-bg); color: var(--drop-text); box-shadow: inset 0 0 0 2px var(--light); font-weight: 600; }
 .row.cut { opacity: .5; }
+.rename {
+  position: absolute;
+  z-index: 5;
+  height: calc(var(--row) - 2px);
+  padding: 0 6px;
+  border: 1px solid var(--light);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(31,111,178,.2);
+  background: #fff;
+  font: inherit;
+  user-select: text;
+  outline: none;
+}
 .c1 { color: #C62828; }
 .c2 { color: #2E7D32; }
 .c3 { color: #1565C0; }

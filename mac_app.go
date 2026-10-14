@@ -353,6 +353,7 @@ func (a *MacApp) transfer(paths []string, target string, move bool) {
 		}
 		if len(moves) > 0 && a.ix != nil {
 			a.ix = a.ix.WithMoves(moves)
+			saveIndexSoon(func() *Index { return a.ix })
 		}
 		for _, p := range a.panes {
 			p.scheduleSearch()

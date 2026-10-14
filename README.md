@@ -157,6 +157,9 @@ Eine ausführliche Anleitung zum Ausrollen im Team steht in `ANLEITUNG-AUSROLLEN
 * **Rechtsklick → Kopieren nach**: merkt sich die zuletzt benutzten Zielordner; Google Drive für
   Desktop (`G:\Meine Ablage`) wird automatisch angeboten.
 * Doppelklick/Enter öffnet, „Im Ordner anzeigen“, „Pfad kopieren“ (Strg+Umschalt+C).
+* **Umbenennen: F2 oder Rechtsklick → „Umbenennen“** (Programm, Browser und Mac). Der Name ohne Endung ist
+  vorausgewählt; beim Ändern der Endung wird nachgefragt. **Mehrere markiert** = gemeinsamer Name mit Nummer,
+  z. B. „Kunde Wrobel Unterlagen (1).pdf“, „(2)“ … – ideal zum Zusammenfassen. Die Suche findet sofort den neuen Namen.
 
 ## Gemeinsamer Index für das ganze Team
 

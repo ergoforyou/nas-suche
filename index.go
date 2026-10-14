@@ -463,15 +463,23 @@ func (ix *Index) WithMoves(moves map[string]string) *Index {
 		dir  int32
 		name string
 	}
+	type dest struct {
+		dir  int32
+		name string // neuer Name (Umbenennen), sonst ""
+	}
 	sep := string(filepath.Separator)
-	targets := map[key]int32{}
+	targets := map[key]dest{}
 	for old, nw := range moves {
 		old, nw = filepath.Clean(old), filepath.Clean(nw)
 		od, ok := dirIdx[normLower(filepath.Dir(old))]
 		if !ok {
 			continue
 		}
-		targets[key{od, normLower(filepath.Base(old))}] = getDir(filepath.Dir(nw))
+		d := dest{dir: getDir(filepath.Dir(nw))}
+		if filepath.Base(nw) != filepath.Base(old) {
+			d.name = filepath.Base(nw)
+		}
+		targets[key{od, normLower(filepath.Base(old))}] = d
 		// war es ein Ordner: alle Pfade darunter mitziehen
 		lo := normLower(old)
 		for i, ld := range nx.lowerDirs {
@@ -489,10 +497,21 @@ func (ix *Index) WithMoves(moves map[string]string) *Index {
 			dirIdx[nx.lowerDirs[i]] = int32(i)
 		}
 	}
+	renamed := false
 	for i := range nx.Entries {
 		e := &nx.Entries[i]
 		if t, ok := targets[key{e.Dir, ix.lowerNames[i]}]; ok {
-			e.Dir = t
+			e.Dir = t.dir
+			if t.name != "" {
+				if !renamed {
+					nx.lowerNames = append([]string(nil), ix.lowerNames...)
+					nx.cats = append([]uint8(nil), ix.cats...)
+					renamed = true
+				}
+				e.Name = t.name
+				nx.lowerNames[i] = normLower(t.name)
+				nx.cats[i] = categoryOf(nx.lowerNames[i], e.IsDir)
+			}
 		}
 	}
 	return &nx

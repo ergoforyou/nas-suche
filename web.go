@@ -65,6 +65,8 @@ type WebHost interface {
 	Indexing() bool
 	StatusText() string
 	PCItems() []NavItem // „Dieser PC“: persönliche Ordner und Laufwerke
+	// Moved: Dateien wurden verschoben/umbenannt (alt → neu) – Index und Ansichten nachziehen.
+	Moved(moves map[string]string)
 }
 
 type webServer struct {
@@ -238,6 +240,14 @@ func (s *webServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.upload(w, r)
 	case "mkdir":
 		s.mkdir(w, r)
+	case "rename":
+		var req struct{ Path, Name string }
+		readJSON(r, &req)
+		dst, err := renamePath(req.Path, req.Name)
+		if err == nil && dst != req.Path {
+			s.host.Moved(map[string]string{req.Path: dst})
+		}
+		writeJSON(w, map[string]any{"ok": err == nil, "path": dst, "error": errText(err)})
 	case "quit":
 		// nur der Hintergrunddienst lässt sich beenden (das Programm mit Fenster übernimmt)
 		if q, ok := s.host.(interface{ Quit() }); ok {
@@ -249,6 +259,26 @@ func (s *webServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+var (
+	saveMu    sync.Mutex
+	saveTimer *time.Timer
+)
+
+// saveIndexSoon speichert den Index kurz nach Verschieben/Umbenennen (gebündelt), damit die
+// Änderungen auch nach einem Neustart sofort gefunden werden.
+func saveIndexSoon(get func() *Index) {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+	if saveTimer != nil {
+		saveTimer.Stop()
+	}
+	saveTimer = time.AfterFunc(5*time.Second, func() {
+		if ix := get(); ix != nil {
+			SaveIndex(ix, indexPath())
+		}
+	})
 }
 
 func isBackground(h WebHost) bool {
@@ -630,6 +660,59 @@ func (s *webServer) mkdir(w http.ResponseWriter, r *http.Request) {
 	}
 	err := os.Mkdir(p, 0o755)
 	writeJSON(w, map[string]any{"ok": err == nil, "path": p, "error": errText(err)})
+}
+
+// validName prüft einen Datei-/Ordnernamen nach den Regeln von Windows und dem NAS.
+func validName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("Bitte einen Namen eingeben.")
+	}
+	if strings.ContainsAny(name, `\/:*?"<>|`) {
+		return fmt.Errorf("Ein Name darf diese Zeichen nicht enthalten: \\ / : * ? \" < > |")
+	}
+	for _, r := range name {
+		if r < 32 {
+			return fmt.Errorf("Der Name enthält ein ungültiges Zeichen.")
+		}
+	}
+	if strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return fmt.Errorf("Ein Name darf nicht mit Punkt oder Leerzeichen enden.")
+	}
+	base := strings.ToUpper(strings.TrimSuffix(name, filepath.Ext(name)))
+	switch base {
+	case "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
+		return fmt.Errorf("„%s“ ist unter Windows als Name nicht erlaubt.", name)
+	}
+	if len(name) > 240 {
+		return fmt.Errorf("Der Name ist zu lang.")
+	}
+	return nil
+}
+
+// renamePath benennt eine Datei oder einen Ordner um und liefert den neuen Pfad.
+func renamePath(src, name string) (string, error) {
+	name = strings.TrimLeft(name, " ")
+	if err := validName(name); err != nil {
+		return src, err
+	}
+	if _, err := os.Lstat(src); err != nil {
+		return src, fmt.Errorf("„%s“ gibt es nicht mehr (Index aktualisieren).", filepath.Base(src))
+	}
+	dst := filepath.Join(filepath.Dir(src), name)
+	if dst == src {
+		return src, nil
+	}
+	// nur Groß-/Kleinschreibung geändert: auf Windows/NAS dieselbe Datei – direkt umbenennen
+	if !strings.EqualFold(dst, src) {
+		if _, err := os.Lstat(dst); err == nil {
+			return src, fmt.Errorf("Es gibt dort schon „%s“.", name)
+		}
+	}
+	if err := os.Rename(src, dst); err != nil {
+		return src, fmt.Errorf("Umbenennen nicht möglich: %v", err)
+	}
+	return dst, nil
 }
 
 // download: Datei für Chrome (Herausziehen auf den Desktop/Explorer, Übergabe an Webseiten).

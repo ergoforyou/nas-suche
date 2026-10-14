@@ -38,13 +38,7 @@ func (h *bgHost) Sync(f func()) { h.mu.Lock(); defer h.mu.Unlock(); f() }
 
 func (h *bgHost) Transfer(paths []string, target string, move bool) (map[string]string, int, error) {
 	moves, done, err := transferFiles(paths, target, move)
-	if len(moves) > 0 {
-		h.mu.Lock()
-		if h.ix != nil {
-			h.ix = h.ix.WithMoves(moves)
-		}
-		h.mu.Unlock()
-	}
+	h.Moved(moves)
 	return moves, done, err
 }
 
@@ -88,6 +82,18 @@ func copyFilesToClipboard(paths []string) error {
 		items = append(items, `POSIX file "`+strings.ReplaceAll(p, `"`, `\"`)+`"`)
 	}
 	return exec.Command("osascript", "-e", "set the clipboard to {"+strings.Join(items, ", ")+"}").Run()
+}
+
+func (h *bgHost) Moved(moves map[string]string) {
+	if len(moves) == 0 {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.ix != nil {
+		h.ix = h.ix.WithMoves(moves)
+		saveIndexSoon(h.Index)
+	}
 }
 
 func (h *bgHost) OpenPath(p string) error             { return hostOpen(p) }

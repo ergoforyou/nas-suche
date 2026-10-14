@@ -137,3 +137,32 @@ func TestWithMoves(t *testing.T) {
 		t.Errorf("alter Index verändert: %s", p)
 	}
 }
+
+func TestWithMovesRename(t *testing.T) {
+	ix := &Index{
+		Dirs: []string{filepath.FromSlash("/nas/Kunden"), filepath.FromSlash("/nas/Kunden/Müller")},
+		Entries: []Entry{
+			{Name: "Müller", Dir: 0, IsDir: true},
+			{Name: "Scan_0001.pdf", Dir: 1},
+		},
+	}
+	ix.prepare()
+	nx := ix.WithMoves(map[string]string{
+		filepath.FromSlash("/nas/Kunden/Müller/Scan_0001.pdf"): filepath.FromSlash("/nas/Kunden/Müller/Rechnung Müller.pdf"),
+		filepath.FromSlash("/nas/Kunden/Müller"):               filepath.FromSlash("/nas/Kunden/Müller GmbH"),
+	})
+	never := func() bool { return false }
+	res, _, _ := nx.Search(Query{Text: "rechnung"}, never)
+	if len(res) != 1 || nx.Path(&nx.Entries[res[0]]) != filepath.FromSlash("/nas/Kunden/Müller GmbH/Rechnung Müller.pdf") {
+		t.Fatalf("umbenannte Datei nicht gefunden: %v", res)
+	}
+	if res, _, _ := nx.Search(Query{Text: "scan"}, never); len(res) != 0 {
+		t.Errorf("alter Name noch gefunden")
+	}
+	if res, _, _ := nx.Search(Query{Text: "gmbh"}, never); len(res) != 1 {
+		t.Errorf("umbenannter Ordner nicht gefunden")
+	}
+	if res, _, _ := ix.Search(Query{Text: "scan"}, never); len(res) != 1 {
+		t.Errorf("alter Index verändert")
+	}
+}

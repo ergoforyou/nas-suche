@@ -707,12 +707,7 @@ func (a *App) transfer(paths []string, target string, move bool) {
 			}
 		}
 		a.mw.Synchronize(func() {
-			if len(moves) > 0 && a.ix != nil {
-				a.ix = a.ix.WithMoves(moves)
-			}
-			for _, p := range a.panes {
-				p.scheduleSearch()
-			}
+			a.applyMoves(moves)
 			msg := fmt.Sprintf("%d Element(e) nach %s %s.", done, target,
 				map[bool]string{true: "verschoben", false: "kopiert"}[move])
 			if err != nil && done == 0 {

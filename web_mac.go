@@ -29,13 +29,18 @@ func (a *MacApp) Indexing() bool { return a.indexing }
 
 func (a *MacApp) Transfer(paths []string, target string, move bool) (map[string]string, int, error) {
 	moves, done, err := transferFiles(paths, target, move)
-	if len(moves) > 0 && a.ix != nil {
+	a.Moved(moves)
+	return moves, done, err
+}
+
+func (a *MacApp) Moved(moves map[string]string) {
+	if a.ix != nil && len(moves) > 0 {
 		a.ix = a.ix.WithMoves(moves)
+		saveIndexSoon(func() *Index { return a.ix })
 	}
 	for _, p := range a.panes {
 		p.scheduleSearch()
 	}
-	return moves, done, err
 }
 
 func (a *MacApp) OpenPath(p string) error             { return hostOpen(p) }
