@@ -118,9 +118,14 @@ def erstelle_app(
         b: int | None = None,
         h: int | None = None,
         v: str | None = None,
+        a: str | None = None,
     ):
         kachel = (x, y, b, h) if None not in (x, y, b, h) else None
-        auftrag = asyncio.ensure_future(im_mupdf_thread(dokumente.render, dok_id, seite, skala, drehung, kachel, v))
+        # a = ausgeblendete Anmerkungsgruppen, z. B. "kommentar,stempel"
+        ausblenden = frozenset(g for g in (a or "").split(",") if g)
+        auftrag = asyncio.ensure_future(
+            im_mupdf_thread(dokumente.render, dok_id, seite, skala, drehung, kachel, v, ausblenden)
+        )
         # Solange der Auftrag noch in der Warteschlange steht: Wurde die Seite
         # inzwischen weggescrollt (Anfrage abgebrochen), Auftrag verwerfen.
         while not auftrag.done():
@@ -547,6 +552,11 @@ def erstelle_app(
             return {"verfuegbar": False, "pfade": []}
         pfade = await asyncio.get_running_loop().run_in_executor(None, app.state.datei_dialog)
         return {"verfuegbar": True, "pfade": pfade or []}
+
+    # ------------------------- Kommentieren, Bearbeiten, Schützen, Ausgabe
+    from . import erweiterungen
+
+    erweiterungen.einrichten(app, dokumente, bearbeitung, benutzer, antwort)
 
     # --------------------------------------------------------- Oberfläche
     if oberflaeche_ordner and (oberflaeche_ordner / "index.html").is_file():

@@ -76,6 +76,11 @@ class OffenesDokument:
     ordner_vorschlag: str | None = None
     # Ergebnis der Texterkennung je Seiten-ID (Sicherheit, unsichere Wörter)
     ocr_info: dict[str, dict] = field(default_factory=dict)
+    # Kennwortschutz beim nächsten Speichern: None = wie geöffnet,
+    # {"aus": True} = Schutz entfernen, sonst Kennwörter + Rechte
+    schutz: dict | None = None
+    # zuletzt gespeicherter Schutz (gilt für weitere Speichervorgänge)
+    schutz_gespeichert: dict | None = None
 
     def kennung(self, seite: int) -> str:
         sid = self.seiten_ids[seite]
@@ -176,6 +181,7 @@ class DokumentSpeicher:
             "seiten": seiten,
             "kennungen": [dok.kennung(i) for i in range(dok.doc.page_count)],
             "verschluesselt": dok.war_verschluesselt,
+            "schutz": _schutz_info(dok),
             "geaendert": dok.geaendert,
             "rueckgaengig": dok.zurueck[-1].titel if dok.zurueck else None,
             "wiederholen": dok.vor[-1].titel if dok.vor else None,
@@ -191,6 +197,7 @@ class DokumentSpeicher:
         drehung: int = 0,
         kachel: tuple[int, int, int, int] | None = None,
         kennung: str | None = None,
+        ausblenden: frozenset[str] = frozenset(),
     ) -> bytes:
         """Rendert eine Seite (oder eine Kachel daraus) als PNG.
 
@@ -215,7 +222,7 @@ class DokumentSpeicher:
         if drehung % 90:
             raise DokumentFehler("Drehung muss ein Vielfaches von 90° sein.")
 
-        schluessel = (dok_id, dok.kennung(seite_nr), skala, drehung, kachel)
+        schluessel = (dok_id, dok.kennung(seite_nr), skala, drehung, kachel, ausblenden)
         treffer = self.cache.get(schluessel)
         if treffer is not None:
             return treffer
@@ -237,7 +244,17 @@ class DokumentSpeicher:
             if gesamt.width * gesamt.height > MAX_KACHEL_PIXEL * MAX_KACHEL_PIXEL:
                 raise DokumentFehler("Seite zu groß für ein Einzelbild – Kacheln verwenden.")
 
-        pix = seite.get_pixmap(matrix=matrix, clip=clip, alpha=False, annots=True)
+        if ausblenden:
+            # ausgeblendete Anmerkungsgruppen nur für dieses Bild verstecken
+            from .anmerkungen import gruppen_ausblenden_seite, gruppen_wiederherstellen
+
+            alt = gruppen_ausblenden_seite(dok.doc, seite, ausblenden)
+            try:
+                pix = seite.get_pixmap(matrix=matrix, clip=clip, alpha=False, annots=True)
+            finally:
+                gruppen_wiederherstellen(dok.doc, alt)
+        else:
+            pix = seite.get_pixmap(matrix=matrix, clip=clip, alpha=False, annots=True)
         daten = pix.tobytes("png")
         self.cache.put(schluessel, daten)
         return daten
@@ -283,6 +300,16 @@ class DokumentSpeicher:
         for ebene, titel, seite, *_ in dok.doc.get_toc(simple=False):
             ergebnis.append({"ebene": ebene, "titel": titel, "seite": max(0, seite - 1)})
         return ergebnis
+
+
+def _schutz_info(dok: OffenesDokument) -> str:
+    """Kurzbeschreibung des Kennwortschutzes, der beim Speichern gilt."""
+    schutz = dok.schutz if dok.schutz is not None else dok.schutz_gespeichert
+    if schutz is None:
+        return "kennwort" if dok.war_verschluesselt else "keiner"
+    if schutz.get("aus") or not (schutz.get("benutzer") or schutz.get("besitzer")):
+        return "keiner"
+    return "kennwort" if schutz.get("benutzer") else "rechte"
 
 
 def _ausschnitt(woerter: list, rechteck: pymupdf.Rect, umfeld: int = 6) -> str:

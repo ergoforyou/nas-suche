@@ -26,6 +26,23 @@ STANDARD_EINSTELLUNGEN: dict[str, Any] = {
     "ocr_sprachen": "deu+eng",
     # Überwachungsordner: [{ordner, ziel, original_sichern, leerseiten_entfernen, aktiv}]
     "ueberwachung": [],
+    # Stempelvorlagen: {datum}, {zeit}, {kuerzel} werden beim Setzen ersetzt
+    "stempel": [
+        {"text": "EINGEGANGEN\n{datum} · {kuerzel}", "farbe": "#C0262D"},
+        {"text": "ERLEDIGT\n{datum} · {kuerzel}", "farbe": "#1F7A3A"},
+        {"text": "GEBUCHT\n{datum} · {kuerzel}", "farbe": "#1E4FA8"},
+        {"text": "ZUR AKTE\n{datum}", "farbe": "#555555"},
+        {"text": "KOPIE", "farbe": "#C0262D"},
+        {"text": "VERTRAULICH", "farbe": "#C0262D"},
+    ],
+    # Screenshot-Werkzeug
+    "screenshot_aktiv": True,
+    "screenshot_taste": "Strg+Umschalt+Druck",
+    "screenshot_ordner": "",
+    "screenshot_ocr": True,
+    "screenshot_text_kopieren": False,
+    # zuletzt benutzte Stile je Werkzeug (Farbe, Linienbreite …)
+    "werkzeug_stile": {},
 }
 
 

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
+
+# Benutzerdaten (Wörterbuch, Unterschriften …) der Tests nie im echten Profil ablegen
+os.environ.setdefault("AGENTUR_PDF_DATEN", tempfile.mkdtemp(prefix="agentur-pdf-testdaten-"))
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))

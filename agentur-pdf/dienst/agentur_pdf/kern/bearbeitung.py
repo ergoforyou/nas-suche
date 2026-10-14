@@ -345,12 +345,14 @@ class Bearbeitung:
         ziel = os.path.abspath(ziel)
         if not ziel.lower().endswith(".pdf"):
             ziel += ".pdf"
-        optionen: dict = {"garbage": 3, "deflate": True}
-        if dok.war_verschluesselt and dok.passwort:
-            # Schutz beim Speichern erhalten (AES-256)
-            optionen.update(encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw=dok.passwort, owner_pw=dok.passwort)
-        daten = dok.doc.tobytes(**optionen)
+        daten = dok.doc.tobytes(**speicher_optionen(dok))
         _atomar_schreiben(Path(ziel), daten)
+        if dok.schutz is not None:
+            # Ab jetzt gilt der neue Schutz als „wie geöffnet“
+            dok.war_verschluesselt = bool(not dok.schutz.get("aus") and (dok.schutz.get("benutzer") or dok.schutz.get("besitzer")))
+            dok.passwort = (dok.schutz.get("benutzer") or dok.schutz.get("besitzer")) if dok.war_verschluesselt else None
+            dok.schutz_gespeichert = dict(dok.schutz)
+            dok.schutz = None
         dok.pfad = ziel
         dok.titel = Path(ziel).name
         dok.geaendert = False
@@ -362,6 +364,39 @@ class Bearbeitung:
     def datei_bytes(self, dok_id: str) -> bytes:
         dok = self.speicher.get(dok_id)
         return dok.doc.tobytes(garbage=3, deflate=True)
+
+
+def speicher_optionen(dok: OffenesDokument) -> dict:
+    """Optionen für ``tobytes``/``save``: Aufräumen + Kennwortschutz (AES-256)."""
+    optionen: dict = {"garbage": 3, "deflate": True}
+    schutz = dok.schutz
+    if schutz is None:
+        if getattr(dok, "schutz_gespeichert", None):
+            schutz = dok.schutz_gespeichert
+        elif dok.war_verschluesselt and dok.passwort:
+            # Schutz beim Speichern erhalten
+            return {**optionen, "encryption": pymupdf.PDF_ENCRYPT_AES_256, "user_pw": dok.passwort, "owner_pw": dok.passwort}
+        else:
+            return optionen
+    if schutz.get("aus") or not (schutz.get("benutzer") or schutz.get("besitzer")):
+        return optionen
+    rechte = pymupdf.PDF_PERM_ACCESSIBILITY
+    for schluessel, bit in (
+        ("drucken", pymupdf.PDF_PERM_PRINT | pymupdf.PDF_PERM_PRINT_HQ),
+        ("kopieren", pymupdf.PDF_PERM_COPY),
+        ("aendern", pymupdf.PDF_PERM_MODIFY | pymupdf.PDF_PERM_ASSEMBLE),
+        ("kommentieren", pymupdf.PDF_PERM_ANNOTATE | pymupdf.PDF_PERM_FORM),
+    ):
+        if schutz.get(schluessel, True):
+            rechte |= bit
+    besitzer = schutz.get("besitzer") or schutz.get("benutzer")
+    return {
+        **optionen,
+        "encryption": pymupdf.PDF_ENCRYPT_AES_256,
+        "user_pw": schutz.get("benutzer") or "",
+        "owner_pw": besitzer,
+        "permissions": rechte,
+    }
 
 
 def leerseiten_im_dokument(doc: pymupdf.Document) -> list[int]:
