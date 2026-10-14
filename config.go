@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -154,6 +155,20 @@ func sharedConfigPath() string {
 	return filepath.Join(exeDir(), "NasSuche.json")
 }
 
+// sharedConfigPaths: wo eine Vorgabe für Kollegen liegen darf. Auf dem Mac zusätzlich neben
+// der App (z. B. im selben NAS-Ordner) und für alle Benutzer unter /Library/Application Support.
+func sharedConfigPaths() []string {
+	paths := []string{sharedConfigPath()}
+	d := exeDir()
+	if filepath.Base(d) == "MacOS" && filepath.Base(filepath.Dir(d)) == "Contents" {
+		paths = append(paths, filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(d))), "NasSuche.json"))
+	}
+	if runtime.GOOS == "darwin" {
+		paths = append(paths, "/Library/Application Support/NasSuche/NasSuche.json")
+	}
+	return paths
+}
+
 func indexPath() string {
 	if portableMode() {
 		return filepath.Join(portableDataDir(), "index.dat")
@@ -192,8 +207,10 @@ func LoadConfig() *Config {
 	if c, err := readConfig(userConfigPath()); err == nil {
 		return c
 	}
-	if c, err := readConfig(sharedConfigPath()); err == nil {
-		return c
+	for _, p := range sharedConfigPaths() {
+		if c, err := readConfig(p); err == nil {
+			return c
+		}
 	}
 	return defaultConfig()
 }

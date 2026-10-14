@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -36,6 +37,19 @@ func (h *bgHost) Cfg() *Config  { return h.cfg }
 func (h *bgHost) Sync(f func()) { h.mu.Lock(); defer h.mu.Unlock(); f() }
 
 func (h *bgHost) Transfer(paths []string, target string, move bool) (map[string]string, int, error) {
+	moves, done, err := transferFiles(paths, target, move)
+	if len(moves) > 0 {
+		h.mu.Lock()
+		if h.ix != nil {
+			h.ix = h.ix.WithMoves(moves)
+		}
+		h.mu.Unlock()
+	}
+	return moves, done, err
+}
+
+// transferFiles verschiebt/kopiert (bei Namensgleichheit mit „ (2)“) und meldet, was passiert ist.
+func transferFiles(paths []string, target string, move bool) (map[string]string, int, error) {
 	moves := map[string]string{}
 	done := 0
 	var firstErr error
@@ -58,26 +72,40 @@ func (h *bgHost) Transfer(paths []string, target string, move bool) (map[string]
 		}
 		done++
 	}
-	if len(moves) > 0 {
-		h.mu.Lock()
-		if h.ix != nil {
-			h.ix = h.ix.WithMoves(moves)
-		}
-		h.mu.Unlock()
-	}
 	return moves, done, firstErr
 }
 
-func (h *bgHost) OpenPath(p string) error { return hostOpen(p) }
-func (h *bgHost) RevealPath(p string)     { hostReveal(p) }
-func (h *bgHost) ClipboardFiles(paths []string) error {
+// copyFilesToClipboard legt Dateien selbst in die Zwischenablage (Einfügen im Finder, in Mail …).
+func copyFilesToClipboard(paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	return copyFileToClipboard(paths[0])
+	if runtime.GOOS != "darwin" {
+		return copyFileToClipboard(paths[0])
+	}
+	var items []string
+	for _, p := range paths {
+		items = append(items, `POSIX file "`+strings.ReplaceAll(p, `"`, `\"`)+`"`)
+	}
+	return exec.Command("osascript", "-e", "set the clipboard to {"+strings.Join(items, ", ")+"}").Run()
 }
-func (h *bgHost) ShowSettings()  {}
-func (h *bgHost) ShowWindow()    {}
+
+func (h *bgHost) OpenPath(p string) error             { return hostOpen(p) }
+func (h *bgHost) RevealPath(p string)                 { hostReveal(p) }
+func (h *bgHost) ClipboardFiles(paths []string) error { return copyFilesToClipboard(paths) }
+
+// Einstellungen/Fenster: der Hintergrunddienst hat keins – das Programm mit Fenster öffnen
+// (es übernimmt dann die Verbindung zu Chrome und beendet diesen Dienst).
+func (h *bgHost) ShowSettings() { openGUIApp() }
+func (h *bgHost) ShowWindow()   { openGUIApp() }
+
+// Quit: das Programm mit Fenster wurde gestartet und übernimmt.
+func (h *bgHost) Quit() {
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		os.Exit(0)
+	}()
+}
 func (h *bgHost) Indexing() bool { return h.indexing.Load() }
 func (h *bgHost) StatusText() string {
 	s, _ := h.status.Load().(string)
@@ -104,7 +132,9 @@ func (h *bgHost) Reindex() {
 	}()
 }
 
-func (h *bgHost) PCItems() []NavItem {
+func (h *bgHost) PCItems() []NavItem { return pcItems() }
+
+func pcItems() []NavItem {
 	home, _ := os.UserHomeDir()
 	var items []NavItem
 	for _, k := range []struct{ name, sub string }{{"Schreibtisch", "Desktop"}, {"Downloads", "Downloads"},
@@ -191,11 +221,36 @@ func hostReveal(p string) {
 	exec.Command("xdg-open", p).Start()
 }
 
+// appBundle: Pfad der .app, wenn das Programm aus einem Mac-Programmpaket läuft.
+func appBundle() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = r
+	}
+	d := filepath.Dir(exe) // …/X.app/Contents/MacOS
+	if filepath.Base(d) == "MacOS" && filepath.Base(filepath.Dir(d)) == "Contents" &&
+		strings.HasSuffix(filepath.Dir(filepath.Dir(d)), ".app") {
+		return filepath.Dir(filepath.Dir(d))
+	}
+	return ""
+}
+
+func openGUIApp() {
+	if b := appBundle(); b != "" && runtime.GOOS == "darwin" {
+		exec.Command("open", b).Start()
+	}
+}
+
 func startAppBackground() error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
+	// Direkt starten (nicht über „open“): sonst hielte macOS den Dienst für das laufende
+	// Programm, und ein Doppelklick auf die App würde kein Fenster mehr öffnen.
 	cmd := exec.Command(exe, "--hintergrund")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -216,12 +271,14 @@ func registerNativeHost() {
 	var dirs []string
 	if runtime.GOOS == "darwin" {
 		base := filepath.Join(home, "Library", "Application Support")
-		dirs = []string{filepath.Join(base, "Google", "Chrome", "NativeMessagingHosts"),
-			filepath.Join(base, "Microsoft Edge", "NativeMessagingHosts"),
-			filepath.Join(base, "Chromium", "NativeMessagingHosts")}
+		for _, b := range []string{"Google/Chrome", "Microsoft Edge", "Chromium", "com.operasoftware.Opera",
+			"com.operasoftware.OperaGX", "BraveSoftware/Brave-Browser", "Vivaldi"} {
+			dirs = append(dirs, filepath.Join(base, filepath.FromSlash(b), "NativeMessagingHosts"))
+		}
 	} else {
-		dirs = []string{filepath.Join(home, ".config", "google-chrome", "NativeMessagingHosts"),
-			filepath.Join(home, ".config", "chromium", "NativeMessagingHosts")}
+		for _, b := range []string{"google-chrome", "chromium", "microsoft-edge", "opera", "BraveSoftware/Brave-Browser", "vivaldi"} {
+			dirs = append(dirs, filepath.Join(home, ".config", filepath.FromSlash(b), "NativeMessagingHosts"))
+		}
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err == nil {

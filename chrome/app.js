@@ -1098,6 +1098,7 @@ const App = {
 
   async start() {
     if (PANEL) document.body.classList.add('panel');
+    if (/Mac/.test(navigator.platform)) $('#hint').textContent = '⌥⇧F öffnet die Suche im Browser';
     $('#retryBt').addEventListener('click', () => this.connect());
     await this.connect();
   },
@@ -1356,13 +1357,11 @@ const App = {
   },
 
   async settings() {
-    if (this.hello.sep !== '\\') {
-      this.setStatus('Einstellungen bitte im Programm NAS-Suche öffnen.', true);
-      return;
-    }
     await NAS.native({ cmd: 'foreground' });
     await NAS.api('settings').catch(() => {});
-    this.setStatus('Die Einstellungen sind im Programmfenster geöffnet.', true);
+    this.setStatus(this.hello.background
+      ? 'Das Programm NAS-Suche wird geöffnet – dort „Einstellungen …“ wählen.'
+      : 'Die Einstellungen sind im Programmfenster geöffnet.', true);
   },
 
   bindGlobal() {

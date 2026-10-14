@@ -236,7 +236,7 @@ func (a *App) setupTray() {
 	add("Suche öffnen", a.showWindow)
 	add("Index aktualisieren", a.toggleIndex)
 	add("Einstellungen …", func() { a.showWindow(); a.showSettings() })
-	add("In Chrome einrichten …", func() { a.setupChrome(a.mw) })
+	add("Im Browser einrichten …", func() { a.setupChrome(a.mw) })
 	ni.ContextMenu().Actions().Add(walk.NewSeparatorAction())
 	add("Beenden", a.quit)
 	if err := ni.SetVisible(true); err != nil {

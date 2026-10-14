@@ -238,8 +238,37 @@ func (s *webServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.upload(w, r)
 	case "mkdir":
 		s.mkdir(w, r)
+	case "quit":
+		// nur der Hintergrunddienst lässt sich beenden (das Programm mit Fenster übernimmt)
+		if q, ok := s.host.(interface{ Quit() }); ok {
+			writeJSON(w, map[string]any{"ok": true})
+			q.Quit()
+			return
+		}
+		writeJSON(w, map[string]any{"ok": false})
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+func isBackground(h WebHost) bool {
+	_, ok := h.(interface{ Quit() })
+	return ok
+}
+
+// stopBackgroundService beendet einen laufenden Hintergrunddienst (ohne Fenster), damit das
+// Programm mit Fenster die Verbindung zu Chrome übernehmen kann.
+func stopBackgroundService() {
+	p := readWebPort()
+	if !pingPort(p) {
+		return
+	}
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d/api/quit", p), strings.NewReader("{}"))
+	req.Header.Set("X-NasSuche", "1")
+	c := http.Client{Timeout: 2 * time.Second}
+	if r, err := c.Do(req); err == nil {
+		r.Body.Close()
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
@@ -281,6 +310,7 @@ func (s *webServer) hello(w http.ResponseWriter) {
 			"folders":     c.Folders,
 			"start":       []string{c.StartFolder, c.StartFolder2},
 			"sep":         string(os.PathSeparator),
+			"background":  isBackground(s.host),
 		}
 	})
 	writeJSON(w, resp)

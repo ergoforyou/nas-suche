@@ -33,14 +33,18 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
   erscheint danach nicht mehr bei jedem Start.
 * Neue Versionen lösen ältere sanft ab (Beenden-Signal statt hartem Abbruch).
 
-## NAS-Suche in Chrome (komplette Oberfläche als Tab)
+## NAS-Suche im Browser – Chrome, Edge, Opera, Brave (komplette Oberfläche als Tab)
 
 Die ganze Suche – Haken, zwei Ansichten, Navigationsleiste, Ordneransicht, Verschieben mit aufspringenden
 Ordnern, feste Ordner, Rechtsklick-Menü – gibt es auch als Tab in Chrome. Dazu kommt, was das Programm nicht kann:
 **Dateien direkt in WhatsApp Web, Gmail, Google Drive oder Claude ziehen.**
 
-**Einrichten (einmalig, ca. 1 Minute):** Im Programm *Einstellungen → Allgemein → „NAS-Suche in Chrome einrichten …“*
-(oder Rechtsklick auf das Symbol neben der Uhr). Dann in Chrome auf der Seite „Erweiterungen“:
+Funktioniert in allen Chromium-Browsern: **Chrome, Edge, Opera, Brave** (Windows und Mac). Nicht in Firefox und Safari.
+Opera hat keine Seitenleiste für Erweiterungen – dort als Tab nutzen.
+
+**Einrichten (einmalig, ca. 1 Minute):** Im Programm *Einstellungen → Allgemein → „NAS-Suche im Browser einrichten …“*
+(Mac: *Einstellungen → Browser & Kollegen*). Dann im Browser auf der Seite „Erweiterungen“
+(`chrome://extensions`, `edge://extensions`, `opera://extensions`, `brave://extensions`):
 1. oben rechts **Entwicklermodus** einschalten,
 2. **„Entpackte Erweiterung laden“** und den angezeigten Ordner wählen (Pfad liegt in der Zwischenablage),
 3. das ERGOFORYOU-Symbol über das Puzzle-Symbol anheften.
@@ -64,6 +68,8 @@ Ordnern, feste Ordner, Rechtsklick-Menü – gibt es auch als Tab in Chrome. Daz
 * Sicherheit: Nur die eigene Erweiterung darf mit dem Programm sprechen; Webseiten erhalten nur die Dateien,
   die man selbst hineinzieht.
 
+Eine ausführliche Anleitung zum Ausrollen im Team steht in `ANLEITUNG-AUSROLLEN.md`.
+
 ## Mac-Version (MacBook Air & Co.)
 * `NasSuche-Mac.zip` doppelklicken → **„ERGOFORYOU NAS-Suche“** in den Ordner *Programme* ziehen.
   Läuft auf Apple Silicon (M1–M4) und Intel-Macs ab macOS 11.
@@ -75,7 +81,12 @@ Ordnern, feste Ordner, Rechtsklick-Menü – gibt es auch als Tab in Chrome. Daz
   Ziehen zwischen den Ansichten (= verschieben, **⌥ Wahltaste** = kopieren) mit aufspringenden
   Unterordnern, Dateien aus dem Finder hineinziehen, Rechtsklick-Menü (Öffnen, Im Finder zeigen,
   Datei/Pfad kopieren). Fenster schließen = läuft weiter (Symbol oben in der Menüleiste).
-* Noch nicht enthalten: Navigationsleiste/Schnellzugriff, globale Tastenkombination.
+* **Browser-Oberfläche** (Chrome, Edge, Opera, Brave) wie unter Windows: *Einstellungen → Browser & Kollegen →
+  „NAS-Suche im Browser einrichten …“*. Dort auch **„Beim Anmelden im Hintergrund starten“** (unsichtbarer Dienst,
+  die Suche ist im Browser sofort da) sowie **„Als Vorgabe speichern / Vorgabe laden“** für Kollegen.
+* Eine `NasSuche.json` neben der App (z. B. im selben NAS-Ordner) oder unter
+  `/Library/Application Support/NasSuche/NasSuche.json` wird beim ersten Start übernommen.
+* Im Programmfenster selbst noch nicht enthalten: Navigationsleiste/Schnellzugriff (gibt es in der Browser-Oberfläche).
 
 ## Benutzung
 

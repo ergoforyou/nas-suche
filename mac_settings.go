@@ -92,6 +92,10 @@ func (a *MacApp) showSettings() {
 	hoursEntry := widget.NewEntry()
 	hoursEntry.SetText(strconv.Itoa(c.RefreshHours))
 
+	loginCheck := widget.NewCheck("Beim Anmelden im Hintergrund starten (Suche im Browser sofort da, ohne Fenster)", nil)
+	loginCheck.SetChecked(loginAgentEnabled())
+	var dlg dialog.Dialog
+
 	listBox := container.NewGridWrap(fyne.NewSize(620, 150), list)
 	form := container.NewVBox(
 		widget.NewLabelWithStyle("Diese Ordner werden durchsucht (inkl. Unterordner):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -106,9 +110,25 @@ func (a *MacApp) showSettings() {
 		container.NewBorder(nil, nil, widget.NewLabel("Ignorieren (durch ; getrennt):"), nil, exclEntry),
 		container.NewBorder(nil, nil, widget.NewLabel("Index automatisch aktualisieren alle (Stunden, 0 = nie):"), nil, hoursEntry),
 	)
+	browserTab := container.NewVBox(
+		widget.NewLabelWithStyle("Browser (Chrome, Edge, Opera, Brave):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("Die komplette Suche als Tab im Browser – Dateien direkt in WhatsApp, Gmail, Drive oder Claude ziehen."),
+		container.NewHBox(widget.NewButton("NAS-Suche im Browser einrichten …", a.setupBrowser)),
+		loginCheck,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Für Kollegen:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		container.NewHBox(widget.NewButton("Als Vorgabe speichern …", a.exportDefaults),
+			widget.NewButton("Vorgabe laden …", func() { a.importDefaults(func() { dlg.Hide() }) })),
+		widget.NewLabel("Speichert Suchordner, NAS-Freigaben, feste Ordner und Startordner als NasSuche.json.\n"+
+			"Liegt die Datei neben der App (z. B. im selben NAS-Ordner), übernehmen Kollegen sie beim ersten Start."),
+	)
+	tabs := container.NewAppTabs(
+		container.NewTabItem("Suchordner & NAS", container.NewVScroll(form)),
+		container.NewTabItem("Browser & Kollegen", browserTab),
+	)
 
 	d := dialog.NewCustomConfirm("Einstellungen – "+brandName+" "+brandProduct, "Speichern", "Abbrechen",
-		container.NewVScroll(form), func(ok bool) {
+		tabs, func(ok bool) {
 			if !ok {
 				return
 			}
@@ -141,6 +161,7 @@ func (a *MacApp) showSettings() {
 				}
 			}()
 		}, a.w)
-	d.Resize(fyne.NewSize(700, 640))
+	dlg = d
+	d.Resize(fyne.NewSize(720, 700))
 	d.Show()
 }

@@ -126,11 +126,13 @@ func (a *MacApp) run() {
 		desk.SetSystemTrayMenu(fyne.NewMenu(brandProduct,
 			fyne.NewMenuItem("Suche öffnen", func() { a.w.Show(); a.w.RequestFocus() }),
 			fyne.NewMenuItem("Index aktualisieren", a.toggleIndex),
+			fyne.NewMenuItem("Im Browser einrichten (Chrome, Opera …) …", func() { a.w.Show(); a.setupBrowser() }),
 		))
 		a.w.SetCloseIntercept(func() { a.w.Hide() })
 	}
 
 	a.setSecondPane(a.cfg.SecondPane)
+	go a.startWeb()
 	go a.startup()
 	a.w.Show()
 	a.w.Canvas().Focus(a.panes[0].search)

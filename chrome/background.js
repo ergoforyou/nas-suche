@@ -6,14 +6,15 @@ const APP = chrome.runtime.getURL('app.html');
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: 'tab', title: 'NAS-Suche als Tab öffnen', contexts: ['action'] });
-    chrome.contextMenus.create({ id: 'panel', title: 'NAS-Suche in der Seitenleiste öffnen', contexts: ['action'] });
+    // Seitenleiste gibt es in Chrome/Edge/Brave, nicht in Opera
+    if (chrome.sidePanel) chrome.contextMenus.create({ id: 'panel', title: 'NAS-Suche in der Seitenleiste öffnen', contexts: ['action'] });
   });
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+  if (chrome.sidePanel) chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
 });
 
 async function openApp() {
   // eigener Tab schon offen? (ohne „tabs“-Berechtigung über getContexts)
-  const ctx = await chrome.runtime.getContexts({ contextTypes: ['TAB'] });
+  const ctx = chrome.runtime.getContexts ? await chrome.runtime.getContexts({ contextTypes: ['TAB'] }) : [];
   const own = ctx.find((c) => c.documentUrl && c.documentUrl.startsWith(APP) && !c.documentUrl.includes('panel='));
   if (own) {
     await chrome.tabs.update(own.tabId, { active: true });
@@ -27,11 +28,11 @@ chrome.action.onClicked.addListener(openApp);
 
 chrome.commands.onCommand.addListener((cmd, tab) => {
   if (cmd === 'open-app') openApp();
-  else if (cmd === 'open-panel' && tab) chrome.sidePanel.open({ windowId: tab.windowId });
+  else if (cmd === 'open-panel') { if (chrome.sidePanel && tab) chrome.sidePanel.open({ windowId: tab.windowId }); else openApp(); }
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'panel' && tab) chrome.sidePanel.open({ windowId: tab.windowId });
+  if (info.menuItemId === 'panel' && tab && chrome.sidePanel) chrome.sidePanel.open({ windowId: tab.windowId });
   else openApp();
 });
 

@@ -178,7 +178,10 @@ func registerNativeHost() {
 	if err := os.WriteFile(manifest, nativeHostManifest(exe), 0o644); err != nil {
 		return
 	}
-	for _, base := range []string{`Software\Google\Chrome\NativeMessagingHosts\`, `Software\Microsoft\Edge\NativeMessagingHosts\`} {
+	// Chrome (liest auch Opera), Edge, Brave, Vivaldi, Opera
+	for _, base := range []string{`Software\Google\Chrome\NativeMessagingHosts\`, `Software\Microsoft\Edge\NativeMessagingHosts\`,
+		`Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\`, `Software\Vivaldi\NativeMessagingHosts\`,
+		`Software\Opera Software\NativeMessagingHosts\`, `Software\Chromium\NativeMessagingHosts\`} {
 		k, _, err := registry.CreateKey(registry.CURRENT_USER, base+nativeHostName, registry.SET_VALUE)
 		if err != nil {
 			continue
@@ -207,15 +210,17 @@ func (a *App) setupChrome(owner walk.Form) {
 			break
 		}
 	}
-	walk.MsgBox(owner, brandProduct+" in Chrome einrichten",
-		"So kommt die NAS-Suche in Chrome (einmalig, ca. 1 Minute):\n\n"+
-			"1. In Chrome ist die Seite „Erweiterungen“ geöffnet (sonst: chrome://extensions eintippen).\n"+
+	walk.MsgBox(owner, brandProduct+" im Browser einrichten",
+		"So kommt die NAS-Suche in den Browser (einmalig, ca. 1 Minute):\n\n"+
+			"1. Die Erweiterungsseite öffnen – in Chrome ist sie schon offen, sonst eintippen:\n"+
+			"   chrome://extensions  ·  edge://extensions  ·  opera://extensions  ·  brave://extensions\n"+
 			"2. Oben rechts „Entwicklermodus“ einschalten.\n"+
 			"3. Links oben „Entpackte Erweiterung laden“ klicken.\n"+
 			"4. Den Ordner auswählen – der Pfad ist schon in der Zwischenablage (Strg+V ins Adressfeld):\n   "+dir+"\n"+
-			"5. Fertig: Das ERGOFORYOU-Symbol erscheint oben rechts in Chrome (über das Puzzle-Symbol anheften).\n\n"+
-			"Klick auf das Symbol öffnet die NAS-Suche als Tab, Alt+Umschalt+F von überall in Chrome.\n"+
-			"Das Programm muss dafür nicht geöffnet sein – Chrome startet es bei Bedarf im Hintergrund.",
+			"5. Fertig: Das ERGOFORYOU-Symbol erscheint oben rechts (über das Puzzle- bzw. Würfel-Symbol anheften).\n\n"+
+			"Klick auf das Symbol öffnet die NAS-Suche als Tab, Alt+Umschalt+F von überall im Browser.\n"+
+			"Das Programm muss dafür nicht geöffnet sein – der Browser startet es bei Bedarf im Hintergrund.\n"+
+			"Tipp für Opera: zusätzlich „Mit Windows starten“ anhaken, dann ist die Suche immer sofort da.",
 		walk.MsgBoxIconInformation)
 }
 

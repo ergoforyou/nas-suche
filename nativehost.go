@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -149,6 +150,10 @@ func nativeHostManifest(exe string) []byte {
 func extensionDir() string {
 	if portableMode() {
 		return filepath.Join(portableDataDir(), "Chrome-Erweiterung")
+	}
+	if runtime.GOOS != "windows" {
+		// Mac: neben den Einstellungen (~/Library/Application Support/NasSuche)
+		return filepath.Join(filepath.Dir(userConfigPath()), "Chrome-Erweiterung")
 	}
 	return filepath.Join(filepath.Dir(indexPath()), "Chrome-Erweiterung")
 }
