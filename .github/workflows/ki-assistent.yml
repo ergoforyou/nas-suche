@@ -2,6 +2,8 @@ name: KI-Assistent
 
 on:
   push:
+    branches:
+      - '**'
     paths:
       - 'ki-assistent/**'
       - '.github/workflows/ki-assistent.yml'
