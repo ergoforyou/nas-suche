@@ -73,9 +73,14 @@ export async function oeffnenDialog(): Promise<void> {
   dateiAuswahl.click();
 }
 
-export async function dokumentSchliessen(id?: string): Promise<void> {
+export async function dokumentSchliessen(id?: string, ohneNachfrage = false): Promise<void> {
   const ziel = id ?? holen().aktiv;
   if (!ziel) return;
+  const dok = holen().dokumente.find((d) => d.id === ziel);
+  if (dok?.geaendert && !ohneNachfrage) {
+    setzen({ aktiv: ziel, dialog: { art: "ungespeichert", dokId: ziel, weiter: () => void dokumentSchliessen(ziel, true) } });
+    return;
+  }
   dokumentEntfernen(ziel);
   try {
     await api.schliessen(ziel);

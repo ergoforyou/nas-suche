@@ -1,0 +1,149 @@
+// Dialoge: Teilen, Leerseiten entfernen, ungespeicherte Änderungen.
+
+import { AlertTriangle, Scissors, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { speichern } from "../zustand/seitenaktionen";
+import { seitenEntfernen, teilen } from "../zustand/seitenaktionen";
+import { holen, setzen, useZustand } from "../zustand/store";
+
+export function Dialoge() {
+  const dialog = useZustand((z) => z.dialog);
+  if (!dialog) return null;
+  if (dialog.art === "teilen") return <TeilenDialog dokId={dialog.dokId} />;
+  if (dialog.art === "leerseiten") return <LeerseitenLeiste dokId={dialog.dokId} gefunden={dialog.seiten.length} />;
+  return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
+}
+
+const schliessen = () => setzen({ dialog: null });
+
+function TeilenDialog({ dokId }: { dokId: string }) {
+  const dok = useZustand((z) => z.dokumente.find((d) => d.id === dokId));
+  const [modus, setModus] = useState("seitenanzahl");
+  const [seiten, setSeiten] = useState("1");
+  const [mb, setMb] = useState("5");
+  const [laeuft, setLaeuft] = useState(false);
+  if (!dok) return null;
+  const n = parseInt(seiten, 10);
+  const teileVorschau = modus === "seitenanzahl" && n > 0 ? Math.ceil(dok.seitenanzahl / n) : null;
+
+  return (
+    <div className="dialog-hintergrund" onMouseDown={schliessen}>
+      <form
+        className="dialog breit"
+        onMouseDown={(e) => e.stopPropagation()}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setLaeuft(true);
+          const wert = modus === "seitenanzahl" ? n : modus === "dateigroesse" ? parseFloat(mb.replace(",", ".")) : 0;
+          const ok = await teilen(dokId, modus, wert);
+          setLaeuft(false);
+          if (ok) schliessen();
+        }}
+      >
+        <h2>
+          <Scissors size={18} /> Dokument teilen
+        </h2>
+        <p>
+          „{dok.titel}“ ({dok.seitenanzahl} Seiten)
+          {dok.pfad ? " – die Teile werden neben der Originaldatei gespeichert." : " – die Teile werden als neue Dokumente geöffnet."}
+        </p>
+        <label className="auswahl-zeile">
+          <input type="radio" name="modus" checked={modus === "seitenanzahl"} onChange={() => setModus("seitenanzahl")} />
+          Alle
+          <input className="zahl" value={seiten} onChange={(e) => setSeiten(e.target.value)} onFocus={() => setModus("seitenanzahl")} aria-label="Seiten pro Teil" />
+          Seiten {teileVorschau ? <span className="leise">→ {teileVorschau} Teile</span> : null}
+        </label>
+        <label className="auswahl-zeile">
+          <input type="radio" name="modus" checked={modus === "leerseiten"} onChange={() => setModus("leerseiten")} />
+          An Leerseiten (Trennblätter werden entfernt)
+        </label>
+        <label className="auswahl-zeile">
+          <input type="radio" name="modus" checked={modus === "lesezeichen"} onChange={() => setModus("lesezeichen")} />
+          An Lesezeichen der obersten Ebene
+        </label>
+        <label className="auswahl-zeile">
+          <input type="radio" name="modus" checked={modus === "dateigroesse"} onChange={() => setModus("dateigroesse")} />
+          Teile höchstens
+          <input className="zahl" value={mb} onChange={(e) => setMb(e.target.value)} onFocus={() => setModus("dateigroesse")} aria-label="Größe in MB" />
+          MB (z. B. für E-Mail)
+        </label>
+        <div className="dialog-knoepfe">
+          <button type="button" onClick={schliessen}>
+            Abbrechen
+          </button>
+          <button type="submit" className="primaer" disabled={laeuft}>
+            {laeuft ? "Teile …" : "Teilen"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** Nicht-modal: Die gefundenen Leerseiten sind in den Miniaturen markiert und
+ * können vor dem Entfernen noch angepasst werden. */
+function LeerseitenLeiste({ dokId, gefunden }: { dokId: string; gefunden: number }) {
+  const auswahl = useZustand((z) => z.dokumente.find((d) => d.id === dokId)?.auswahl ?? []);
+  return (
+    <div className="hinweisleiste" role="dialog" aria-label="Leerseiten entfernen">
+      <Trash2 size={16} />
+      <span>
+        {gefunden === 1 ? "1 Leerseite" : `${gefunden} Leerseiten`} gefunden und markiert
+        {auswahl.length !== gefunden ? ` (jetzt ${auswahl.length} markiert)` : ""}. Markierung in den Miniaturen bei Bedarf anpassen.
+      </span>
+      <span className="abstand" />
+      <button
+        className="primaer"
+        disabled={!auswahl.length}
+        onClick={() => {
+          schliessen();
+          void seitenEntfernen(dokId, auswahl);
+        }}
+      >
+        {auswahl.length === 1 ? "1 Seite entfernen" : `${auswahl.length} Seiten entfernen`}
+      </button>
+      <button className="umschalter" onClick={schliessen}>
+        Abbrechen
+      </button>
+    </div>
+  );
+}
+
+function UngespeichertDialog({ dokId, weiter }: { dokId: string; weiter: () => void }) {
+  const dok = useZustand((z) => z.dokumente.find((d) => d.id === dokId));
+  const speichernRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => speichernRef.current?.focus(), []);
+  if (!dok) return null;
+  return (
+    <div className="dialog-hintergrund" onMouseDown={schliessen}>
+      <div className="dialog" role="alertdialog" aria-label="Ungespeicherte Änderungen" onMouseDown={(e) => e.stopPropagation()}>
+        <h2>
+          <AlertTriangle size={18} /> Änderungen speichern?
+        </h2>
+        <p>„{dok.titel}“ wurde geändert. Sollen die Änderungen gespeichert werden?</p>
+        <div className="dialog-knoepfe">
+          <button onClick={schliessen}>Abbrechen</button>
+          <button
+            onClick={() => {
+              schliessen();
+              weiter();
+            }}
+          >
+            Nicht speichern
+          </button>
+          <button
+            ref={speichernRef}
+            className="primaer"
+            onClick={async () => {
+              schliessen();
+              const d = holen().dokumente.find((x) => x.id === dokId);
+              if (d && (await speichern(d))) weiter();
+            }}
+          >
+            Speichern
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

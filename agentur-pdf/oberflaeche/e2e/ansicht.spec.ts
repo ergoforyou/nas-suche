@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { zuruecksetzen } from "./hilfen";
 
 const START = "/#t=e2e";
 
@@ -6,6 +7,7 @@ async function bereit(page: Page) {
   const fehler: string[] = [];
   page.on("pageerror", (e) => fehler.push(String(e)));
   page.on("console", (m) => m.type() === "error" && fehler.push(m.text()));
+  await zuruecksetzen(page);
   await page.goto(START);
   await expect(page.locator(".seite-bild").first()).toBeVisible({ timeout: 10_000 });
   return fehler;

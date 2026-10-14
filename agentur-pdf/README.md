@@ -9,7 +9,8 @@ Architektur und Plan: [docs/ARCHITEKTUR_UND_PLAN.md](docs/ARCHITEKTUR_UND_PLAN.m
 |---|---|---|
 | M0 | Grundgerüst: Dienst, Befehlsregister, Menüband (6 Register), Befehlssuche Strg+K, Statusleiste, hell/dunkel | ✅ |
 | M1 | Anzeigen: Tabs, Zoom (Strg+Mausrad, Regler, Seitenbreite/Ganze Seite/100 %, Bereich zoomen, Lupe), 4 Ansichtsmodi, Ansicht drehen, Miniaturen mit Größenregler, Lesezeichen, Volltextsuche (auch über alle Dokumente), zuletzt geöffnet, Favoriten-Ordner, Sitzung wiederherstellen, Passwort-PDFs | ✅ |
-| M2–M8 | siehe Plan | offen |
+| M2 | Seiten organisieren: Miniaturen mit Mehrfachauswahl (Strg/Umschalt), Drag & Drop innerhalb und zwischen Dokumenten (Strg = kopieren), Dateien aus Explorer zwischen Miniaturen ablegen, Nebeneinander-Ansicht mit eigener Miniaturleiste je Dokument, Rechtsklickmenü, Drehen/Löschen (Entf)/Duplizieren/Extrahieren, leere Seite/Datei/Zwischenablage einfügen, Teilen (Seitenanzahl, Leerseiten, Lesezeichen, Dateigröße), Leerseiten entfernen, Rückgängig/Wiederholen (auch dokumentübergreifend), Speichern/Speichern unter mit Nachfrage beim Schließen | ✅ |
+| M3–M8 | siehe Plan | offen |
 
 ## Starten (Entwicklung)
 

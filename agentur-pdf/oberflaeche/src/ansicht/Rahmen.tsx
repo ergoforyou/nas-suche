@@ -3,9 +3,11 @@
 import { BookOpen, ChevronsDown, Columns2, FileText, Lock, Minus, Pin, Plus, RectangleVertical, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { dokumentSchliessen, oeffnenDialog } from "../zustand/aktionen";
+import { Kontextmenue } from "./Kontextmenue";
 import {
   aktivesDokument,
   modusSetzen,
+  nebeneinanderOeffnen,
   setzen,
   springen,
   tabVerschieben,
@@ -22,6 +24,7 @@ export function Tabs() {
   const dokumente = useZustand((z) => z.dokumente);
   const aktiv = useZustand((z) => z.aktiv);
   const [ziehe, setZiehe] = useState<number | null>(null);
+  const [tabMenue, setTabMenue] = useState<{ x: number; y: number; id: string } | null>(null);
 
   return (
     <div className="tabs" role="tablist" aria-label="Geöffnete Dokumente">
@@ -52,9 +55,14 @@ export function Tabs() {
             }
           }}
           onClick={() => setzen({ aktiv: d.id })}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setTabMenue({ x: e.clientX, y: e.clientY, id: d.id });
+          }}
         >
           {d.verschluesselt && <Lock size={12} />}
           <span className="tab-titel">{d.titel}</span>
+          {d.geaendert && <span className="geaendert-punkt" title="Ungespeicherte Änderungen" />}
           <button
             className="tab-schliessen"
             aria-label={`${d.titel} schließen`}
@@ -70,6 +78,22 @@ export function Tabs() {
       <button className="tab-neu" title="Datei öffnen (Strg+O)" aria-label="Datei öffnen" onClick={() => void oeffnenDialog()}>
         <Plus size={16} />
       </button>
+      {tabMenue && (
+        <Kontextmenue
+          x={tabMenue.x}
+          y={tabMenue.y}
+          schliessen={() => setTabMenue(null)}
+          punkte={[
+            {
+              titel: "Rechts daneben anzeigen",
+              icon: Columns2,
+              deaktiviert: dokumente.length < 2,
+              aktion: () => nebeneinanderOeffnen(tabMenue.id),
+            },
+            { titel: "Schließen", icon: X, kuerzel: "Strg+W", aktion: () => void dokumentSchliessen(tabMenue.id) },
+          ]}
+        />
+      )}
     </div>
   );
 }

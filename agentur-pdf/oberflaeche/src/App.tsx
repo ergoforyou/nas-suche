@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { Befehlssuche } from "./befehle/Befehlssuche";
 import { ausfuehren } from "./befehle/register";
-import { Dokumentansicht } from "./ansicht/Dokumentansicht";
+import { Bereiche } from "./ansicht/Bereiche";
+import { Dialoge } from "./ansicht/Dialoge";
 import { Menueband } from "./ansicht/Menueband";
 import { Eigenschaftsleiste, Meldungen, Passwortdialog, Statusleiste, Tabs } from "./ansicht/Rahmen";
 import { Seitenleiste } from "./ansicht/Seitenleiste";
 import { Startseite } from "./ansicht/Startseite";
 import { api } from "./api";
 import { dateienOeffnen, naechsterTreffer, sitzungMerken, starten } from "./zustand/aktionen";
+import { dateienEinfuegen } from "./zustand/seitenaktionen";
 import { abonnieren, holen, setzen, useZustand } from "./zustand/store";
 
 // Tastenkürzel nach Acrobat-Konvention → Befehls-IDs
 const MIT_STRG: Record<string, string> = {
   o: "datei.oeffnen",
+  s: "datei.speichern",
   w: "datei.schliessen",
   f: "ansicht.suchen",
   "0": "zoom.ganzeseite",
@@ -32,8 +35,13 @@ function kuerzelBefehl(e: KeyboardEvent, imFeld: boolean): string | undefined {
   if (strg && e.shiftKey) {
     if (PLUS_CODES.includes(e.code)) return "ansicht.rechts_drehen";
     if (MINUS_CODES.includes(e.code)) return "ansicht.links_drehen";
+    if (e.code === "KeyS") return "datei.speichern_unter";
+    if (e.code === "KeyZ" && !imFeld) return "bearbeiten.wiederholen";
     return undefined;
   }
+  // In Textfeldern bleibt Strg+Z/Y beim Feld
+  if (strg && !imFeld && e.code === "KeyZ") return "bearbeiten.rueckgaengig";
+  if (strg && !imFeld && e.code === "KeyY") return "bearbeiten.wiederholen";
   if (strg && !e.altKey) {
     if (e.code === "NumpadAdd") return "zoom.rein";
     if (e.code === "NumpadSubtract") return "zoom.raus";
@@ -113,6 +121,21 @@ export function App() {
     return () => window.removeEventListener("keydown", taste);
   }, []);
 
+  // Strg+V: Bild oder Datei aus der Zwischenablage nach der aktuellen Seite einfügen
+  useEffect(() => {
+    const einfuegen = (e: ClipboardEvent) => {
+      if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]")) return;
+      const d = holen().dokumente.find((x) => x.id === holen().aktiv);
+      const dateien = [...(e.clipboardData?.files ?? [])];
+      if (!d || !dateien.length) return;
+      e.preventDefault();
+      const nach = d.auswahl.length ? d.auswahl[d.auswahl.length - 1] : d.ansicht.seite;
+      void dateienEinfuegen(d.id, nach + 1, dateien);
+    };
+    window.addEventListener("paste", einfuegen);
+    return () => window.removeEventListener("paste", einfuegen);
+  }, []);
+
   // Browser-Zoom per Strg+Mausrad außerhalb der Dokumentansicht verhindern
   useEffect(() => {
     const rad = (e: WheelEvent) => {
@@ -151,7 +174,10 @@ export function App() {
       <main className="hauptbereich">
         {seitenleisteOffen && <Seitenleiste />}
         {seitenleisteOffen && <Trennlinie breite={seitenleisteBreite} />}
-        <section className="dokumentbereich">{aktiv ? <Dokumentansicht key={aktiv} dokId={aktiv} /> : <Startseite />}</section>
+        <section className="dokumentbereich">
+          {aktiv && <Dialoge />}
+          {aktiv ? <Bereiche /> : <Startseite />}
+        </section>
       </main>
       <Statusleiste />
       <Befehlssuche />

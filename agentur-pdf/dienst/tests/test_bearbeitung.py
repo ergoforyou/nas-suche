@@ -196,3 +196,13 @@ def test_render_nach_verschieben_nicht_veraltet(bearbeitung, speicher, a):
 
 def texte_datei(pfad: Path) -> list[str]:
     return [s.get_text().strip() for s in pymupdf.open(pfad)]
+
+
+def test_render_mit_veralteter_kennung_abgelehnt(bearbeitung, speicher, a):
+    alte = a.kennung(0)
+    bearbeitung.verschieben(a.id, [0], 5)
+    # gleiche Seite, jetzt an Position 4 – wird über die Kennung gefunden
+    assert speicher.render(a.id, 0, 0.5, kennung=alte) == speicher.render(a.id, 4, 0.5)
+    bearbeitung.drehen(a.id, [4], 90)
+    with pytest.raises(DokumentFehler, match="VERALTET"):
+        speicher.render(a.id, 4, 0.5, kennung=alte)

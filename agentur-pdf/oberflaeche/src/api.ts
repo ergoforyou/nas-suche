@@ -1,7 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
-import type { DokumentInfo, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
+import type { Aenderungsantwort, DokumentInfo, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 function tokenErmitteln(): string {
   const anker = new URLSearchParams(window.location.hash.slice(1));
@@ -77,19 +77,49 @@ export const api = {
   sitzung: () => anfrage<Sitzung>("GET", "/api/sitzung"),
   sitzungSetzen: (s: Sitzung) => anfrage("PUT", "/api/sitzung", s),
   dialogOeffnen: () => anfrage<{ verfuegbar: boolean; pfade: string[] }>("POST", "/api/dialog/oeffnen"),
+  dialogSpeichern: (vorschlag: string) =>
+    anfrage<{ verfuegbar: boolean; pfad: string | null }>("POST", "/api/dialog/speichern", { vorschlag }),
+
+  // Seiten organisieren – alle Antworten enthalten die aktualisierten Dokumente
+  drehen: (id: string, seiten: number[], grad: number) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/drehen`, { seiten, grad }),
+  loeschen: (id: string, seiten: number[]) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/loeschen`, { seiten }),
+  verschieben: (id: string, seiten: number[], ziel: number) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/verschieben`, { seiten, ziel }),
+  duplizieren: (id: string, seiten: number[]) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/duplizieren`, { seiten }),
+  leereSeite: (id: string, position: number) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/leer`, { position }),
+  einfuegenPfade: (id: string, position: number, pfade: string[]) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/einfuegen_pfad`, { position, pfade }),
+  einfuegenDatei: (id: string, position: number, datei: Blob, name: string) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/einfuegen_datei?position=${position}&name=${enc(name)}`, datei),
+  uebertragen: (quelle: string, seiten: number[], ziel: string, position: number, verschieben: boolean) =>
+    anfrage<Aenderungsantwort>("POST", "/api/seiten/uebertragen", { quelle, seiten, ziel, position, verschieben }),
+  extrahieren: (id: string, seiten: number[], loeschen = false) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/extrahieren`, { seiten, loeschen }),
+  teilen: (id: string, modus: string, wert: number) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/teilen`, { modus, wert }),
+  leerseiten: (id: string) => anfrage<number[]>("GET", `/api/dokumente/${id}/leerseiten`),
+  rueckgaengig: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/rueckgaengig`),
+  wiederholen: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/wiederholen`),
+  speichern: (id: string, pfad?: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/speichern`, { pfad: pfad ?? null }),
+  dateiLaden: async (id: string): Promise<Blob> => {
+    const antwort = await fetch(`/api/dokumente/${id}/datei`, { headers: { "X-Agentur-Token": token } });
+    if (!antwort.ok) throw new ApiFehler("Datei konnte nicht erzeugt werden.");
+    return antwort.blob();
+  },
 };
 
 export interface BildParameter {
   dokId: string;
   seite: number;
-  version: number;
+  kennung: string;
   skala: number;
   drehung: number;
   kachel?: { x: number; y: number; b: number; h: number };
 }
 
 export function bildUrl(p: BildParameter): string {
-  let url = `/api/dokumente/${p.dokId}/seiten/${p.seite}/bild?skala=${p.skala}&drehung=${p.drehung}&v=${p.version}`;
+  let url = `/api/dokumente/${p.dokId}/seiten/${p.seite}/bild?skala=${p.skala}&drehung=${p.drehung}&v=${p.kennung}`;
   if (p.kachel) url += `&x=${p.kachel.x}&y=${p.kachel.y}&b=${p.kachel.b}&h=${p.kachel.h}`;
   return url;
 }

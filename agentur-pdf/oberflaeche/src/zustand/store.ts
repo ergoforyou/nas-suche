@@ -30,9 +30,19 @@ export interface Meldung {
   nonce: number;
 }
 
+export type Dialog =
+  | { art: "teilen"; dokId: string }
+  | { art: "leerseiten"; dokId: string; seiten: number[] }
+  | { art: "ungespeichert"; dokId: string; weiter: () => void };
+
 export interface Zustand {
   dokumente: Dokument[];
   aktiv: string | null;
+  /** nebeneinander angezeigte Dokumente (1 = normale Ansicht); ``aktiv`` ist der fokussierte Bereich */
+  bereiche: string[];
+  /** zuletzt aktive Dokumente, neuestes zuerst (für „Nebeneinander“) */
+  verlauf: string[];
+  dialog: Dialog | null;
   register: string;
   werkzeug: Werkzeug;
   werkzeugFixiert: boolean;
@@ -50,6 +60,9 @@ export interface Zustand {
 let zustand: Zustand = {
   dokumente: [],
   aktiv: null,
+  bereiche: [],
+  verlauf: [],
+  dialog: null,
   register: "start",
   werkzeug: "hand",
   werkzeugFixiert: false,
@@ -72,8 +85,33 @@ export function holen(): Zustand {
 
 export function setzen(aenderung: Partial<Zustand> | ((z: Zustand) => Partial<Zustand>)): void {
   const teil = typeof aenderung === "function" ? aenderung(zustand) : aenderung;
-  zustand = { ...zustand, ...teil };
+  zustand = bereicheAbgleichen(zustand, { ...zustand, ...teil });
   hoerer.forEach((h) => h());
+}
+
+/**
+ * Hält die Nebeneinander-Bereiche stimmig: Wird ein Dokument aktiv, das in
+ * keinem Bereich steht, ersetzt es das Dokument im fokussierten Bereich
+ * (wie ein Tab-Wechsel in diesem Bereich). Geschlossene Dokumente fallen raus.
+ */
+function bereicheAbgleichen(alt: Zustand, neu: Zustand): Zustand {
+  const offen = new Set(neu.dokumente.map((d) => d.id));
+  let bereiche = neu.bereiche;
+  if (neu.aktiv && !bereiche.includes(neu.aktiv)) {
+    // im Bereich des bisher fokussierten Dokuments anzeigen (auch wenn es gerade geschlossen wurde)
+    const slot = alt.aktiv ? bereiche.indexOf(alt.aktiv) : -1;
+    if (slot >= 0) bereiche = bereiche.map((id, i) => (i === slot ? neu.aktiv! : id));
+  }
+  bereiche = bereiche.filter((id, i) => offen.has(id) && bereiche.indexOf(id) === i);
+  if (neu.aktiv && !bereiche.includes(neu.aktiv)) {
+    bereiche = bereiche.length ? [...bereiche.slice(0, -1), neu.aktiv] : [neu.aktiv];
+  }
+  if (!neu.aktiv) bereiche = [];
+  let verlauf = neu.verlauf.filter((id) => offen.has(id));
+  if (neu.aktiv && verlauf[0] !== neu.aktiv) verlauf = [neu.aktiv, ...verlauf.filter((id) => id !== neu.aktiv)];
+  const gleich = (x: string[], y: string[]) => x.length === y.length && x.every((v, i) => v === y[i]);
+  if (gleich(bereiche, neu.bereiche) && gleich(verlauf, neu.verlauf)) return neu;
+  return { ...neu, bereiche, verlauf };
 }
 
 export function abonnieren(h: () => void): () => void {
@@ -97,6 +135,7 @@ export function dokumentHinzufuegen(info: DokumentInfo, ansicht?: Partial<Ansich
     const e = z.einstellungen;
     const dok: Dokument = {
       ...info,
+      auswahl: [],
       ansicht: {
         modus: e?.standard_ansicht ?? "fortlaufend",
         zoomModus: e?.standard_zoom ?? "seitenbreite",
@@ -130,6 +169,60 @@ export function ansichtAendern(id: string, aenderung: Partial<Ansicht>): void {
   setzen((z) => ({
     dokumente: z.dokumente.map((d) => (d.id === id ? { ...d, ansicht: { ...d.ansicht, ...aenderung } } : d)),
   }));
+}
+
+/** Neue Fassung eines Dokuments vom Dienst übernehmen (nach Seitenoperationen). */
+export function dokumentAktualisieren(info: DokumentInfo, auswahl?: number[]): void {
+  setzen((z) => ({
+    dokumente: z.dokumente.map((d) => {
+      if (d.id !== info.id) return d;
+      const letzte = info.seitenanzahl - 1;
+      return {
+        ...d,
+        ...info,
+        auswahl: (auswahl ?? d.auswahl).filter((s) => s <= letzte),
+        ansicht: { ...d.ansicht, seite: Math.min(d.ansicht.seite, letzte) },
+      };
+    }),
+    // Suchtreffer passen nach Seitenänderungen nicht mehr
+    suche: z.suche.treffer.some((t) => t.dokId === info.id)
+      ? { ...z.suche, treffer: z.suche.treffer.filter((t) => t.dokId !== info.id), aktiv: -1 }
+      : z.suche,
+  }));
+}
+
+export function auswahlSetzen(id: string, auswahl: number[]): void {
+  const sortiert = [...new Set(auswahl)].sort((a, b) => a - b);
+  setzen((z) => ({ dokumente: z.dokumente.map((d) => (d.id === id ? { ...d, auswahl: sortiert } : d)) }));
+}
+
+/** Markierte Seiten – oder die aktuelle Seite, wenn nichts markiert ist. */
+export function zielseiten(d: Dokument): number[] {
+  return d.auswahl.length ? d.auswahl : [d.ansicht.seite];
+}
+
+// ---------------------------------------------------------- Nebeneinander
+export function nebeneinanderOeffnen(id?: string): void {
+  setzen((z) => {
+    // Standard: das zuletzt benutzte Dokument, das noch nicht angezeigt wird
+    const kandidat =
+      id ?? z.verlauf.find((v) => !z.bereiche.includes(v)) ?? z.dokumente.find((d) => !z.bereiche.includes(d.id))?.id;
+    if (!kandidat) return {};
+    if (z.bereiche.includes(kandidat)) return { aktiv: kandidat };
+    const fokus = Math.max(0, z.bereiche.indexOf(z.aktiv ?? ""));
+    const bereiche = [...z.bereiche];
+    bereiche.splice(fokus + 1, 0, kandidat);
+    return { bereiche, aktiv: kandidat };
+  });
+}
+
+export function bereichSchliessen(id: string): void {
+  setzen((z) => {
+    if (z.bereiche.length <= 1) return {};
+    const index = z.bereiche.indexOf(id);
+    const bereiche = z.bereiche.filter((b) => b !== id);
+    return { bereiche, aktiv: z.aktiv === id ? bereiche[Math.max(0, index - 1)] : z.aktiv };
+  });
 }
 
 export function tabVerschieben(von: number, nach: number): void {

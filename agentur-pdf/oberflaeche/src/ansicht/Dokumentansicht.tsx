@@ -334,7 +334,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
     const url = bildUrl({
       dokId,
       seite: box.seite,
-      version: dok.seiten_versionen[box.seite] ?? 0,
+      kennung: dok.kennungen[box.seite] ?? "",
       skala: stufe,
       drehung: ansicht.drehung,
       kachel: { x, y, b: Math.min(groesse, W), h: Math.min(groesse, H) },
@@ -354,7 +354,8 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
     const taste = (e: KeyboardEvent) => {
       const el = scrollRef.current;
       const ziel = e.target as HTMLElement;
-      if (!el || ziel.closest("input, textarea, select, [contenteditable]")) return;
+      if (!el || ziel.closest("input, textarea, select, [contenteditable], .miniaturen")) return;
+      if (holen().aktiv !== dokId || holen().dialog?.art === "ungespeichert") return;
       if (e.key === "Escape" && holen().werkzeug !== "hand") {
         setLasso(null);
         setzen({ werkzeug: "hand" });
@@ -456,7 +457,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
               <Seite
                 dokId={dokId}
                 seite={box.seite}
-                version={dok.seiten_versionen[box.seite] ?? 0}
+                kennung={dok.kennungen[box.seite] ?? ""}
                 breitePt={bPt}
                 hoehePt={hPt}
                 b={box.b}

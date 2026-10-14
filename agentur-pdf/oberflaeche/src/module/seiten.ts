@@ -1,0 +1,221 @@
+// Register „Seiten“: Seiten einfügen, löschen, drehen, verschieben,
+// extrahieren, teilen, Leerseiten entfernen, Nebeneinander-Ansicht.
+
+import {
+  ClipboardPaste,
+  Columns2,
+  Copy,
+  FileOutput,
+  FilePlus2,
+  FileUp,
+  FileX2,
+  RefreshCw,
+  RotateCcw,
+  RotateCw,
+  Scissors,
+  SquareSplitHorizontal,
+  Trash2,
+  CheckSquare,
+} from "lucide-react";
+import { registrieren } from "../befehle/register";
+import {
+  ausZwischenablageEinfuegen,
+  dateiEinfuegenDialog,
+  leereSeiteEinfuegen,
+  leerseitenSuchen,
+  seitenDrehen,
+  seitenDuplizieren,
+  seitenExtrahieren,
+  seitenLoeschen,
+} from "../zustand/seitenaktionen";
+import { aktivesDokument, auswahlSetzen, nebeneinanderOeffnen, setzen, type Zustand } from "../zustand/store";
+
+const mitDokument = (z: Zustand) => aktivesDokument(z) !== null;
+
+registrieren(
+  // ------------------------------------------------------------- Einfügen
+  {
+    id: "seiten.datei_einfuegen",
+    titel: "Datei einfügen",
+    register: "seiten",
+    gruppe: "Einfügen",
+    icon: FileUp,
+    gross: true,
+    stichworte: ["pdf einfügen", "bild einfügen", "anhängen", "zusammenfügen", "seiten hinzufügen"],
+    beschreibung: "Fügt PDF- oder Bilddateien nach der aktuellen bzw. markierten Seite ein.",
+    ausfuehren: () => void dateiEinfuegenDialog(true),
+    aktiv: mitDokument,
+  },
+  {
+    id: "seiten.leer",
+    titel: "Leere Seite",
+    register: "seiten",
+    gruppe: "Einfügen",
+    icon: FilePlus2,
+    gross: true,
+    stichworte: ["neue seite", "leerseite einfügen", "blanko"],
+    ausfuehren: () => void leereSeiteEinfuegen(true),
+    aktiv: mitDokument,
+  },
+  {
+    id: "seiten.zwischenablage",
+    titel: "Aus Zwischenablage",
+    register: "seiten",
+    gruppe: "Einfügen",
+    icon: ClipboardPaste,
+    stichworte: ["einfügen", "screenshot", "bild", "strg+v"],
+    beschreibung: "Bild aus der Zwischenablage als neue Seite einfügen.",
+    ausfuehren: () => void ausZwischenablageEinfuegen(),
+    aktiv: mitDokument,
+  },
+  // -------------------------------------------------------------- Seiten
+  {
+    id: "seiten.links_drehen",
+    titel: "Links drehen",
+    register: "seiten",
+    gruppe: "Drehen",
+    icon: RotateCcw,
+    gross: true,
+    stichworte: ["seite drehen", "rotieren", "gegen uhrzeigersinn", "dauerhaft"],
+    beschreibung: "Dreht die markierten Seiten dauerhaft (wird mit gespeichert).",
+    ausfuehren: () => void seitenDrehen(-90),
+    aktiv: mitDokument,
+  },
+  {
+    id: "seiten.rechts_drehen",
+    titel: "Rechts drehen",
+    register: "seiten",
+    gruppe: "Drehen",
+    icon: RotateCw,
+    gross: true,
+    stichworte: ["seite drehen", "rotieren", "im uhrzeigersinn", "dauerhaft"],
+    beschreibung: "Dreht die markierten Seiten dauerhaft (wird mit gespeichert).",
+    ausfuehren: () => void seitenDrehen(90),
+    aktiv: mitDokument,
+  },
+  {
+    id: "seiten.180",
+    titel: "180° drehen",
+    register: "seiten",
+    gruppe: "Drehen",
+    icon: RefreshCw,
+    stichworte: ["auf dem kopf", "umdrehen"],
+    ausfuehren: () => void seitenDrehen(180),
+    aktiv: mitDokument,
+  },
+  {
+    id: "seiten.loeschen",
+    titel: "Löschen",
+    register: "seiten",
+    gruppe: "Bearbeiten",
+    icon: Trash2,
+    gross: true,
+    kuerzel: "Entf",
+    stichworte: ["seite löschen", "entfernen"],
+    ausfuehren: () => void seitenLoeschen(),
+    aktiv: (z) => {
+      const d = aktivesDokument(z);
+      return !!d && (d.auswahl.length || 1) < d.seitenanzahl;
+    },
+  },
+  {
+    id: "seiten.duplizieren",
+    titel: "Duplizieren",
+    register: "seiten",
+    gruppe: "Bearbeiten",
+    icon: Copy,
+    stichworte: ["kopieren", "verdoppeln"],
+    ausfuehren: () => void seitenDuplizieren(),
+    aktiv: mitDokument,
+  },
+  {
+    id: "seiten.alle_markieren",
+    titel: "Alle Seiten markieren",
+    register: "seiten",
+    gruppe: "Bearbeiten",
+    icon: CheckSquare,
+    stichworte: ["auswahl", "alles"],
+    ausfuehren: () => {
+      const d = aktivesDokument();
+      if (d) auswahlSetzen(d.id, Array.from({ length: d.seitenanzahl }, (_, i) => i));
+    },
+    aktiv: mitDokument,
+  },
+  {
+    id: "seiten.leerseiten",
+    titel: "Leerseiten entfernen",
+    register: "seiten",
+    gruppe: "Bearbeiten",
+    icon: FileX2,
+    gross: true,
+    stichworte: ["leere seiten", "duplex", "rückseiten", "scan"],
+    beschreibung: "Findet leere Seiten (z. B. Rückseiten aus Duplex-Scans) und markiert sie zum Entfernen.",
+    ausfuehren: () => void leerseitenSuchen(),
+    aktiv: mitDokument,
+  },
+  // ------------------------------------------------------------ Aufteilen
+  {
+    id: "seiten.extrahieren",
+    titel: "Extrahieren",
+    register: "seiten",
+    gruppe: "Aufteilen",
+    icon: FileOutput,
+    gross: true,
+    stichworte: ["herauslösen", "als neue pdf", "seiten speichern"],
+    beschreibung: "Markierte Seiten als neues Dokument öffnen.",
+    ausfuehren: () => void seitenExtrahieren(false),
+    aktiv: mitDokument,
+  },
+  {
+    id: "seiten.extrahieren_loeschen",
+    titel: "Extrahieren und entfernen",
+    register: "seiten",
+    gruppe: "Aufteilen",
+    icon: FileOutput,
+    versteckt: true,
+    stichworte: ["ausschneiden", "herauslösen"],
+    ausfuehren: () => void seitenExtrahieren(true),
+    aktiv: (z) => {
+      const d = aktivesDokument(z);
+      return !!d && (d.auswahl.length || 1) < d.seitenanzahl;
+    },
+  },
+  {
+    id: "seiten.teilen",
+    titel: "Teilen",
+    register: "seiten",
+    gruppe: "Aufteilen",
+    icon: Scissors,
+    gross: true,
+    stichworte: ["splitten", "aufteilen", "trennen", "dateigröße", "lesezeichen"],
+    ausfuehren: () => {
+      const d = aktivesDokument();
+      if (d) setzen({ dialog: { art: "teilen", dokId: d.id } });
+    },
+    aktiv: (z) => (aktivesDokument(z)?.seitenanzahl ?? 0) > 1,
+  },
+  // ---------------------------------------------------------- Ansicht
+  {
+    id: "seiten.nebeneinander",
+    titel: "Nebeneinander",
+    register: "seiten",
+    gruppe: "Ansicht",
+    icon: Columns2,
+    gross: true,
+    stichworte: ["zwei dokumente", "vergleichen", "teilen", "split", "parallel"],
+    beschreibung: "Ein weiteres geöffnetes Dokument rechts daneben anzeigen – Seiten lassen sich zwischen den Miniaturleisten ziehen.",
+    ausfuehren: () => nebeneinanderOeffnen(),
+    aktiv: (z) => z.dokumente.length > z.bereiche.length,
+  },
+  {
+    id: "seiten.einzeln",
+    titel: "Nur ein Dokument",
+    register: "seiten",
+    gruppe: "Ansicht",
+    icon: SquareSplitHorizontal,
+    stichworte: ["nebeneinander beenden", "geteilte ansicht schließen"],
+    ausfuehren: () => setzen((z) => ({ bereiche: z.aktiv ? [z.aktiv] : [] })),
+    aktiv: (z) => z.bereiche.length > 1,
+  },
+);
+

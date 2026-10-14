@@ -178,6 +178,7 @@ class DokumentSpeicher:
         skala: float,
         drehung: int = 0,
         kachel: tuple[int, int, int, int] | None = None,
+        kennung: str | None = None,
     ) -> bytes:
         """Rendert eine Seite (oder eine Kachel daraus) als PNG.
 
@@ -185,6 +186,16 @@ class DokumentSpeicher:
         um ``drehung`` gedrehten Seite bei Skala ``skala``.
         """
         dok = self.get(dok_id)
+        if kennung:
+            # Seite über ihre Kennung suchen: Wurde inzwischen umsortiert oder
+            # geändert, darf kein falsches Bild unter der alten URL landen.
+            sid, _, version = kennung.partition(".")
+            try:
+                seite_nr = dok.seiten_ids.index(sid)
+            except ValueError:
+                raise DokumentFehler("VERALTET") from None
+            if dok.kennung(seite_nr) != kennung:
+                raise DokumentFehler("VERALTET")
         if not 0 <= seite_nr < dok.doc.page_count:
             raise DokumentFehler("Seite existiert nicht.")
         skala = naechste_stufe(max(0.05, min(skala, RENDER_STUFEN[-1])))

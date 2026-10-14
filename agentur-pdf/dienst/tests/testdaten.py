@@ -40,3 +40,24 @@ def gedrehtes_dokument(pfad: Path) -> Path:
     doc.save(pfad)
     doc.close()
     return pfad
+
+
+def beschriftet(pfad: Path, praefix: str, anzahl: int) -> Path:
+    """Seiten mit großer Beschriftung A1, A2 … (gut prüfbar per Suche)."""
+    doc = pymupdf.open()
+    for i in range(anzahl):
+        doc.new_page(width=595, height=842).insert_text((72, 120), f"{praefix}{i + 1}", fontsize=48)
+    doc.save(pfad)
+    doc.close()
+    return pfad
+
+
+def mit_leerseiten(pfad: Path) -> Path:
+    """Duplex-Scan-Nachbildung: Inhaltsseiten mit leeren Rückseiten."""
+    doc = pymupdf.open()
+    for i in range(3):
+        doc.new_page().insert_text((72, 120), f"Inhalt {i + 1}", fontsize=24)
+        doc.new_page()  # leere Rückseite
+    doc.save(pfad)
+    doc.close()
+    return pfad

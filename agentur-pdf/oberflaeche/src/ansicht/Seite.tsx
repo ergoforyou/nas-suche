@@ -13,7 +13,7 @@ const VERZOEGERUNG = 50; // ms – vorbeihuschende Seiten nicht rendern
 export interface SeiteProps {
   dokId: string;
   seite: number;
-  version: number;
+  kennung: string;
   breitePt: number; // angezeigte Breite in pt (inkl. Drehung)
   hoehePt: number;
   b: number; // Größe in CSS-px
@@ -67,13 +67,13 @@ export const Seite = memo(function Seite(p: SeiteProps) {
     ? [...RENDER_STUFEN].reverse().find((s) => p.breitePt * s * p.hoehePt * s <= MAX_GRUNDBILD_PIXEL) ?? RENDER_STUFEN[0]
     : benoetigt;
 
-  const grundUrl = bildUrl({ dokId: p.dokId, seite: p.seite, version: p.version, skala: grundStufe, drehung: p.drehung });
+  const grundUrl = bildUrl({ dokId: p.dokId, seite: p.seite, kennung: p.kennung, skala: grundStufe, drehung: p.drehung });
 
   // Bis das passende Bild da ist, das zuletzt gezeigte (oder ein gecachtes
   // niedriger aufgelöstes) Bild gestreckt anzeigen → kein weißes Flackern.
   const [grundBild, setGrundBild] = useState<{ url: string; stufe: number } | null>(() => {
     for (const s of [grundStufe, ...[...RENDER_STUFEN].reverse()]) {
-      const t = ausCache(bildUrl({ dokId: p.dokId, seite: p.seite, version: p.version, skala: s, drehung: p.drehung }));
+      const t = ausCache(bildUrl({ dokId: p.dokId, seite: p.seite, kennung: p.kennung, skala: s, drehung: p.drehung }));
       if (t) return { url: t, stufe: s };
     }
     return null;
@@ -102,7 +102,7 @@ export const Seite = memo(function Seite(p: SeiteProps) {
         if (b <= 0 || h <= 0) continue;
         liste.push({
           key: `${ix}-${iy}`,
-          url: bildUrl({ dokId: p.dokId, seite: p.seite, version: p.version, skala: benoetigt, drehung: p.drehung, kachel: { x, y, b, h } }),
+          url: bildUrl({ dokId: p.dokId, seite: p.seite, kennung: p.kennung, skala: benoetigt, drehung: p.drehung, kachel: { x, y, b, h } }),
           links: x / f,
           oben: y / f,
           b: b / f,
@@ -111,7 +111,7 @@ export const Seite = memo(function Seite(p: SeiteProps) {
       }
     }
     return liste;
-  }, [mitKacheln, p.sichtbar, benoetigt, cssSkala, p.breitePt, p.hoehePt, p.dokId, p.seite, p.version, p.drehung]);
+  }, [mitKacheln, p.sichtbar, benoetigt, cssSkala, p.breitePt, p.hoehePt, p.dokId, p.seite, p.kennung, p.drehung]);
 
   return (
     <div className="seite-inhalt" data-seite={p.seite} data-ziel-stufe={grundStufe} data-kacheln={kacheln.length}>

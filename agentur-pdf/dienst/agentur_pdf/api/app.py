@@ -46,7 +46,7 @@ def erstelle_app(
 
     @app.exception_handler(DokumentFehler)
     async def dokument_fehler(_request: Request, fehler: DokumentFehler):
-        return JSONResponse({"fehler": str(fehler)}, status_code=400)
+        return JSONResponse({"fehler": str(fehler)}, status_code=409 if str(fehler) == "VERALTET" else 400)
 
     # ------------------------------------------------------------- Allgemein
     @app.get("/api/status")
@@ -98,9 +98,10 @@ def erstelle_app(
         y: int | None = None,
         b: int | None = None,
         h: int | None = None,
+        v: str | None = None,
     ):
         kachel = (x, y, b, h) if None not in (x, y, b, h) else None
-        auftrag = asyncio.ensure_future(im_mupdf_thread(dokumente.render, dok_id, seite, skala, drehung, kachel))
+        auftrag = asyncio.ensure_future(im_mupdf_thread(dokumente.render, dok_id, seite, skala, drehung, kachel, v))
         # Solange der Auftrag noch in der Warteschlange steht: Wurde die Seite
         # inzwischen weggescrollt (Anfrage abgebrochen), Auftrag verwerfen.
         while not auftrag.done():

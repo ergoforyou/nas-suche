@@ -1,10 +1,9 @@
 // Linke Seitenleiste: Miniaturen (Standard), Lesezeichen, Suche.
 
 import { ChevronDown, ChevronRight, Files, Bookmark, Search, X } from "lucide-react";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, bildUrl } from "../api";
-import { anfordern, ausCache } from "../render/bildlader";
-import { anzeigeGroesse, renderStufe } from "../render/layout";
+import { useEffect, useRef, useState } from "react";
+import { api } from "../api";
+import { Miniaturen } from "./Miniaturen";
 import { naechsterTreffer, suchen } from "../zustand/aktionen";
 import { aktivesDokument, setzen, springen, useZustand } from "../zustand/store";
 import type { Dokument, Lesezeichen, Seitenleistenpanel } from "../typen";
@@ -18,11 +17,15 @@ const PANELS: { id: Seitenleistenpanel; titel: string; icon: typeof Files }[] = 
 export function Seitenleiste() {
   const leiste = useZustand((z) => z.seitenleiste);
   const dok = useZustand((z) => aktivesDokument(z));
+  // Nebeneinander: jeder Bereich hat seine eigene Miniaturleiste
+  const geteilt = useZustand((z) => z.bereiche.length > 1);
+  const panels = geteilt ? PANELS.filter((p) => p.id !== "miniaturen") : PANELS;
+  if (geteilt && leiste.panel === "miniaturen") return null;
 
   return (
     <aside className="seitenleiste" style={{ width: leiste.breite }} aria-label="Seitenleiste">
       <div className="seitenleiste-reiter" role="tablist">
-        {PANELS.map((p) => (
+        {panels.map((p) => (
           <button
             key={p.id}
             role="tab"
@@ -60,112 +63,6 @@ export function Seitenleiste() {
     </aside>
   );
 }
-
-// -------------------------------------------------------------- Miniaturen
-const MINI_ABSTAND = 34; // Platz für Seitenzahl + Rand
-
-function Miniaturen({ dok, groesse }: { dok: Dokument; groesse: number }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [vp, setVp] = useState({ y: 0, h: 600, b: 200 });
-  const drehung = dok.ansicht.drehung;
-
-  // Positionen aller Miniaturen (eine Spalte; bei breiter Leiste mehrere)
-  const { positionen, gesamtHoehe, spalten } = useMemo(() => {
-    const spalten = Math.max(1, Math.floor((vp.b - 8) / (groesse + 16)));
-    const positionen: { x: number; y: number; b: number; h: number }[] = [];
-    let y = 8;
-    for (let i = 0; i < dok.seiten.length; i += spalten) {
-      let zeilenHoehe = 0;
-      for (let k = 0; k < spalten && i + k < dok.seiten.length; k++) {
-        const [bPt, hPt] = anzeigeGroesse(dok.seiten[i + k], drehung);
-        const skala = groesse / Math.max(bPt, hPt * 0.75);
-        const b = Math.round(bPt * skala);
-        const h = Math.round(hPt * skala);
-        const spaltenBreite = (vp.b - 8) / spalten;
-        positionen.push({ x: Math.round(4 + k * spaltenBreite + (spaltenBreite - b) / 2), y, b, h });
-        zeilenHoehe = Math.max(zeilenHoehe, h);
-      }
-      for (let k = 0; k < spalten && i + k < dok.seiten.length; k++) {
-        const p = positionen[i + k];
-        p.y = y + (zeilenHoehe - p.h);
-      }
-      y += zeilenHoehe + MINI_ABSTAND;
-    }
-    return { positionen, gesamtHoehe: y, spalten };
-  }, [dok.seiten, groesse, drehung, vp.b]);
-
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const messen = () => setVp({ y: el.scrollTop, h: el.clientHeight, b: el.clientWidth });
-    messen();
-    const ro = new ResizeObserver(messen);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Aktuelle Seite in der Miniaturleiste sichtbar halten
-  useEffect(() => {
-    const el = scrollRef.current;
-    const p = positionen[dok.ansicht.seite];
-    if (!el || !p) return;
-    if (p.y < el.scrollTop || p.y + p.h + MINI_ABSTAND > el.scrollTop + el.clientHeight) {
-      el.scrollTop = p.y - el.clientHeight / 3;
-    }
-  }, [dok.ansicht.seite, positionen]);
-
-  const sichtbar: number[] = [];
-  for (let i = 0; i < positionen.length; i++) {
-    const p = positionen[i];
-    if (p.y + p.h + MINI_ABSTAND < vp.y - vp.h / 2) continue;
-    if (p.y > vp.y + vp.h * 1.5) break;
-    sichtbar.push(i);
-  }
-
-  return (
-    <div
-      ref={scrollRef}
-      className="miniaturen"
-      onScroll={(e) => setVp((v) => ({ ...v, y: (e.target as HTMLDivElement).scrollTop }))}
-      data-testid="miniaturen"
-      data-spalten={spalten}
-    >
-      <div style={{ height: gesamtHoehe, position: "relative" }}>
-        {sichtbar.map((i) => (
-          <Miniatur key={i} dok={dok} seite={i} pos={positionen[i]} aktiv={i === dok.ansicht.seite} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const Miniatur = memo(function Miniatur(props: { dok: Dokument; seite: number; pos: { x: number; y: number; b: number; h: number }; aktiv: boolean }) {
-  const { dok, seite, pos } = props;
-  const dpr = window.devicePixelRatio || 1;
-  const [bPt] = anzeigeGroesse(dok.seiten[seite], dok.ansicht.drehung);
-  const url = bildUrl({
-    dokId: dok.id,
-    seite,
-    version: dok.seiten_versionen[seite] ?? 0,
-    skala: renderStufe((pos.b / bPt) * dpr),
-    drehung: dok.ansicht.drehung,
-  });
-  const [bild, setBild] = useState<string | null>(() => ausCache(url));
-  useEffect(() => anfordern(url, 5, (u) => u && setBild(u), 120), [url]);
-  return (
-    <button
-      className={props.aktiv ? "miniatur aktiv" : "miniatur"}
-      style={{ left: pos.x - 4, top: pos.y - 4, width: pos.b + 8 }}
-      onClick={() => springen(dok.id, seite)}
-      title={`Seite ${seite + 1}`}
-    >
-      <span className="miniatur-bild" style={{ width: pos.b, height: pos.h }}>
-        {bild && <img src={bild} alt="" draggable={false} />}
-      </span>
-      <span className="miniatur-nr">{seite + 1}</span>
-    </button>
-  );
-});
 
 // ----------------------------------------------------------- Lesezeichen
 function LesezeichenPanel({ dok }: { dok: Dokument }) {

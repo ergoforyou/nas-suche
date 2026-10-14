@@ -11,8 +11,22 @@ export interface DokumentInfo {
   version: number;
   seitenanzahl: number;
   seiten: SeitenInfo[];
-  seiten_versionen: number[];
+  /** je Seite eindeutige Kennung (Seiten-ID + Inhaltsversion) für Bild-URLs */
+  kennungen: string[];
   verschluesselt: boolean;
+  geaendert: boolean;
+  rueckgaengig: string | null; // Name des Schritts, der rückgängig gemacht würde
+  wiederholen: string | null;
+}
+
+/** Antwort des Dienstes auf Seitenoperationen */
+export interface Aenderungsantwort {
+  dokumente: DokumentInfo[];
+  neu: DokumentInfo[];
+  auswahl?: number[];
+  dateien?: string[];
+  teile?: number;
+  pfad?: string;
 }
 
 export type AnsichtsModus = "einzelseite" | "fortlaufend" | "doppelseite" | "doppelseite_fortlaufend";
@@ -31,6 +45,8 @@ export interface Ansicht {
 
 export interface Dokument extends DokumentInfo {
   ansicht: Ansicht;
+  /** markierte Seiten in der Miniaturleiste (0-basiert, sortiert) */
+  auswahl: number[];
 }
 
 export interface Treffer {
