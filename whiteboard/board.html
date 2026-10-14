@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Whiteboard</title>
+  <link rel="icon" href="icons/icon-32.png">
+  <link rel="stylesheet" href="board.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="brand"><img src="icons/icon-32.png" alt=""><span>Whiteboard</span></div>
+    <div class="side-label">Boards</div>
+    <ul id="boardList" class="side-list"></ul>
+    <button id="newBoardBtn" class="side-btn">+ Neues Board</button>
+    <div class="side-spacer"></div>
+    <ul class="side-list">
+      <li id="trashEntry" class="board-entry" data-board-drop="__trash__">
+        <span class="dot trash-dot"></span><span class="name">Papierkorb</span><span class="count"></span>
+      </li>
+    </ul>
+    <button id="backupBtn" class="side-btn">Alles sichern (ZIP)</button>
+    <div id="storageInfo" class="muted small"></div>
+  </aside>
+
+  <main>
+    <header id="toolbar">
+      <select id="boardSelect" aria-label="Board wählen"></select>
+      <h1 id="boardTitle" title="Doppelklick zum Umbenennen"></h1>
+      <div class="tools">
+        <button id="addNoteBtn" class="tool" title="Neue Notiz"><span class="ico" data-icon="note"></span><span class="lbl">Notiz</span></button>
+        <button id="addFileBtn" class="tool" title="Dateien hinzufügen"><span class="ico" data-icon="upload"></span><span class="lbl">Datei</span></button>
+        <button id="arrangeBtn" class="tool" title="Elemente ordentlich anordnen"><span class="ico" data-icon="grid"></span><span class="lbl">Aufräumen</span></button>
+        <input id="search" type="search" placeholder="Suchen…" aria-label="Suchen">
+        <div class="zoom">
+          <button id="zoomOut" class="tool" title="Verkleinern">−</button>
+          <button id="zoomReset" class="tool" title="Auf 100 % zurücksetzen">100%</button>
+          <button id="zoomIn" class="tool" title="Vergrößern">+</button>
+        </div>
+        <button id="exportBtn" class="tool" title="Dieses Board als ZIP exportieren (zum Weitergeben)"><span class="ico" data-icon="download"></span><span class="lbl">Export</span></button>
+        <button id="importBtn" class="tool" title="Board-ZIP importieren"><span class="ico" data-icon="import"></span><span class="lbl">Import</span></button>
+      </div>
+      <input type="file" id="fileInput" multiple hidden>
+      <input type="file" id="importInput" accept=".zip,application/zip" hidden>
+    </header>
+
+    <div id="viewport">
+      <div id="sizer"><div id="canvas"></div></div>
+      <div id="emptyHint">
+        <strong>Leg los:</strong>
+        <span><kbd>Strg</kbd>+<kbd>V</kbd> fügt Screenshots, Text oder Links ein</span>
+        <span>Dateien einfach hierher ziehen</span>
+        <span>Doppelklick auf die Fläche = neue Notiz</span>
+        <span>Rechtsklick auf Webseiten → „…aufs Whiteboard“</span>
+      </div>
+      <div id="dropOverlay">Loslassen zum Ablegen</div>
+    </div>
+
+    <section id="trashView" hidden></section>
+  </main>
+
+  <div id="toast" hidden><span class="msg"></span><button></button></div>
+  <script type="module" src="board.js"></script>
+</body>
+</html>
