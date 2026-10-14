@@ -8,7 +8,11 @@ function friendlyCloudError(err, name, SDK) {
   if (SDK && err instanceof SDK.NotFoundError) return `${name}: Modell nicht gefunden – bitte ein anderes Modell wählen.`;
   if (SDK && err instanceof SDK.RateLimitError) return `${name}: Zu viele Anfragen oder Guthaben aufgebraucht – kurz warten bzw. Konto prüfen.`;
   if (SDK && err instanceof SDK.InternalServerError) return `${name}: Dienst vorübergehend gestört – bitte gleich noch einmal versuchen.`;
-  if (SDK && err instanceof SDK.APIConnectionError) return `${name}: Keine Verbindung zum Dienst (Internet prüfen).`;
+  if (SDK && err instanceof SDK.APIConnectionError) {
+    // Ursache mit angeben (z. B. Zertifikatsfehler durch Virenscanner, Proxy, Zeitüberschreitung)
+    const cause = err.cause?.code || err.cause?.message || (err instanceof SDK.APIConnectionTimeoutError ? 'Zeitüberschreitung' : '');
+    return `${name}: Keine Verbindung zum Dienst${cause ? ` (${String(cause).slice(0, 160)})` : ''}. Internet, Proxy oder Virenscanner prüfen.`;
+  }
   return `${name}: ${err?.message ?? err}`;
 }
 

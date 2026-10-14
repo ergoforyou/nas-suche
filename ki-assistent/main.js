@@ -436,6 +436,10 @@ function runSmokeTest() {
         const sdkOk = typeof require('@anthropic-ai/sdk').default === 'function' && typeof require('openai').default === 'function';
         console.log('Cloud-SDKs geladen:', sdkOk);
         if (!sdkOk) return fail('Cloud-SDKs fehlen');
+        // Claude-Streaming über den Chromium-Netzwerkweg (Testserver auf diesem Rechner)
+        const viaChromium = await smokeCloudStream();
+        console.log('Claude-Streaming über Chromium:', JSON.stringify(viaChromium));
+        if (viaChromium.text !== 'Hallo Welt' || !viaChromium.aborted) return fail('Cloud-Streaming über Chromium');
       }
       // Sprachkette in der echten App: Piper spricht, Whisper erkennt
       const speech = await js('window.__app.selfTest()');
@@ -825,17 +829,74 @@ ipcMain.handle('keys:set', (_e, { provider, key }) => {
   fs.writeFileSync(keyFile(), JSON.stringify(all));
 });
 
+// Cloud-Anfragen über den Netzwerkstapel von Chromium: Er nutzt Zertifikate und Proxy von Windows (wie Edge
+// oder Chrome). Virenscanner mit HTTPS-Prüfung oder Firmen-Proxys lassen die Node-eigenen Verbindungen sonst
+// scheitern – die App meldet dann „keine Verbindung“, obwohl das Internet funktioniert.
+// Anfragen, die Chromium nicht abbilden kann (z. B. manche Datei-Uploads), laufen ersatzweise über Node.
+async function systemFetch(url, init = {}) {
+  try {
+    return await net.fetch(typeof url === 'string' ? url : (url?.url ?? String(url)), init);
+  } catch (err) {
+    if (init.signal?.aborted || err?.name === 'AbortError') throw err;
+    try {
+      return await fetch(url, init);
+    } catch {
+      throw err;
+    }
+  }
+}
+const CLOUD_OPTS = { fetch: systemFetch, maxRetries: 3 };
+
+/** Für den Selbsttest: Claude-Antwort von einem lokalen Testserver streamen und einen Abbruch prüfen. */
+async function smokeCloudStream() {
+  const http = require('node:http');
+  const events = [
+    { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hallo ' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Welt' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 2 } },
+    { type: 'message_stop' },
+  ];
+  const server = http.createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    if (req.headers['x-hang']) return; // hängt, bis abgebrochen wird
+    for (const e of events) res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+    res.end();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const Anthropic = require('@anthropic-ai/sdk').default;
+  const baseURL = `http://127.0.0.1:${server.address().port}`;
+  try {
+    let text = '';
+    const client = new Anthropic({ ...CLOUD_OPTS, apiKey: 'test', baseURL });
+    await chatAnthropic(client, { model: 'claude-haiku-5-5', messages: [{ role: 'user', content: 'x' }] }, (t, p) => t === 'delta' && (text += p));
+    const ctrl = new AbortController();
+    const hanging = new Anthropic({ ...CLOUD_OPTS, apiKey: 'test', baseURL, defaultHeaders: { 'x-hang': '1' }, maxRetries: 0 });
+    setTimeout(() => ctrl.abort(), 500);
+    let aborted = false;
+    await chatAnthropic(hanging, { model: 'claude-haiku-5-5', messages: [{ role: 'user', content: 'x' }] }, () => {}, ctrl.signal).catch(() => (aborted = ctrl.signal.aborted));
+    return { text, aborted };
+  } catch (err) {
+    return { error: String(err?.message ?? err) };
+  } finally {
+    server.close();
+  }
+}
+
 function anthropicClient() {
   const Anthropic = require('@anthropic-ai/sdk').default;
   const key = getKey('anthropic');
   // Ohne hinterlegten Schlüssel liest das SDK ANTHROPIC_API_KEY aus der Umgebung
-  return { Anthropic, client: new Anthropic(key ? { apiKey: key } : {}) };
+  return { Anthropic, client: new Anthropic({ ...CLOUD_OPTS, ...(key ? { apiKey: key } : {}) }) };
 }
 
 function openaiClient() {
   const OpenAI = require('openai').default;
   const key = getKey('openai');
-  return { OpenAI, client: new OpenAI(key ? { apiKey: key } : {}) };
+  return { OpenAI, client: new OpenAI({ ...CLOUD_OPTS, ...(key ? { apiKey: key } : {}) }) };
 }
 
 function cloudBlocked(provider) {
