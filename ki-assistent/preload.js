@@ -59,9 +59,10 @@ contextBridge.exposeInMainWorld('desktop', {
   chat: (req, onEvent) => {
     listeners.set(req.id, (msg) => {
       onEvent(msg);
-      if (msg.type !== 'delta') listeners.delete(req.id);
+      if (msg.type === 'done' || msg.type === 'error') listeners.delete(req.id);
     });
     ipcRenderer.send('llm:chat', req);
   },
   abortChat: (id) => ipcRenderer.send('llm:abort', id),
+  openFile: (file) => ipcRenderer.invoke('file:open', file),
 });

@@ -95,6 +95,8 @@ const DEFAULT_SETTINGS = {
   claudeEffort: 'low',
   openaiModel: '',
   cloudTtsModel: 'gpt-4o-mini-tts',
+  claudeWeb: true, // Internetsuche (nur Claude)
+  claudeFiles: true, // Dateien erstellen und bearbeiten (nur Claude)
 };
 
 const CLAUDE_MODELS = [
@@ -278,7 +280,98 @@ function renderChat() {
   $('chat').innerHTML = '';
   const h = history();
   if (!h.length && persona().greeting) addBubble('assistant', persona().greeting);
-  for (const m of h) addBubble(m.role, m.content);
+  for (const m of h) decorateBubble(addBubble(m.role, m.content), m);
+}
+
+/** Anhänge und erstellte Dateien unter einer Chatblase anzeigen. */
+function decorateBubble(div, m) {
+  if (m.attachments?.length) {
+    const line = document.createElement('div');
+    line.className = 'attach-line';
+    line.textContent = m.attachments.map((a) => `📎 ${a.name}`).join('   ');
+    div.appendChild(line);
+  }
+  if (m.files?.length) div.appendChild(fileList(m.files));
+}
+
+function fileList(files) {
+  const box = document.createElement('div');
+  box.className = 'file-list';
+  for (const f of files) {
+    const row = document.createElement('div');
+    const open = document.createElement('button');
+    open.textContent = `📄 ${f.name}`;
+    open.title = 'Datei öffnen';
+    open.onclick = async () => {
+      const err = await desktop.openFile(f.path);
+      if (err) status(err);
+    };
+    const dir = document.createElement('button');
+    dir.textContent = 'Im Ordner zeigen';
+    dir.onclick = () => desktop.exportShow(f.path);
+    row.append(open, dir);
+    box.appendChild(row);
+  }
+  return box;
+}
+
+// ---------------------------------------------------------------- Anhänge (nur mit Claude)
+// Die Dateien bleiben nur im Arbeitsspeicher und gehen ausschließlich mit der Nachricht an Claude.
+const ATTACH_MAX = 30 * 1024 * 1024;
+const TEXT_FILE = /\.(txt|md|csv|json|xml|html?|log|ya?ml)$/i;
+const OFFICE_FILE = /\.(xlsx|xlsm|xls|docx|pptx|odt|ods)$/i;
+const attachmentData = new Map(); // Schlüssel -> Bytes
+let pendingAttachments = [];
+const attachAllowed = () => !LOCAL_ONLY && state.settings.provider === 'anthropic';
+
+async function addAttachments(list) {
+  if (!attachAllowed()) {
+    status('Dateien anhängen geht mit Claude (⚙ → Verbindung → KI-Anbieter).');
+    return;
+  }
+  for (const f of list) {
+    if (f.size > ATTACH_MAX) {
+      status(`„${f.name}“ ist zu groß (höchstens 30 MB).`);
+      continue;
+    }
+    const mime = f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : 'application/octet-stream');
+    const text = TEXT_FILE.test(f.name) || mime.startsWith('text/');
+    if (!text && mime !== 'application/pdf' && !/^image\/(png|jpeg|gif|webp)$/.test(mime)) {
+      if (!OFFICE_FILE.test(f.name)) {
+        status(`„${f.name}“: Dieses Dateiformat kann Claude nicht lesen.`);
+        continue;
+      }
+      if (!state.settings.claudeFiles) {
+        status(`„${f.name}“: Für Office-Dateien bitte ⚙ → Verbindung → „Dateien erstellen und bearbeiten“ einschalten.`);
+        continue;
+      }
+    }
+    const key = newId();
+    attachmentData.set(key, new Uint8Array(await f.arrayBuffer()));
+    pendingAttachments.push({ key, name: f.name, mime, size: f.size, ...(text ? { text: true } : {}) });
+  }
+  renderPending();
+}
+
+function renderPending() {
+  const box = $('attachments');
+  box.innerHTML = '';
+  box.hidden = !pendingAttachments.length;
+  for (const a of pendingAttachments) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.textContent = `📎 ${a.name}`;
+    const x = document.createElement('button');
+    x.textContent = '✕';
+    x.title = 'Entfernen';
+    x.onclick = () => {
+      pendingAttachments = pendingAttachments.filter((p) => p !== a);
+      attachmentData.delete(a.key);
+      renderPending();
+    };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  }
 }
 
 function updateBadge() {
@@ -310,7 +403,16 @@ function buildMessages() {
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(p.memory.map((m) => `- ${m.text}`).join('\n')));
   if (p.style !== 'frei') parts.push(r.lang);
   const sys = parts.filter(Boolean).join('\n\n');
-  const h = history().slice(-state.settings.historyLimit);
+  const withFiles = attachAllowed();
+  const h = history()
+    .slice(-state.settings.historyLimit)
+    .map((m) => {
+      let content = m.content;
+      if (m.files?.length) content += `\n\n(Erstellte Dateien: ${m.files.map((f) => f.name).join(', ')})`;
+      if (!m.attachments?.length) return { role: m.role, content };
+      if (!withFiles) return { role: m.role, content: `${content}\n\n(Anhang: ${m.attachments.map((a) => a.name).join(', ')})`.trim() };
+      return { role: m.role, content, attachments: m.attachments.map((a) => ({ ...a, data: attachmentData.get(a.key) })) };
+    });
   return sys ? [{ role: 'system', content: sys }, ...h] : h;
 }
 
@@ -389,7 +491,7 @@ async function ensureModel() {
 
 async function send(text) {
   text = text.trim();
-  if (!text || state.busy) return;
+  if ((!text && !pendingAttachments.length) || state.busy) return;
   tts.stop();
   tts.newTurn();
   cancelLearning();
@@ -397,10 +499,14 @@ async function send(text) {
   state.busy = true;
   setBusyUi(true);
 
-  history().push({ role: 'user', content: text });
-  addBubble('user', text);
+  const attachments = pendingAttachments;
+  pendingAttachments = [];
+  renderPending();
+  const entry = { role: 'user', content: text, ...(attachments.length ? { attachments } : {}) };
+  history().push(entry);
+  decorateBubble(addBubble('user', text), entry);
   save();
-  output.begin(text);
+  output.begin(text || attachments.map((a) => a.name).join(', '));
 
   const bubble = addBubble('assistant', '');
   bubble.classList.add('typing');
@@ -408,6 +514,8 @@ async function send(text) {
   updateBadge();
 
   let answer = '';
+  let sources = [];
+  const created = [];
   const think = new ThinkFilter();
   const speak = state.settings.speak;
   const splitter = new SentenceSplitter((s) => speak && tts.enqueue(s));
@@ -430,11 +538,18 @@ async function send(text) {
     bubble.classList.remove('typing');
     avatarState.thinking = false;
     answer = answer.trim();
-    if (answer) {
+    // Quellen der Internetsuche anhängen (werden nicht vorgelesen)
+    if (answer && sources.length) {
+      answer += '\n\n**Quellen:**\n' + sources.map((q) => `- [${q.title.replace(/[[\]]/g, '')}](${q.url})`).join('\n');
+    }
+    if (answer || created.length) {
+      const entry = { role: 'assistant', content: answer, ...(created.length ? { files: created } : {}) };
       fillBubble(bubble, 'assistant', answer);
-      history().push({ role: 'assistant', content: answer });
+      decorateBubble(bubble, entry);
+      history().push(entry);
       save();
     } else bubble.remove();
+    status('');
     output.update(answer, true);
     if (answer && !error) scheduleLearning(text, answer);
     if (error) addBubble('error', error);
@@ -459,7 +574,14 @@ async function send(text) {
   const id = newId();
   state.currentChatId = id;
   desktop.chat(
-    { id, ...llmParams(model), messages: buildMessages() },
+    {
+      id,
+      ...llmParams(model),
+      ...(state.settings.provider === 'anthropic'
+        ? { web: state.settings.claudeWeb, files: state.settings.claudeFiles, conversation: persona().id }
+        : {}),
+      messages: buildMessages(),
+    },
     (ev) => {
       if (ev.type === 'delta') {
         const visible = think.push(ev.payload);
@@ -471,6 +593,11 @@ async function send(text) {
         answer += visible;
         splitter.push(visible);
         renderTimer ??= setTimeout(render, 60);
+      } else if (ev.type === 'status') status(ev.payload);
+      else if (ev.type === 'sources') sources = ev.payload;
+      else if (ev.type === 'file') {
+        created.push(ev.payload);
+        status(`Datei erstellt: ${ev.payload.name}`);
       } else if (ev.type === 'error') finish(ev.payload);
       else finish();
     },
@@ -543,7 +670,7 @@ async function learn(p, question, answer) {
       },
       (ev) => {
         if (ev.type === 'delta') out += ev.payload;
-        else resolve(ev.type === 'done' ? out : '');
+        else if (ev.type === 'done' || ev.type === 'error') resolve(ev.type === 'done' ? out : '');
       },
     );
   });
@@ -795,6 +922,17 @@ input.addEventListener('keydown', (e) => {
 });
 input.addEventListener('input', autoGrow);
 $('btnSend').onclick = submit;
+$('btnAttach').onclick = () => $('fileAttach').click();
+$('fileAttach').onchange = (e) => {
+  addAttachments([...e.target.files]);
+  e.target.value = '';
+};
+// Dateien ins Fenster ziehen (sonst würde Electron die Datei als Seite öffnen)
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer?.files?.length && !e.target.closest?.('.drawer')) addAttachments([...e.dataTransfer.files]);
+});
 $('btnStop').onclick = stopAll;
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.code === 'Space') {
@@ -921,6 +1059,8 @@ function fillSettings() {
   if (!LOCAL_ONLY) {
     fillSelect($('cClaudeModel'), CLAUDE_MODELS, s.claudeModel);
     $('cClaudeEffort').value = s.claudeEffort;
+    $('cClaudeWeb').checked = s.claudeWeb;
+    $('cClaudeFiles').checked = s.claudeFiles;
   }
   toggleProviderFields();
   refreshKeys();
@@ -2018,6 +2158,7 @@ function toggleProviderFields() {
   $('cClaudeWrap').hidden = p !== 'anthropic';
   $('cOpenaiWrap').hidden = p !== 'openai';
   $('cCloudHint').hidden = p === 'lmstudio';
+  $('btnAttach').hidden = p !== 'anthropic';
 }
 
 async function refreshKeys() {
@@ -2067,6 +2208,14 @@ $('cClaudeKeySave').onclick = saveKey('anthropic', 'cClaudeKey');
 $('cOpenaiKeySave').onclick = saveKey('openai', 'cOpenaiKey');
 $('cClaudeModel').onchange = (e) => {
   state.settings.claudeModel = e.target.value;
+  save();
+};
+$('cClaudeWeb').onchange = (e) => {
+  state.settings.claudeWeb = e.target.checked;
+  save();
+};
+$('cClaudeFiles').onchange = (e) => {
+  state.settings.claudeFiles = e.target.checked;
   save();
 };
 $('cClaudeEffort').onchange = (e) => {
@@ -2122,6 +2271,7 @@ async function init() {
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;
   state.history = data.history ?? {};
   applyEdition();
+  if (!LOCAL_ONLY) $('btnAttach').hidden = state.settings.provider !== 'anthropic';
   desktop.setOffline(state.settings.offline);
 
   if (state.settings.stageHeight) {
@@ -2191,7 +2341,7 @@ function applyEdition() {
   for (const sel of ['#cProvider option:not([value="lmstudio"])', '#vEngine option[value="cloud"]']) {
     document.querySelectorAll(sel).forEach((o) => o.remove());
   }
-  for (const id of ['cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap']) $(id)?.remove();
+  for (const id of ['cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap', 'btnAttach', 'fileAttach']) $(id)?.remove();
   const prov = $('cProvider').closest('label');
   if (prov) prov.hidden = true;
   if (state.settings.provider !== 'lmstudio') state.settings.provider = 'lmstudio';

@@ -31,7 +31,11 @@
 
   <div class="status" id="status"></div>
 
+  <div class="attachments" id="attachments" hidden></div>
+
   <footer class="composer">
+    <button id="btnAttach" class="round" title="Datei anhängen – PDF, Bild, Text, Excel/Word/PowerPoint (oder Datei ins Fenster ziehen)" hidden>📎</button>
+    <input id="fileAttach" type="file" multiple hidden />
     <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste)">🎤</button>
     <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
     <button id="btnSend" class="round primary" title="Senden">➤</button>
@@ -329,6 +333,14 @@
             <option value="high">hoch – gründlicher, langsamer</option>
           </select>
         </label>
+        <label class="check"><input id="cClaudeWeb" type="checkbox" /> Internetsuche – Claude sucht selbst und nennt Quellen</label>
+        <label class="check"><input id="cClaudeFiles" type="checkbox" /> Dateien erstellen und bearbeiten – Excel, Word, PowerPoint, PDF</label>
+        <div class="hint">
+          Suche und Dateierstellung laufen bei Anthropic, nicht auf diesem Rechner (Suche ca. 1 Cent pro Suchanfrage).
+          Erstellte Dateien landen in „Dokumente\KI-Assistent Cloud Dateien“.
+          Mit 📎 oder per Ziehen ins Fenster lassen sich PDFs, Bilder, Texte und Office-Dateien anhängen – sie gehen nur
+          an Claude, wenn du sie selbst anhängst. Avatar, Posen und Videos werden nie verschickt.
+        </div>
       </div>
 
       <div id="cOpenaiWrap" hidden>

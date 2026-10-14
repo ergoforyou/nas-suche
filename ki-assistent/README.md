@@ -110,6 +110,14 @@ Gedächtnis, Personas, Spracherkennung) bleibt lokal:
 - ⚙ → Sprache → Engine **OpenAI-Stimme**: ausdrucksstarke Stimmen ohne Grafikkarte (z. B. Nova, Shimmer),
   Sprechstil per Anweisung („warm und lebendig …“).
 - Schlüssel werden mit der Verschlüsselung von Windows gespeichert. Im Offline-Modus sind Cloud-Anbieter gesperrt.
+- **Mit Claude zusätzlich** (⚙ → Verbindung, beide ab Werk an):
+  - *Internetsuche*: Claude sucht selbst, liest Webseiten und hängt die **Quellen** an die Antwort (nicht vorgelesen).
+  - *Dateien erstellen und bearbeiten*: „Mach daraus eine Excel-Tabelle / eine PowerPoint / ein Word-Dokument“ –
+    Claude erstellt die Datei bei Anthropic, sie wird automatisch nach `Dokumente\KI-Assistent Cloud Dateien`
+    geladen und erscheint im Chat mit „öffnen“ / „Im Ordner zeigen“. Folgefragen („noch eine Spalte“) arbeiten an
+    derselben Datei weiter.
+  - *Anhänge*: 📎 oder Datei ins Fenster ziehen – PDFs, Bilder, Texte und (mit Dateifunktion) Excel/Word/PowerPoint.
+    Anhänge bleiben nur im Arbeitsspeicher und gehen ausschließlich mit der eigenen Nachricht an Claude.
 - An den Anbieter geht nur der Chattext (Systemprompt, Verlauf, Gedächtnis-Notizen) bzw. der vorzulesende
   Satz. Bilder, Videos, Avatar und Sprachaufnahmen verlassen den Rechner nie.
 

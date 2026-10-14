@@ -250,3 +250,13 @@ body.floating .stage { display: none; }
 .hint.warn { color: #e0b05b; }
 #cClaudeKey, #cOpenaiKey, #vCloudModel { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; color: var(--text); }
 #vCloudModel { display: block; width: 100%; margin-top: 4px; }
+
+/* ---------- Anhänge & erstellte Dateien ---------- */
+.attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px 0; background: var(--panel); border-top: 1px solid var(--border); flex: none; }
+.attachments[hidden] { display: none; }
+.chip { display: inline-flex; align-items: center; gap: 4px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12px; max-width: 100%; }
+.chip button { background: none; border: none; padding: 0 6px; font-size: 11px; color: var(--muted); }
+.attach-line { margin-top: 4px; font-size: 12px; opacity: .85; white-space: normal; }
+.file-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; white-space: normal; }
+.file-list > div { display: flex; gap: 6px; flex-wrap: wrap; }
+.file-list button { font-size: 12px; padding: 3px 8px; }

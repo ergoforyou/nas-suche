@@ -88,7 +88,7 @@ ipcMain.handle('export:pdf', async (_e, { name, html }) => {
   const file = await askSavePath(name, 'pdf', 'PDF-Dokument');
   if (!file) return null;
   // Unsichtbares Fenster ohne JavaScript, nur zum Setzen und Drucken des Dokuments
-  const pdfWin = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true } });
+  const pdfWin = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true, partition: 'pdf-export' } });
   try {
     pdfWin.webContents.session.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (_d, cb) => cb({ cancel: true }));
     await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
@@ -808,7 +808,35 @@ ipcMain.handle('llm:models', async (_e, baseUrl) => {
 
 const running = new Map();
 
-ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, messages, temperature, effort }) => {
+// ---------------------------------------------------------------- Von Claude erstellte Dateien
+// Landen in "Dokumente\KI-Assistent Dateien"; Dateinamen werden bereinigt, nichts wird überschrieben.
+const createdDir = () => path.join(app.getPath('documents'), `${APP_NAME} Dateien`);
+const claudeContainers = new Map(); // Gespräch -> Arbeitsbereich bei Anthropic
+const claudeUploads = new Map(); // Anhang -> Datei-ID bei Anthropic
+function saveCreatedFile(name, bytes) {
+  const dir = createdDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const clean = path.basename(String(name || 'Datei')).replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').slice(0, 120) || 'Datei';
+  const ext = path.extname(clean);
+  const stem = clean.slice(0, clean.length - ext.length);
+  let file = path.join(dir, clean);
+  for (let i = 2; fs.existsSync(file); i++) file = path.join(dir, `${stem} (${i})${ext}`);
+  fs.writeFileSync(file, Buffer.from(bytes));
+  return file;
+}
+// Nur Dokument- und Bildformate direkt öffnen – alles andere nur im Ordner zeigen
+const OPENABLE = /\.(xlsx|xls|csv|docx|pptx|pdf|png|jpe?g|gif|webp|txt|md|json)$/i;
+ipcMain.handle('file:open', async (_e, file) => {
+  const resolved = path.resolve(String(file));
+  if (!resolved.startsWith(createdDir() + path.sep) || !fs.existsSync(resolved)) return 'Datei nicht gefunden.';
+  if (!OPENABLE.test(resolved)) {
+    shell.showItemInFolder(resolved);
+    return '';
+  }
+  return shell.openPath(resolved);
+});
+
+ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, messages, temperature, effort, web, files, conversation }) => {
   const ctrl = new AbortController();
   running.set(id, ctrl);
   const send = (type, payload) => {
@@ -822,7 +850,19 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
   if (provider === 'anthropic' || provider === 'openai') {
     const name = provider === 'anthropic' ? 'Claude' : 'ChatGPT';
     try {
-      if (provider === 'anthropic') await chatAnthropic(anthropicClient().client, { model, messages, effort }, send, ctrl.signal);
+      if (provider === 'anthropic') {
+        const ctx = { containers: claudeContainers, uploads: claudeUploads, saveFile: saveCreatedFile };
+        const req = { model, messages, effort, web, files, conversation };
+        try {
+          await chatAnthropic(anthropicClient().client, req, send, ctrl.signal, ctx);
+        } catch (err) {
+          // abgelaufener Arbeitsbereich (nach 30 Tagen) oder gelöschte Datei: einmal frisch beginnen
+          if (!files || ctrl.signal.aborted || !/container|file/i.test(String(err?.message))) throw err;
+          claudeContainers.delete(conversation);
+          claudeUploads.clear();
+          await chatAnthropic(anthropicClient().client, req, send, ctrl.signal, ctx);
+        }
+      }
       else await chatOpenAI(openaiClient().client, { model, messages }, send, ctrl.signal);
     } catch (err) {
       const SDK = provider === 'anthropic' ? require('@anthropic-ai/sdk').default : require('openai').default;
