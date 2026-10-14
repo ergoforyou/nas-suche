@@ -108,15 +108,26 @@ export class SentenceSplitter {
     this.buf = '';
     this.onSentence = onSentence;
     this.inCode = false;
+    this.first = true;
   }
   push(text) {
     this.buf += text;
+    // Damit die Stimme schnell einsetzt: das allererste Stück schon am ersten Komma abschicken
+    if (this.first && !this.inCode) {
+      const m = /^([^\n`]{25,}?[,;–—])\s+/.exec(this.buf);
+      if (m) {
+        this.first = false;
+        this.buf = this.buf.slice(m[0].length);
+        this.onSentence(m[1].trim());
+      }
+    }
     // Satzende: . ! ? : oder Zeilenumbruch, gefolgt von Leerraum. Abkürzungen wie "z.B." grob abfangen.
     const re = /([\s\S]*?[^\s.]{2,}[.!?…:]+["»“)]?)(\s+)|([\s\S]*?)\n{1,}/;
     let m;
     while ((m = re.exec(this.buf))) {
       const sentence = (m[1] ?? m[3] ?? '').trim();
       this.buf = this.buf.slice(m[0].length);
+      this.first = false;
       // Codeblöcke komplett überspringen
       const fences = (sentence.match(/```/g) ?? []).length;
       const wasInCode = this.inCode;
@@ -150,7 +161,8 @@ export class SpeechOutput {
     this.ctx = null;
   }
 
-  configure({ engine, voices, language, systemVoice, rate, maxSentences }) {
+  configure({ engine, voices, language, systemVoice, rate, maxSentences, server }) {
+    if (server) this.server = { ...this.server, ...server };
     if (engine) this.engine = engine;
     if (voices) this.voices = { ...DEFAULT_VOICES, ...voices };
     if (language) this.language = language;
@@ -166,6 +178,36 @@ export class SpeechOutput {
   voiceFor(text) {
     const lang = detectLanguage(text, this.language);
     return this.voices[lang] ?? this.voices[this.language];
+  }
+
+  /** Sprach-Server (Chatterbox): ein Satz -> Audio. Anfragen laufen nacheinander. */
+  synthServer(text) {
+    const v = this.server ?? {};
+    const lang = detectLanguage(text, this.language);
+    const [mode, file] = (v.voice || '').split(/:(.*)/s);
+    const body = {
+      text,
+      output_format: 'wav',
+      split_text: true,
+      chunk_size: 250,
+      language: lang,
+      ...(mode === 'clone' ? { voice_mode: 'clone', reference_audio_filename: file } : {}),
+      ...(mode === 'predefined' ? { voice_mode: 'predefined', predefined_voice_id: file } : {}),
+      ...(v.exaggeration != null ? { exaggeration: v.exaggeration } : {}),
+      ...(v.cfg != null ? { cfg_weight: v.cfg } : {}),
+      ...(v.temperature != null ? { temperature: v.temperature } : {}),
+      ...(this.rate !== 1 ? { speed_factor: this.rate } : {}),
+    };
+    const prev = this.serverChain ?? Promise.resolve();
+    const run = prev.then(async () => {
+      const bytes = await window.desktop.ttsServerSpeak(v.url || 'http://localhost:8004', body);
+      this.ctx ??= new AudioContext();
+      const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      const buf = await this.ctx.decodeAudioData(ab);
+      return { audio: buf.getChannelData(0), sampleRate: buf.sampleRate };
+    });
+    this.serverChain = run.catch(() => {});
+    return run;
   }
 
   async preload(onProgress) {
@@ -188,12 +230,16 @@ export class SpeechOutput {
     this.spokenInTurn++;
     const gen = this.generation;
     const item = { text: clean, gen };
-    if (this.engine === 'piper') {
-      item.audio = synthesize(clean, this.voiceFor(clean), {
-        rate: this.rate,
-        onProgress: ({ loaded, total }) =>
-          total && this.onStatus(`Stimme wird geladen … ${Math.round((loaded / total) * 100)} % (nur beim ersten Mal)`),
-      })
+    if (this.engine !== 'system') {
+      const job =
+        this.engine === 'server'
+          ? this.synthServer(clean)
+          : synthesize(clean, this.voiceFor(clean), {
+              rate: this.rate,
+              onProgress: ({ loaded, total }) =>
+                total && this.onStatus(`Stimme wird geladen … ${Math.round((loaded / total) * 100)} % (nur beim ersten Mal)`),
+            });
+      item.audio = job
         .then((r) => {
           this.onStatus('');
           return r;
@@ -222,7 +268,7 @@ export class SpeechOutput {
       this.onSpeakingChange(true);
     }
     try {
-      if (this.engine === 'piper') {
+      if (item.audio) {
         const result = await item.audio;
         if (result && item.gen === this.generation) await this.playPcm(result.audio, result.sampleRate);
       } else {

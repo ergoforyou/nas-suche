@@ -20,7 +20,7 @@ const server = http
       const up = await fetch('https://huggingface.co/' + pathname.slice('/models/hf/'.length));
       const headers = {};
       if (up.headers.get('content-length')) headers['Content-Length'] = up.headers.get('content-length');
-      res.writeHead(up.status, headers);
+      res.writeHead(up.status, { ...headers, 'Cross-Origin-Resource-Policy': 'same-origin' });
       if (!up.ok || !up.body) return res.end();
       return Readable.fromWeb(up.body).pipe(res);
     }
@@ -29,7 +29,12 @@ const server = http
       res.writeHead(404);
       return res.end();
     }
-    res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
+      // wie in der App: Cross-Origin-Isolation für Mehrkern-WASM
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    });
     fs.createReadStream(file).pipe(res);
   })
   .listen(8799);
@@ -48,6 +53,7 @@ await page.addInitScript(() => {
 });
 await page.goto('http://localhost:8799/index.html');
 await page.waitForFunction(() => window.__app);
+console.log('crossOriginIsolated:', await page.evaluate(() => self.crossOriginIsolated), 'Kerne:', await page.evaluate(() => navigator.hardwareConcurrency));
 
 console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.debugVoice('de_DE-thorsten-high', 'ich'))));
 

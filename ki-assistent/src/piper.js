@@ -12,7 +12,8 @@ const base = (p) => new URL(p, location.href).href;
 const VOICE_BASE = base('models/hf/diffusionstudio/piper-voices/resolve/main/');
 
 ort.env.wasm.wasmPaths = base('wasm/ort18/');
-ort.env.wasm.numThreads = 1;
+// Mehrere CPU-Kerne nutzen, wenn die Seite "cross-origin isolated" ist (setzt der Hauptprozess per Header).
+ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)) : 1;
 
 export function voicePath(id) {
   const [locale, name, quality] = id.split('-');
@@ -53,27 +54,37 @@ function loadPhonemizerAssets() {
   return phonemizerAssets;
 }
 
+// Der Lautwandler (espeak-ng) wird einmal geladen und danach wiederverwendet.
+let phonemizerModule = null;
+let phonemizerOut = '';
+function getPhonemizer() {
+  phonemizerModule ??= loadPhonemizerAssets()
+    .then(([wasm, data]) =>
+      createPiperPhonemize({
+        wasmBinary: wasm,
+        getPreloadedPackage: () => data,
+        noExitRuntime: true,
+        print: (line) => (phonemizerOut += line),
+        printErr: () => {},
+        locateFile: (f) => base(`wasm/piper/${f.split('/').pop()}`),
+      }),
+    )
+    .catch((e) => {
+      phonemizerModule = null;
+      throw e;
+    });
+  return phonemizerModule;
+}
+
 let phonemizeChain = Promise.resolve();
 
 /** Liefert { phonemes, phoneme_ids } für einen Text in der angegebenen espeak-Sprache. */
 export function phonemize(text, espeakVoice) {
   const run = phonemizeChain.then(async () => {
-    const [wasm, data] = await loadPhonemizerAssets();
-    return new Promise((resolve, reject) => {
-      let out = '';
-      createPiperPhonemize({
-        wasmBinary: wasm,
-        getPreloadedPackage: () => data.slice(0),
-        print: (line) => (out += line),
-        printErr: () => {},
-        locateFile: (f) => base(`wasm/piper/${f.split('/').pop()}`),
-      })
-        .then((mod) => {
-          mod.callMain(['-l', espeakVoice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']);
-          resolve(JSON.parse(out));
-        })
-        .catch(reject);
-    });
+    const mod = await getPhonemizer();
+    phonemizerOut = '';
+    mod.callMain(['-l', espeakVoice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']);
+    return JSON.parse(phonemizerOut);
   });
   phonemizeChain = run.catch(() => {});
   return run;

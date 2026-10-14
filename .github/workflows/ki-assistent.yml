@@ -57,7 +57,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: KI-Assistent-Windows
-          path: ki-assistent/release/*.exe
+          path: |
+            ki-assistent/release/*.exe
+            ki-assistent/tts-server/*
           if-no-files-found: error
       - name: Release veröffentlichen (nur bei Tag)
         if: startsWith(github.ref, 'refs/tags/ki-assistent-v')

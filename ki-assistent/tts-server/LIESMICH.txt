@@ -1,0 +1,16 @@
+Chatterbox – ausdrucksstarke, lokale Sprachausgabe für den KI-Assistenten
+==========================================================================
+
+Chatterbox (Resemble AI, MIT-Lizenz) läuft komplett auf deinem Rechner und nutzt die
+NVIDIA-Grafikkarte. Es spricht Deutsch und kann eine Stimme aus einer kurzen Aufnahme klonen.
+
+1. Einmalig "Chatterbox-installieren.bat" doppelklicken (10–20 Minuten, mehrere GB).
+   Das Fenster bleibt offen – das ist der laufende Sprach-Server.
+2. Später reicht "Chatterbox-starten.bat".
+3. Im KI-Assistenten: ⚙ → Sprache → Engine „Chatterbox“
+   - „Mehrsprachiges Modell aktivieren“ (einmalig, für Deutsch)
+   - „Eigene Stimme aufnehmen“ oder eine Stimme auswählen
+   - mit „Ausdrucksstärke“ die Lebendigkeit einstellen
+
+Server-Adresse: http://localhost:8004 – Weboberfläche des Servers ebenfalls dort.
+Hinweis: Chatterbox versieht Ausgaben standardmäßig mit einem unhörbaren Wasserzeichen (PerTh).

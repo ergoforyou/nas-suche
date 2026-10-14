@@ -233,3 +233,9 @@ body.floating .stage { display: none; }
 .memory-row input { flex: 1; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; color: var(--text); font-size: 13px; }
 .memory-row button { padding: 3px 8px; flex: none; }
 #mNew { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; color: var(--text); }
+
+/* ---------- Stimme aufnehmen ---------- */
+.rec-box { border: 1px solid var(--danger); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+.rec-box p { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+.rec-box blockquote { margin: 0 0 8px; font-size: 14px; line-height: 1.5; }
+#vSrvUrl { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; color: var(--text); }

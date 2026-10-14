@@ -29,6 +29,13 @@ contextBridge.exposeInMainWorld('desktop', {
   openModelDir: () => ipcRenderer.send('models:open'),
   setOffline: (on) => ipcRenderer.send('net:offline', on),
 
+  // Lokaler Sprach-Server (Chatterbox)
+  ttsServerInfo: (base) => ipcRenderer.invoke('tts:server:info', base),
+  ttsServerSpeak: (base, body) => ipcRenderer.invoke('tts:server:speak', { base, body }),
+  ttsServerUpload: (base, name, bytes) => ipcRenderer.invoke('tts:server:upload', { base, name, bytes }),
+  ttsServerMultilingual: (base) => ipcRenderer.invoke('tts:server:multilingual', base),
+  openTtsScripts: () => ipcRenderer.send('tts:server:scripts'),
+
   // LM Studio
   lmStudioPrompts: () => ipcRenderer.invoke('lmstudio:prompts'),
   listModels: (baseUrl) => ipcRenderer.invoke('llm:models', baseUrl),

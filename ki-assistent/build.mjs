@@ -45,7 +45,7 @@ copyFiles(path.join(nm, '@huggingface/transformers/dist'), path.join(dist, 'wasm
 );
 // ONNX-Runtime 1.18 für Piper
 copyFiles(path.join(nm, 'onnxruntime-web/dist'), path.join(dist, 'wasm/ort18'), (f) =>
-  /^ort-wasm(-simd)?\.wasm$/.test(f),
+  /^ort-wasm(-simd)?(-threaded)?\.wasm$/.test(f),
 );
 // Piper-Phonemizer (espeak-ng-Daten)
 copyFiles(path.join(nm, '@diffusionstudio/piper-wasm/build'), path.join(dist, 'wasm/piper'), (f) =>

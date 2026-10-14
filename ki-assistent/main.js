@@ -71,11 +71,14 @@ const MIME = {
   '.data': 'application/octet-stream',
 };
 
+// Erlaubt SharedArrayBuffer und damit Mehrkern-Berechnung für Sprachausgabe/-erkennung.
+const ISOLATION = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp' };
+
 // Datei mit korrektem Content-Type ausliefern (WebAssembly lädt sonst nicht per Streaming)
 async function serveFile(file) {
   if (!fs.existsSync(file)) return new Response('Nicht gefunden', { status: 404 });
   const res = await net.fetch(pathToFileURL(file).toString());
-  const headers = { 'Content-Length': String(fs.statSync(file).size) };
+  const headers = { 'Content-Length': String(fs.statSync(file).size), ...ISOLATION };
   const type = MIME[path.extname(file).toLowerCase()];
   if (type) headers['Content-Type'] = type;
   return new Response(res.body, { status: 200, headers });
@@ -93,7 +96,7 @@ async function serveModel(rel) {
 
   // Bei komprimierter Übertragung passt die Längenangabe nicht zu den entpackten Daten
   const len = upstream.headers.get('content-encoding') ? null : upstream.headers.get('content-length');
-  const headers = len ? { 'Content-Length': len } : {};
+  const headers = len ? { 'Content-Length': len, ...ISOLATION } : { ...ISOLATION };
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const part = `${target}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.part`;
   const out = fs.createWriteStream(part);
@@ -430,6 +433,61 @@ ipcMain.on('avatar:menu', (_e, { listening }) => {
     { type: 'separator' },
     { label: 'Beenden', click: () => ((quitting = true), app.quit()) },
   ]).popup({ window: avatarWin ?? win });
+});
+
+// ---------------------------------------------------------------- Lokaler Sprach-Server (Chatterbox)
+// Ausdrucksstarke Stimmen auf der Grafikkarte: https://github.com/devnen/Chatterbox-TTS-Server
+const ttsUrl = (base, p) => base.replace(/\/+$/, '') + p;
+
+async function ttsJson(base, p, init = {}) {
+  const res = await fetch(ttsUrl(base, p), { signal: AbortSignal.timeout(init.timeout ?? 5000), ...init });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+  if (!res.ok) throw new Error(json?.detail ?? json?.message ?? `Sprach-Server antwortet mit ${res.status}`);
+  return json;
+}
+
+ipcMain.handle('tts:server:info', async (_e, base) => {
+  const references = await ttsJson(base, '/get_reference_files'); // wirft, wenn der Server nicht läuft
+  const predefined = await ttsJson(base, '/get_predefined_voices').catch(() => []);
+  const model = await ttsJson(base, '/api/model-info').catch(() => null);
+  return { references, predefined, model };
+});
+
+ipcMain.handle('tts:server:speak', async (_e, { base, body }) => {
+  const res = await fetch(ttsUrl(base, '/tts'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(180000),
+  });
+  if (!res.ok) throw new Error(`Sprach-Server: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  return new Uint8Array(await res.arrayBuffer());
+});
+
+ipcMain.handle('tts:server:upload', async (_e, { base, name, bytes }) => {
+  const form = new FormData();
+  form.append('files', new Blob([bytes], { type: /\.mp3$/i.test(name) ? 'audio/mpeg' : 'audio/wav' }), name);
+  return ttsJson(base, '/upload_reference', { method: 'POST', body: form, timeout: 60000 });
+});
+
+// Auf das mehrsprachige Modell (u. a. Deutsch) umstellen und neu laden
+ipcMain.handle('tts:server:multilingual', async (_e, base) => {
+  await ttsJson(base, '/save_settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: { repo_id: 'chatterbox-multilingual' } }),
+  });
+  return ttsJson(base, '/restart_server', { method: 'POST', timeout: 600000 });
+});
+
+// Ordner mit den Einrichtungs-Skripten öffnen
+ipcMain.on('tts:server:scripts', () => {
+  const dir = app.isPackaged ? path.join(process.resourcesPath, 'tts-server') : path.join(__dirname, 'tts-server');
+  shell.openPath(dir);
 });
 
 // ---------------------------------------------------------------- LM-Studio-Presets

@@ -1,7 +1,7 @@
 {
   "name": "ki-assistent",
   "productName": "KI-Assistent",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Lokaler Desktop-Assistent mit Avatar, Spracherkennung und Sprachausgabe für LM Studio",
   "main": "main.js",
   "author": "ergoforyou",
@@ -51,6 +51,12 @@
     },
     "portable": {
       "artifactName": "KI-Assistent-${version}-portable.${ext}"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "tts-server",
+        "to": "tts-server"
+      }
+    ]
   }
 }

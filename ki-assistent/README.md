@@ -72,6 +72,17 @@ nützlich sind („Jens arbeitet bei …“, „mag kurze Antworten“, „merk 
 Persona. Sie werden künftig mitgeschickt. Einträge lassen sich ansehen, bearbeiten, löschen oder selbst
 hinzufügen. Beim Export einer Persona wird das Gedächtnis nicht mitgegeben.
 
+### Ausdrucksstarke Stimme mit Chatterbox (optional, Grafikkarte)
+
+Für deutlich natürlichere, emotionale Stimmen – und eine eigene, geklonte Stimme pro Persona – kann der lokale
+Sprach-Server **Chatterbox** (MIT-Lizenz) genutzt werden. Er läuft auf der NVIDIA-Grafikkarte neben LM Studio.
+
+1. Im Download-Paket bzw. unter ⚙ → Sprache → „Chatterbox installieren / starten …“ liegt
+   `Chatterbox-installieren.bat` – einmal doppelklicken (10–20 Minuten, mehrere GB). Später `Chatterbox-starten.bat`.
+2. ⚙ → Sprache → Engine **Chatterbox** → „Mehrsprachiges Modell aktivieren“ (für Deutsch, einmalig).
+3. „🎙 Eigene Stimme aufnehmen“ (10–15 Sekunden vorlesen) oder eine Stimmprobe hochladen.
+4. Mit **Ausdrucksstärke** die Lebendigkeit einstellen.
+
 ### Sprache
 
 - **Piper** liest mit natürlichen Stimmen; englische Sätze automatisch mit der englischen Stimme.

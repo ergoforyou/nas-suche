@@ -193,10 +193,41 @@
       <label class="check"><input id="vSpeak" type="checkbox" /> Antworten vorlesen</label>
       <label>Engine
         <select id="vEngine">
-          <option value="piper">Piper (lokal, natürliche Stimme)</option>
+          <option value="server">Chatterbox – ausdrucksstark, eigene Stimme (lokaler Server, Grafikkarte)</option>
+          <option value="piper">Piper – schnell, einfach (direkt in der App)</option>
           <option value="system">Systemstimme (Windows/macOS)</option>
         </select>
       </label>
+      <div id="vServerWrap">
+        <label>Server-Adresse
+          <div class="row">
+            <input id="vSrvUrl" type="text" placeholder="http://localhost:8004" style="flex:1" />
+            <button id="vSrvConnect" title="Verbinden">⟳</button>
+          </div>
+        </label>
+        <div id="vSrvInfo" class="hint"></div>
+        <div class="row wrap">
+          <button id="vSrvMulti" hidden>Mehrsprachiges Modell (Deutsch) aktivieren</button>
+          <button id="vSrvSetup">Chatterbox installieren / starten …</button>
+        </div>
+        <label>Stimme <select id="vSrvVoice"></select></label>
+        <div class="row wrap">
+          <button id="vRecord">🎙 Eigene Stimme aufnehmen</button>
+          <button id="vUpload">Stimmprobe hochladen (WAV/MP3) …</button>
+          <input id="vUploadFile" type="file" accept=".wav,.mp3,audio/wav,audio/mpeg" hidden />
+        </div>
+        <div id="vRecBox" class="rec-box" hidden>
+          <p>Lies diesen Text ruhig und natürlich vor (ca. 10–15 Sekunden):</p>
+          <blockquote id="vRecText"></blockquote>
+          <div class="row"><button id="vRecStop" class="danger">■ Aufnahme beenden</button><span id="vRecTime" class="hint"></span></div>
+        </div>
+        <label>Ausdrucksstärke <span class="hint">(höher = emotionaler, lebhafter)</span>
+          <input id="vSrvExag" type="range" min="0.25" max="1.6" step="0.05" /></label>
+        <label>Sprechtempo &amp; Ruhe <span class="hint">(niedriger = ruhiger, bedachter)</span>
+          <input id="vSrvCfg" type="range" min="0.1" max="1" step="0.05" /></label>
+        <label>Variation <span class="hint">(höher = lebendiger, aber weniger stabil)</span>
+          <input id="vSrvTemp" type="range" min="0.4" max="1.2" step="0.05" /></label>
+      </div>
       <div id="vPiperWrap">
         <label>Deutsche Stimme <select id="vPiperDe"></select></label>
         <label>Englische Stimme <select id="vPiperEn"></select></label>

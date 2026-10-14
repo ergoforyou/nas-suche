@@ -36,7 +36,14 @@ function defaultPersona() {
     memoryOn: true,
     memory: [],
     avatar: structuredClone(DEFAULT_AVATAR),
-    voice: { engine: 'piper', de: DEFAULT_VOICES.de, en: DEFAULT_VOICES.en, systemVoice: '', rate: 1 },
+    voice: {
+      engine: 'piper',
+      de: DEFAULT_VOICES.de,
+      en: DEFAULT_VOICES.en,
+      systemVoice: '',
+      rate: 1,
+      server: { voice: '', exaggeration: 0.6, cfg: 0.5, temperature: 0.8 },
+    },
   };
 }
 
@@ -48,6 +55,7 @@ function migratePersona(p) {
   p.memoryOn ??= true;
   p.memory ??= [];
   p.voice = { ...d.voice, ...(p.voice ?? {}) };
+  p.voice.server = { ...d.voice.server, ...(p.voice.server ?? {}) };
   if (p.voice.piperVoice) {
     const lang = p.voice.piperVoice.startsWith('en') ? 'en' : 'de';
     p.voice[lang] = p.voice.piperVoice;
@@ -74,6 +82,7 @@ const DEFAULT_SETTINGS = {
   outputOpen: false,
   offline: false,
   memoryLearn: true,
+  ttsServerUrl: 'http://localhost:8004',
 };
 
 const RULES = {
@@ -194,6 +203,7 @@ function applyVoice() {
     systemVoice: p.voice.systemVoice,
     rate: p.voice.rate,
     maxSentences: state.settings.maxSentences,
+    server: { url: state.settings.ttsServerUrl, ...p.voice.server },
   });
   stt.model = state.settings.sttModel;
   // Whisper bekommt immer eine feste Sprache – ohne Angabe übersetzt es teils ins Englische.
@@ -849,6 +859,10 @@ function fillSettings() {
   fillSelect($('vPiperEn'), PIPER_VOICES.en, p.voice.en);
   fillSystemVoices();
   $('vRate').value = p.voice.rate;
+  $('vSrvUrl').value = s.ttsServerUrl;
+  $('vSrvExag').value = p.voice.server.exaggeration;
+  $('vSrvCfg').value = p.voice.server.cfg;
+  $('vSrvTemp').value = p.voice.server.temperature;
   $('vMax').value = s.maxSentences;
   toggleEngineFields();
 
@@ -875,10 +889,187 @@ function fillSystemVoices() {
 speechSynthesis.onvoiceschanged = () => !$('drawer').hidden && fillSystemVoices();
 
 function toggleEngineFields() {
-  const piper = $('vEngine').value === 'piper';
-  $('vPiperWrap').hidden = !piper;
-  $('vSystemWrap').hidden = piper;
+  const engine = $('vEngine').value;
+  $('vPiperWrap').hidden = engine !== 'piper';
+  $('vSystemWrap').hidden = engine !== 'system';
+  $('vServerWrap').hidden = engine !== 'server';
+  if (engine === 'server') refreshServer();
 }
+
+// ---- Lokaler Sprach-Server (Chatterbox)
+async function refreshServer() {
+  const url = state.settings.ttsServerUrl;
+  const sel = $('vSrvVoice');
+  const current = persona().voice.server.voice;
+  $('vSrvInfo').textContent = 'Verbinde …';
+  try {
+    const info = await desktop.ttsServerInfo(url);
+    sel.innerHTML = '';
+    sel.add(new Option('Standardstimme des Servers', '', false, !current));
+    const addGroup = (label, items, prefix) => {
+      if (!items.length) return;
+      const g = document.createElement('optgroup');
+      g.label = label;
+      for (const f of items) g.appendChild(new Option(f.replace(/\.(wav|mp3)$/i, ''), `${prefix}:${f}`, false, `${prefix}:${f}` === current));
+      sel.appendChild(g);
+    };
+    addGroup('Eigene Stimmen (geklont)', info.references ?? [], 'clone');
+    addGroup(
+      'Mitgelieferte Stimmen',
+      (info.predefined ?? []).map((v) => (typeof v === 'string' ? v : v.filename ?? v.name ?? Object.values(v)[0])),
+      'predefined',
+    );
+    const modelText = info.model ? JSON.stringify(info.model) : '';
+    const multi = /multilingual/i.test(modelText);
+    $('vSrvMulti').hidden = multi || !info.model;
+    $('vSrvInfo').textContent =
+      `✔ Verbunden.` +
+      (info.model ? (multi ? ' Mehrsprachiges Modell aktiv (Deutsch möglich).' : ' Achtung: Es ist ein englisches Modell aktiv – für Deutsch bitte „Mehrsprachiges Modell aktivieren“.') : '');
+  } catch (e) {
+    sel.innerHTML = '';
+    if (current) sel.add(new Option(current.split(':').pop(), current, false, true));
+    $('vSrvMulti').hidden = true;
+    $('vSrvInfo').textContent =
+      '✖ Sprach-Server nicht erreichbar. Läuft Chatterbox? Zum Einrichten: „Chatterbox installieren / starten …“.';
+  }
+}
+
+$('vSrvUrl').onchange = (e) => {
+  state.settings.ttsServerUrl = e.target.value.trim() || DEFAULT_SETTINGS.ttsServerUrl;
+  applyVoice();
+  save();
+  refreshServer();
+};
+$('vSrvConnect').onclick = refreshServer;
+$('vSrvSetup').onclick = () => desktop.openTtsScripts();
+$('vSrvMulti').onclick = async () => {
+  $('vSrvMulti').disabled = true;
+  $('vSrvInfo').textContent = 'Stelle auf das mehrsprachige Modell um … beim ersten Mal wird es geladen (einige GB, kann dauern).';
+  try {
+    await desktop.ttsServerMultilingual(state.settings.ttsServerUrl);
+  } catch (e) {
+    status(`Umstellen fehlgeschlagen: ${e.message}`);
+  } finally {
+    $('vSrvMulti').disabled = false;
+    refreshServer();
+  }
+};
+$('vSrvVoice').onchange = (e) => {
+  persona().voice.server.voice = e.target.value;
+  applyVoice();
+  save();
+};
+for (const [id, key] of [['vSrvExag', 'exaggeration'], ['vSrvCfg', 'cfg'], ['vSrvTemp', 'temperature']]) {
+  $(id).oninput = (e) => {
+    persona().voice.server[key] = +e.target.value;
+    applyVoice();
+    save();
+  };
+}
+
+/** Float32-Mono als 16-Bit-WAV kodieren. */
+function encodeWav(samples, sampleRate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const str = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF');
+  v.setUint32(4, 36 + samples.length * 2, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  str(36, 'data');
+  v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
+  return new Uint8Array(buf);
+}
+
+async function uploadVoice(name, bytes) {
+  const res = await desktop.ttsServerUpload(state.settings.ttsServerUrl, name, bytes);
+  const saved = res?.uploaded_files?.[0] ?? name;
+  persona().voice.server.voice = `clone:${saved}`;
+  applyVoice();
+  save();
+  await refreshServer();
+  status(`Stimme „${saved}“ gespeichert und für ${persona().name} ausgewählt. Mit „▶ Stimme testen“ anhören.`);
+}
+
+const slug = (t) => (t || 'stimme').toLowerCase().replace(/[^a-z0-9äöüß]+/gi, '-').replace(/^-|-$/g, '');
+const REC_TEXT = {
+  de: 'Hallo, schön, dass du da bist. Ich freue mich wirklich, heute mit dir zu sprechen. Lass uns gemeinsam überlegen, wie wir dein Projekt Schritt für Schritt voranbringen können – ganz in Ruhe und mit einem Lächeln.',
+  en: 'Hello, it is great to have you here. I am really looking forward to talking with you today. Let us think together about how we can move your project forward, step by step, calmly and with a smile.',
+};
+
+$('vRecord').onclick = async () => {
+  let stream;
+  let ctx;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true },
+    });
+    ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    proc.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(proc);
+    proc.connect(ctx.destination);
+    $('vRecText').textContent = REC_TEXT[persona().language] ?? REC_TEXT.de;
+    $('vRecBox').hidden = false;
+    $('vRecord').disabled = true;
+    const t0 = Date.now();
+    await new Promise((resolve) => {
+      const timer = setInterval(() => {
+        const sec = (Date.now() - t0) / 1000;
+        $('vRecTime').textContent = `● ${sec.toFixed(0)} s`;
+        if (sec >= 25) finish();
+      }, 200);
+      const finish = () => {
+        clearInterval(timer);
+        resolve();
+      };
+      $('vRecStop').onclick = finish;
+    });
+    proc.disconnect();
+    const len = chunks.reduce((n, c) => n + c.length, 0);
+    if (len < ctx.sampleRate * 4) throw new Error('Die Aufnahme war zu kurz – bitte mindestens 5 Sekunden sprechen.');
+    const all = new Float32Array(len);
+    let off = 0;
+    for (const c of chunks) {
+      all.set(c, off);
+      off += c.length;
+    }
+    // Lautstärke angleichen
+    let peak = 0;
+    for (const x of all) peak = Math.max(peak, Math.abs(x));
+    if (peak > 0) for (let i = 0; i < all.length; i++) all[i] = (all[i] / peak) * 0.9;
+    status('Stimme wird zum Sprach-Server übertragen …');
+    await uploadVoice(`${slug(persona().name)}-${Date.now()}.wav`, encodeWav(all, ctx.sampleRate));
+  } catch (e) {
+    status(`Aufnahme: ${e.message}`);
+  } finally {
+    stream?.getTracks().forEach((t) => t.stop());
+    ctx?.close();
+    $('vRecBox').hidden = true;
+    $('vRecord').disabled = false;
+  }
+};
+$('vUpload').onclick = () => $('vUploadFile').click();
+$('vUploadFile').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    await uploadVoice(f.name.replace(/[^\w.\-äöüß]+/gi, '_'), new Uint8Array(await f.arrayBuffer()));
+  } catch (err) {
+    status(`Hochladen fehlgeschlagen: ${err.message}`);
+  }
+};
 
 // Persona-Felder
 const personaField = (id, key, after) => {
@@ -1677,7 +1868,7 @@ async function selfTest() {
     stt.language = 'german';
     const heard = await stt.transcribe(audio);
     applyVoice();
-    return { ok: /test/i.test(heard), samples: res.audio.length, ttsMs: Math.round(t1 - t0), heard };
+    return { ok: /test/i.test(heard), isolated: self.crossOriginIsolated, samples: res.audio.length, ttsMs: Math.round(t1 - t0), heard };
   } catch (e) {
     return { ok: false, error: String(e?.message ?? e) };
   }
