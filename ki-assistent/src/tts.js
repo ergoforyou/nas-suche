@@ -6,8 +6,8 @@ import { synthesize, preloadVoice } from './piper.js';
 
 export const PIPER_VOICES = {
   de: [
-    ['de_DE-thorsten-high', 'Thorsten – männlich, beste Qualität'],
-    ['de_DE-thorsten-medium', 'Thorsten – männlich, schnell'],
+    ['de_DE-thorsten-medium', 'Thorsten – männlich (empfohlen, schnell & deutlich)'],
+    ['de_DE-thorsten-high', 'Thorsten – männlich, hohe Qualität (langsamer)'],
     ['de_DE-thorsten_emotional-medium', 'Thorsten emotional – männlich'],
     ['de_DE-karlsson-low', 'Karlsson – männlich'],
     ['de_DE-pavoque-low', 'Pavoque – männlich'],
@@ -28,7 +28,7 @@ export const PIPER_VOICES = {
     ['en_GB-cori-high', 'Cori (UK) – female, best quality'],
   ],
 };
-export const DEFAULT_VOICES = { de: 'de_DE-thorsten-high', en: 'en_US-lessac-high' };
+export const DEFAULT_VOICES = { de: 'de_DE-thorsten-medium', en: 'en_US-lessac-high' };
 
 export function cleanForSpeech(text) {
   return text

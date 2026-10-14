@@ -57,7 +57,7 @@ Unter ⚙ → **Avatar**:
 ### Sprache
 
 - **Piper** liest mit natürlichen Stimmen; englische Sätze automatisch mit der englischen Stimme.
-  „Thorsten – beste Qualität“ und „Lessac“ klingen am besten.
+  Empfohlen: „Thorsten“ (Deutsch) und „Lessac“ (Englisch).
 - **Höchstens vorlesen** begrenzt lange Antworten (der Rest steht im Ausgabefenster).
 
 ### Datenschutz
