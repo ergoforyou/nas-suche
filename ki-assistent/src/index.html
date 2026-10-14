@@ -163,6 +163,8 @@
       <label>Mundbreite (nur ohne ausgemalte Lippen) <input id="avMouthW" type="range" min="0.02" max="0.3" step="0.005" /></label>
       <label>Augengröße <input id="avEyeR" type="range" min="0.005" max="0.08" step="0.001" /></label>
       <label>Bewegungsstärke (Kopf und Körper) <input id="avMotion" type="range" min="0" max="2.5" step="0.1" /></label>
+      <label>Kopfbewegung im Leerlauf <span class="hint">(ganz links = Kopf bleibt still, solange die Figur nichts tut)</span>
+        <input id="avIdleHead" type="range" min="0" max="1" step="0.05" /></label>
       <label class="check"><input id="avFlip" type="checkbox" /> Figur spiegeln (links/rechts)</label>
       <p class="hint">Figur im Chatfenster anklicken: Rahmen zum Verschieben und Vergrößern. Doppelklick: sprechen.</p>
       <button id="avResetPos">Position im Chatfenster zurücksetzen</button>
@@ -230,7 +232,13 @@
         <label>Sprechstil (Anweisung an die Stimme)
           <textarea id="vCloudStyle" rows="2" placeholder="z. B. Sprich warm, lebendig und mit einem Lächeln."></textarea>
         </label>
-        <label>Modell <input id="vCloudModel" type="text" placeholder="gpt-4o-mini-tts" /></label>
+        <label>Sprachmodell
+          <div class="row">
+            <select id="vCloudModel" style="flex:1"></select>
+            <button id="vCloudModelRefresh" title="Modelle aus dem OpenAI-Konto laden">⟳</button>
+          </div>
+        </label>
+        <div id="vCloudModelInfo" class="hint"></div>
       </div>
       <div id="vServerWrap">
         <label>Server-Adresse

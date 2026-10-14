@@ -835,17 +835,29 @@ ipcMain.handle('openai:models', async () => {
     .sort();
 });
 
+// Alle Sprachausgabe-Modelle des eigenen OpenAI-Kontos (auch neuere/größere als die bekannten)
+ipcMain.handle('openai:ttsModels', async () => {
+  if (cloudBlocked('openai')) throw new Error(cloudBlocked('openai'));
+  const { client } = openaiClient();
+  const ids = [];
+  for await (const m of client.models.list()) ids.push(m.id);
+  return ids.filter((id) => /tts/i.test(id) && !/transcribe/i.test(id)).sort();
+});
+
 // Cloud-Stimme (OpenAI): ausdrucksstarke Sprachausgabe ohne eigene Grafikkarte
 ipcMain.handle('tts:cloud:speak', async (_e, { text, voice, model, instructions, speed }) => {
   const blocked = cloudBlocked('openai');
   if (blocked) throw new Error(blocked);
   try {
     const { client } = openaiClient();
+    // Die klassischen Modelle (tts-1, tts-1-hd) kennen keinen Sprechstil und nicht alle neuen Stimmen
+    const classic = /^tts-1/.test(model || '');
+    const classicVoices = ['alloy', 'ash', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer'];
     const res = await client.audio.speech.create({
       model: model || 'gpt-4o-mini-tts',
-      voice: voice || 'nova',
+      voice: classic && !classicVoices.includes(voice) ? 'nova' : voice || 'nova',
       input: text,
-      ...(instructions ? { instructions } : {}),
+      ...(instructions && !classic ? { instructions } : {}),
       ...(speed && speed !== 1 ? { speed } : {}),
       response_format: 'wav',
     });

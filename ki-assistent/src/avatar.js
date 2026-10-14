@@ -118,6 +118,7 @@ export class Avatar {
     this.ready = false;
     this.config = config;
     this.motion = config.motion ?? 1;
+    this.idleHead = config.idleHead ?? 0.25; // Kopfbewegung im Leerlauf (0 = still)
     this.flip = !!config.flip;
     // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
     this.layout = { x: 0, y: 0, scale: 1, ...(this.useLayout ? config.stage ?? {} : {}) };
@@ -632,15 +633,17 @@ export class Avatar {
       }
       if (now > B.next) {
         const r = Math.random();
-        if (r < 0.3) B.target = { tilt: 0, look: 0, nod: 0 };
-        else if (r < 0.6) B.target = { tilt: rnd(0.02, 0.05) * side(), look: 0, nod: f * rnd(0, 0.04) };
-        else if (r < 0.85) B.target = { tilt: rnd(-0.015, 0.015), look: f * rnd(0.1, 0.22) * side(), nod: 0 };
-        else B.target = { tilt: 0, look: 0, nod: -f * 0.05 };
-        B.next = now + rnd(1800, 5000);
+        const g = this.idleHead ?? 0.25; // 0 = Kopf bleibt im Leerlauf ruhig in der Mitte
+        if (r < 0.3 || g <= 0) B.target = { tilt: 0, look: 0, nod: 0 };
+        else if (r < 0.6) B.target = { tilt: rnd(0.02, 0.05) * side() * g, look: 0, nod: f * rnd(0, 0.04) * g };
+        else if (r < 0.85) B.target = { tilt: rnd(-0.015, 0.015) * g, look: f * rnd(0.1, 0.22) * side() * g, nod: 0 };
+        else B.target = { tilt: 0, look: 0, nod: -f * 0.05 * g };
+        B.next = now + rnd(2500, 6000);
       }
     }
     // weiche Federn hin zum Ziel
-    const k = Math.min(1, dt * 0.004);
+    // im Leerlauf langsamer und weicher, damit nichts „zuckt“
+    const k = Math.min(1, dt * (B.mode === 'idle' ? 0.0015 : 0.004));
     for (const [x, v] of [['tilt', 'vt'], ['look', 'vl'], ['nod', 'vn']]) {
       B[v] += (B.target[x] - B[x]) * k * 1.6;
       B[v] *= 0.82;

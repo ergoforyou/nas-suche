@@ -1165,6 +1165,7 @@ function fillSettings() {
   $('avMouthW').value = target().mouth?.w ?? 0.1;
   $('avEyeR').value = target().eyes?.[0]?.r ?? 0.03;
   $('avMotion').value = p.avatar.motion ?? 1;
+  $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
   $('avOpen').value = target().mouthOpen ?? 1;
   $('avFlip').checked = !!p.avatar.flip;
   $('avRestore').disabled = !target().original;
@@ -1206,7 +1207,7 @@ function fillSettings() {
   if (!LOCAL_ONLY) {
     $('vCloudVoice').value = p.voice.cloud?.voice ?? 'nova';
     $('vCloudStyle').value = p.voice.cloud?.instructions ?? '';
-    $('vCloudModel').value = s.cloudTtsModel;
+    fillCloudTtsModels();
   }
   drawMarkers();
 }
@@ -1286,8 +1287,35 @@ $('vCloudStyle').oninput = (e) => {
   applyVoice();
   save();
 };
+// Bekannte OpenAI-Sprachmodelle; weitere (neuere, größere) kommen aus dem eigenen Konto dazu
+const CLOUD_TTS_MODELS = {
+  'gpt-4o-mini-tts': 'gpt-4o-mini-tts – schnell & günstig, Sprechstil steuerbar (Standard)',
+  'tts-1-hd': 'tts-1-hd – klassisch, beste Klangqualität, ohne Sprechstil',
+  'tts-1': 'tts-1 – klassisch, sehr schnell, ohne Sprechstil',
+};
+function fillCloudTtsModels(extra = []) {
+  const sel = $('vCloudModel');
+  const ids = [...new Set([...Object.keys(CLOUD_TTS_MODELS), ...extra, state.settings.cloudTtsModel].filter(Boolean))];
+  sel.innerHTML = '';
+  for (const id of ids) sel.add(new Option(CLOUD_TTS_MODELS[id] ?? `${id} – aus deinem OpenAI-Konto`, id));
+  sel.value = state.settings.cloudTtsModel;
+  $('vCloudModelInfo').textContent = /^tts-1/.test(sel.value)
+    ? 'Hinweis: Dieses Modell beachtet den Sprechstil nicht; neue Stimmen wie Ballad/Verse fallen auf Nova zurück.'
+    : '';
+}
+async function refreshCloudTtsModels() {
+  try {
+    const ids = await desktop.openaiTtsModels();
+    fillCloudTtsModels(ids);
+    status(`${ids.length} Sprachmodelle im OpenAI-Konto gefunden.`);
+  } catch (e) {
+    status(`Modelle konnten nicht geladen werden: ${e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
+  }
+}
+$('vCloudModelRefresh').onclick = refreshCloudTtsModels;
 $('vCloudModel').onchange = (e) => {
-  state.settings.cloudTtsModel = e.target.value.trim() || DEFAULT_SETTINGS.cloudTtsModel;
+  state.settings.cloudTtsModel = e.target.value || DEFAULT_SETTINGS.cloudTtsModel;
+  fillCloudTtsModels([...$('vCloudModel').options].map((o) => o.value));
   applyVoice();
   save();
 };
@@ -1775,6 +1803,12 @@ $('avFlip').onchange = (e) => {
 $('avResetPos').onclick = () => {
   persona().avatar.stage = null;
   avatar.layout = { x: 0, y: 0, scale: 1 };
+  save();
+};
+$('avIdleHead').oninput = (e) => {
+  persona().avatar.idleHead = +e.target.value;
+  avatar.idleHead = +e.target.value;
+  if (floating.avatar) floating.avatar.idleHead = +e.target.value;
   save();
 };
 $('avMotion').oninput = (e) => {

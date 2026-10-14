@@ -29,7 +29,7 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
   **Freihand-Modus** (⚙ → Sprache) hört der Assistent ständig zu, sobald er fertig gesprochen hat.
 - **■ / Esc** – Antwort und Sprachausgabe abbrechen.
 - **🧍** – Figur frei auf dem Desktop. Figur anklicken = Rahmen: ziehen verschiebt, Ecken (oder Mausrad)
-  ändern die Größe – auch auf einen anderen Bildschirm ziehen. Doppelklick = sprechen, Rechtsklick = Menü (Chat öffnen,
+  ändern die Größe; am blauen Griff **„✥ ziehen“** verschieben – auch auf einen anderen Bildschirm. Doppelklick = sprechen, Rechtsklick = Menü (Chat öffnen,
   „Auf Bildschirm verschieben“ …). Das Chatfenster kann dann
   geschlossen werden. Auch im Chatfenster lässt sich die Figur so verschieben und skalieren.
 - **📄** – Ausgabefenster: Antworten groß und formatiert wie in LM Studio (Überschriften, Listen,

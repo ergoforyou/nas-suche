@@ -14,6 +14,12 @@ const STYLE = `
 .rb .ne { right: -2px; top: -2px; cursor: nesw-resize; }
 .rb .sw { left: -2px; bottom: -2px; cursor: nesw-resize; }
 .rb .se { right: -2px; bottom: -2px; cursor: nwse-resize; }
+/* Verschiebe-Griff der freien Figur: zieht das Fenster mit der Fensterverwaltung von Windows selbst
+   (zuverlässig, auch über mehrere Bildschirme mit unterschiedlicher Skalierung) */
+.rb .move { position: absolute; left: 50%; top: 68%; transform: translate(-50%, -50%); pointer-events: auto;
+            -webkit-app-region: drag; cursor: move; background: rgba(91,156,245,.92); color: #fff;
+            border: 2px solid #fff; border-radius: 999px; padding: 6px 12px; font: 600 13px "Segoe UI", sans-serif;
+            white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.4); user-select: none; }
 `;
 
 export class RubberBand {
@@ -44,6 +50,13 @@ export class RubberBand {
       h.className = c;
       h.addEventListener('pointerdown', (e) => this.resizeStart(e, c));
       this.el.appendChild(h);
+    }
+    if (opts.kind === 'window') {
+      const grip = this.doc.createElement('b');
+      grip.className = 'move';
+      grip.textContent = '✥ ziehen';
+      grip.title = 'Hier festhalten und die Figur verschieben – auch auf einen anderen Bildschirm';
+      this.el.appendChild(grip);
     }
     container.appendChild(this.el);
 

@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('desktop', {
   keyStatus: () => ipcRenderer.invoke('keys:status'),
   setKey: (provider, key) => ipcRenderer.invoke('keys:set', { provider, key }),
   openaiModels: () => ipcRenderer.invoke('openai:models'),
+  openaiTtsModels: () => ipcRenderer.invoke('openai:ttsModels'),
   ttsCloudSpeak: (opts) => ipcRenderer.invoke('tts:cloud:speak', opts),
 
   // LM Studio
