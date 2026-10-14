@@ -1,62 +1,65 @@
 # EML zu PDF
 
-Wandelt E-Mails (`.eml`) automatisch in PDF um – die E-Mail selbst **und** jede Anlage.
-Die PDFs landen im selben Ordner wie die `.eml` (also normalerweise im Downloads-Ordner).
+Ein kleines Windows-Programm (eine einzige Datei, **kein Python, keine Zusatzsoftware**):
+`.eml`-Dateien markieren → Rechtsklick → **„In PDF umwandeln“**.
 
-## Was rauskommt
-
-Aus `Rechnung.eml` (Betreff „Rechnung 4711“, vom 13.10.2026) mit zwei Anlagen wird:
+Es entsteht ein PDF der E-Mail und je ein PDF pro Anlage – im selben Ordner wie die `.eml`:
 
 ```
-2026-10-13 Rechnung 4711.pdf                       <- die E-Mail (Absender, Empfänger, Datum, Text, Bilder)
-2026-10-13 Rechnung 4711 - Anlage Rechnung.pdf     <- PDF-Anlage
-2026-10-13 Rechnung 4711 - Anlage Brief.pdf        <- Word-Anlage, umgewandelt
+2026-10-13 Rechnung 4711.pdf                        <- die E-Mail (Absender, Empfänger, Datum, Text, Bilder)
+2026-10-13 Rechnung 4711 - Anlage Rechnung.pdf      <- PDF-Anlage
+2026-10-13 Rechnung 4711 - Anlage Angebot.pdf       <- Word-Anlage, umgewandelt
 ```
 
-| Anlage | wird zu |
+## Installation (auf jedem Rechner, ca. 10 Sekunden)
+
+1. [`dist/EML-zu-PDF.exe`](dist/EML-zu-PDF.exe) herunterladen bzw. vom Netzlaufwerk kopieren.
+2. **Doppelklick** → „Ja“. Keine Admin-Rechte nötig.
+3. Frage „Downloads-Ordner automatisch überwachen?“ beantworten:
+   - **Ja:** Jede neu heruntergeladene `.eml` wird ohne Klick sofort umgewandelt.
+   - **Nein:** Nur per Rechtsklick.
+
+Falls Windows „Der Computer wurde durch Windows geschützt“ meldet: **Weitere Informationen → Trotzdem ausführen**
+(das kommt bei Programmen ohne gekaufte Code-Signatur einmalig).
+
+**Deinstallieren:** Einstellungen → Apps → „EML zu PDF“ → Deinstallieren.
+**Update:** Neue `EML-zu-PDF.exe` einfach erneut doppelklicken.
+
+## Bedienung
+
+- Eine oder viele `.eml` markieren → Rechtsklick → **„In PDF umwandeln“**.
+  Unter Windows 11 zuerst **„Weitere Optionen anzeigen“** (oder gleich Umschalt + Rechtsklick).
+- Am Ende kommt **eine** Meldung mit dem Ergebnis – auch bei 50 markierten Mails.
+
+## Was mit Anlagen passiert
+
+| Anlage | Ergebnis |
 |---|---|
-| PDF | PDF (unverändert übernommen) |
+| PDF | 1:1 übernommen (auch wenn die Datei keine Endung hat) |
+| Word (doc, docx, rtf, odt) | PDF über Microsoft Word |
+| Excel (xls, xlsx, ods) | PDF über Microsoft Excel |
+| PowerPoint (ppt, pptx) | PDF über Microsoft PowerPoint |
 | Bilder (JPG, PNG, GIF, TIFF, BMP, WEBP) | PDF |
-| Word, Excel, PowerPoint, RTF, OpenOffice | PDF (über Microsoft Office, sonst LibreOffice) |
-| TXT, HTML, CSV, XML | PDF |
-| weitergeleitete E-Mail (`.eml`) | eigene PDFs, inkl. deren Anlagen |
-| alles andere (ZIP usw.) | wird im Original danebengelegt |
+| TXT, CSV, HTML, XML | PDF |
+| weitergeleitete E-Mail | eigene PDFs, inkl. deren Anlagen |
+| Outlook-`winmail.dat` | wird ausgepackt, die enthaltenen Anlagen werden umgewandelt |
+| alles andere (ZIP, passwortgeschützte Dokumente …) | Original wird danebengelegt und in der Abschlussmeldung genannt |
 
-## Installation (Windows, einmalig)
+Robustheit:
+- Office-Dateien werden mit **abgeschalteten Makros** und ohne Rückfragen geöffnet; passwortgeschützte
+  Dokumente blockieren nichts, sondern werden als Original abgelegt und gemeldet.
+- Ist kein Microsoft Office installiert, wird automatisch **LibreOffice** benutzt (falls vorhanden).
+- Es geht nie etwas verloren: Was nicht umwandelbar ist, liegt im Original daneben.
+- Für das E-Mail-PDF wird **Microsoft Edge** verwendet (ist bei Windows dabei).
 
-1. **Python installieren** von <https://www.python.org/downloads/> – beim Setup unbedingt
-   **„Add python.exe to PATH“** anhaken.
-2. Diesen Ordner `eml2pdf` irgendwohin kopieren.
-3. **Doppelklick auf `Installieren.bat`**. Admin-Rechte sind nicht nötig.
+Protokoll bei Problemen: `%LOCALAPPDATA%\EML zu PDF\protokoll.txt` (in die Explorer-Adresszeile einfügen).
 
-Danach gibt es drei Wege:
+## Für Entwickler
 
-- **Automatik:** Jede neue `.eml` im Downloads-Ordner wird nach wenigen Sekunden umgewandelt.
-  Das läuft unsichtbar im Hintergrund und startet bei jeder Windows-Anmeldung automatisch.
-  (`.eml`-Dateien, die vor der Installation schon dalagen, werden nicht angefasst.)
-- **Rechtsklick** auf eine `.eml` → **„In PDF umwandeln“**
-  (unter Windows 11 zuerst „Weitere Optionen anzeigen“ bzw. Umschalt + Rechtsklick).
-- **Mehrere Dateien:** markieren → Rechtsklick → **Senden an** → **„EML in PDF umwandeln“**.
-
-Für das E-Mail-PDF wird Microsoft Edge benutzt (ist bei Windows dabei), für Office-Anlagen
-Microsoft Office oder – falls nicht vorhanden – das kostenlose LibreOffice.
-
-## Deinstallieren
-
-Doppelklick auf `Deinstallieren.bat`. Die schon erzeugten PDFs bleiben erhalten.
-
-## Wenn etwas nicht klappt
-
-Protokoll: `%LOCALAPPDATA%\eml2pdf\eml2pdf.log` (in die Explorer-Adresszeile einfügen).
-
-## Für Fortgeschrittene (Kommandozeile)
+Go-Programm. Bauen (geht auch unter Linux/macOS): `./build.sh` → `dist/EML-zu-PDF.exe`.
 
 ```
-python eml2pdf.py DATEI.eml [...]           Dateien umwandeln
-python eml2pdf.py --ueberwachen [ORDNER]    Ordner überwachen (Standard: Downloads)
-       --ziel ORDNER                        PDFs in einen anderen Ordner schreiben
-       --alle                               beim Überwachen auch vorhandene .eml umwandeln
+EML-zu-PDF.exe DATEI.eml [...] [--ziel ORDNER] [--still]
+EML-zu-PDF.exe --ueberwachen [ORDNER] [--alle]
+EML-zu-PDF.exe --installieren | --deinstallieren
 ```
-
-Eigenen Zielordner für die Automatik: in der Verknüpfung
-`shell:startup\EML zu PDF Automatik.lnk` hinter `--ueberwachen` z. B. `--ziel "D:\Belege"` ergänzen.
