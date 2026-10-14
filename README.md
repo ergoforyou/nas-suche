@@ -124,3 +124,19 @@ python -m unittest discover -s tests
 
 Mitgelieferte Bibliotheken für die Vorschau (`bild2vrm/static/vendor`): three.js (MIT) und
 @pixiv/three-vrm (MIT), siehe die dortigen Lizenzdateien.
+
+## JavaScript-Version (für Browser / Electron)
+
+`bild2vrm/js/` enthält dieselbe Pipeline als ES-Module ohne Abhängigkeiten – gedacht für den
+Einbau in Desktop-Apps (z. B. den KI-Assistenten). Die Ergebnisse stimmen mit der Python-Version
+überein (gleiche Gelenkpunkte, Gesichtskästen und Meshes).
+
+```js
+import { loadImage, analyze, generate, splitSheet } from './bild2vrm/js/index.js';
+const front = await loadImage(file);                 // File, Blob, ArrayBuffer oder Data-URL
+const { keypoints } = analyze(front);                // optional anzeigen/korrigieren
+const { vrm, stats } = await generate(front, { name: 'Lisa', vrmVersion: '1' }, keypoints,
+                                      { back, sides: [{ image: side }] });   // vrm: Uint8Array
+```
+
+Smoke-Test: `node tests/js_smoke.mjs figur.png` (braucht Playwright/Chromium).
