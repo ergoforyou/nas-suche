@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "ERGOFORYOU NAS-Suche",
+  "short_name": "NAS-Suche",
+  "version": "1.0.0",
+  "description": "Wenn es schnell gehen muss: blitzschnelle Suche auf dem NAS – Dateien direkt in WhatsApp, Gmail, Drive oder Claude ziehen.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAweqTSc/R4kXgRgch1v/lLcAQMFjj3rFduPqayycUdTPBuNxFBNBdzAUD5Q3/b8CDpMB1sxlIVUm+MO73OO/lYP/tlqRh5tVmFAbILaF7bFP2Pcg7XMFp1ON4xzxJ6MUlbKBIRquycG8cwidrBOKyP5devv6HzPfNW5Aaw3s3J3B/B70P3SY5aM73DxtLYUSRnGnGJJGuajmRXvkIqQcJIRGgsCMBYxjrBibyi0mqplU0G6zW7iM9fNxbPyG3y3EyE+bF79empYpqhqWQ6WhAh+6jqBzCAFx3eLJNCceTypGklFY0BFoWrAV/iE3xKlNL9rnk3Tsmu2eSTpXr5/3InwIDAQAB",
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "action": {
+    "default_title": "ERGOFORYOU NAS-Suche öffnen (Alt+Umschalt+F)",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png" }
+  },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["nativeMessaging", "sidePanel", "contextMenus", "storage"],
+  "host_permissions": ["http://127.0.0.1/*", "<all_urls>"],
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["bridge.js"], "run_at": "document_start", "all_frames": true }
+  ],
+  "side_panel": { "default_path": "app.html?panel=1" },
+  "commands": {
+    "open-app": { "suggested_key": { "default": "Alt+Shift+F" }, "description": "NAS-Suche als Tab öffnen" },
+    "open-panel": { "suggested_key": { "default": "Alt+Shift+S" }, "description": "NAS-Suche in der Seitenleiste öffnen" }
+  }
+}

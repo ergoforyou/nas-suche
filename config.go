@@ -37,6 +37,8 @@ type Config struct {
 	StartFolder    string     `json:"startordner_links"`
 	StartFolder2   string     `json:"startordner_rechts"`
 	HideNav        bool       `json:"navigation_ausgeblendet"`
+	// Ansicht der Chrome-Oberfläche (Haken, Sortierung, Spalten …), von der Erweiterung verwaltet
+	WebState json.RawMessage `json:"chrome_ansicht,omitempty"`
 }
 
 // Favorite: fester Ordner im Menü „★ Ordner“ (z. B. Digitale Eingänge).

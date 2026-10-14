@@ -68,6 +68,16 @@ type dragState struct {
 }
 
 func main() {
+	if isNativeHostCall(os.Args[1:]) {
+		runNativeHost() // von Chrome gestartet
+		return
+	}
+	if isBackgroundCall(os.Args[1:]) {
+		writeExtension()
+		registerNativeHost()
+		runBackground()
+		return
+	}
 	a := &MacApp{cfg: LoadConfig()}
 	a.run()
 }

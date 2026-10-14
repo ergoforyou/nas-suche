@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NAS-Suche – ERGOFORYOU</title>
+<link rel="icon" href="icons/32.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header id="banner">
+  <div class="accent"></div>
+  <div class="brand">ERGOFORYOU</div>
+  <div class="product"><div>NAS-Suche</div><div class="slogan">Wenn es schnell gehen muss.</div></div>
+  <div class="hint" id="hint">Alt+Umschalt+F öffnet die Suche in Chrome</div>
+</header>
+<div id="toolbar">
+  <span class="grow"></span>
+  <button id="navBt">Navigation ausblenden</button>
+  <button id="secondBt">Zweite Ansicht einblenden</button>
+  <button id="refreshBt" title="Index neu einlesen (F5)">Aktualisieren (F5)</button>
+  <button id="settingsBt" title="Einstellungen des Programms (Suchordner, Netzlaufwerke …)">Einstellungen …</button>
+</div>
+<main id="main">
+  <nav id="nav" tabindex="-1"></nav>
+  <div class="split" id="split0"></div>
+  <section class="pane" id="pane0"></section>
+  <section class="pane" id="pane1" hidden></section>
+</main>
+<div id="tip">Tipp: Treffer in andere Tabs ziehen (WhatsApp, Gmail, Drive, Claude) oder auf den Desktop. Doppelklick auf einen Ordner zeigt seinen Inhalt. Zwischen den Ansichten ziehen = verschieben (Strg = kopieren).</div>
+<footer id="status">Verbinde …</footer>
+
+<div id="connect" class="modal-bg">
+  <div class="modal">
+    <h2>Verbinde mit NAS-Suche …</h2>
+    <p id="connectText">Das Programm wird im Hintergrund gestartet.</p>
+    <div class="buttons"><button id="retryBt" hidden>Erneut versuchen</button></div>
+  </div>
+</div>
+
+<script src="conn.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

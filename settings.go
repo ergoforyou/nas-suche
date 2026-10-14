@@ -245,6 +245,13 @@ func (a *App) showSettings() {
 								note("Das Fenster-Schließen (X) beendet das Programm nicht – es läuft unten rechts neben der Uhr weiter.\n" +
 									"Beenden: Rechtsklick auf das Symbol → „Beenden“."),
 								VSpacer{Size: 12},
+								Label{Text: "Chrome:"},
+								Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
+									PushButton{Text: "NAS-Suche in Chrome einrichten …", OnClicked: func() { a.setupChrome(dlg) }},
+									HSpacer{},
+								}},
+								note("Die komplette Suche als Tab in Chrome – Dateien direkt in WhatsApp, Gmail, Drive oder Claude ziehen."),
+								VSpacer{Size: 12},
 								Label{Text: "Für Kollegen:"},
 								Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
 									PushButton{Text: "Als Vorgabe für alle Kollegen speichern …", OnClicked: func() {

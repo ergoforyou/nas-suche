@@ -50,6 +50,10 @@ type App struct {
 }
 
 func main() {
+	if isNativeHostCall(os.Args[1:]) {
+		runNativeHost() // von Chrome gestartet
+		return
+	}
 	app := &App{cfg: LoadConfig()}
 	app.panes = [2]*Pane{newPane(app, 0), newPane(app, 1)}
 	app.nav = newNavigator(app)
@@ -176,6 +180,7 @@ func (a *App) run() {
 	a.applyHotkey()
 
 	a.setStatus("Lade Index …")
+	a.startWeb()
 	go a.startup()
 	a.panes[0].search.SetFocus()
 	a.mw.Run()
@@ -231,6 +236,7 @@ func (a *App) setupTray() {
 	add("Suche öffnen", a.showWindow)
 	add("Index aktualisieren", a.toggleIndex)
 	add("Einstellungen …", func() { a.showWindow(); a.showSettings() })
+	add("In Chrome einrichten …", func() { a.setupChrome(a.mw) })
 	ni.ContextMenu().Actions().Add(walk.NewSeparatorAction())
 	add("Beenden", a.quit)
 	if err := ni.SetVisible(true); err != nil {

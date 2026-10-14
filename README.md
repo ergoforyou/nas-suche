@@ -27,10 +27,42 @@ Alle Einstellungen bleiben dauerhaft gespeichert (auch bei neuen Programmversion
 * Liegt die EXE auf einem USB-Stick oder neben ihr eine Datei `portable.txt`, arbeitet das Programm
   **portabel**: Einstellungen und Index im Ordner `NasSuche-Daten` neben der EXE, keine Registry-Einträge,
   kein Autostart. Der Fenstertitel zeigt „(portabel)“.
-* Keine Firewall-Abfrage: das Programm öffnet keine Netzwerk-Ports.
+* Keine Firewall-Abfrage: Die Verbindung für die Chrome-Oberfläche gibt es nur innerhalb des eigenen PCs
+  (127.0.0.1), von außen ist nichts erreichbar.
 * Die Download-Markierung der EXE wird beim ersten Start entfernt – die Windows-Sicherheitsabfrage
   erscheint danach nicht mehr bei jedem Start.
 * Neue Versionen lösen ältere sanft ab (Beenden-Signal statt hartem Abbruch).
+
+## NAS-Suche in Chrome (komplette Oberfläche als Tab)
+
+Die ganze Suche – Haken, zwei Ansichten, Navigationsleiste, Ordneransicht, Verschieben mit aufspringenden
+Ordnern, feste Ordner, Rechtsklick-Menü – gibt es auch als Tab in Chrome. Dazu kommt, was das Programm nicht kann:
+**Dateien direkt in WhatsApp Web, Gmail, Google Drive oder Claude ziehen.**
+
+**Einrichten (einmalig, ca. 1 Minute):** Im Programm *Einstellungen → Allgemein → „NAS-Suche in Chrome einrichten …“*
+(oder Rechtsklick auf das Symbol neben der Uhr). Dann in Chrome auf der Seite „Erweiterungen“:
+1. oben rechts **Entwicklermodus** einschalten,
+2. **„Entpackte Erweiterung laden“** und den angezeigten Ordner wählen (Pfad liegt in der Zwischenablage),
+3. das ERGOFORYOU-Symbol über das Puzzle-Symbol anheften.
+
+**Benutzung**
+* Klick auf das Symbol oder **Alt+Umschalt+F** öffnet die NAS-Suche als Tab; **Alt+Umschalt+S** (oder Rechtsklick
+  auf das Symbol) als schmale **Seitenleiste** neben jeder Webseite.
+* Das Programm muss nicht geöffnet sein – Chrome startet es bei Bedarf unsichtbar im Hintergrund
+  (Ausnahme: portable Version vom USB-Stick, dort NasSuche.exe vorher starten).
+* **In Webseiten ziehen:** Treffer nehmen und in WhatsApp Web, eine Gmail-Mail, Google Drive oder den Claude-Chat
+  ziehen – die Seite bekommt die echte Datei (blauer Rahmen = hier wird eingefügt). Am bequemsten mit der
+  geteilten Ansicht in Chrome (zwei Tabs nebeneinander) oder zwei Chrome-Fenstern nebeneinander; über den
+  Tab-Reiter einer anderen Seite verweilen wechselt ebenfalls dorthin. Ordner werden nicht an Webseiten übergeben.
+* **Auf den Desktop / in den Explorer ziehen** kopiert eine Datei dorthin.
+* **Strg+C** kopiert die Dateien selbst – Strg+V im Explorer oder in Webseiten, die Einfügen von Dateien erlauben.
+* **Aus dem Explorer in die Ordneransicht ziehen** speichert die Dateien dort (Kopie).
+* Verschieben zwischen den Ansichten, Navigationsleiste und aufspringende Ordner funktionieren wie im Programm
+  (Strg = kopieren). Doppelklick öffnet Dateien mit dem passenden Windows-Programm.
+* „Einstellungen …“ öffnet die Einstellungen des Programms; Suchordner, feste Ordner, Schnellzugriff und
+  „Kopieren nach“-Ziele sind dieselben wie im Programm.
+* Sicherheit: Nur die eigene Erweiterung darf mit dem Programm sprechen; Webseiten erhalten nur die Dateien,
+  die man selbst hineinzieht.
 
 ## Mac-Version (MacBook Air & Co.)
 * `NasSuche-Mac.zip` doppelklicken → **„ERGOFORYOU NAS-Suche“** in den Ordner *Programme* ziehen.
