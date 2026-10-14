@@ -155,6 +155,12 @@ func installApp() {
 		}
 	}
 
+	dir, ok := askOutputFolder()
+	if !ok {
+		dir = "(neben der jeweiligen .eml-Datei)"
+	}
+	createShortcut(startMenuShortcut(), exe, "--zielordner", "Zielordner für die PDFs ändern")
+
 	auto := askYesNo(appName, "Soll zusätzlich der Downloads-Ordner automatisch überwacht werden?\n\n"+
 		"Dann wird jede neu heruntergeladene .eml ohne Klick sofort umgewandelt.\n"+
 		"(Läuft unsichtbar im Hintergrund ab der Windows-Anmeldung.)")
@@ -171,14 +177,14 @@ func installApp() {
 
 	text := "Fertig installiert!\n\n" +
 		"• .eml-Dateien markieren → Rechtsklick → „In PDF umwandeln“\n" +
-		"   (Windows 11: zuerst „Weitere Optionen anzeigen“ oder Umschalt + Rechtsklick)\n"
+		"   (Windows 11: zuerst „Weitere Optionen anzeigen“ oder Umschalt + Rechtsklick)\n" +
+		"• Ergebnis: eine PDF-Datei pro E-Mail, die Anlagen hinten angehängt\n" +
+		"• Gespeichert in: " + dir + "\n" +
+		"   (ändern: Startmenü → „" + appName + " – Zielordner ändern“)\n"
 	if auto {
 		text += "• Neue .eml im Downloads-Ordner werden automatisch umgewandelt\n"
 	}
 	text += "\nDeinstallieren: Einstellungen → Apps → „" + appName + "“."
-	if findBrowser() == "" {
-		text += "\n\nACHTUNG: Microsoft Edge wurde nicht gefunden – er wird für die PDFs benötigt."
-	}
 	showInfo(appName, text)
 }
 
@@ -194,6 +200,7 @@ func uninstallApp() {
 		k.DeleteValue(appName)
 		k.Close()
 	}
+	os.Remove(startMenuShortcut())
 	notifyShell()
 	showInfo(appName, appName+" wurde entfernt.")
 
@@ -206,4 +213,43 @@ func uninstallApp() {
 		CmdLine:       `cmd.exe /c ` + script,
 	}
 	cmd.Start()
+}
+
+// ---------------------------------------------------------------- Ordnerauswahl, Verknüpfung
+
+func powershell(script string, env ...string) (string, error) {
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-ExecutionPolicy", "Bypass", "-Command",
+		"[Console]::OutputEncoding=[Text.Encoding]::UTF8;"+script)
+	cmd.Env = append(os.Environ(), env...)
+	hideWindow(cmd)
+	out, err := cmd.Output()
+	return strings.TrimSpace(string(out)), err
+}
+
+// chooseFolder zeigt den Windows-Dialog "Ordner suchen" (mit "Neuen Ordner erstellen").
+func chooseFolder(prompt, start string) (string, bool) {
+	out, err := powershell(`Add-Type -AssemblyName System.Windows.Forms;`+
+		`$f=New-Object System.Windows.Forms.Form -Property @{TopMost=$true};`+
+		`$d=New-Object System.Windows.Forms.FolderBrowserDialog;`+
+		`$d.Description=$env:EML_PROMPT;$d.SelectedPath=$env:EML_START;$d.ShowNewFolderButton=$true;`+
+		`if($d.ShowDialog($f) -eq 'OK'){[Console]::Out.Write($d.SelectedPath)}`,
+		"EML_PROMPT="+prompt, "EML_START="+start)
+	if err != nil {
+		logf("Ordnerauswahl fehlgeschlagen: %v", err)
+		return "", false
+	}
+	return out, out != ""
+}
+
+func startMenuShortcut() string {
+	return filepath.Join(os.Getenv("APPDATA"), `Microsoft\Windows\Start Menu\Programs`, appName+" – Zielordner ändern.lnk")
+}
+
+func createShortcut(lnk, target, args, description string) {
+	_, err := powershell(`$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:EML_LNK);`+
+		`$s.TargetPath=$env:EML_TARGET;$s.Arguments=$env:EML_ARGS;$s.Description=$env:EML_DESC;$s.Save()`,
+		"EML_LNK="+lnk, "EML_TARGET="+target, "EML_ARGS="+args, "EML_DESC="+description)
+	if err != nil {
+		logf("Verknüpfung nicht angelegt: %v", err)
+	}
 }

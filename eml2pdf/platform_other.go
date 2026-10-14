@@ -50,6 +50,8 @@ func downloadsFolder() string {
 	return filepath.Join(home, "Downloads")
 }
 
-func isInstalledCopy() bool { return true }
-func installApp()           { fmt.Println("Installation gibt es nur unter Windows.") }
-func uninstallApp()         { installApp() }
+func isInstalledCopy() bool                            { return true }
+func askYesNo(title, text string) bool                 { showInfo(title, text); return false }
+func chooseFolder(prompt, start string) (string, bool) { return start, false }
+func installApp()                                      { fmt.Println("Installation gibt es nur unter Windows.") }
+func uninstallApp()                                    { installApp() }

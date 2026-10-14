@@ -481,98 +481,151 @@ func sniffExt(name string, p Part) string {
 	return ext
 }
 
-// ConvertEML wandelt eine .eml-Datei samt Anlagen um.
-// Liefert die erzeugten Dateien und Hinweise zu Anlagen, die nicht umgewandelt werden konnten.
+// ConvertEML wandelt eine .eml-Datei in EIN PDF um: zuerst die E-Mail, dahinter alle Anlagen.
+// Anlagen, die sich nicht als PDF darstellen lassen, werden im Original daneben abgelegt.
+// Liefert die erzeugten Dateien (das PDF zuerst) und Hinweise für die Abschlussmeldung.
 // outDir leer = neben die .eml-Datei.
-func ConvertEML(emlPath, outDir, prefix string) (created, warnings []string, err error) {
-	raw, err := os.ReadFile(emlPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	m, err := ParseMail(raw)
-	if err != nil {
-		return nil, nil, err
-	}
+func ConvertEML(emlPath, outDir string) (created, warnings []string, err error) {
 	if outDir == "" {
 		outDir = filepath.Dir(emlPath)
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("Zielordner nicht verfügbar: %w", err)
 	}
-
-	names := make([]string, len(m.Attachments))
-	for i, p := range m.Attachments {
-		names[i] = AttachmentName(p, i+1)
-	}
-	base := prefix
-	if base == "" {
-		subject := m.Subject
-		if subject == "" {
-			subject = strings.TrimSuffix(filepath.Base(emlPath), filepath.Ext(emlPath))
-		}
-		if !m.Date.IsZero() {
-			subject = m.Date.Format("2006-01-02") + " " + subject
-		}
-		base = safeName(subject, 120)
-	}
-
 	tmp, err := os.MkdirTemp("", "eml2pdf")
 	if err != nil {
 		return nil, nil, err
 	}
 	defer os.RemoveAll(tmp)
 
-	mailPDF := uniquePath(filepath.Join(outDir, base+".pdf"))
-	if err := mailToPDF(m, names, mailPDF, tmp); err != nil {
-		return nil, nil, err
+	fallback := strings.TrimSuffix(filepath.Base(emlPath), filepath.Ext(emlPath))
+	merged, base, extras, warnings, err := convertMail(emlPath, fallback, "", outDir, tmp)
+	if err != nil {
+		return extras, warnings, err
 	}
-	created = append(created, mailPDF)
-	logf("E-Mail -> %s", mailPDF)
+	final := uniquePath(filepath.Join(outDir, base+".pdf"))
+	if err := copyFile(merged, final); err != nil {
+		return extras, warnings, err
+	}
+	logf("Fertig -> %s", final)
+	return append([]string{final}, extras...), warnings, nil
+}
 
+// convertMail erzeugt das zusammengefügte PDF einer Mail in tmp.
+// extras = Dateien, die zusätzlich in outDir abgelegt wurden (nicht umwandelbare Anlagen).
+func convertMail(emlPath, fallbackName, prefix, outDir, tmp string) (merged, base string, extras, warnings []string, err error) {
+	raw, err := os.ReadFile(emlPath)
+	if err != nil {
+		return "", "", nil, nil, err
+	}
+	m, err := ParseMail(raw)
+	if err != nil {
+		return "", "", nil, nil, err
+	}
+	base = prefix
+	if base == "" {
+		subject := m.Subject
+		if subject == "" {
+			subject = fallbackName
+		}
+		if !m.Date.IsZero() {
+			subject = m.Date.Format("2006-01-02") + " " + subject
+		}
+		base = safeName(subject, 120)
+	}
+	work, err := os.MkdirTemp(tmp, "mail")
+	if err != nil {
+		return "", "", nil, nil, err
+	}
+
+	// 1) Anlagen umwandeln
+	type converted struct{ pdf, name string }
+	var parts []converted
+	names := make([]string, len(m.Attachments))
+	shown := make([]string, len(m.Attachments)) // für die Kopfzeile "Anlagen:"
 	for i, p := range m.Attachments {
+		names[i] = AttachmentName(p, i+1)
+		shown[i] = names[i]
 		name := safeName(names[i], 100)
 		stem := strings.TrimSuffix(name, filepath.Ext(name))
 		ext := sniffExt(name, p)
 		if p.ContentType == "message/rfc822" {
 			ext = ".eml"
 		}
-		src := filepath.Join(tmp, fmt.Sprintf("anlage%d%s", i+1, ext))
+		src := filepath.Join(work, fmt.Sprintf("quelle%d%s", i+1, ext))
 		if err := os.WriteFile(src, p.Data, 0o644); err != nil {
-			return created, warnings, err
+			return "", "", extras, warnings, err
 		}
-		label := base + " - Anlage " + stem
+		// Dateiname = Lesezeichen im fertigen PDF
+		pdf := filepath.Join(work, fmt.Sprintf("Anlage %d - %s.pdf", i+1, stem))
 
 		var problem error
 		if ext == ".eml" {
-			inner, innerWarn, err := ConvertEML(src, outDir, safeName(label, 150))
-			created = append(created, inner...)
-			warnings = append(warnings, innerWarn...)
+			sub, err := os.MkdirTemp(tmp, "weitergeleitet")
 			if err == nil {
+				var inner string
+				var innerExtras, innerWarn []string
+				inner, _, innerExtras, innerWarn, err = convertMail(src, stem, base+" - Anlage "+stem, outDir, sub)
+				extras = append(extras, innerExtras...)
+				warnings = append(warnings, innerWarn...)
+				if err == nil {
+					err = os.Rename(inner, pdf)
+				}
+			}
+			if err == nil {
+				parts = append(parts, converted{pdf, names[i]})
 				continue
 			}
 			problem = err
 		} else {
-			pdf := uniquePath(filepath.Join(outDir, label+".pdf"))
-			ok, err := convertAttachment(src, pdf, tmp)
+			ok, err := convertAttachment(src, pdf, work)
 			if ok && err == nil {
-				created = append(created, pdf)
-				logf("Anlage -> %s", pdf)
+				parts = append(parts, converted{pdf, names[i]})
 				continue
 			}
 			os.Remove(pdf)
 			problem = err
 			if !ok {
-				problem = errors.New("Dateityp lässt sich nicht in PDF umwandeln")
+				problem = errors.New("Dateityp lässt sich nicht als PDF darstellen")
 			}
 		}
-		// Nicht umwandelbar: Original danebenlegen, damit nichts verloren geht
+		// Nicht umwandelbar: Original in den Zielordner, damit nichts verloren geht
 		logf("Anlage %s nicht umwandelbar: %v", name, problem)
 		orig := uniquePath(filepath.Join(outDir, base+" - Anlage "+name))
 		if err := copyFile(src, orig); err != nil {
-			return created, warnings, err
+			return "", "", extras, warnings, err
 		}
-		created = append(created, orig)
-		warnings = append(warnings, fmt.Sprintf("„%s“: %v – Original abgelegt", names[i], problem))
+		extras = append(extras, orig)
+		shown[i] += " (separat abgelegt)"
+		warnings = append(warnings, fmt.Sprintf("„%s“: %v – liegt separat im Zielordner", names[i], problem))
 	}
-	return created, warnings, nil
+
+	// 2) E-Mail selbst
+	mailPDF := filepath.Join(work, "E-Mail.pdf")
+	if err := mailToPDF(m, shown, mailPDF, work); err != nil {
+		return "", "", extras, warnings, err
+	}
+
+	// 3) Alles zu einer Datei zusammenfügen
+	// Dateinamen ohne ".pdf" werden zu den Lesezeichen im fertigen PDF
+	files := []string{strings.TrimSuffix(mailPDF, ".pdf")}
+	os.Rename(mailPDF, files[0])
+	for i, c := range parts {
+		label := strings.TrimSuffix(c.pdf, ".pdf")
+		if os.Rename(c.pdf, label) == nil {
+			parts[i].pdf = label
+		}
+		files = append(files, parts[i].pdf)
+	}
+	merged = filepath.Join(work, "gesamt.pdf")
+	for _, i := range mergePDFs(files, merged) {
+		// Dieses PDF ließ sich nicht anhängen (z. B. mit Passwort geschützt) -> separat ablegen
+		c := parts[i-1]
+		out := uniquePath(filepath.Join(outDir, base+" - Anlage "+safeName(strings.TrimSuffix(c.name, filepath.Ext(c.name)), 100)+".pdf"))
+		if copyFile(c.pdf, out) == nil {
+			extras = append(extras, out)
+		}
+		warnings = append(warnings, fmt.Sprintf("„%s“ ließ sich nicht anhängen (evtl. geschützt) – liegt separat im Zielordner", c.name))
+	}
+	return merged, base, extras, warnings, nil
 }

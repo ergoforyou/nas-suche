@@ -3,25 +3,29 @@
 Ein kleines Windows-Programm (eine einzige Datei, **kein Python, keine Zusatzsoftware**):
 `.eml`-Dateien markieren → Rechtsklick → **„In PDF umwandeln“**.
 
-Es entsteht ein PDF der E-Mail und je ein PDF pro Anlage – im selben Ordner wie die `.eml`:
+Pro E-Mail entsteht **eine PDF-Datei**: vorne die E-Mail, dahinter alle Anlagen als weitere Seiten
+(mit Lesezeichen „E-Mail“, „Anlage 1 – …“ zum Springen). Gespeichert wird im **Zielordner**, den Sie bei
+der Installation auswählen oder neu anlegen:
 
 ```
-2026-10-13 Rechnung 4711.pdf                        <- die E-Mail (Absender, Empfänger, Datum, Text, Bilder)
-2026-10-13 Rechnung 4711 - Anlage Rechnung.pdf      <- PDF-Anlage
-2026-10-13 Rechnung 4711 - Anlage Angebot.pdf       <- Word-Anlage, umgewandelt
+E-Mails als PDF\
+  2026-10-13 Rechnung 4711.pdf          <- E-Mail + Rechnung.pdf + Angebot.docx (als PDF) in einer Datei
 ```
 
 ## Installation (auf jedem Rechner, ca. 10 Sekunden)
 
 1. [`dist/EML-zu-PDF.exe`](dist/EML-zu-PDF.exe) herunterladen bzw. vom Netzlaufwerk kopieren.
 2. **Doppelklick** → „Ja“. Keine Admin-Rechte nötig.
-3. Frage „Downloads-Ordner automatisch überwachen?“ beantworten:
+3. **Zielordner** auswählen oder mit „Neuen Ordner erstellen“ anlegen
+   (Vorschlag: `Downloads\E-Mails als PDF`).
+4. Frage „Downloads-Ordner automatisch überwachen?“ beantworten:
    - **Ja:** Jede neu heruntergeladene `.eml` wird ohne Klick sofort umgewandelt.
    - **Nein:** Nur per Rechtsklick.
 
 Falls Windows „Der Computer wurde durch Windows geschützt“ meldet: **Weitere Informationen → Trotzdem ausführen**
 (das kommt bei Programmen ohne gekaufte Code-Signatur einmalig).
 
+**Zielordner ändern:** Startmenü → „EML zu PDF – Zielordner ändern“.
 **Deinstallieren:** Einstellungen → Apps → „EML zu PDF“ → Deinstallieren.
 **Update:** Neue `EML-zu-PDF.exe` einfach erneut doppelklicken.
 
@@ -33,9 +37,9 @@ Falls Windows „Der Computer wurde durch Windows geschützt“ meldet: **Weiter
 
 ## Was mit Anlagen passiert
 
-| Anlage | Ergebnis |
+| Anlage | Ergebnis (wird hinten angehängt) |
 |---|---|
-| PDF | 1:1 übernommen (auch wenn die Datei keine Endung hat) |
+| PDF | 1:1 übernommen (auch ohne Dateiendung; Kopierschutz wird dabei entfernt) |
 | Word (doc, docx, rtf, odt) | PDF über Microsoft Word |
 | Excel (xls, xlsx, ods) | PDF über Microsoft Excel |
 | PowerPoint (ppt, pptx) | PDF über Microsoft PowerPoint |
@@ -43,7 +47,7 @@ Falls Windows „Der Computer wurde durch Windows geschützt“ meldet: **Weiter
 | TXT, CSV, HTML, XML | PDF |
 | weitergeleitete E-Mail | eigene PDFs, inkl. deren Anlagen |
 | Outlook-`winmail.dat` | wird ausgepackt, die enthaltenen Anlagen werden umgewandelt |
-| alles andere (ZIP, passwortgeschützte Dokumente …) | Original wird danebengelegt und in der Abschlussmeldung genannt |
+| alles andere (ZIP, PDFs/Dokumente mit Öffnungs-Passwort …) | liegt separat im Zielordner, ist im Mailkopf als „separat abgelegt“ vermerkt und wird in der Abschlussmeldung genannt |
 
 Robustheit:
 - **Das E-Mail-PDF entsteht immer.** Reihenfolge: Microsoft Edge (schönstes Layout) → Microsoft Word →
@@ -64,5 +68,5 @@ Go-Programm, eingebettete Schrift: DejaVu Sans (freie Lizenz, siehe `fonts/LICEN
 ```
 EML-zu-PDF.exe DATEI.eml [...] [--ziel ORDNER] [--still]
 EML-zu-PDF.exe --ueberwachen [ORDNER] [--alle]
-EML-zu-PDF.exe --installieren | --deinstallieren
+EML-zu-PDF.exe --installieren | --deinstallieren | --zielordner
 ```

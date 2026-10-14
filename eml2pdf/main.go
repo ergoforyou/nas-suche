@@ -31,7 +31,7 @@ import (
 const (
 	appName = "EML zu PDF"
 	exeName = "EML-zu-PDF.exe"
-	version = "1.1.0"
+	version = "1.2.0"
 )
 
 var (
@@ -66,7 +66,7 @@ func main() {
 
 	var files []string
 	var outDir, watchDir string
-	var watchMode, watchAll, install, uninstall bool
+	var watchMode, watchAll, install, uninstall, changeFolder bool
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; a {
@@ -89,12 +89,23 @@ func main() {
 			install = true
 		case "--deinstallieren":
 			uninstall = true
+		case "--zielordner":
+			changeFolder = true
 		default:
 			files = append(files, a)
 		}
 	}
 
+	watchOut := outDir // Überwachung liest die Einstellung bei jeder Mail neu
+	if outDir == "" {
+		outDir = loadSettings().Zielordner
+	}
+
 	switch {
+	case changeFolder:
+		if dir, ok := askOutputFolder(); ok {
+			showInfo(appName, "Die PDFs werden ab jetzt hier gespeichert:\n\n"+dir)
+		}
 	case uninstall:
 		uninstallApp()
 	case install:
@@ -103,18 +114,72 @@ func main() {
 		if watchDir == "" {
 			watchDir = downloadsFolder()
 		}
-		watch(watchDir, outDir, watchAll)
+		watch(watchDir, watchOut, watchAll)
 	case len(files) > 0:
 		os.Exit(convertBatch(files, outDir))
 	default:
 		if runtime.GOOS == "windows" && !isInstalledCopy() {
 			installApp()
 		} else {
-			showInfo(appName+" "+version, "So geht's:\n\n.eml-Dateien im Explorer markieren → Rechtsklick → „In PDF umwandeln“.\n\n"+
+			target := outDir
+			if target == "" {
+				target = "(neben der jeweiligen .eml-Datei)"
+			}
+			if askYesNo(appName+" "+version, "So geht's:\n\n.eml-Dateien im Explorer markieren → Rechtsklick → „In PDF umwandeln“.\n"+
 				"(Windows 11: zuerst „Weitere Optionen anzeigen“ oder Umschalt + Rechtsklick)\n\n"+
-				"Deinstallieren: Einstellungen → Apps → „"+appName+"“.")
+				"Die PDFs werden gespeichert in:\n"+target+"\n\n"+
+				"Möchten Sie den Zielordner ändern?") {
+				if dir, ok := askOutputFolder(); ok {
+					showInfo(appName, "Die PDFs werden ab jetzt hier gespeichert:\n\n"+dir)
+				}
+			}
 		}
 	}
+}
+
+// ---------------------------------------------------------------- Einstellungen
+
+type settings struct {
+	Zielordner string
+}
+
+func loadSettings() settings {
+	var st settings
+	raw, err := os.ReadFile(filepath.Join(dataDir, "einstellungen.json"))
+	if err == nil {
+		json.Unmarshal(raw, &st)
+	}
+	return st
+}
+
+func saveSettings(st settings) error {
+	data, _ := json.MarshalIndent(st, "", "  ")
+	return os.WriteFile(filepath.Join(dataDir, "einstellungen.json"), data, 0o644)
+}
+
+// askOutputFolder lässt den Zielordner auswählen (oder neu anlegen) und speichert ihn.
+func askOutputFolder() (string, bool) {
+	current := loadSettings().Zielordner
+	if current == "" {
+		current = filepath.Join(downloadsFolder(), "E-Mails als PDF")
+	}
+	os.MkdirAll(current, 0o755) // Vorschlag anlegen, damit er im Dialog auswählbar ist
+	dir, ok := chooseFolder("Ordner für die fertigen PDFs auswählen (oder mit „Neuen Ordner erstellen“ anlegen):", current)
+	if !ok {
+		dir = current
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		showWarning(appName, "Der Ordner kann nicht verwendet werden:\n"+err.Error())
+		return "", false
+	}
+	if dir != current {
+		os.Remove(current) // nicht genutzten Vorschlag wieder entfernen (nur wenn leer)
+	}
+	if err := saveSettings(settings{Zielordner: dir}); err != nil {
+		showWarning(appName, "Einstellung konnte nicht gespeichert werden:\n"+err.Error())
+		return "", false
+	}
+	return dir, true
 }
 
 // ---------------------------------------------------------------- Umwandeln (Rechtsklick)
@@ -165,7 +230,7 @@ func convertBatch(files []string, outDir string) int {
 				continue
 			}
 			for _, f := range job.Files {
-				out, warn, err := ConvertEML(f, job.OutDir, "")
+				out, warn, err := ConvertEML(f, job.OutDir)
 				created = append(created, out...)
 				for _, w := range warn {
 					errs = append(errs, filepath.Base(f)+": "+w)
@@ -185,7 +250,7 @@ func convertBatch(files []string, outDir string) int {
 
 	if !quiet {
 		var msg strings.Builder
-		fmt.Fprintf(&msg, "%d E-Mail(s) umgewandelt, %d Datei(en) erstellt.", mails, len(created))
+		fmt.Fprintf(&msg, "%d E-Mail(s) umgewandelt – je eine PDF-Datei mit allen Anlagen.", mails)
 		if len(folders) == 1 {
 			for f := range folders {
 				fmt.Fprintf(&msg, "\n\nGespeichert in:\n%s", f)
@@ -256,7 +321,11 @@ func watch(folder, outDir string, includeExisting bool) {
 				continue
 			}
 			delete(sizes, p)
-			if _, _, err := ConvertEML(p, outDir, ""); err != nil {
+			target := outDir
+			if target == "" {
+				target = loadSettings().Zielordner
+			}
+			if _, _, err := ConvertEML(p, target); err != nil {
 				logf("Fehler bei %s: %v", p, err)
 			}
 			state[p] = fingerprint(st)
