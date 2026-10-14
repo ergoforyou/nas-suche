@@ -570,6 +570,7 @@ ipcMain.on('avatar:menu', (_e, { listening }) => {
     { label: listening ? 'Zuhören beenden' : 'Zuhören (Doppelklick)', click: send('mic') },
     { label: 'Chat öffnen', click: () => (win.show(), win.focus()) },
     { label: 'Ausgabefenster', click: send('output') },
+    { label: 'Neuer Chat', click: send('newchat') },
     { type: 'separator' },
     { label: 'Größer', click: () => ipcMain.emit('avatar:resize', null, { factor: 1.15 }) },
     { label: 'Kleiner', click: () => ipcMain.emit('avatar:resize', null, { factor: 1 / 1.15 }) },

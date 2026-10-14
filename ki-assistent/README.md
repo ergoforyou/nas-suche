@@ -35,6 +35,8 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
   Tabellen, Code mit Kopier-Knopf), mit ◀ ▶ durch frühere Antworten blättern. Knöpfe **PDF**, **Word**
   und **Text** speichern die Antwort als fertiges Dokument (A4-PDF mit Seitenzahlen, .docx mit echten
   Überschriften, Listen und Tabellen, Markdown) – komplett lokal erzeugt.
+- **🗨＋** – Neuer Chat (auch Strg+N, „Neuer Chat“ sagen oder Rechtsklick auf die Figur): leert nur den
+  Gesprächsverlauf; Persona, Gedächtnis, Avatar und Stimme bleiben. Direkt danach per „Rückgängig“ zurückholbar.
 - **📌** – Chatfenster immer im Vordergrund.
 
 ### Eigene Persona & Avatar

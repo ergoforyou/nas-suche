@@ -489,8 +489,43 @@ async function ensureModel() {
   return chat[0];
 }
 
+// ---------------------------------------------------------------- Neuer Chat
+// Leert nur den Gesprächsverlauf – Persona, Gedächtnis, Avatar und Stimme bleiben.
+let chatSerial = 0; // neuer Claude-Arbeitsbereich pro Chat
+let undoChat = null;
+function newChat() {
+  if (state.busy) stopAll();
+  tts.stop();
+  const p = persona();
+  const old = history();
+  if (!old.length) return status('Neuer Chat – der Verlauf ist schon leer.');
+  undoChat = { id: p.id, history: old };
+  state.history[p.id] = [];
+  chatSerial++;
+  pendingAttachments = [];
+  renderPending();
+  save();
+  renderChat();
+  output.setHistory([]);
+  const note = addBubble('note', 'Neuer Chat – Persona und Gedächtnis bleiben erhalten. ');
+  const undo = document.createElement('button');
+  undo.textContent = 'Rückgängig';
+  undo.onclick = () => {
+    if (!undoChat || undoChat.id !== persona().id || history().length) return note.remove();
+    state.history[undoChat.id] = undoChat.history;
+    undoChat = null;
+    save();
+    renderChat();
+    output.setHistory(history());
+  };
+  note.appendChild(undo);
+}
+// Sprachbefehl: einfach „Neuer Chat“ sagen
+const NEW_CHAT_COMMAND = /^(neuer chat|neues gespräch|new chat)[.!]?$/i;
+
 async function send(text) {
   text = text.trim();
+  if (NEW_CHAT_COMMAND.test(text) && !pendingAttachments.length) return newChat();
   if ((!text && !pendingAttachments.length) || state.busy) return;
   tts.stop();
   tts.newTurn();
@@ -578,7 +613,7 @@ async function send(text) {
       id,
       ...llmParams(model),
       ...(state.settings.provider === 'anthropic'
-        ? { web: state.settings.claudeWeb, files: state.settings.claudeFiles, conversation: persona().id }
+        ? { web: state.settings.claudeWeb, files: state.settings.claudeFiles, conversation: `${persona().id}:${chatSerial}` }
         : {}),
       messages: buildMessages(),
     },
@@ -900,6 +935,7 @@ desktop.onCommand((cmd) => {
   if (cmd === 'mic') toggleMic();
   if (cmd === 'output') openOutput();
   if (cmd === 'dock') setFloating(false);
+  if (cmd === 'newchat') newChat();
 });
 
 // ---------------------------------------------------------------- Eingabe & Fenster
@@ -939,6 +975,10 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     toggleMic();
   }
+  if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'n') {
+    e.preventDefault();
+    newChat();
+  }
   if (e.key === 'Escape') {
     if (!$('drawer').hidden) {
       $('drawer').hidden = true;
@@ -950,6 +990,7 @@ setInterval(() => {
   $('btnStop').hidden = !(state.busy || tts.speaking);
 }, 250);
 
+$('btnNewChat').onclick = newChat;
 $('btnMin').onclick = () => desktop.minimize();
 $('btnClose').onclick = () => desktop.close();
 $('btnPin').onclick = () => {
