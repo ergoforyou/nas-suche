@@ -38,6 +38,8 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
 - **🗨＋** – Neuer Chat (auch Strg+N, „Neuer Chat“ sagen oder Rechtsklick auf die Figur): leert nur den
   Gesprächsverlauf; Persona, Gedächtnis, Avatar und Stimme bleiben. Direkt danach per „Rückgängig“ zurückholbar.
 - **📌** – Chatfenster immer im Vordergrund.
+- **⏻** – KI-Assistent komplett beenden (auch im Rechtsklick-Menü der Figur). ✕ schließt nur das Fenster;
+  ist die Figur frei auf dem Desktop, läuft der Assistent dann weiter.
 
 ### Eigene Persona & Avatar
 

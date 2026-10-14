@@ -56,7 +56,7 @@ button.danger { color: var(--danger); margin-top: 12px; }
 .titlebar-buttons button { background: none; border: none; padding: 4px 9px; border-radius: 6px; }
 .titlebar-buttons button:hover { background: var(--panel-2); }
 #btnPin.active { background: var(--accent-2); }
-#btnClose:hover { background: var(--danger); }
+#btnClose:hover, #btnQuit:hover { background: var(--danger); }
 
 /* ---------- Avatar-Bühne ---------- */
 .stage {

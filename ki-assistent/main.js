@@ -471,10 +471,16 @@ ipcMain.on('win:show', () => {
   win?.focus();
 });
 ipcMain.on('win:alwaysOnTop', (_e, on) => win?.setAlwaysOnTop(!!on));
-ipcMain.on('app:quit', () => {
+// Komplett beenden: alle Fenster schließen, laufende Anfragen abbrechen, Prozess sicher beenden
+// (danach ist nichts mehr im Task-Manager – auch nicht, wenn ein Fenster hängt).
+function quitCompletely() {
   quitting = true;
+  for (const ctrl of running.values()) ctrl.abort();
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.destroy();
   app.quit();
-});
+  setTimeout(() => app.exit(0), 3000).unref();
+}
+ipcMain.on('app:quit', quitCompletely);
 
 // ---------------------------------------------------------------- Freischwebende Figur
 let drag = null;
@@ -576,7 +582,7 @@ ipcMain.on('avatar:menu', (_e, { listening }) => {
     { label: 'Kleiner', click: () => ipcMain.emit('avatar:resize', null, { factor: 1 / 1.15 }) },
     { label: 'Zurück ins Chatfenster', click: send('dock') },
     { type: 'separator' },
-    { label: 'Beenden', click: () => ((quitting = true), app.quit()) },
+    { label: 'KI-Assistent komplett beenden', click: quitCompletely },
   ]).popup({ window: avatarWin ?? win });
 });
 

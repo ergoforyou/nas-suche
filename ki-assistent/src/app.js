@@ -993,6 +993,7 @@ setInterval(() => {
 $('btnNewChat').onclick = newChat;
 $('btnMin').onclick = () => desktop.minimize();
 $('btnClose').onclick = () => desktop.close();
+$('btnQuit').onclick = () => desktop.quit();
 $('btnPin').onclick = () => {
   state.settings.alwaysOnTop = !state.settings.alwaysOnTop;
   desktop.setAlwaysOnTop(state.settings.alwaysOnTop);
@@ -2364,7 +2365,8 @@ async function selfTest() {
     const t1 = performance.now();
     await withTimeout('Piper 2. Satz', synthesize('Und noch ein zweiter Satz, ganz ohne Ladezeit.', DEFAULT_VOICES.de));
     return {
-      ok: /test/i.test(heard),
+      // mindestens zwei der drei Wörter erkannt (Whisper tiny verschluckt gelegentlich Wortgrenzen)
+      ok: [/hallo/i, /te[sx]t/i, /sprach/i].filter((r) => r.test(heard)).length >= 2,
       isolated: self.crossOriginIsolated,
       samples: res.audio.length,
       secondSentenceMs: Math.round(performance.now() - t1),
