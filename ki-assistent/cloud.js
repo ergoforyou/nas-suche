@@ -211,11 +211,18 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
   send('done');
 }
 
-async function chatOpenAI(client, { model, messages }, send, signal) {
-  const stream = await client.chat.completions.create(
-    { model, messages: messages.map(({ role, content }) => ({ role, content })), stream: true },
-    { signal },
-  );
+async function chatOpenAI(client, { model, messages, effort }, send, signal) {
+  const params = { model, messages: messages.map(({ role, content }) => ({ role, content })), stream: true };
+  // Denkende Modelle (GPT-5.x, o-Reihe): für flüssiges Sprechen nur kurz nachdenken lassen
+  const reasoning = /^(gpt-5|o\d)/i.test(model) ? effort || 'low' : null;
+  let stream;
+  try {
+    stream = await client.chat.completions.create(reasoning ? { ...params, reasoning_effort: reasoning } : params, { signal });
+  } catch (err) {
+    // Modell kennt die Einstellung nicht (oder diesen Wert nicht): ohne sie erneut versuchen
+    if (!reasoning || err?.status !== 400 || !/reasoning/i.test(String(err?.message))) throw err;
+    stream = await client.chat.completions.create(params, { signal });
+  }
   for await (const chunk of stream) {
     const delta = chunk.choices?.[0]?.delta?.content;
     if (delta) send('delta', delta);

@@ -74,6 +74,8 @@ export class Avatar {
   destroy() {
     this.active = false;
     this.layers?.forEach((L) => L.isVideo && L.video.pause());
+    this.vrmFigure?.dispose();
+    this.vrmFigure = null;
   }
 
   // Kompatibilität: Zustand liegt im gemeinsamen Objekt
@@ -123,8 +125,12 @@ export class Avatar {
     // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
     this.layout = { x: 0, y: 0, scale: 1, ...(this.useLayout ? config.stage ?? {} : {}) };
     // Ebene 0 = Grundbild, danach die Posen. Jede Ebene hat eigene Mund-/Augen-/Kopfdaten.
-    const cfgs = [config, ...(config.poses ?? []).filter((p) => p?.image || p?.video)];
-    const layers = [];
+    const cfgs = config.vrm ? [] : [config, ...(config.poses ?? []).filter((p) => p?.image || p?.video)];
+    const layers = config.vrm ? [await this.createVrmLayer(config)] : [];
+    if (!config.vrm && this.vrmFigure) {
+      this.vrmFigure.dispose();
+      this.vrmFigure = null;
+    }
     for (const c of cfgs) {
       try {
         layers.push(await this.createLayer(c));
@@ -141,6 +147,30 @@ export class Avatar {
     this.poseUntil = 0;
     this.bg = null;
     this.ready = true;
+  }
+
+  /** 3D-Figur (VRM): wird in eine eigene WebGL-Leinwand gezeichnet und dann wie ein Bild verwendet. */
+  async createVrmLayer(cfg) {
+    if (this.vrmFigure?.url !== cfg.vrm) {
+      this.vrmFigure?.dispose();
+      this.vrmFigure = null;
+      const { createVrmFigure } = await import('./vrm.js');
+      this.vrmFigure = await createVrmFigure(this.doc, cfg.vrm);
+    }
+    const fig = this.vrmFigure;
+    const L = Object.create(this);
+    Object.assign(L, { config: cfg, isVrm: true, head: null, w: fig.width, h: fig.height, hasAlpha: true, frame: fig.canvas, base: fig.canvas });
+    L.buildFrame = () =>
+      fig.render({
+        speaking: this.speaking,
+        thinking: this.thinking,
+        listening: this.listening,
+        open: this.open,
+        blink: this.blink,
+        motion: this.motion,
+        idleHead: this.idleHead,
+      });
+    return L;
   }
 
   /** Video-Ebene: kurzer Clip (MP4/WebM), wird Bild für Bild gezeichnet und bei Bedarf freigestellt. */
@@ -873,8 +903,8 @@ export class Avatar {
       return [L, L.renderPose(), a];
     });
 
-    // Körperbewegung: atmen, wiegen, beim Sprechen nicken
-    const m = this.motion;
+    // Körperbewegung: atmen, wiegen, beim Sprechen nicken (3D-Figuren bewegen sich selbst)
+    const m = this.layers[0]?.isVrm ? 0 : this.motion;
     const breathe = Math.sin(t * 1.7) * 0.006 * m;
     const sway = (Math.sin(t * 0.55) * 0.006 + Math.sin(t * 0.23) * 0.004) * m;
     const talk = this.speaking ? (Math.sin(t * 6.3) * 0.006 + Math.sin(t * 3.1) * 0.004) * this.open * m : 0;

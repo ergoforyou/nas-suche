@@ -44,6 +44,17 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
 - **⏻** – KI-Assistent komplett beenden (auch im Rechtsklick-Menü der Figur). ✕ schließt nur das Fenster;
   ist die Figur frei auf dem Desktop, läuft der Assistent dann weiter.
 
+### 3D-VTuber (VRM)
+
+Unter ⚙ → Avatar → **„VRM-Datei laden …“** eine 3D-Figur im VRM-Format laden. Sie bewegt sich live: Kopf und Blick,
+Lippen zur Stimme, Atmen, Blinzeln, Nachdenken, Zuhören. Kostenlos erstellen mit **VRoid Studio** (vroid.com/Steam) →
+„Exportieren“ → .vrm. Rahmen, Verschieben, Größe und die freie Figur auf dem Desktop funktionieren wie bei Bildern.
+
+### 2D-Figur aus mehreren Bildern
+
+Avatar-Bild plus ② dasselbe Bild mit offenem Mund und ③ mit geschlossenen Augen (gleicher Bildausschnitt). Die
+Freistellung des Avatar-Bilds wird automatisch übernommen. Für Bewegung im Leerlauf zusätzlich Posen oder kurze Videos.
+
 ### Eigene Persona & Avatar
 
 Systemprompts aus **LM Studio** (gespeicherte Presets und die Systemprompts deiner Chats) lassen sich unter

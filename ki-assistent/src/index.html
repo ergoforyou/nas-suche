@@ -120,6 +120,17 @@
         <input id="avFile" type="file" accept="image/*,video/mp4,video/webm,video/quicktime" hidden />
       </label>
 
+      <h3>3D-Figur (VRM-VTuber)</h3>
+      <p class="hint">Eine VRM-Figur bewegt sich echt: Kopf, Augen, Lippen zur Stimme, Atmen, Blinzeln, Nachdenken und
+        Zuhören. Erstellen kostenlos mit <b>VRoid Studio</b> (vroid.com oder Steam) → „Exportieren“ als .vrm. Fertige Figuren
+        gibt es z. B. auf VRoid Hub (Nutzungsbedingungen der jeweiligen Figur beachten). Die Datei bleibt auf diesem Rechner.</p>
+      <div class="row wrap">
+        <button id="avVrm">VRM-Datei laden …</button>
+        <button id="avVrmOff" hidden>Wieder Bild verwenden</button>
+      </div>
+      <div id="avVrmInfo" class="hint"></div>
+      <input id="avVrmFile" type="file" accept=".vrm" hidden />
+
       <h3>Posen</h3>
       <p class="hint">Weitere Bilder oder kurze Videos (MP4/WebM, 2–5 Sekunden) derselben Figur, z. B. Hand gehoben,
         Winken, Nicken – am besten mit gleichem Bildausschnitt. Du legst fest, wann eine Pose erscheint; die App blendet
@@ -168,18 +179,24 @@
       <label class="check"><input id="avFlip" type="checkbox" /> Figur spiegeln (links/rechts)</label>
       <p class="hint">Figur im Chatfenster anklicken: Rahmen zum Verschieben und Vergrößern. Doppelklick: sprechen.</p>
       <button id="avResetPos">Position im Chatfenster zurücksetzen</button>
-      <details>
-        <summary>Fortgeschritten: eigene Bilder für Mund/Augen (PNGtuber-Stil)</summary>
-        <p class="hint">Gleich großes Bild mit offenem Mund bzw. geschlossenen Augen. Ersetzt die automatische Verformung.</p>
-        <div class="row wrap">
-          <button id="avMouthUp">Mund offen …</button>
-          <button id="avMouthClear">entfernen</button>
-          <button id="avEyesUp">Augen zu …</button>
-          <button id="avEyesClear">entfernen</button>
-        </div>
-        <input id="avMouthFile" type="file" accept="image/*" hidden />
-        <input id="avEyesFile" type="file" accept="image/*" hidden />
-      </details>
+      <h3>2D-Figur aus mehreren Bildern</h3>
+      <p class="hint">Am natürlichsten wird ein Bild-Avatar mit 2–3 Fotos/Bildern <b>derselben Figur im gleichen
+        Bildausschnitt</b>: ① das Avatar-Bild oben (Mund zu, Augen auf), ② dasselbe mit <b>offenem Mund</b>,
+        ③ dasselbe mit <b>geschlossenen Augen</b>. Die App blendet beim Sprechen und Blinzeln zwischen den Bildern
+        und übernimmt die Freistellung des Avatar-Bilds automatisch. Für Bewegung im Leerlauf zusätzlich Posen
+        (unten, Auslöser „Leerlauf“) oder kurze Videos hinzufügen.</p>
+      <div class="row wrap">
+        <button id="avMouthUp">② Mund offen …</button>
+        <button id="avMouthClear">entfernen</button>
+        <span id="avMouthState" class="hint"></span>
+      </div>
+      <div class="row wrap">
+        <button id="avEyesUp">③ Augen zu …</button>
+        <button id="avEyesClear">entfernen</button>
+        <span id="avEyesState" class="hint"></span>
+      </div>
+      <input id="avMouthFile" type="file" accept="image/*" hidden />
+      <input id="avEyesFile" type="file" accept="image/*" hidden />
       <button id="avTest">▶ Testsprechen</button>
     </div>
 
@@ -348,7 +365,12 @@
           </div>
         </label>
         <div id="cClaudeKeyInfo" class="hint"></div>
-        <label>Modell <select id="cClaudeModel"></select></label>
+        <label>Modell
+          <div class="row">
+            <select id="cClaudeModel" style="flex:1"></select>
+            <button id="cClaudeRefresh" title="Alle Modelle aus dem Anthropic-Konto laden">⟳</button>
+          </div>
+        </label>
         <label>Denktiefe
           <select id="cClaudeEffort">
             <option value="low">niedrig – schnellste Antwort (empfohlen fürs Sprechen)</option>

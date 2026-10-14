@@ -472,7 +472,7 @@ class ThinkFilter {
 function llmParams(model) {
   const s = state.settings;
   if (s.provider === 'anthropic') return { provider: 'anthropic', model, effort: s.claudeEffort };
-  if (s.provider === 'openai') return { provider: 'openai', model };
+  if (s.provider === 'openai') return { provider: 'openai', model, effort: s.claudeEffort };
   return { provider: 'lmstudio', baseUrl: s.baseUrl, model, temperature: s.temperature };
 }
 
@@ -1184,6 +1184,12 @@ function fillSettings() {
   $('avEyeR').value = target().eyes?.[0]?.r ?? 0.03;
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
+  $('avVrmOff').hidden = !p.avatar.vrm;
+  $('avMouthState').textContent = target().mouthImage ? '✔ vorhanden' : '– automatisch (Mund wird aus dem Bild geöffnet)';
+  $('avEyesState').textContent = target().eyesImage ? '✔ vorhanden' : '– automatisch (Lider werden gezeichnet)';
+  $('avVrmInfo').textContent = p.avatar.vrm
+    ? `Aktiv: 3D-Figur „${p.avatar.vrmName ?? 'VRM'}“ – Bild, Mund-/Augenmarkierung und Posen werden solange nicht benutzt.`
+    : '';
   $('avOpen').value = target().mouthOpen ?? 1;
   $('avFlip').checked = !!p.avatar.flip;
   $('avRestore').disabled = !target().original;
@@ -1215,7 +1221,8 @@ function fillSettings() {
   $('cOffline').checked = s.offline;
   $('cProvider').value = s.provider;
   if (!LOCAL_ONLY) {
-    fillSelect($('cClaudeModel'), CLAUDE_MODELS, s.claudeModel);
+    const knownModel = CLAUDE_MODELS.some(([id]) => id === s.claudeModel);
+    fillSelect($('cClaudeModel'), knownModel ? CLAUDE_MODELS : [...CLAUDE_MODELS, [s.claudeModel, s.claudeModel]], s.claudeModel);
     $('cClaudeEffort').value = s.claudeEffort;
     $('cClaudeWeb').checked = s.claudeWeb;
     $('cClaudeFiles').checked = s.claudeFiles;
@@ -1869,6 +1876,40 @@ function remapMarkers(av, from, to) {
   av.eyes = (av.eyes ?? []).map((e) => ({ x: mx(e.x), y: my(e.y), r: e.r * sx }));
 }
 
+// ---- 3D-Figur (VRM)
+$('avVrm').onclick = () => $('avVrmFile').click();
+$('avVrmFile').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (file.size > 150 * 1024 * 1024) return status('Die VRM-Datei ist zu groß (max. 150 MB).');
+  status('3D-Figur wird geladen …');
+  const av = persona().avatar;
+  const old = av.vrm;
+  av.vrm = await desktop.saveMedia(new Uint8Array(await file.arrayBuffer()), 'vrm');
+  av.vrmName = file.name;
+  try {
+    await avatar.setConfig(av);
+    if (old) desktop.deleteMedia(old);
+    status('3D-Figur geladen.');
+  } catch (err) {
+    desktop.deleteMedia(av.vrm);
+    if (old) av.vrm = old;
+    else delete av.vrm;
+    status(`Die Figur konnte nicht geladen werden: ${err.message}`);
+  }
+  fillSettings();
+  avatarChanged();
+};
+$('avVrmOff').onclick = () => {
+  const av = persona().avatar;
+  if (av.vrm) desktop.deleteMedia(av.vrm);
+  delete av.vrm;
+  delete av.vrmName;
+  fillSettings();
+  avatarChanged();
+};
+
 $('avUpload').onclick = () => $('avFile').click();
 $('avFile').onchange = async (e) => {
   const file = e.target.files[0];
@@ -2240,21 +2281,49 @@ $('avFloatSize').oninput = (e) => {
 };
 $('avMouthUp').onclick = () => $('avMouthFile').click();
 $('avEyesUp').onclick = () => $('avEyesFile').click();
+/**
+ * Zusatzbild (Mund offen / Augen zu) an das Avatar-Bild anpassen: gleicher Zuschnitt und – wenn das
+ * Avatar-Bild freigestellt ist – dieselbe Freistellung (Umriss des Grundbilds).
+ */
+async function alignToBase(av, src) {
+  if (!av.original || !av.crop) return src;
+  const orig = await imageToCanvas(av.original);
+  const extra = await imageToCanvas(src);
+  const base = await imageToCanvas(av.image, 4096);
+  const c = document.createElement('canvas');
+  c.width = base.width;
+  c.height = base.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  // Zusatzbild auf die Größe des Originals bringen und genauso zuschneiden
+  const sx = c.width / av.crop.w;
+  const sy = c.height / av.crop.h;
+  g.drawImage(extra, -av.crop.x * sx, -av.crop.y * sy, orig.width * sx, orig.height * sy);
+  const d = g.getImageData(0, 0, c.width, c.height);
+  const alpha = base.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  for (let i = 3; i < d.data.length; i += 4) d.data[i] = alpha[i];
+  g.putImageData(d, 0, 0);
+  return c.toDataURL('image/png');
+}
+
 const extraImage = (key) => async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f) return;
-  target()[key] = await readImage(f);
+  const av = target();
+  av[key] = await alignToBase(av, await readImage(f));
+  fillSettings();
   avatarChanged();
 };
 $('avMouthFile').onchange = extraImage('mouthImage');
 $('avEyesFile').onchange = extraImage('eyesImage');
 $('avMouthClear').onclick = () => {
   target().mouthImage = null;
+  fillSettings();
   avatarChanged();
 };
 $('avEyesClear').onclick = () => {
   target().eyesImage = null;
+  fillSettings();
   avatarChanged();
 };
 const testPhrase = () =>
@@ -2432,6 +2501,18 @@ $('cOpenaiKeySave').onclick = saveKey('openai', 'cOpenaiKey');
 $('cClaudeModel').onchange = (e) => {
   state.settings.claudeModel = e.target.value;
   save();
+};
+// Weitere Claude-Modelle aus dem Konto (z. B. neuere oder größere als die fest eingetragenen)
+$('cClaudeRefresh').onclick = async () => {
+  try {
+    const list = await desktop.anthropicModels();
+    const known = new Set(CLAUDE_MODELS.map(([id]) => id));
+    const extra = list.filter((m) => !known.has(m.id)).map((m) => [m.id, `${m.name} – aus deinem Konto`]);
+    fillSelect($('cClaudeModel'), [...CLAUDE_MODELS, ...extra], state.settings.claudeModel);
+    status(`${list.length} Claude-Modelle im Konto gefunden.`);
+  } catch (e) {
+    status(`Modelle konnten nicht geladen werden: ${e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
+  }
 };
 $('cClaudeWeb').onchange = (e) => {
   state.settings.claudeWeb = e.target.checked;

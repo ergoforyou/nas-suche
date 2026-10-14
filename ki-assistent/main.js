@@ -854,6 +854,15 @@ ipcMain.handle('openai:models', async () => {
     .sort();
 });
 
+// Alle Claude-Modelle, die das eigene Anthropic-Konto nutzen darf (auch neuere als die fest eingetragenen)
+ipcMain.handle('anthropic:models', async () => {
+  if (cloudBlocked('anthropic')) throw new Error(cloudBlocked('anthropic'));
+  const { client } = anthropicClient();
+  const out = [];
+  for await (const m of client.models.list()) out.push({ id: m.id, name: m.display_name ?? m.id });
+  return out.filter((m) => /^claude-/.test(m.id));
+});
+
 // Alle Sprachausgabe-Modelle des eigenen OpenAI-Kontos (auch neuere/größere als die bekannten)
 ipcMain.handle('openai:ttsModels', async () => {
   if (cloudBlocked('openai')) throw new Error(cloudBlocked('openai'));
@@ -956,7 +965,7 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
           await chatAnthropic(anthropicClient().client, req, send, ctrl.signal, ctx);
         }
       }
-      else await chatOpenAI(openaiClient().client, { model, messages }, send, ctrl.signal);
+      else await chatOpenAI(openaiClient().client, { model, messages, effort }, send, ctrl.signal);
     } catch (err) {
       const SDK = provider === 'anthropic' ? require('@anthropic-ai/sdk').default : require('openai').default;
       if (ctrl.signal.aborted || err instanceof SDK.APIUserAbortError) send('done');
