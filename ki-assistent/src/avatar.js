@@ -39,7 +39,9 @@ export class Avatar {
    * @param {HTMLCanvasElement} canvas
    * @param {{transparent?: boolean}} opts transparent = ohne Hintergrund (freischwebend)
    */
-  constructor(canvas, { transparent = false } = {}) {
+  constructor(canvas, { transparent = false, useLayout = false } = {}) {
+    this.useLayout = useLayout;
+    this.layout = { x: 0, y: 0, scale: 1 };
     this.canvas = canvas;
     this.host = canvas.ownerDocument.defaultView;
     this.doc = canvas.ownerDocument;
@@ -111,6 +113,9 @@ export class Avatar {
     this.ready = false;
     this.config = config;
     this.motion = config.motion ?? 1;
+    this.flip = !!config.flip;
+    // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
+    this.layout = { x: 0, y: 0, scale: 1, ...(this.useLayout ? config.stage ?? {} : {}) };
     const img = await loadImage(config.image, this.host);
     const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
     this.w = Math.round(img.width * scale);
@@ -133,6 +138,7 @@ export class Avatar {
     this.maskData = mask ? mask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.w, this.h).data : null;
     this.prepareMouth();
     this.prepareEyes();
+    this.prepareHead();
     this.bg = null;
     this.lastOpenPx = -1;
     this.ready = true;
@@ -287,6 +293,111 @@ export class Avatar {
       mx,
       mw,
     };
+  }
+
+  /** Kopfbereich bestimmen: alles oberhalb des Halses kann sich unabhängig vom Körper bewegen. */
+  prepareHead() {
+    this.head = null;
+    this.posed = this.doc.createElement('canvas');
+    this.posed.width = this.w;
+    this.posed.height = this.h;
+    this.posedCtx = this.posed.getContext('2d');
+    const eyes = this.config.eyes ?? [];
+    const mouth = this.config.mouth;
+    if (!eyes.length || !mouth) return;
+    const eyeY = (eyes.reduce((a, e) => a + e.y, 0) / eyes.length) * this.h;
+    const eyeX = (eyes.reduce((a, e) => a + e.x, 0) / eyes.length) * this.w;
+    const mouthY = mouth.y * this.h;
+    const faceH = Math.max(8, mouthY - eyeY);
+    const neckY = Math.min(this.h - 2, mouthY + faceH * 1.25);
+    this.head = { pivotX: (eyeX + mouth.x * this.w) / 2, neckY, band: faceH * 0.55, faceH };
+  }
+
+  // ---------- Verhalten: kleine Kopfbewegungen je nach Zustand ----------
+  updateBehaviour(now, dt) {
+    const h = this.head;
+    if (!h) return;
+    const B = (this.behaviour ??= {
+      tilt: 0, look: 0, nod: 0, vt: 0, vl: 0, vn: 0,
+      target: { tilt: 0, look: 0, nod: 0 },
+      next: now + 1500, kick: 0, lastKick: 0, lastLevel: 0,
+    });
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const side = () => (Math.random() < 0.5 ? -1 : 1);
+    const f = h.faceH;
+
+    if (this.thinking) {
+      // nachdenklich: Kopf schräg, Blick leicht nach oben
+      if (B.mode !== 'think') {
+        B.mode = 'think';
+        B.target = { tilt: 0.05 * side(), look: f * 0.15 * side(), nod: -f * 0.08 };
+      }
+    } else if (this.listening) {
+      if (B.mode !== 'listen') {
+        B.mode = 'listen';
+        B.target = { tilt: 0.03 * side(), look: 0, nod: f * 0.03 };
+      }
+    } else if (this.speaking) {
+      B.mode = 'speak';
+      if (now > B.next) {
+        B.target = { tilt: rnd(-0.035, 0.035), look: rnd(-0.12, 0.12) * f, nod: 0 };
+        B.next = now + rnd(900, 2200);
+      }
+      // Betonung: bei Silbenspitzen kurz nicken
+      const lvl = this.level;
+      if (lvl > 0.45 && B.lastLevel < 0.3 && now - B.lastKick > 380) {
+        B.kick = f * rnd(0.04, 0.08);
+        B.lastKick = now;
+      }
+      B.lastLevel = lvl;
+    } else {
+      // Leerlauf: ab und zu umschauen, Kopf neigen oder zurück zur Mitte
+      if (B.mode !== 'idle') {
+        B.mode = 'idle';
+        B.next = now + rnd(800, 2000);
+      }
+      if (now > B.next) {
+        const r = Math.random();
+        if (r < 0.3) B.target = { tilt: 0, look: 0, nod: 0 };
+        else if (r < 0.6) B.target = { tilt: rnd(0.02, 0.05) * side(), look: 0, nod: f * rnd(0, 0.04) };
+        else if (r < 0.85) B.target = { tilt: rnd(-0.015, 0.015), look: f * rnd(0.1, 0.22) * side(), nod: 0 };
+        else B.target = { tilt: 0, look: 0, nod: -f * 0.05 };
+        B.next = now + rnd(1800, 5000);
+      }
+    }
+    // weiche Federn hin zum Ziel
+    const k = Math.min(1, dt * 0.004);
+    for (const [x, v] of [['tilt', 'vt'], ['look', 'vl'], ['nod', 'vn']]) {
+      B[v] += (B.target[x] - B[x]) * k * 1.6;
+      B[v] *= 0.82;
+      B[x] += B[v];
+    }
+    B.kick *= Math.pow(0.86, dt / 16);
+  }
+
+  /** Kopf über dem Hals verschieben/neigen (zeilenweise, ohne Nahtstelle). */
+  renderPose() {
+    const h = this.head;
+    const m = this.motion;
+    const B = this.behaviour;
+    if (!h || !B || m <= 0) return this.frame;
+    const ctx = this.posedCtx;
+    const W = this.w;
+    const yEnd = Math.min(this.h, Math.ceil(h.neckY + h.band));
+    ctx.clearRect(0, 0, W, this.h);
+    ctx.drawImage(this.frame, 0, yEnd, W, this.h - yEnd, 0, yEnd, W, this.h - yEnd);
+    const tilt = B.tilt * m;
+    const look = B.look * m;
+    const nod = (B.nod + B.kick) * m;
+    const step = 2;
+    for (let y = 0; y < yEnd; y += step) {
+      const wgt = 1 - smoothstep(h.neckY - h.band, h.neckY + h.band, y);
+      const dx = ((h.neckY - y) * tilt + look) * wgt;
+      const sy = Math.max(0, y - nod * wgt);
+      const rows = Math.min(step, this.h - sy);
+      if (rows > 0) ctx.drawImage(this.frame, 0, sy, W, rows, dx, y, W, rows);
+    }
+    return this.posed;
   }
 
   prepareEyes() {
@@ -489,6 +600,11 @@ export class Avatar {
     this.renderEyes(this.frameCtx, this.blink);
     this.blinkWasDrawn = this.blink > 0.02 || !!this.mouthImg;
 
+    const dt = Math.min(100, now - (this.lastNow ?? now));
+    this.lastNow = now;
+    this.updateBehaviour(now, dt);
+    const posed = this.renderPose();
+
     // Körperbewegung: atmen, wiegen, beim Sprechen nicken
     const m = this.motion;
     const breathe = Math.sin(t * 1.7) * 0.006 * m;
@@ -500,15 +616,46 @@ export class Avatar {
 
     // freischwebend etwas Rand lassen, damit beim Wiegen nichts abgeschnitten wird
     const fit = Math.min(W / this.w, H / this.h) * (this.transparent ? 0.94 : 1);
-    const dw = this.w * fit;
-    const dh = this.h * fit;
+    const L = this.layout;
+    this.fitPx = this.h * fit; // Figurhöhe in Gerätepixeln bei Maßstab 1
+    const dw = this.w * fit * L.scale;
+    const dh = this.h * fit * L.scale;
+    const bx = W / 2 + L.x * W;
+    const by = (H + this.h * fit) / 2 + L.y * H;
+    // Position der Figur (ohne Wiegen) für Auswahlrahmen und Trefferprüfung, in CSS-Pixeln
+    const dpr = this.host.devicePixelRatio || 1;
+    this.rect = { x: (bx - dw / 2) / dpr, y: (by - dh) / dpr, w: dw / dpr, h: dh / dpr };
     ctx.save();
-    ctx.translate(W / 2, (H + dh) / 2); // Drehpunkt unten Mitte
+    ctx.translate(bx, by); // Drehpunkt unten Mitte
     ctx.rotate(sway + talk + think);
+    if (this.flip) ctx.scale(-1, 1);
     ctx.scale(1 + this.lean, 1 + breathe + this.lean);
     ctx.translate(Math.sin(t * 0.4) * 2 * m, -talk * dh * 0.3);
-    ctx.drawImage(this.frame, -dw / 2, -dh, dw, dh);
+    ctx.drawImage(posed, -dw / 2, -dh, dw, dh);
     ctx.restore();
+  }
+
+  /** Figur so platzieren, dass sie das angegebene Rechteck (CSS-Pixel) ausfüllt. */
+  setRect(r) {
+    const dpr = this.host.devicePixelRatio || 1;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const fitPx = this.fitPx || H;
+    const bx = (r.x + r.w / 2) * dpr;
+    const by = (r.y + r.h) * dpr;
+    this.layout = { x: (bx - W / 2) / W, y: (by - (H + fitPx) / 2) / H, scale: (r.h * dpr) / fitPx };
+  }
+
+  /** Liegt der Punkt (CSS-Pixel) auf der Figur? Bei freigestellten Bildern zählt nur die Figur selbst. */
+  hitTest(x, y) {
+    const r = this.rect;
+    if (!r || x < r.x || y < r.y || x > r.x + r.w || y > r.y + r.h) return false;
+    if (!this.hasAlpha) return true;
+    const dpr = this.host.devicePixelRatio || 1;
+    const px = Math.round(x * dpr);
+    const py = Math.round(y * dpr);
+    if (px < 0 || py < 0 || px >= this.canvas.width || py >= this.canvas.height) return false;
+    return this.ctx.getImageData(px, py, 1, 1).data[3] > 30;
   }
 }
 

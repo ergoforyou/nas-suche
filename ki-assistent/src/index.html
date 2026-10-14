@@ -60,14 +60,19 @@
         </div>
       </label>
       <label>Name <input id="pName" type="text" /></label>
-      <label>Systemprompt aus LM Studio übernehmen
+      <label>Systemprompt aus LM Studio (Presets und Chats)
         <div class="row">
-          <select id="pPreset"><option value="">– Preset wählen –</option></select>
-          <button id="pPresetLoad" title="Presets neu einlesen">⟳</button>
+          <select id="pPreset"><option value="">– wird geladen –</option></select>
+          <button id="pPresetLoad" title="Neu einlesen">⟳</button>
         </div>
       </label>
-      <p class="hint" id="pPresetHint">Übernimmt den Systemprompt (und die Temperatur) eines in LM Studio gespeicherten
-        Presets. Der Antwortstil wird dabei auf „Nur mein Systemprompt“ gestellt.</p>
+      <div class="row wrap">
+        <button id="pPresetApply">In diese Persona übernehmen</button>
+        <button id="pPresetNew">Als neue Persona anlegen</button>
+      </div>
+      <p class="hint" id="pPresetHint">Jeder Chat in LM Studio hat seinen eigenen Systemprompt – hier kannst du ihn
+        übernehmen. Der Antwortstil wird dabei auf „Nur mein Systemprompt“ gestellt, damit die Antworten wie in
+        LM Studio ausfallen.</p>
       <label>Charakter &amp; Rolle (Systemprompt)
         <textarea id="pPrompt" rows="7" placeholder="Du bist Max, ein freundlicher Büroassistent …"></textarea>
       </label>
@@ -95,8 +100,8 @@
 
     <div class="tab" data-tab="avatar" hidden>
       <label class="check"><input id="avFloating" type="checkbox" /> Figur frei auf dem Desktop anzeigen</label>
-      <p class="hint">Freischwebend: ziehen zum Verschieben, Mausrad für die Größe, Klick zum Sprechen,
-        Doppelklick öffnet den Chat, Rechtsklick für das Menü.</p>
+      <p class="hint">Freischwebend: Figur anklicken zeigt einen Rahmen – ziehen verschiebt, Ecken ändern die Größe
+        (oder Mausrad). Doppelklick: sprechen. Rechtsklick: Menü (Chat öffnen, Ausgabe …).</p>
       <label>Avatar-Bild
         <div class="row wrap">
           <button id="avUpload">Bild hochladen …</button>
@@ -136,7 +141,10 @@
       <label>Mundöffnung <input id="avOpen" type="range" min="0.3" max="2" step="0.05" /></label>
       <label>Mundbreite (nur ohne ausgemalte Lippen) <input id="avMouthW" type="range" min="0.02" max="0.3" step="0.005" /></label>
       <label>Augengröße <input id="avEyeR" type="range" min="0.005" max="0.08" step="0.001" /></label>
-      <label>Bewegungsstärke <input id="avMotion" type="range" min="0" max="2.5" step="0.1" /></label>
+      <label>Bewegungsstärke (Kopf und Körper) <input id="avMotion" type="range" min="0" max="2.5" step="0.1" /></label>
+      <label class="check"><input id="avFlip" type="checkbox" /> Figur spiegeln (links/rechts)</label>
+      <p class="hint">Figur im Chatfenster anklicken: Rahmen zum Verschieben und Vergrößern. Doppelklick: sprechen.</p>
+      <button id="avResetPos">Position im Chatfenster zurücksetzen</button>
       <details>
         <summary>Fortgeschritten: eigene Bilder für Mund/Augen (PNGtuber-Stil)</summary>
         <p class="hint">Gleich großes Bild mit offenem Mund bzw. geschlossenen Augen. Ersetzt die automatische Verformung.</p>

@@ -4,7 +4,8 @@ import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha } from './cutout.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
-import { debugVoice } from './piper.js';
+import { RubberBand } from './rubberband.js';
+import { debugVoice, synthesize } from './piper.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
@@ -130,7 +131,7 @@ function friendlyError(e) {
 }
 
 // ---------------------------------------------------------------- Bausteine
-const avatar = new Avatar($('avatar'));
+const avatar = new Avatar($('avatar'), { useLayout: true });
 const status = (text) => ($('status').textContent = text ?? '');
 
 const tts = new SpeechOutput({
@@ -140,7 +141,15 @@ const tts = new SpeechOutput({
     updateBadge();
     if (!on) maybeListenHandsFree();
   },
-  onStatus: (text) => status(/fehler|übersprungen/i.test(text) && /fetch|503/i.test(text) ? friendlyError(text) : text),
+  onStatus: (text) => {
+    const isError = /fehler|übersprungen/i.test(text);
+    const msg = isError && /fetch|503|Offline/i.test(text) ? friendlyError(text) : text;
+    status(msg);
+    if (isError && !state.ttsErrorShown) {
+      state.ttsErrorShown = true;
+      addBubble('error', `Sprachausgabe: ${msg} – Tipp: ⚙ → Sprache → „▶ Stimme testen“ oder Engine „Systemstimme“.`);
+    }
+  },
 });
 
 const stt = new SpeechInput({
@@ -149,8 +158,18 @@ const stt = new SpeechInput({
   },
 });
 
+// Figur im Chatfenster: anklicken = Rahmen zum Verschieben/Skalieren, Doppelklick = sprechen
+new RubberBand($('stage'), avatar, {
+  kind: 'layout',
+  onActivate: () => toggleMic(),
+  onChange: (layout) => {
+    persona().avatar.stage = { ...layout };
+    save();
+  },
+});
+
 const floating = new FloatingAvatar({
-  onClick: () => toggleMic(),
+  onActivate: () => toggleMic(),
   onClosed: () => setFloating(false, { fromWindow: true }),
 });
 const output = new OutputWindow();
@@ -312,6 +331,7 @@ async function send(text) {
   if (!text || state.busy) return;
   tts.stop();
   tts.newTurn();
+  state.ttsErrorShown = false;
   state.busy = true;
   setBusyUi(true);
 
@@ -638,6 +658,7 @@ function fillSettings() {
   $('avEyeR').value = p.avatar.eyes?.[0]?.r ?? 0.03;
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avOpen').value = p.avatar.mouthOpen ?? 1;
+  $('avFlip').checked = !!p.avatar.flip;
   $('avRestore').disabled = !p.avatar.original;
 
   $('vSpeak').checked = s.speak;
@@ -703,30 +724,55 @@ $('pLang').onchange = (e) => {
   applyVoice();
   save();
 };
-// Presets aus LM Studio
+// Systemprompts aus LM Studio (Presets und Chats)
 let presets = [];
 async function loadPresets() {
-  presets = (await desktop.lmStudioPresets().catch(() => [])) ?? [];
+  presets = (await desktop.lmStudioPrompts().catch(() => [])) ?? [];
   const sel = $('pPreset');
   sel.innerHTML = '';
-  sel.add(new Option(presets.length ? '– Preset wählen –' : 'Keine Presets in LM Studio gefunden', ''));
-  presets.forEach((p, i) => sel.add(new Option(p.name, String(i))));
-}
-$('pPresetLoad').onclick = loadPresets;
-$('pPreset').onchange = (e) => {
-  const preset = presets[+e.target.value];
-  if (!preset) return;
-  const p = persona();
-  if (p.prompt?.trim() && p.prompt !== preset.systemPrompt && !confirm('Den aktuellen Systemprompt durch das Preset ersetzen?')) {
-    e.target.value = '';
+  if (!presets.length) {
+    sel.add(new Option('Keine Systemprompts in LM Studio gefunden', ''));
     return;
   }
-  p.prompt = preset.systemPrompt;
-  p.style = 'frei';
+  sel.add(new Option(`– ${presets.length} gefunden, bitte wählen –`, ''));
+  for (const source of ['Preset', 'Chat']) {
+    const group = document.createElement('optgroup');
+    group.label = source === 'Preset' ? 'Presets' : 'Chats';
+    presets.forEach((p, i) => {
+      if (p.source !== source) return;
+      const preview = p.systemPrompt.replace(/\s+/g, ' ').slice(0, 60);
+      group.appendChild(new Option(`${p.name} – ${preview}${p.systemPrompt.length > 60 ? '…' : ''}`, String(i)));
+    });
+    if (group.children.length) sel.appendChild(group);
+  }
+}
+const selectedPreset = () => presets[+$('pPreset').value] ?? null;
+function applyPreset(target, preset) {
+  target.prompt = preset.systemPrompt;
+  target.style = 'frei';
   if (typeof preset.temperature === 'number') state.settings.temperature = preset.temperature;
+}
+$('pPresetLoad').onclick = loadPresets;
+$('pPresetApply').onclick = () => {
+  const preset = selectedPreset();
+  if (!preset) return status('Bitte zuerst einen Systemprompt auswählen.');
+  const p = persona();
+  if (p.prompt?.trim() && p.prompt !== preset.systemPrompt && !confirm('Den aktuellen Systemprompt ersetzen?')) return;
+  applyPreset(p, preset);
   save();
   fillSettings();
-  status(`Systemprompt aus LM Studio übernommen: „${preset.name}“.`);
+  status(`Systemprompt übernommen: „${preset.name}“.`);
+};
+$('pPresetNew').onclick = () => {
+  const preset = selectedPreset();
+  if (!preset) return status('Bitte zuerst einen Systemprompt auswählen.');
+  const p = structuredClone(persona());
+  p.id = newId();
+  p.name = preset.name.slice(0, 40);
+  p.greeting = '';
+  applyPreset(p, preset);
+  switchTo(p);
+  status(`Neue Persona „${p.name}“ angelegt – Avatar und Stimme wurden von der bisherigen übernommen.`);
 };
 
 $('pStyle').onchange = (e) => {
@@ -984,6 +1030,17 @@ $('avEyeR').oninput = (e) => {
   for (const eye of persona().avatar.eyes ?? []) eye.r = +e.target.value;
   avatarChanged();
 };
+$('avFlip').onchange = (e) => {
+  persona().avatar.flip = e.target.checked;
+  if (floating.avatar) floating.avatar.flip = e.target.checked;
+  avatar.flip = e.target.checked;
+  save();
+};
+$('avResetPos').onclick = () => {
+  persona().avatar.stage = null;
+  avatar.layout = { x: 0, y: 0, scale: 1 };
+  save();
+};
 $('avMotion').oninput = (e) => {
   persona().avatar.motion = +e.target.value;
   avatar.motion = +e.target.value;
@@ -1154,6 +1211,7 @@ const testPhrase = () =>
 const speakTest = () => {
   tts.stop();
   tts.newTurn();
+  state.ttsErrorShown = false;
   tts.enqueue(testPhrase());
 };
 $('avTest').onclick = speakTest;
@@ -1299,6 +1357,30 @@ async function init() {
   if (state.settings.handsFree) maybeListenHandsFree();
 }
 
+/** Selbsttest der Sprachkette (wird vom automatischen Windows-Test aufgerufen). */
+async function selfTest() {
+  try {
+    const text = 'Hallo, das ist ein kurzer Test der Sprachausgabe.';
+    const t0 = performance.now();
+    const res = await synthesize(text, DEFAULT_VOICES.de);
+    const t1 = performance.now();
+    const off = new OfflineAudioContext(1, Math.ceil((res.audio.length / res.sampleRate) * 16000), 16000);
+    const buf = off.createBuffer(1, res.audio.length, res.sampleRate);
+    buf.copyToChannel(Float32Array.from(res.audio), 0);
+    const src = off.createBufferSource();
+    src.buffer = buf;
+    src.connect(off.destination);
+    src.start();
+    const audio = (await off.startRendering()).getChannelData(0).slice();
+    stt.language = 'german';
+    const heard = await stt.transcribe(audio);
+    applyVoice();
+    return { ok: /test/i.test(heard), samples: res.audio.length, ttsMs: Math.round(t1 - t0), heard };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
+}
+
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
   avatar,
@@ -1311,6 +1393,7 @@ window.__app = {
   openOutput,
   floatingReady: () => !!floating.avatar?.ready,
   debugVoice,
+  selfTest,
   outputReady: () => output.isOpen && !!output.win.document.getElementById('content'),
 };
 

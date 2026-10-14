@@ -3,6 +3,7 @@
 //  - OutputWindow: Antworten groß und formatiert wie in LM Studio
 import { Avatar, avatarState } from './avatar.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
+import { RubberBand } from './rubberband.js';
 
 const desktop = window.desktop;
 
@@ -24,8 +25,8 @@ function openChild(url, name) {
 }
 
 export class FloatingAvatar {
-  constructor({ onClick, onClosed }) {
-    this.onClick = onClick;
+  constructor({ onActivate, onClosed }) {
+    this.onActivate = onActivate;
     this.onClosed = onClosed;
     this.win = null;
     this.avatar = null;
@@ -79,43 +80,27 @@ export class FloatingAvatar {
     this.pill.classList.toggle('listening', !!listening);
   }
 
-  /** Ist an dieser Stelle die Figur (nicht transparent)? */
-  hit(x, y) {
-    const c = this.avatar?.canvas;
-    if (!c) return false;
-    const dpr = this.win.devicePixelRatio || 1;
-    const px = Math.round(x * dpr);
-    const py = Math.round(y * dpr);
-    if (px < 0 || py < 0 || px >= c.width || py >= c.height) return false;
-    return this.avatar.ctx.getImageData(px, py, 1, 1).data[3] > 30;
-  }
-
   attachMouse(doc) {
+    // Klick-durch: transparente Bereiche lassen Mausklicks zum Desktop durch,
+    // solange die Figur nicht ausgewählt ist.
     let ignoring = true;
-    let down = null;
     const setIgnore = (v) => {
       if (v !== ignoring) {
         ignoring = v;
         desktop.avatarIgnoreMouse(v);
       }
     };
+    this.band = new RubberBand(doc.body, this.avatar, {
+      kind: 'window',
+      desktop,
+      onActivate: () => this.onActivate?.(),
+      onSelect: (on) => setIgnore(!on && true),
+    });
     doc.addEventListener('mousemove', (e) => {
-      if (!down) setIgnore(!this.hit(e.clientX, e.clientY));
+      if (this.band.selected) return setIgnore(false);
+      setIgnore(!this.avatar.hitTest(e.clientX, e.clientY));
     });
-    doc.addEventListener('mouseleave', () => !down && setIgnore(true));
-    doc.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      down = { x: e.screenX, y: e.screenY };
-      desktop.avatarDragStart();
-    });
-    doc.defaultView.addEventListener('mouseup', (e) => {
-      if (!down || e.button !== 0) return;
-      desktop.avatarDragEnd();
-      const moved = Math.hypot(e.screenX - down.x, e.screenY - down.y);
-      down = null;
-      if (moved < 4) this.onClick?.();
-    });
-    doc.addEventListener('dblclick', () => desktop.show());
+    doc.addEventListener('mouseleave', () => !this.band.selected && setIgnore(true));
     doc.addEventListener(
       'wheel',
       (e) => {

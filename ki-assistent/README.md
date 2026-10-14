@@ -28,13 +28,17 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
 - **🎤** – einmal zuhören (oder **Strg + Leertaste**; systemweit **Strg + Alt + Leertaste**). Im
   **Freihand-Modus** (⚙ → Sprache) hört der Assistent ständig zu, sobald er fertig gesprochen hat.
 - **■ / Esc** – Antwort und Sprachausgabe abbrechen.
-- **🧍** – Figur frei auf dem Desktop: ziehen = verschieben, Mausrad = Größe, Klick = sprechen,
-  Doppelklick = Chat öffnen, Rechtsklick = Menü. Das Chatfenster kann dann geschlossen werden.
+- **🧍** – Figur frei auf dem Desktop. Figur anklicken = Rahmen: ziehen verschiebt, Ecken (oder Mausrad)
+  ändern die Größe. Doppelklick = sprechen, Rechtsklick = Menü (Chat öffnen …). Das Chatfenster kann dann
+  geschlossen werden. Auch im Chatfenster lässt sich die Figur so verschieben und skalieren.
 - **📄** – Ausgabefenster: Antworten groß und formatiert wie in LM Studio (Überschriften, Listen,
   Tabellen, Code mit Kopier-Knopf), mit ◀ ▶ durch frühere Antworten blättern.
 - **📌** – Chatfenster immer im Vordergrund.
 
 ### Eigene Persona & Avatar
+
+Systemprompts aus **LM Studio** (gespeicherte Presets und die Systemprompts deiner Chats) lassen sich unter
+⚙ → Persona in die aktuelle Persona übernehmen oder direkt als neue Persona anlegen.
 
 Unter ⚙ → **Persona**: Name, Charakter/Rolle (Systemprompt), Begrüßung, **Antwortsprache** (Deutsch/Englisch)
 und **Antwortstil**:

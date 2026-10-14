@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('desktop', {
   avatarDragEnd: () => ipcRenderer.send('avatar:dragEnd'),
   avatarResize: (factor, aspect) => ipcRenderer.send('avatar:resize', { factor, aspect }),
   avatarMenu: (state) => ipcRenderer.send('avatar:menu', state),
+  avatarResizeStart: (corner, aspect) => ipcRenderer.send('avatar:resizeStart', { corner, aspect }),
 
   // Modelle / Netzwerk
   modelInfo: () => ipcRenderer.invoke('models:info'),
@@ -29,7 +30,7 @@ contextBridge.exposeInMainWorld('desktop', {
   setOffline: (on) => ipcRenderer.send('net:offline', on),
 
   // LM Studio
-  lmStudioPresets: () => ipcRenderer.invoke('lmstudio:presets'),
+  lmStudioPrompts: () => ipcRenderer.invoke('lmstudio:prompts'),
   listModels: (baseUrl) => ipcRenderer.invoke('llm:models', baseUrl),
   chat: (req, onEvent) => {
     listeners.set(req.id, (msg) => {

@@ -59,22 +59,43 @@ ipcMain.handle('data:save', (_e, data) => patchData(data));
 const modelDir = () => path.join(app.getPath('userData'), 'modelle');
 let offline = false;
 
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.wasm': 'application/wasm',
+  '.onnx': 'application/octet-stream',
+  '.data': 'application/octet-stream',
+};
+
+// Datei mit korrektem Content-Type ausliefern (WebAssembly lädt sonst nicht per Streaming)
+async function serveFile(file) {
+  if (!fs.existsSync(file)) return new Response('Nicht gefunden', { status: 404 });
+  const res = await net.fetch(pathToFileURL(file).toString());
+  const headers = { 'Content-Length': String(fs.statSync(file).size) };
+  const type = MIME[path.extname(file).toLowerCase()];
+  if (type) headers['Content-Type'] = type;
+  return new Response(res.body, { status: 200, headers });
+}
+
 async function serveModel(rel) {
   const target = path.normalize(path.join(modelDir(), 'hf', rel));
   if (!target.startsWith(path.join(modelDir(), 'hf'))) return new Response('Verboten', { status: 403 });
-  if (fs.existsSync(target)) {
-    const size = fs.statSync(target).size;
-    const res = await net.fetch(pathToFileURL(target).toString());
-    return new Response(res.body, { status: 200, headers: { 'Content-Length': String(size) } });
-  }
+  if (fs.existsSync(target)) return serveFile(target);
   if (offline) return new Response('Offline-Modus: Modell nicht vorhanden', { status: 404 });
 
   const upstream = await fetch(`https://huggingface.co/${rel}`, { redirect: 'follow' }).catch(() => null);
   if (!upstream) return new Response('Keine Internetverbindung', { status: 503 });
   if (!upstream.ok) return new Response(upstream.statusText, { status: upstream.status });
 
+  // Bei komprimierter Übertragung passt die Längenangabe nicht zu den entpackten Daten
+  const len = upstream.headers.get('content-encoding') ? null : upstream.headers.get('content-length');
+  const headers = len ? { 'Content-Length': len } : {};
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  const part = `${target}.${process.pid}.part`;
+  const part = `${target}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.part`;
   const out = fs.createWriteStream(part);
   const reader = upstream.body.getReader();
   const body = new ReadableStream({
@@ -83,6 +104,8 @@ async function serveModel(rel) {
         const { done, value } = await reader.read();
         if (done) {
           await new Promise((r) => out.end(r));
+          // Unvollständige Downloads nie als fertiges Modell ablegen
+          if (len && fs.statSync(part).size !== Number(len)) throw new Error('Download unvollständig');
           fs.renameSync(part, target);
           ctrl.close();
           return;
@@ -101,9 +124,6 @@ async function serveModel(rel) {
       fs.rmSync(part, { force: true });
     },
   });
-  const headers = {};
-  const len = upstream.headers.get('content-length');
-  if (len) headers['Content-Length'] = len;
   return new Response(body, { status: 200, headers });
 }
 
@@ -254,7 +274,7 @@ function runSmokeTest() {
     console.error('SMOKE FAIL:', why);
     app.exit(1);
   };
-  setTimeout(() => fail('Zeitüberschreitung'), 60000);
+  setTimeout(() => fail('Zeitüberschreitung'), 420000);
   win.webContents.on('preload-error', (_e, _p, err) => fail(err.message));
   win.webContents.on('did-fail-load', (_e, code, desc) => fail(`${code} ${desc}`));
   win.webContents.on('did-finish-load', async () => {
@@ -275,6 +295,10 @@ function runSmokeTest() {
       );
       console.log('Modell-Route:', cfg);
       if (cfg !== 'whisper') return fail('Modell-Download über app:// fehlgeschlagen');
+      // Sprachkette in der echten App: Piper spricht, Whisper erkennt
+      const speech = await js('window.__app.selfTest()');
+      console.log('Sprach-Selbsttest:', JSON.stringify(speech));
+      if (!speech.ok) return fail('Sprachkette: ' + (speech.error || speech.heard));
       console.log('SMOKE OK');
       quitting = true;
       app.exit(0);
@@ -291,7 +315,7 @@ app.whenReady().then(() => {
     if (rel.startsWith('/models/hf/')) return serveModel(rel.slice('/models/hf/'.length));
     const file = path.normalize(path.join(DIST, rel));
     if (!file.startsWith(DIST)) return new Response('Verboten', { status: 403 });
-    return net.fetch(pathToFileURL(file).toString());
+    return serveFile(file);
   });
 
   // Mikrofon erlauben (nur für die eigene App-Oberfläche).
@@ -366,10 +390,37 @@ ipcMain.on('avatar:resize', (_e, { factor, aspect }) => {
   patchData({ avatarBounds: avatarWin.getBounds() });
 });
 
+// Größe über einen Eckanfasser ziehen: gegenüberliegende Ecke bleibt fest, Seitenverhältnis bleibt.
+ipcMain.on('avatar:resizeStart', (_e, { corner, aspect }) => {
+  if (!avatarWin) return;
+  stopDrag();
+  const b = avatarWin.getBounds();
+  const ratio = aspect || b.width / b.height;
+  const ax = corner.includes('w') ? b.x + b.width : b.x;
+  const ay = corner.includes('n') ? b.y + b.height : b.y;
+  avatarWin.setIgnoreMouseEvents(false);
+  drag = {
+    timer: setInterval(() => {
+      if (!avatarWin || avatarWin.isDestroyed()) return stopDrag();
+      const c = screen.getCursorScreenPoint();
+      const wa = screen.getDisplayNearestPoint(c).workArea;
+      let height = Math.max(Math.abs(c.y - ay), Math.abs(c.x - ax) / ratio);
+      height = Math.max(120, Math.min(wa.height, height));
+      const width = height * ratio;
+      avatarWin.setBounds({
+        x: Math.round(corner.includes('w') ? ax - width : ax),
+        y: Math.round(corner.includes('n') ? ay - height : ay),
+        width: Math.round(width),
+        height: Math.round(height),
+      });
+    }, 16),
+  };
+});
+
 ipcMain.on('avatar:menu', (_e, { listening }) => {
   const send = (cmd) => () => win?.webContents.send('cmd', cmd);
   Menu.buildFromTemplate([
-    { label: listening ? 'Zuhören beenden' : 'Zuhören', click: send('mic') },
+    { label: listening ? 'Zuhören beenden' : 'Zuhören (Doppelklick)', click: send('mic') },
     { label: 'Chat öffnen', click: () => (win.show(), win.focus()) },
     { label: 'Ausgabefenster', click: send('output') },
     { type: 'separator' },
@@ -384,55 +435,65 @@ ipcMain.on('avatar:menu', (_e, { listening }) => {
 // ---------------------------------------------------------------- LM-Studio-Presets
 // Der Systemprompt aus dem LM-Studio-Chat gilt nicht automatisch für Anfragen über die API.
 // Deshalb lesen wir die gespeicherten Presets ein, damit sie in eine Persona übernommen werden können.
-function presetDirs() {
+function lmStudioDirs() {
   const home = os.homedir();
   return [
-    path.join(home, '.lmstudio', 'config-presets'),
-    path.join(home, '.lmstudio', 'hub', 'presets'),
-    path.join(home, '.cache', 'lm-studio', 'config-presets'),
+    { dir: path.join(home, '.lmstudio', 'config-presets'), source: 'Preset' },
+    { dir: path.join(home, '.lmstudio', 'hub', 'presets'), source: 'Preset' },
+    { dir: path.join(home, '.cache', 'lm-studio', 'config-presets'), source: 'Preset' },
+    { dir: path.join(home, '.lmstudio', 'conversations'), source: 'Chat' },
+    { dir: path.join(home, '.cache', 'lm-studio', 'conversations'), source: 'Chat' },
   ];
 }
 
-function findPresetFiles(dir, depth = 0, out = []) {
+function findJsonFiles(dir, depth = 0, out = []) {
   if (depth > 4 || !fs.existsSync(dir)) return out;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) findPresetFiles(p, depth + 1, out);
+    if (e.isDirectory()) findJsonFiles(p, depth + 1, out);
     else if (/\.json$/i.test(e.name)) out.push(p);
   }
   return out;
 }
 
-function parsePreset(file) {
+function parsePromptFile(file, source) {
   try {
     const json = JSON.parse(fs.readFileSync(file, 'utf8'));
     let systemPrompt = null;
     let temperature = null;
-    // Neues Format (LM Studio 0.3+): { operation: { fields: [{ key, value }] } }; Felder können verschachtelt sein
-    const walk = (node) => {
-      if (!node || typeof node !== 'object') return;
-      if (Array.isArray(node)) return node.forEach(walk);
+    // Felder können in verschiedenen Formaten und verschachtelt vorkommen:
+    //  - { key: "llm.prediction.systemPrompt", value: "…" } (Presets ab LM Studio 0.3)
+    //  - { systemPrompt: "…" } (Chats)
+    //  - { inference_params: { pre_prompt, temp } } (LM Studio 0.2)
+    const walk = (node, depth = 0) => {
+      if (!node || typeof node !== 'object' || depth > 12) return;
+      if (Array.isArray(node)) return node.forEach((n) => walk(n, depth + 1));
       if (typeof node.key === 'string' && 'value' in node) {
-        if (node.key.endsWith('systemPrompt') && typeof node.value === 'string') systemPrompt ??= node.value;
+        if (node.key.endsWith('systemPrompt') && typeof node.value === 'string') systemPrompt ||= node.value;
         if (node.key.endsWith('temperature') && typeof node.value === 'number') temperature ??= node.value;
       }
-      Object.values(node).forEach(walk);
+      if (typeof node.systemPrompt === 'string') systemPrompt ||= node.systemPrompt;
+      if (typeof node.pre_prompt === 'string') systemPrompt ||= node.pre_prompt;
+      if (typeof node.temp === 'number') temperature ??= node.temp;
+      for (const [k, v] of Object.entries(node)) if (k !== 'messages') walk(v, depth + 1);
     };
     walk(json);
-    // Altes Format (LM Studio 0.2): { inference_params: { pre_prompt, temp } }
-    systemPrompt ??= json.inference_params?.pre_prompt ?? null;
-    temperature ??= json.inference_params?.temp ?? null;
-    if (!systemPrompt) return null;
-    const name = json.name ?? path.basename(file).replace(/(\.preset)?\.json$/i, '');
-    return { name, systemPrompt, temperature, file };
+    if (!systemPrompt?.trim()) return null;
+    const name = (json.name || path.basename(file).replace(/(\.preset|\.conversation)?\.json$/i, '')).toString();
+    return { name, systemPrompt: systemPrompt.trim(), temperature, source, mtime: fs.statSync(file).mtimeMs };
   } catch {
     return null;
   }
 }
 
-ipcMain.handle('lmstudio:presets', () => {
-  const files = presetDirs().flatMap((d) => findPresetFiles(d));
-  return files.map(parsePreset).filter(Boolean);
+ipcMain.handle('lmstudio:prompts', () => {
+  const all = lmStudioDirs()
+    .flatMap(({ dir, source }) => findJsonFiles(dir).map((f) => parsePromptFile(f, source)))
+    .filter(Boolean)
+    .sort((a, b) => b.mtime - a.mtime);
+  // gleiche Prompts nur einmal anzeigen (neuester Eintrag gewinnt)
+  const seen = new Set();
+  return all.filter((p) => !seen.has(p.systemPrompt) && seen.add(p.systemPrompt));
 });
 
 // ---------------------------------------------------------------- LM Studio (OpenAI-kompatible API)
