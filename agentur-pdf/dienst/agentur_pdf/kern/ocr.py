@@ -257,6 +257,13 @@ def _png(bild: np.ndarray, dpi: int) -> bytes:
     return puffer.getvalue()
 
 
+_AUSGABE_PARAMETER = {
+    "tsv": ["-c", "tessedit_create_tsv=1", "-c", "tessedit_create_txt=0"],
+    "osd": [],  # --psm 0 schreibt die .osd-Datei von selbst
+    "txt": [],
+}
+
+
 def _tesseract(bild_png: bytes, argumente: list[str], ausgabe: str) -> str:
     """Tesseract mit Bild- und Ergebnis-DATEI aufrufen.
 
@@ -276,7 +283,10 @@ def _tesseract(bild_png: bytes, argumente: list[str], ausgabe: str) -> str:
         befehl = [programm, str(bild), str(basis)]
         if tessdata_finden():
             befehl += ["--tessdata-dir", tessdata_finden()]
-        befehl += argumente + [ausgabe]
+        # Ausgabeformat per Parameter statt Konfigurationsname („tsv“): Die
+        # mitgelieferten tessdata_best-Modelle haben keinen configs-Ordner,
+        # dann schreibt Tesseract stillschweigend nur Klartext (.txt).
+        befehl += argumente + _AUSGABE_PARAMETER[ausgabe]
         umgebung = {**os.environ, "OMP_THREAD_LIMIT": "1"}  # wir parallelisieren über Seiten
         try:
             ergebnis = subprocess.run(befehl, capture_output=True, timeout=TESSERACT_ZEITLIMIT, env=umgebung, **_ohne_fenster())
