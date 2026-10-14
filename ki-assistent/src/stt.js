@@ -48,6 +48,17 @@ export class SpeechInput {
     return this.call({ type: 'load', model: this.model }, onProgress);
   }
 
+  /** Modell laden und einmal „trocken“ laufen lassen – der erste echte Satz ist dann sofort dran. */
+  async warmup(onProgress) {
+    if (this.warmedFor === this.model) return;
+    this.warmedFor = this.model;
+    try {
+      await this.transcribe(new Float32Array(16000), onProgress);
+    } catch {
+      this.warmedFor = null;
+    }
+  }
+
   async transcribe(audio, onProgress) {
     const res = await this.call(
       { type: 'transcribe', model: this.model, language: this.language, audio },

@@ -358,6 +358,7 @@ function createWindow() {
     });
     if (frameName === 'avatar') {
       avatarWin = child;
+      avatarIgnoring = true;
       child.setAlwaysOnTop(true, 'floating');
       child.setIgnoreMouseEvents(true, { forward: true });
       const persist = () => !child.isDestroyed() && patchData({ avatarBounds: child.getBounds() });
@@ -500,9 +501,25 @@ ipcMain.on('app:quit', quitCompletely);
 // ---------------------------------------------------------------- Freischwebende Figur
 let drag = null;
 
+let avatarIgnoring = true;
 ipcMain.on('avatar:ignoreMouse', (_e, ignore) => {
-  if (avatarWin && !drag) avatarWin.setIgnoreMouseEvents(!!ignore, { forward: true });
+  if (avatarWin && !avatarWin.isDestroyed() && !drag && avatarIgnoring !== !!ignore) {
+    avatarIgnoring = !!ignore;
+    avatarWin.setIgnoreMouseEvents(avatarIgnoring, { forward: true });
+  }
 });
+
+// Mausposition selbst abfragen: Das Weiterreichen der Mausbewegung an durchklickbare Fenster
+// ("forward") funktioniert nicht auf allen Windows-Rechnern. Die Oberfläche prüft, ob die Maus
+// über der Figur ist, und schaltet das Durchklicken dann aus.
+setInterval(() => {
+  if (!avatarWin || avatarWin.isDestroyed() || !avatarWin.isVisible() || drag || !win || win.isDestroyed()) return;
+  const c = screen.getCursorScreenPoint();
+  const b = avatarWin.getBounds();
+  const inside = c.x >= b.x && c.y >= b.y && c.x < b.x + b.width && c.y < b.y + b.height;
+  if (!inside && avatarIgnoring) return;
+  win.webContents.send('avatar:cursor', { inside, x: c.x - b.x, y: c.y - b.y });
+}, 60);
 
 ipcMain.on('avatar:dragStart', () => {
   if (!avatarWin) return;
@@ -513,6 +530,7 @@ ipcMain.on('avatar:dragStart', () => {
   // bzw. setPosition „klebt“ am Bildschirmrand. Darum immer die kompletten Maße setzen.
   drag = { dx: cursor.x - b.x, dy: cursor.y - b.y, width: b.width, height: b.height, last: null, started: Date.now() };
   avatarWin.setIgnoreMouseEvents(false);
+  avatarIgnoring = false;
   drag.timer = setInterval(() => {
     if (!avatarWin || avatarWin.isDestroyed()) return stopDrag();
     // Sicherheitsnetz, falls das Loslassen der Maus nicht ankommt
@@ -562,6 +580,7 @@ ipcMain.on('avatar:resizeStart', (_e, { corner, aspect }) => {
   const ax = corner.includes('w') ? b.x + b.width : b.x;
   const ay = corner.includes('n') ? b.y + b.height : b.y;
   avatarWin.setIgnoreMouseEvents(false);
+  avatarIgnoring = false;
   drag = {
     timer: setInterval(() => {
       if (!avatarWin || avatarWin.isDestroyed()) return stopDrag();

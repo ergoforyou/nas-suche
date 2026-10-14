@@ -152,6 +152,10 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
     ...(system ? { system } : {}),
     // Denktiefe: "low" antwortet am schnellsten (wichtig für Sprachausgabe)
     output_config: { effort: effort || 'low' },
+    // „niedrig“ = für Sprache optimiert: Denkphase vor der Antwort abschalten (spart oft 1–3 s bis zum ersten Wort).
+    // Haiku: disabled; Sonnet 5.5: between_tools; Opus 5.5 lässt sich nicht abschalten.
+    ...((effort || 'low') === 'low' && /haiku/.test(model) ? { thinking: { type: 'disabled' } } : {}),
+    ...((effort || 'low') === 'low' && /sonnet-5-5/.test(model) ? { thinking: { type: 'between_tools' } } : {}),
     ...(tools.length ? { tools } : {}),
     ...(files ? { container: { ...(containerId ? { id: containerId } : {}), skills: OFFICE_SKILLS.map((id) => ({ type: 'anthropic', skill_id: id, version: 'latest' })) } } : {}),
     ...(withFallback ? { fallbacks: 'default' } : {}),

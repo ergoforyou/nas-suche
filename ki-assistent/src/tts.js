@@ -114,7 +114,7 @@ export class SentenceSplitter {
     this.buf += text;
     // Damit die Stimme schnell einsetzt: das allererste Stück schon am ersten Komma abschicken
     if (this.first && !this.inCode) {
-      const m = /^([^\n`]{25,}?[,;–—])\s+/.exec(this.buf);
+      const m = /^([^\n`]{12,}?[,;–—])\s+/.exec(this.buf);
       if (m) {
         this.first = false;
         this.buf = this.buf.slice(m[0].length);
@@ -211,11 +211,10 @@ export class SpeechOutput {
     return run;
   }
 
-  /** Cloud-Stimme (OpenAI): ein Satz -> Audio. Anfragen laufen nacheinander, damit die Reihenfolge stimmt. */
+  /** Cloud-Stimme (OpenAI): ein Satz -> Audio. Anfragen laufen parallel (die Warteschlange hält die Reihenfolge). */
   synthCloud(text) {
     const c = this.cloud ?? {};
-    const prev = this.cloudChain ?? Promise.resolve();
-    const run = prev.then(async () => {
+    const run = (async () => {
       const bytes = await window.desktop.ttsCloudSpeak({
         text,
         voice: c.voice,
@@ -226,8 +225,7 @@ export class SpeechOutput {
       this.ctx ??= new AudioContext();
       const buf = await this.ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
       return { audio: buf.getChannelData(0), sampleRate: buf.sampleRate };
-    });
-    this.cloudChain = run.catch(() => {});
+    })();
     return run;
   }
 

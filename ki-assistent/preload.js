@@ -5,6 +5,8 @@ ipcRenderer.on('llm:event', (_e, msg) => listeners.get(msg.id)?.(msg));
 
 let commandHandler = () => {};
 ipcRenderer.on('cmd', (_e, cmd) => commandHandler(cmd));
+let cursorHandler = () => {};
+ipcRenderer.on('avatar:cursor', (_e, p) => cursorHandler(p));
 
 contextBridge.exposeInMainWorld('desktop', {
   edition: ipcRenderer.sendSync('app:edition'),
@@ -16,6 +18,7 @@ contextBridge.exposeInMainWorld('desktop', {
   quit: () => ipcRenderer.send('app:quit'),
   setAlwaysOnTop: (on) => ipcRenderer.send('win:alwaysOnTop', on),
   onCommand: (fn) => (commandHandler = fn),
+  onAvatarCursor: (fn) => (cursorHandler = fn),
 
   // freischwebende Figur
   avatarIgnoreMouse: (ignore) => ipcRenderer.send('avatar:ignoreMouse', ignore),

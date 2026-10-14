@@ -183,10 +183,12 @@ const tts = new SpeechOutput({
   onSpeakingChange: (on) => {
     avatarState.speaking = on;
     if (!on) state.lastSpeakEnd = Date.now();
+    if (on) showTiming();
     updateBadge();
     if (!on) maybeListenHandsFree();
   },
   onStatus: (text) => {
+    if (!text && $('status').textContent.startsWith('⏱')) return; // Zeitmessung stehen lassen
     const isError = /fehler|übersprungen/i.test(text);
     const msg = isError && /fetch|503|Offline/i.test(text) ? friendlyError(text) : text;
     status(msg);
@@ -631,6 +633,7 @@ async function send(text) {
       if (ev.type === 'delta') {
         const visible = think.push(ev.payload);
         if (!visible) return;
+        if (state.timing && !state.timing.answer) state.timing.answer = performance.now();
         if (avatarState.thinking && visible.trim()) {
           avatarState.thinking = false;
           updateBadge();
@@ -907,12 +910,14 @@ async function listenOnce({ handsFree = false } = {}) {
     });
     updateBadge();
     const audio = await p;
+    state.timing = { spoke: performance.now() };
     state.hearing = false;
     updateBadge();
     if (!audio || audio.length < 16000 * 0.35) return;
     state.transcribing = true;
     updateBadge();
     const text = await transcribeWithFallback(audio);
+    state.timing.heard = performance.now();
     status('');
     state.transcribing = false;
     updateBadge();
@@ -946,12 +951,25 @@ function maybeListenHandsFree() {
   }, 350);
 }
 
+/** Zeitmessung eines Sprach-Durchgangs anzeigen: wo hängt es? */
+function showTiming() {
+  const t = state.timing;
+  if (!t?.heard || !t.answer || t.shown) return;
+  t.shown = true;
+  const s = (a, b) => ((b - a) / 1000).toFixed(1).replace('.', ',') + ' s';
+  const now = performance.now();
+  status(`⏱ Erkennen ${s(t.spoke, t.heard)} · erste Worte ${s(t.heard, t.answer)} · Stimme ${s(t.answer, now)} · gesamt ${s(t.spoke, now)}`);
+}
+
 function setHandsFree(on) {
   state.settings.handsFree = on;
   $('sHandsFree').checked = on;
   $('btnLive').classList.toggle('active', on);
   $('btnLive').title = on ? 'Live-Gespräch beenden' : 'Live-Gespräch starten – einfach losreden, dazwischenreden erlaubt';
-  if (on) status('Live-Gespräch läuft – sprich einfach. Zum Beenden 📞 erneut drücken.');
+  if (on) {
+    status('Live-Gespräch läuft – sprich einfach. Zum Beenden 📞 erneut drücken.');
+    stt.warmup(progressStatus('Spracherkennung')).then(() => status(''));
+  }
   save();
   if (on) maybeListenHandsFree();
   else stt.cancel();
@@ -2572,4 +2590,7 @@ window.__app = {
   outputReady: () => output.isOpen && !!output.win.document.getElementById('content'),
 };
 
-init();
+init().then(() => {
+  // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
+  if (!state.settings.offline && state.settings.handsFree) setTimeout(() => stt.warmup().catch(() => {}), 3000);
+});

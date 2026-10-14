@@ -102,6 +102,12 @@ export class FloatingAvatar {
       setIgnore(!this.avatar.hitTest(e.clientX, e.clientY));
     });
     doc.addEventListener('mouseleave', () => !this.band.selected && setIgnore(true));
+    // Mausposition vom Hauptprozess (funktioniert auch, wenn Windows keine Mausbewegungen weiterreicht)
+    desktop.onAvatarCursor?.(({ inside, x, y }) => {
+      if (!this.avatar) return;
+      if (!inside) return !this.band.selected && setIgnore(true);
+      setIgnore(!(this.band.selected || this.avatar.hitTest(x, y)));
+    });
     doc.addEventListener(
       'wheel',
       (e) => {
