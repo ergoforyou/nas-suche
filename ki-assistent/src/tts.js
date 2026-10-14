@@ -30,7 +30,38 @@ export const PIPER_VOICES = {
 };
 export const DEFAULT_VOICES = { de: 'de_DE-thorsten-medium', en: 'en_US-lessac-high' };
 
+// Abkürzungen ausschreiben, damit sie nicht buchstabiert werden ("z. B." -> "zum Beispiel")
+const ABBREVIATIONS = [
+  [/\bz\.\s?B\./g, 'zum Beispiel'],
+  [/\bd\.\s?h\./g, 'das heißt'],
+  [/\bu\.\s?a\./g, 'unter anderem'],
+  [/\bu\.\s?U\./g, 'unter Umständen'],
+  [/\bo\.\s?Ä\./g, 'oder Ähnliches'],
+  [/\bz\.\s?T\./g, 'zum Teil'],
+  [/\bbzw\./g, 'beziehungsweise'],
+  [/\busw\./g, 'und so weiter'],
+  [/\betc\./g, 'et cetera'],
+  [/\bca\./g, 'circa'],
+  [/\bevtl\./g, 'eventuell'],
+  [/\bggf\./g, 'gegebenenfalls'],
+  [/\binkl\./g, 'inklusive'],
+  [/\bexkl\./g, 'exklusive'],
+  [/\bvgl\./g, 'vergleiche'],
+  [/\bsog\./g, 'sogenannte'],
+  [/\bNr\./g, 'Nummer'],
+  [/\bDr\./g, 'Doktor'],
+  [/\bProf\./g, 'Professor'],
+  [/\bMio\./g, 'Millionen'],
+  [/\bMrd\./g, 'Milliarden'],
+  [/\be\.\s?g\./g, 'for example'],
+  [/\bi\.\s?e\./g, 'that is'],
+  [/(\d)\s?€/g, '$1 Euro'],
+  [/€\s?(\d[\d.,]*)/g, '$1 Euro'],
+  [/(\d)\s?%/g, '$1 Prozent'],
+];
+
 export function cleanForSpeech(text) {
+  for (const [re, rep] of ABBREVIATIONS) text = text.replace(re, rep);
   return text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/^\s*\|.*\|\s*$/gm, ' ') // Tabellenzeilen nicht vorlesen

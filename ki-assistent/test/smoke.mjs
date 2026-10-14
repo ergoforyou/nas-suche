@@ -53,7 +53,7 @@ console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.deb
 
 const cases = [
   // Standardstimme; "ich", "möchte", "dich" enthalten den ç-Laut, der früher falsch übersetzt wurde
-  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/\bich\b/i, /möchte/i, /frag/i, /kostet/i] },
+  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/\bich\b/i, /möchte/i, /frag/i, /kostet/i, /beispiel/i] },
   { text: 'Hello, how are you today? I am fine, thank you.', lang: 'english', expect: [/hello/i, /today/i] },
 ];
 
