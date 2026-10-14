@@ -75,7 +75,9 @@ export class SpeechInput {
    * Sprechen eine Pause erkannt wurde oder stop() aufgerufen wird.
    * waitForSpeech: true = erst aufnehmen, wenn jemand spricht (Freihand-Modus).
    */
-  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000 } = {}) {
+  // threshold und startMs dürfen Funktionen sein (Live-Gespräch: strenger, solange der Avatar spricht).
+  // startMs: so lange muss es laut sein, bis es als Sprechen gilt. onSpeechStart: Beginn des Sprechens.
+  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000, startMs = 0, onSpeechStart } = {}) {
     await this.ensureMic();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
     return new Promise((resolve) => {
@@ -89,6 +91,9 @@ export class SpeechInput {
         threshold,
         silenceMs,
         maxMs,
+        startMs,
+        loudFor: 0,
+        onSpeechStart,
         resolve,
       };
     });
@@ -104,15 +109,19 @@ export class SpeechInput {
     const r = this.rec;
     if (!r) return;
     const ms = (data.length / SAMPLE_RATE) * 1000;
-    const loud = rms > r.threshold;
+    const value = (v) => (typeof v === 'function' ? v() : v);
+    const loud = rms > value(r.threshold);
 
     if (!r.speaking) {
       // Kurzen Vorlauf behalten, damit der Wortanfang nicht abgeschnitten wird.
       r.preroll.push(data);
-      if (r.preroll.length > 4) r.preroll.shift();
-      if (loud) {
+      if (r.preroll.length > 6) r.preroll.shift();
+      r.loudFor = loud ? r.loudFor + ms : 0;
+      if (loud && r.loudFor >= value(r.startMs)) {
         r.speaking = true;
         r.chunks.push(...r.preroll);
+        r.heardSpeech = true;
+        r.onSpeechStart?.();
       }
       return;
     }

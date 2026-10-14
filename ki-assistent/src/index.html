@@ -38,6 +38,7 @@
   <footer class="composer">
     <button id="btnAttach" class="round" title="Datei anhängen – PDF, Bild, Text, Excel/Word/PowerPoint (oder Datei ins Fenster ziehen)" hidden>📎</button>
     <input id="fileAttach" type="file" multiple hidden />
+    <button id="btnLive" class="round" title="Live-Gespräch starten – einfach losreden, dazwischenreden erlaubt">📞</button>
     <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste)">🎤</button>
     <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
     <button id="btnSend" class="round primary" title="Senden">➤</button>
@@ -288,7 +289,18 @@
           <option value="english">immer Englisch</option>
         </select>
       </label>
-      <label class="check"><input id="sHandsFree" type="checkbox" /> Freihändig: automatisch zuhören, wenn ich spreche</label>
+      <h3>Live-Gespräch</h3>
+      <label class="check"><input id="sHandsFree" type="checkbox" /> Live-Gespräch (freihändig): automatisch zuhören, wenn ich spreche – auch über 📞 unten</label>
+      <label class="check"><input id="sBargeIn" type="checkbox" /> Dazwischenreden erlaubt: Der Avatar verstummt, sobald ich spreche</label>
+      <label>Reaktionszeit (Pause, nach der mein Satz als fertig gilt)
+        <select id="sLivePause">
+          <option value="600">schnell – 0,6 s</option>
+          <option value="800">normal – 0,8 s</option>
+          <option value="1200">geduldig – 1,2 s (wenn ich oft Denkpausen mache)</option>
+        </select>
+      </label>
+      <p class="hint">Am besten mit Kopfhörer oder Headset. Mit Lautsprechern unterdrückt die App das Echo des Avatars, so gut
+        es geht; unterbricht er sich trotzdem selbst, die Mikrofon-Empfindlichkeit etwas nach rechts schieben.</p>
       <label>Mikrofon-Empfindlichkeit <input id="sSens" type="range" min="0.004" max="0.06" step="0.001" /></label>
       <div class="meter"><div id="micMeter"></div></div>
       <button id="sPreload">Sprachmodelle jetzt herunterladen</button>

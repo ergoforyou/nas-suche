@@ -260,3 +260,5 @@ body.floating .stage { display: none; }
 .file-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; white-space: normal; }
 .file-list > div { display: flex; gap: 6px; flex-wrap: wrap; }
 .file-list button { font-size: 12px; padding: 3px 8px; }
+#btnLive.active { background: #2e7d4f; border-color: #4caf7d; animation: pulse-live 1.6s infinite; }
+@keyframes pulse-live { 50% { box-shadow: 0 0 0 6px rgba(76, 175, 125, .25); } }

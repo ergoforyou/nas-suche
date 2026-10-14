@@ -82,6 +82,8 @@ const DEFAULT_SETTINGS = {
   sttLang: 'persona',
   handsFree: false,
   sensitivity: 0.015,
+  bargeIn: true, // Live-Gespräch: dazwischenreden erlaubt
+  livePauseMs: 800, // so lange Stille, bis mein Satz als fertig gilt
   alwaysOnTop: false,
   stageHeight: null,
   floating: false,
@@ -553,7 +555,12 @@ async function send(text) {
   const created = [];
   const think = new ThinkFilter();
   const speak = state.settings.speak;
-  const splitter = new SentenceSplitter((s) => speak && tts.enqueue(s));
+  state.spoken = '';
+  const splitter = new SentenceSplitter((s) => {
+    if (!speak) return;
+    state.spoken = (state.spoken + ' ' + s).slice(-1500); // für den Echo-Filter im Live-Gespräch
+    tts.enqueue(s);
+  });
 
   // Darstellung gedrosselt aktualisieren (Markdown neu rendern ist nicht gratis)
   let renderTimer = null;
@@ -816,11 +823,48 @@ const NOISE = [
   /amara\.org/i,
 ];
 
+// ---- Live-Gespräch: Dazwischenreden und Echo-Schutz
+const liveBargeIn = () => state.settings.handsFree && state.settings.bargeIn;
+
+/** Avatar verstummt und die laufende Antwort wird abgebrochen, weil ich zu sprechen beginne. */
+function interrupt() {
+  if (state.currentChatId) desktop.abortChat(state.currentChatId);
+  tts.stop();
+  status('Unterbrochen – ich höre zu …');
+}
+
+/** Hat das Mikrofon nur den Avatar selbst gehört (Lautsprecher ohne Kopfhörer)? */
+function isEcho(text) {
+  const words = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').split(' ').filter((w) => w.length > 2);
+  const heard = words(text);
+  if (!heard.length || !state.spoken) return false;
+  const said = new Set(words(state.spoken));
+  return heard.filter((w) => said.has(w)).length / heard.length >= 0.8;
+}
+
+const waitIdle = async (ms) => {
+  for (const end = Date.now() + ms; state.busy && Date.now() < end; ) await new Promise((r) => setTimeout(r, 50));
+};
+
 async function listenOnce({ handsFree = false } = {}) {
   if (state.micActive) return;
   state.micActive = true;
+  let interrupted = false;
   try {
-    const p = stt.listen({ waitForSpeech: handsFree, threshold: state.settings.sensitivity });
+    // Während der Avatar spricht, muss es lauter und länger sein (sonst unterbricht er sich durch sein Echo selbst)
+    const live = handsFree && liveBargeIn();
+    const p = stt.listen({
+      waitForSpeech: handsFree,
+      threshold: () => state.settings.sensitivity * (live && tts.speaking ? 2.5 : 1),
+      startMs: () => (!live ? 0 : tts.speaking ? 300 : state.busy ? 200 : 60),
+      silenceMs: handsFree ? state.settings.livePauseMs : 1100,
+      onSpeechStart: () => {
+        if (live && (tts.speaking || state.busy)) {
+          interrupted = true;
+          interrupt();
+        }
+      },
+    });
     updateBadge();
     const audio = await p;
     updateBadge();
@@ -832,6 +876,8 @@ async function listenOnce({ handsFree = false } = {}) {
     state.transcribing = false;
     updateBadge();
     if (!text || NOISE.some((r) => r.test(text.trim()))) return;
+    if (handsFree && isEcho(text)) return;
+    if (interrupted) await waitIdle(2500);
     await send(text);
   } catch (e) {
     state.transcribing = false;
@@ -848,7 +894,9 @@ async function listenOnce({ handsFree = false } = {}) {
 function maybeListenHandsFree() {
   if (!state.settings.handsFree) return;
   setTimeout(() => {
-    if (state.settings.handsFree && !state.busy && !tts.speaking && !state.micActive) {
+    // Live-Gespräch hört auch zu, während der Avatar denkt oder spricht
+    const free = liveBargeIn() || (!state.busy && !tts.speaking);
+    if (state.settings.handsFree && free && !state.micActive) {
       listenOnce({ handsFree: true });
     }
   }, 350);
@@ -857,6 +905,9 @@ function maybeListenHandsFree() {
 function setHandsFree(on) {
   state.settings.handsFree = on;
   $('sHandsFree').checked = on;
+  $('btnLive').classList.toggle('active', on);
+  $('btnLive').title = on ? 'Live-Gespräch beenden' : 'Live-Gespräch starten – einfach losreden, dazwischenreden erlaubt';
+  if (on) status('Live-Gespräch läuft – sprich einfach. Zum Beenden 📞 erneut drücken.');
   save();
   if (on) maybeListenHandsFree();
   else stt.cancel();
@@ -1091,6 +1142,8 @@ function fillSettings() {
   $('sModel').value = s.sttModel;
   $('sLang').value = ['german', 'english'].includes(s.sttLang) ? s.sttLang : 'persona';
   $('sHandsFree').checked = s.handsFree;
+  $('sBargeIn').checked = s.bargeIn;
+  $('sLivePause').value = String(s.livePauseMs);
   $('sSens').value = s.sensitivity;
 
   $('cUrl').value = s.baseUrl;
@@ -2157,6 +2210,19 @@ $('sLang').onchange = (e) => {
   save();
 };
 $('sHandsFree').onchange = (e) => setHandsFree(e.target.checked);
+$('btnLive').onclick = () => setHandsFree(!state.settings.handsFree);
+$('sBargeIn').onchange = (e) => {
+  state.settings.bargeIn = e.target.checked;
+  save();
+  if (state.settings.handsFree) {
+    stt.cancel();
+    maybeListenHandsFree();
+  }
+};
+$('sLivePause').onchange = (e) => {
+  state.settings.livePauseMs = +e.target.value;
+  save();
+};
 $('sSens').oninput = (e) => {
   state.settings.sensitivity = +e.target.value;
   save();
@@ -2354,7 +2420,7 @@ async function init() {
     .catch(() =>
       status('LM Studio nicht erreichbar – bitte LM Studio starten und den lokalen Server aktivieren (⚙ → Verbindung).'),
     );
-  if (state.settings.handsFree) maybeListenHandsFree();
+  if (state.settings.handsFree) setHandsFree(true);
 }
 
 /** Selbsttest der Sprachkette (wird vom automatischen Windows-Test aufgerufen). */

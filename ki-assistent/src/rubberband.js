@@ -111,8 +111,20 @@ export class RubberBand {
     e.preventDefault();
     const desktop = this.opts.desktop;
     if (this.opts.kind === 'window') {
+      // Zeiger festhalten: Das Loslassen kommt dann auch an, wenn die Maus kurz außerhalb der Figur ist
+      // (schnelles Ziehen, Wechsel auf einen anderen Bildschirm).
+      const canvas = this.avatar.canvas;
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {}
       desktop.avatarDragStart();
-      this.win.addEventListener('pointerup', () => desktop.avatarDragEnd(), { once: true });
+      const end = () => {
+        canvas.removeEventListener('pointerup', end);
+        this.win.removeEventListener('pointerup', end);
+        desktop.avatarDragEnd();
+      };
+      canvas.addEventListener('pointerup', end);
+      this.win.addEventListener('pointerup', end);
       return;
     }
     // innerhalb der Bühne verschieben

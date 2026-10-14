@@ -29,7 +29,8 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
   **Freihand-Modus** (⚙ → Sprache) hört der Assistent ständig zu, sobald er fertig gesprochen hat.
 - **■ / Esc** – Antwort und Sprachausgabe abbrechen.
 - **🧍** – Figur frei auf dem Desktop. Figur anklicken = Rahmen: ziehen verschiebt, Ecken (oder Mausrad)
-  ändern die Größe. Doppelklick = sprechen, Rechtsklick = Menü (Chat öffnen …). Das Chatfenster kann dann
+  ändern die Größe – auch auf einen anderen Bildschirm ziehen. Doppelklick = sprechen, Rechtsklick = Menü (Chat öffnen,
+  „Auf Bildschirm verschieben“ …). Das Chatfenster kann dann
   geschlossen werden. Auch im Chatfenster lässt sich die Figur so verschieben und skalieren.
 - **📄** – Ausgabefenster: Antworten groß und formatiert wie in LM Studio (Überschriften, Listen,
   Tabellen, Code mit Kopier-Knopf), mit ◀ ▶ durch frühere Antworten blättern. Knöpfe **PDF**, **Word**
@@ -38,6 +39,8 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
 - **🗨＋** – Neuer Chat (auch Strg+N, „Neuer Chat“ sagen oder Rechtsklick auf die Figur): leert nur den
   Gesprächsverlauf; Persona, Gedächtnis, Avatar und Stimme bleiben. Direkt danach per „Rückgängig“ zurückholbar.
 - **📌** – Chatfenster immer im Vordergrund.
+- **📞** – Live-Gespräch: einfach losreden, die App hört dauerhaft zu. Spricht man dazwischen, verstummt der
+  Avatar und hört zu. Reaktionszeit und Dazwischenreden unter ⚙ → Sprache. Am besten mit Headset.
 - **⏻** – KI-Assistent komplett beenden (auch im Rechtsklick-Menü der Figur). ✕ schließt nur das Fenster;
   ist die Figur frei auf dem Desktop, läuft der Assistent dann weiter.
 

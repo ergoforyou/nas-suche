@@ -491,14 +491,25 @@ ipcMain.on('avatar:ignoreMouse', (_e, ignore) => {
 
 ipcMain.on('avatar:dragStart', () => {
   if (!avatarWin) return;
+  stopDrag();
   const cursor = screen.getCursorScreenPoint();
-  const [x, y] = avatarWin.getPosition();
-  drag = { dx: cursor.x - x, dy: cursor.y - y };
+  const b = avatarWin.getBounds();
+  // Größe festhalten: Beim Wechsel auf einen Bildschirm mit anderer Skalierung ändert Windows sonst die Größe
+  // bzw. setPosition „klebt“ am Bildschirmrand. Darum immer die kompletten Maße setzen.
+  drag = { dx: cursor.x - b.x, dy: cursor.y - b.y, width: b.width, height: b.height, last: null, started: Date.now() };
   avatarWin.setIgnoreMouseEvents(false);
   drag.timer = setInterval(() => {
     if (!avatarWin || avatarWin.isDestroyed()) return stopDrag();
+    // Sicherheitsnetz, falls das Loslassen der Maus nicht ankommt
+    if (Date.now() - drag.started > 60000) return stopDrag();
     const c = screen.getCursorScreenPoint();
-    avatarWin.setPosition(Math.round(c.x - drag.dx), Math.round(c.y - drag.dy));
+    const key = `${c.x},${c.y}`;
+    if (key === drag.last) return;
+    drag.last = key;
+    const target = { x: Math.round(c.x - drag.dx), y: Math.round(c.y - drag.dy), width: drag.width, height: drag.height };
+    avatarWin.setBounds(target);
+    const now = avatarWin.getBounds();
+    if (now.width !== target.width || now.height !== target.height) avatarWin.setBounds(target);
   }, 16);
 });
 
@@ -570,12 +581,41 @@ ipcMain.on('avatar:setSize', (_e, { fraction, aspect }) => {
   patchData({ avatarBounds: avatarWin.getBounds() });
 });
 
+// Figur auf einen anderen Bildschirm setzen (unten rechts, gleiche Größe)
+function moveAvatarToDisplay(display) {
+  if (!avatarWin || avatarWin.isDestroyed()) return;
+  const { width, height } = avatarWin.getBounds();
+  const wa = display.workArea;
+  const h = Math.min(height, wa.height);
+  const w = Math.round((width * h) / height);
+  const target = { x: wa.x + wa.width - w - 40, y: wa.y + wa.height - h, width: w, height: h };
+  avatarWin.setBounds(target);
+  avatarWin.setBounds(target);
+  patchData({ avatarBounds: avatarWin.getBounds() });
+}
+
 ipcMain.on('avatar:menu', (_e, { listening }) => {
   const send = (cmd) => () => win?.webContents.send('cmd', cmd);
+  const displays = screen.getAllDisplays().sort((a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y);
+  const current = avatarWin ? screen.getDisplayMatching(avatarWin.getBounds()).id : null;
+  const screenMenu =
+    displays.length > 1
+      ? [
+          {
+            label: 'Auf Bildschirm verschieben',
+            submenu: displays.map((d, i) => ({
+              label: `Bildschirm ${i + 1}${i === 0 ? ' (links)' : i === displays.length - 1 ? ' (rechts)' : ''}${d.id === current ? ' – hier' : ''}`,
+              enabled: d.id !== current,
+              click: () => moveAvatarToDisplay(d),
+            })),
+          },
+        ]
+      : [];
   Menu.buildFromTemplate([
     { label: listening ? 'Zuhören beenden' : 'Zuhören (Doppelklick)', click: send('mic') },
     { label: 'Chat öffnen', click: () => (win.show(), win.focus()) },
     { label: 'Ausgabefenster', click: send('output') },
+    ...screenMenu,
     { label: 'Neuer Chat', click: send('newchat') },
     { type: 'separator' },
     { label: 'Größer', click: () => ipcMain.emit('avatar:resize', null, { factor: 1.15 }) },
