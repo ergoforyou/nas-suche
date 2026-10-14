@@ -27,11 +27,11 @@ export type RegisterId = "start" | "seiten" | "kommentieren" | "bearbeiten" | "k
 
 export const REGISTER: { id: RegisterId; titel: string; geplant?: string }[] = [
   { id: "start", titel: "Start" },
-  { id: "seiten", titel: "Seiten", geplant: "Seiten einfügen, löschen, drehen, verschieben, extrahieren, teilen – auch per Drag & Drop zwischen Dokumenten (Schritt M2)." },
-  { id: "kommentieren", titel: "Kommentieren", geplant: "Hervorheben, Unterstreichen, Notizen, Formen, Stempel mit Datum und Kürzel (Schritt M6)." },
-  { id: "bearbeiten", titel: "Bearbeiten", geplant: "Schreibmaschinen-Text mit Rechtschreibprüfung, Abdecken, Bilder und Unterschriften mit Freistellung (Schritte M5/M6)." },
-  { id: "konvertieren", titel: "Konvertieren", geplant: "Zusammenführen, Bilder/Word/Excel/Mail → PDF, OCR (Schritte M3/M4)." },
-  { id: "schuetzen", titel: "Schützen", geplant: "Schwärzen, Passwort, Metadaten entfernen, Drucken, Komprimieren (Schritt M7)." },
+  { id: "seiten", titel: "Seiten" },
+  { id: "kommentieren", titel: "Kommentieren" },
+  { id: "bearbeiten", titel: "Bearbeiten" },
+  { id: "konvertieren", titel: "Konvertieren" },
+  { id: "schuetzen", titel: "Schützen" },
 ];
 
 const befehle = new Map<string, Befehl>();

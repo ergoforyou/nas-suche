@@ -2,6 +2,12 @@
 
 import { useSyncExternalStore } from "react";
 import type {
+  Anmerkung,
+  Formularfeld,
+  Gruppe,
+  Punkt,
+  Rechteck,
+  Stil,
   Ansicht,
   AnsichtsModus,
   Dokument,
@@ -32,8 +38,40 @@ export interface Meldung {
   nonce: number;
 }
 
+/** Inline-Texteditor (Schreibmaschine, Textfeld, Notiz) */
+export interface Editor {
+  dokId: string;
+  seite: number;
+  /** bestehende Anmerkung oder null = neu */
+  id: number | null;
+  art: "schreibmaschine" | "textfeld" | "notiz";
+  punkt: Punkt;
+  rechteck?: Rechteck;
+  text: string;
+  stil: Stil;
+}
+
+/** Bild, Unterschrift oder Stempel, der gerade platziert wird */
+export interface Platzierung {
+  art: "bild" | "unterschrift";
+  bildId?: string;
+  unterschriftId?: string;
+  bild: string; // Daten-URL für die Vorschau
+  breite: number; // Pixel des Bildes (Seitenverhältnis)
+  hoehe: number;
+}
+
 export type Dialog =
   | { art: "teilen"; dokId: string }
+  | { art: "druck"; dokId: string; export: boolean }
+  | { art: "kennwort"; dokId: string }
+  | { art: "schwaerzen"; dokId: string }
+  | { art: "komprimieren"; dokId: string }
+  | { art: "eigenschaften"; dokId: string }
+  | { art: "bild"; dokId: string; unterschrift: boolean }
+  | { art: "foto"; dokId: string | null; seite: number | null }
+  | { art: "stempel" }
+  | { art: "bilderexport"; dokId: string }
   | { art: "leerseiten"; dokId: string; seiten: number[] }
   | { art: "ungespeichert"; dokId: string; weiter: () => void }
   | { art: "zusammenfuehren"; eintraege: ZfEintrag[] }
@@ -56,6 +94,22 @@ export interface Zustand {
   textlos: Record<string, number>;
   /** ausgeblendete Hinweise je Dokument */
   hinweisWeg: Record<string, boolean>;
+  /** Anmerkungen je Dokument (mit Dokumentversion, für die sie gelten) */
+  anmerkungen: Record<string, { version: number; seiten: Record<string, Anmerkung[]> }>;
+  /** Formularfelder je Dokument */
+  formulare: Record<string, { version: number; seiten: Record<string, Formularfeld[]> }>;
+  /** ausgewählte Anmerkung */
+  anmAuswahl: { dokId: string; seite: number; id: number } | null;
+  editor: Editor | null;
+  /** in der Ansicht ausgeblendete Anmerkungsgruppen */
+  ausblenden: Gruppe[];
+  /** Stil je Werkzeug (Farbe, Linienbreite …) */
+  stile: Record<string, Stil>;
+  platzieren: Platzierung | null;
+  /** gewählte Stempelvorlage (Index in den Einstellungen) */
+  stempelVorlage: number;
+  /** markierter Text (Wortindizes) für Kopieren/Hervorheben */
+  textAuswahl: { dokId: string; seite: number; von: number; bis: number } | null;
   /** unsichere Wörter je Dokument und Seite (nur wenn eingeblendet) */
   unsicher: Record<string, Record<string, [number, number, number, number][]>>;
   register: string;
@@ -82,6 +136,15 @@ let zustand: Zustand = {
   textlos: {},
   hinweisWeg: {},
   unsicher: {},
+  anmerkungen: {},
+  formulare: {},
+  anmAuswahl: null,
+  editor: null,
+  ausblenden: [],
+  stile: {},
+  platzieren: null,
+  stempelVorlage: 0,
+  textAuswahl: null,
   register: "start",
   werkzeug: "hand",
   werkzeugFixiert: false,
@@ -294,7 +357,12 @@ export function melden(text: string, art: "info" | "fehler" = "info"): void {
 }
 
 export function werkzeugWaehlen(werkzeug: Werkzeug): void {
-  setzen((z) => ({ werkzeug: z.werkzeug === werkzeug && werkzeug !== "hand" ? "hand" : werkzeug }));
+  setzen((z) => ({
+    werkzeug: z.werkzeug === werkzeug && werkzeug !== "hand" ? "hand" : werkzeug,
+    anmAuswahl: null,
+    textAuswahl: werkzeug === "textauswahl" ? z.textAuswahl : null,
+    platzieren: werkzeug === "platzieren" ? z.platzieren : null,
+  }));
 }
 
 /** Nach einmaliger Benutzung zurück zur Hand – außer „Werkzeug fixieren“ ist an. */

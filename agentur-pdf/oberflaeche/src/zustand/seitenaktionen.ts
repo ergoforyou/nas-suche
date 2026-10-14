@@ -233,7 +233,7 @@ export async function wiederholen(d = aktivesDokument()): Promise<void> {
 }
 
 // ---------------------------------------------------------- Speichern
-function namensvorschlag(d: Dokument): string {
+export function namensvorschlag(d: Dokument): string {
   const name = d.titel.toLowerCase().endsWith(".pdf") ? d.titel : d.titel.replace(/\.[^.]+$/, "") + ".pdf";
   if (d.pfad) return d.pfad.replace(/[^\\/]+$/, name);
   // Neue Dokumente (z. B. zusammengeführt): Ordner der Quelldateien vorschlagen

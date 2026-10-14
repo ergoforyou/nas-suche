@@ -198,6 +198,7 @@ class DokumentSpeicher:
         kachel: tuple[int, int, int, int] | None = None,
         kennung: str | None = None,
         ausblenden: frozenset[str] = frozenset(),
+        ohne: frozenset[int] = frozenset(),
     ) -> bytes:
         """Rendert eine Seite (oder eine Kachel daraus) als PNG.
 
@@ -222,7 +223,7 @@ class DokumentSpeicher:
         if drehung % 90:
             raise DokumentFehler("Drehung muss ein Vielfaches von 90° sein.")
 
-        schluessel = (dok_id, dok.kennung(seite_nr), skala, drehung, kachel, ausblenden)
+        schluessel = (dok_id, dok.kennung(seite_nr), skala, drehung, kachel, ausblenden, ohne)
         treffer = self.cache.get(schluessel)
         if treffer is not None:
             return treffer
@@ -244,11 +245,12 @@ class DokumentSpeicher:
             if gesamt.width * gesamt.height > MAX_KACHEL_PIXEL * MAX_KACHEL_PIXEL:
                 raise DokumentFehler("Seite zu groß für ein Einzelbild – Kacheln verwenden.")
 
-        if ausblenden:
-            # ausgeblendete Anmerkungsgruppen nur für dieses Bild verstecken
+        if ausblenden or ohne:
+            # ausgeblendete Anmerkungsgruppen (oder gerade bearbeitete
+            # Anmerkungen) nur für dieses Bild verstecken
             from .anmerkungen import gruppen_ausblenden_seite, gruppen_wiederherstellen
 
-            alt = gruppen_ausblenden_seite(dok.doc, seite, ausblenden)
+            alt = gruppen_ausblenden_seite(dok.doc, seite, ausblenden, ohne)
             try:
                 pix = seite.get_pixmap(matrix=matrix, clip=clip, alpha=False, annots=True)
             finally:

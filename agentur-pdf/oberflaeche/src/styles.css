@@ -1771,3 +1771,643 @@ input[type="range"] {
   word-break: break-all;
   user-select: text;
 }
+
+/* ============================================ M5–M7: Anmerkungen & Werkzeuge */
+.seitenleiste {
+  container-type: inline-size;
+}
+
+@container (max-width: 330px) {
+  .seitenleiste-reiter button:not(.gewaehlt) span {
+    display: none;
+  }
+}
+
+.anm-ebene {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.anm-ebene.aktiv {
+  pointer-events: auto;
+}
+
+.anm-innen {
+  position: absolute;
+  transform-origin: center center;
+}
+
+.anm-innen > * {
+  position: absolute;
+}
+
+.anm-treffer {
+  pointer-events: auto;
+  cursor: move;
+  border-radius: 2px;
+  min-width: 6px;
+  min-height: 6px;
+}
+
+.anm-treffer:hover {
+  outline: 1px dashed color-mix(in srgb, var(--akzent) 70%, transparent);
+  outline-offset: 1px;
+}
+
+.anm-treffer.art-hervorheben,
+.anm-treffer.art-unterstreichen,
+.anm-treffer.art-durchstreichen,
+.anm-treffer.art-wellenlinie {
+  cursor: pointer;
+}
+
+.anm-auswahl {
+  outline: 1.5px solid var(--akzent);
+  outline-offset: 2px;
+  pointer-events: none;
+}
+
+.anm-griff {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  background: #fff;
+  border: 1.5px solid var(--akzent);
+  border-radius: 2px;
+  pointer-events: auto;
+}
+
+.griff-nw { left: 0; top: 0; cursor: nwse-resize; }
+.griff-n { left: 50%; top: 0; cursor: ns-resize; }
+.griff-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.griff-e { left: 100%; top: 50%; cursor: ew-resize; }
+.griff-se { left: 100%; top: 100%; cursor: nwse-resize; }
+.griff-s { left: 50%; top: 100%; cursor: ns-resize; }
+.griff-sw { left: 0; top: 100%; cursor: nesw-resize; }
+.griff-w { left: 0; top: 50%; cursor: ew-resize; }
+
+.anm-schwebeleiste {
+  position: absolute;
+  right: -2px;
+  bottom: calc(100% + 8px);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  box-shadow: var(--schatten);
+  pointer-events: auto;
+}
+
+.anm-schwebeleiste button,
+.text-leiste button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.anm-schwebeleiste button:hover,
+.text-leiste button:hover {
+  background: var(--hg-hover);
+}
+
+.anm-vorschau {
+  border: 1.5px dashed var(--akzent);
+  background: var(--akzent-hell);
+  pointer-events: none;
+}
+
+.anm-zeichnung {
+  border: 2px solid;
+  pointer-events: none;
+}
+
+.anm-zeichnung.werkzeug-schwaerzen {
+  border-color: #c00 !important;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.anm-zeichnung.werkzeug-abdecken {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px dashed #888 !important;
+}
+
+.anm-zeichnung.werkzeug-platzieren,
+.anm-zeichnung.werkzeug-textfeld {
+  border-style: dashed;
+}
+
+.anm-svg {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.text-auswahl {
+  background: rgba(30, 111, 217, 0.28);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.text-auswahl.werkzeug-hervorheben {
+  background: rgba(255, 225, 77, 0.55);
+}
+
+.text-leiste {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  box-shadow: var(--schatten);
+  z-index: 3;
+  transform-origin: top left;
+}
+
+.platzieren-vorschau {
+  opacity: 0.6;
+  pointer-events: none;
+  outline: 1px dashed var(--akzent);
+}
+
+.stempel-vorschau {
+  pointer-events: none;
+  padding: 0.15em 0.6em;
+  border: 2px solid;
+  border-radius: 3px;
+  font-family: Helvetica, Arial, sans-serif;
+  line-height: 1.2;
+  white-space: pre;
+  text-align: center;
+  opacity: 0.6;
+}
+
+/* Textfelder (Schreibmaschine, Textfeld, Notiz) mit Rechtschreibprüfung */
+.rs-feld {
+  position: relative;
+}
+
+.rs-spiegel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: transparent !important;
+  pointer-events: none;
+  min-height: 1em;
+  box-sizing: border-box;
+}
+
+.rs-fehler {
+  text-decoration: underline wavy #e01b1b;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 2px;
+}
+
+.rs-eingabe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.schreibmaschine-editor {
+  outline: 1px dashed var(--akzent);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.35);
+  z-index: 4;
+}
+
+.textfeld-editor {
+  border: 1px solid;
+  z-index: 4;
+}
+
+.notiz-editor {
+  z-index: 5;
+  width: 256px;
+  background: #fff8c5;
+  border: 1px solid #e3c94a;
+  border-radius: 6px;
+  box-shadow: var(--schatten-gross);
+  color: #222;
+}
+
+.notiz-kopf {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid #ecd66e;
+  color: #6b5a00;
+}
+
+/* Formularfelder */
+.formular-feld {
+  pointer-events: auto;
+  box-sizing: border-box;
+  border: 1px solid rgba(30, 111, 217, 0.35);
+  background: rgba(214, 228, 255, 0.92);
+  color: #000;
+  font-family: Helvetica, Arial, sans-serif;
+  padding: 0 2px;
+  border-radius: 1px;
+  resize: none;
+}
+
+.formular-feld:focus {
+  outline: 2px solid #1e6fd9;
+  background: #fff;
+}
+
+.formular-feld.ankreuzen {
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  padding: 0;
+  font-weight: 700;
+}
+
+.formular-feld.ankreuzen.rund {
+  border-radius: 50%;
+}
+
+/* Eigenschaftsleiste: Farben */
+.farbwahl {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.farbwahl > span {
+  margin-right: 3px;
+}
+
+.farbe {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  padding: 0;
+}
+
+.farbe.gewaehlt {
+  outline: 2px solid var(--akzent);
+  outline-offset: 1px;
+}
+
+.farbe.keine {
+  background: linear-gradient(135deg, #fff 45%, #d33 45%, #d33 55%, #fff 55%);
+}
+
+.farbwahl input[type="color"] {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.link {
+  color: var(--akzent);
+  text-decoration: underline;
+  padding: 0 2px;
+  background: none;
+}
+
+.klein {
+  font-size: 11px;
+}
+
+.erfolg {
+  color: #1f7a3a !important;
+}
+
+/* Seitenleiste: Kommentare & Ebenen */
+.kommentar-panel,
+.ebenen-panel {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ebenen-panel h3 {
+  margin: 8px 0 2px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.kommentar-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kommentar-panel li {
+  position: relative;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  background: var(--hg-flaeche);
+}
+
+.kommentar-panel li.gewaehlt {
+  border-color: var(--akzent);
+}
+
+.kommentar-eintrag {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 26px 6px 8px;
+  text-align: left;
+}
+
+.kommentar-kopf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.kommentar-farbe {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+}
+
+.kommentar-text {
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.kommentar-loeschen {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 3px;
+  border-radius: 4px;
+  color: var(--text-3);
+}
+
+.kommentar-loeschen:hover {
+  background: var(--hg-hover);
+  color: #c42b1c;
+}
+
+/* Dialoge */
+.feldgruppe {
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  padding: 6px 10px 8px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feldgruppe legend {
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.warnung-rahmen {
+  border-color: #e3a5a0;
+}
+
+.zahl.breit {
+  width: 140px;
+  text-align: left;
+}
+
+.druck-vorschau {
+  width: 100%;
+  height: 62vh;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.fundliste {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.infoliste {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.infoliste dt {
+  color: var(--text-3);
+}
+
+.infoliste dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.schachbrett {
+  background-color: #fff;
+  background-image: linear-gradient(45deg, #e6e6e6 25%, transparent 25%), linear-gradient(-45deg, #e6e6e6 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e6e6e6 75%), linear-gradient(-45deg, transparent 75%, #e6e6e6 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.bild-ablage {
+  min-height: 180px;
+  max-height: 320px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border: 1px dashed var(--linie-stark);
+  border-radius: 8px;
+  padding: 12px;
+  outline: none;
+}
+
+.bild-ablage:focus {
+  border-color: var(--akzent);
+}
+
+.bild-ablage img {
+  max-width: 100%;
+  max-height: 290px;
+  object-fit: contain;
+}
+
+.bibliothek-liste {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.bibliothek-eintrag {
+  position: relative;
+}
+
+.bibliothek-eintrag > button:first-child {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 130px;
+  height: 80px;
+  padding: 4px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+}
+
+.bibliothek-eintrag > button:first-child:hover {
+  border-color: var(--akzent);
+}
+
+.bibliothek-eintrag img {
+  max-width: 120px;
+  max-height: 52px;
+  object-fit: contain;
+}
+
+.bibliothek-eintrag span {
+  font-size: 11px;
+  color: #333;
+}
+
+.bibliothek-eintrag .entfernen {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie-stark);
+}
+
+.foto-bereich {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.foto-quelle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.foto-flaeche {
+  position: relative;
+  user-select: none;
+}
+
+.foto-flaeche img {
+  display: block;
+  width: 100%;
+  max-height: 52vh;
+  object-fit: contain;
+}
+
+.foto-flaeche svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.foto-flaeche polygon {
+  fill: rgba(181, 18, 27, 0.12);
+  stroke: var(--akzent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.foto-ecke {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--akzent);
+  cursor: move;
+}
+
+.foto-ergebnis {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  background: var(--hg-dokument);
+  min-height: 200px;
+}
+
+.foto-ergebnis img {
+  max-width: 100%;
+  max-height: 52vh;
+  box-shadow: var(--schatten);
+}
+
+.stempel-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stempel-zeile {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stempel-zeile textarea {
+  flex: 1;
+  font: 600 13px/1.3 Helvetica, Arial, sans-serif;
+  text-align: center;
+  border: 2px solid;
+  border-radius: 4px;
+  padding: 4px;
+  resize: vertical;
+  background: var(--hg-flaeche);
+}
+
+@container (max-width: 330px) {
+  .seitenleiste-reiter button.gewaehlt {
+    flex: 3;
+  }
+}

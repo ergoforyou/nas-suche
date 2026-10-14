@@ -8,6 +8,17 @@ import { holen, setzen, useZustand } from "../zustand/store";
 import { ZusammenfuehrenDialog } from "./Zusammenfuehren";
 import { InfoDialog } from "./InfoDialog";
 import { BereichstextDialog, OcrDialog, UeberwachungDialog } from "./OcrDialoge";
+import {
+  BildDialog,
+  BilderExportDialog,
+  DruckDialog,
+  EigenschaftenDialog,
+  FotoDialog,
+  KennwortDialog,
+  KomprimierenDialog,
+  SchwaerzenDialog,
+  StempelDialog,
+} from "./WerkzeugDialoge";
 
 export function Dialoge() {
   const dialog = useZustand((z) => z.dialog);
@@ -19,6 +30,15 @@ export function Dialoge() {
   if (dialog.art === "ueberwachung") return <UeberwachungDialog />;
   if (dialog.art === "info") return <InfoDialog />;
   if (dialog.art === "bereichstext") return <BereichstextDialog text={dialog.text} sicherheit={dialog.sicherheit} />;
+  if (dialog.art === "druck") return <DruckDialog dokId={dialog.dokId} alsExport={dialog.export} />;
+  if (dialog.art === "kennwort") return <KennwortDialog dokId={dialog.dokId} />;
+  if (dialog.art === "schwaerzen") return <SchwaerzenDialog dokId={dialog.dokId} />;
+  if (dialog.art === "komprimieren") return <KomprimierenDialog dokId={dialog.dokId} />;
+  if (dialog.art === "eigenschaften") return <EigenschaftenDialog dokId={dialog.dokId} />;
+  if (dialog.art === "bild") return <BildDialog dokId={dialog.dokId} unterschrift={dialog.unterschrift} />;
+  if (dialog.art === "foto") return <FotoDialog dokId={dialog.dokId} seite={dialog.seite} />;
+  if (dialog.art === "stempel") return <StempelDialog />;
+  if (dialog.art === "bilderexport") return <BilderExportDialog dokId={dialog.dokId} />;
   return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
 }
 

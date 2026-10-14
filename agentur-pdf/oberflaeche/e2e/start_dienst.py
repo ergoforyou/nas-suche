@@ -32,5 +32,27 @@ _brief = pymupdf.open(testdaten.versicherungsbrief(ordner / "_quelle.pdf", seite
 scan_hilfen.als_scan(_brief).save(ordner / "scan.pdf")
 scan_hilfen.als_scan(_brief, dpi=100, rauschen=40, jpeg=15).save(ordner / "schlecht.pdf")
 (ordner / "eingang").mkdir()
+# Bearbeiten & Schützen
+from test_anmerkungen import unterschrift_png  # noqa: E402
+from test_schuetzen import handyfoto, iban_dokument  # noqa: E402
+
+(ordner / "unterschrift.png").write_bytes(unterschrift_png(verlauf=True))
+iban_dokument(ordner / "iban.pdf")
+(ordner / "handyfoto.jpg").write_bytes(handyfoto()[0])
+_form = pymupdf.open()
+_seite = _form.new_page()
+_seite.insert_text((72, 90), "Antrag auf Vertragsänderung", fontsize=14)
+_seite.insert_text((72, 128), "Name:", fontsize=11)
+_seite.insert_text((72, 168), "Einverstanden:", fontsize=11)
+for _typ, _name, _r in (
+    (pymupdf.PDF_WIDGET_TYPE_TEXT, "Name", (160, 114, 420, 134)),
+    (pymupdf.PDF_WIDGET_TYPE_CHECKBOX, "Einverstanden", (160, 156, 174, 170)),
+):
+    _w = pymupdf.Widget()
+    _w.field_type, _w.field_name, _w.rect = _typ, _name, pymupdf.Rect(_r)
+    if _typ == pymupdf.PDF_WIDGET_TYPE_TEXT:
+        _w.field_value = ""
+    _seite.add_widget(_w)
+_form.save(ordner / "formular.pdf")
 print(f"Testdaten: {ordner}", flush=True)
 raise SystemExit(main(["--nur-dienst", "--port", "8766", "--token", "e2e", str(gross)]))

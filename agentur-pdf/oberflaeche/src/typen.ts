@@ -16,6 +16,8 @@ export interface DokumentInfo {
   /** je Seite eindeutige Kennung (Seiten-ID + Inhaltsversion) für Bild-URLs */
   kennungen: string[];
   verschluesselt: boolean;
+  /** Kennwortschutz, der beim Speichern gilt */
+  schutz?: "keiner" | "kennwort" | "rechte";
   geaendert: boolean;
   rueckgaengig: string | null; // Name des Schritts, der rückgängig gemacht würde
   wiederholen: string | null;
@@ -25,6 +27,12 @@ export interface DokumentInfo {
 export interface Aenderungsantwort {
   dokumente: DokumentInfo[];
   neu: DokumentInfo[];
+  id?: number;
+  anzahl?: number;
+  seiten?: number[];
+  vorher?: number;
+  nachher?: number;
+  geaendert?: boolean;
   auswahl?: number[];
   dateien?: string[];
   teile?: number;
@@ -33,7 +41,114 @@ export interface Aenderungsantwort {
 
 export type AnsichtsModus = "einzelseite" | "fortlaufend" | "doppelseite" | "doppelseite_fortlaufend";
 export type ZoomModus = "frei" | "seitenbreite" | "ganzeseite";
-export type Werkzeug = "hand" | "lassozoom" | "lupe" | "textbereich";
+export type Werkzeug =
+  | "hand"
+  | "lassozoom"
+  | "lupe"
+  | "textbereich"
+  | "textauswahl"
+  | "hervorheben"
+  | "unterstreichen"
+  | "durchstreichen"
+  | "wellenlinie"
+  | "notiz"
+  | "textfeld"
+  | "schreibmaschine"
+  | "rechteck"
+  | "ellipse"
+  | "linie"
+  | "pfeil"
+  | "freihand"
+  | "stempel"
+  | "platzieren"
+  | "abdecken"
+  | "schwaerzen";
+
+export type Gruppe = "kommentar" | "eintragung" | "stempel" | "schwaerzung";
+export type Rechteck = [number, number, number, number];
+export type Punkt = [number, number];
+
+/** Anmerkung (Kommentar, Eintragung, Stempel, Schwärzung) – Koordinaten normiert */
+export interface Anmerkung {
+  id: number;
+  seite: number;
+  art: string;
+  pdf_art: string;
+  gruppe: Gruppe;
+  rechteck: Rechteck;
+  farbe: string | null;
+  fuellung: string | null;
+  breite: number;
+  deckkraft: number;
+  inhalt: string;
+  autor: string;
+  datum: string;
+  ausgeblendet: boolean;
+  schriftgroesse?: number;
+  textfarbe?: string;
+  text?: string;
+  punkte?: Punkt[];
+  striche?: Punkt[][];
+  rechtecke?: Rechteck[];
+  text_darunter?: string;
+}
+
+/** Wort auf einer Seite: x0, y0, x1, y1, Text, Block, Zeile */
+export type Wort = [number, number, number, number, string, number, number];
+
+export interface Stil {
+  farbe: string;
+  fuellung: string | null;
+  breite: number;
+  deckkraft: number;
+  schriftgroesse: number;
+}
+
+export interface StempelVorlage {
+  text: string;
+  farbe: string;
+}
+
+export interface Formularfeld {
+  id: number;
+  name: string;
+  typ: "text" | "ankreuzen" | "auswahlknopf" | "auswahlliste" | "liste";
+  rechteck: Rechteck;
+  wert: string | boolean;
+  nur_lesen: boolean;
+  mehrzeilig: boolean;
+  schriftgroesse: number;
+  max_laenge: number;
+  optionen?: string[];
+}
+
+export interface Ebene {
+  id: number;
+  name: string;
+  an: boolean;
+}
+
+export interface BildDaten {
+  id: string;
+  original_id?: string;
+  breite: number;
+  hoehe: number;
+  bild: string;
+}
+
+export interface Unterschrift {
+  id: string;
+  name: string;
+  breite: number;
+  hoehe: number;
+  bild: string;
+}
+
+export interface RsFehler {
+  start: number;
+  ende: number;
+  wort: string;
+}
 
 export interface Ansicht {
   modus: AnsichtsModus;
@@ -73,6 +188,13 @@ export interface Einstellungen {
   miniatur_groesse: number;
   seitenleiste_breite: number;
   ocr_sprachen: string;
+  stempel: StempelVorlage[];
+  screenshot_aktiv: boolean;
+  screenshot_taste: string;
+  screenshot_ordner: string;
+  screenshot_ocr: boolean;
+  screenshot_text_kopieren: boolean;
+  werkzeug_stile: Record<string, Partial<Stil>>;
 }
 
 export interface ZuletztEintrag {
@@ -95,7 +217,7 @@ export interface Sitzung {
   aktiv: number | null;
 }
 
-export type Seitenleistenpanel = "miniaturen" | "lesezeichen" | "suche";
+export type Seitenleistenpanel = "miniaturen" | "lesezeichen" | "suche" | "kommentare" | "ebenen";
 
 export interface Auftrag {
   id: string;

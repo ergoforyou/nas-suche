@@ -1,6 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
+import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wort } from "./typen";
 import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 function tokenErmitteln(): string {
@@ -133,6 +134,56 @@ export const api = {
       woerterbuch: boolean;
     }>("GET", "/api/system"),
   explorerMenue: (einrichten: boolean) => anfrage<{ ok: boolean; anzahl: number }>("POST", "/api/system/explorer", { einrichten }),
+  // Kommentieren & Bearbeiten
+  anmerkungen: (id: string) => anfrage<Record<string, Anmerkung[]>>("GET", `/api/dokumente/${id}/anmerkungen`),
+  anmerkungNeu: (id: string, daten: Record<string, unknown>) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/anmerkungen`, daten),
+  anmerkungAendern: (id: string, anmId: number, daten: Record<string, unknown>) =>
+    anfrage<Aenderungsantwort>("PATCH", `/api/dokumente/${id}/anmerkungen/${anmId}`, daten),
+  anmerkungenLoeschen: (id: string, eintraege: { seite: number; id: number }[]) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/anmerkungen/loeschen`, { eintraege }),
+  woerter: (id: string, seite: number) => anfrage<Wort[]>("GET", `/api/dokumente/${id}/seiten/${seite}/woerter`),
+  rechtschreibung: (text: string, signal?: AbortSignal) => anfrage<RsFehler[]>("POST", "/api/rechtschreibung", { text }, signal),
+  vorschlaege: (wort: string) => anfrage<string[]>("POST", "/api/rechtschreibung/vorschlaege", { wort }),
+  woerterbuchHinzufuegen: (wort: string) => anfrage("POST", "/api/woerterbuch", { wort }),
+  // Bilder, Unterschriften, Fotos
+  bildHochladen: (datei: Blob, freistellen: boolean, staerke = 50) =>
+    anfrage<BildDaten>("POST", `/api/bilder?freistellen=${freistellen}&staerke=${staerke}`, datei),
+  bildFreistellen: (id: string, staerke: number) => anfrage<BildDaten>("POST", `/api/bilder/${id}/freistellen`, { staerke }),
+  unterschriften: () => anfrage<Unterschrift[]>("GET", "/api/unterschriften"),
+  unterschriftSpeichern: (bild_id: string, name: string) => anfrage<{ id: string }>("POST", "/api/unterschriften", { bild_id, name }),
+  unterschriftEntfernen: (id: string) => anfrage("DELETE", `/api/unterschriften/${id}`),
+  fotoEcken: (bild_id: string) => anfrage<{ ecken: [number, number][]; gefunden: boolean }>("POST", "/api/foto/ecken", { bild_id }),
+  fotoEntzerren: (bild_id: string, ecken: [number, number][] | null, filter: string, drehung: number) =>
+    anfrage<BildDaten & { format: string }>("POST", "/api/foto/entzerren", { bild_id, ecken, filter, drehung }),
+  seiteAlsBild: (id: string, seite: number) => anfrage<BildDaten>("POST", `/api/dokumente/${id}/seiten/${seite}/als_bild`),
+  bildEinsetzen: (id: string, bild_id: string, position: number, ersetzen: boolean) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/bild_einsetzen`, { bild_id, position, ersetzen }),
+  bildAlsDokument: (bild_id: string, name: string) => anfrage<Aenderungsantwort>("POST", `/api/bilder/${bild_id}/als_dokument`, { name }),
+  // Schützen & Ausgabe
+  schwaerzenSuchen: (id: string, muster: string, begriff = "") =>
+    anfrage<{ seite: number; text: string; rechteck: [number, number, number, number] }[]>("POST", `/api/dokumente/${id}/schwaerzen/suchen`, { muster, begriff }),
+  schwaerzenVormerken: (id: string, eintraege: { seite: number; rechteck: number[] }[]) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/schwaerzen/vormerken`, { eintraege }),
+  schwaerzenAnwenden: (id: string, metadaten: boolean) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/schwaerzen/anwenden`, { metadaten }),
+  schutz: (id: string) =>
+    anfrage<{ verschluesselt: boolean; kennwort_oeffnen: boolean; rechte_kennwort: boolean; rechte: Record<string, boolean>; ausstehend: boolean }>(
+      "GET",
+      `/api/dokumente/${id}/schutz`,
+    ),
+  schutzSetzen: (id: string, daten: Record<string, unknown>) => anfrage<Aenderungsantwort>("PUT", `/api/dokumente/${id}/schutz`, daten),
+  eigenschaften: (id: string) => anfrage<Record<string, string | number | null>>("GET", `/api/dokumente/${id}/eigenschaften`),
+  eigenschaftenSetzen: (id: string, werte: Record<string, string>) => anfrage<Aenderungsantwort>("PUT", `/api/dokumente/${id}/eigenschaften`, werte),
+  metadatenEntfernen: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/metadaten_entfernen`),
+  komprimieren: (id: string, stufe: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/komprimieren`, { stufe }),
+  ebenen: (id: string) => anfrage<Ebene[]>("GET", `/api/dokumente/${id}/ebenen`),
+  ebeneSchalten: (id: string, ebene: number, an: boolean) => anfrage<Aenderungsantwort>("PUT", `/api/dokumente/${id}/ebenen/${ebene}`, { an }),
+  ausgabe: (id: string, o: { seiten?: number[] | null; gruppen_weg: string[]; ebenen_aus: number[]; ebenen_entfernen?: boolean; pfad?: string | null }) =>
+    anfrage<{ url?: string; pfad?: string; groesse: number }>("POST", `/api/dokumente/${id}/ausgabe`, o),
+  bilderExport: (id: string, seiten: number[], dpi: number, format: string, pfad?: string | null) =>
+    anfrage<{ url?: string; name?: string; pfad?: string }>("POST", `/api/dokumente/${id}/bilder_export`, { seiten, dpi, format, pfad }),
+  formular: (id: string) => anfrage<Record<string, Formularfeld[]>>("GET", `/api/dokumente/${id}/formular`),
+  formularSetzen: (id: string, feld: number, seite: number, wert: string | boolean) =>
+    anfrage<Aenderungsantwort>("PUT", `/api/dokumente/${id}/formular/${feld}`, { seite, wert }),
   dateiLaden: async (id: string): Promise<Blob> => {
     const antwort = await fetch(`/api/dokumente/${id}/datei`, { headers: { "X-Agentur-Token": token } });
     if (!antwort.ok) throw new ApiFehler("Datei konnte nicht erzeugt werden.");
@@ -147,12 +198,35 @@ export interface BildParameter {
   skala: number;
   drehung: number;
   kachel?: { x: number; y: number; b: number; h: number };
+  /** ausgeblendete Anmerkungsgruppen (kommagetrennt) */
+  ausblenden?: string;
+  /** gerade bearbeitete Anmerkungen ausblenden (IDs, kommagetrennt) */
+  ohne?: string;
 }
 
 export function bildUrl(p: BildParameter): string {
   let url = `/api/dokumente/${p.dokId}/seiten/${p.seite}/bild?skala=${p.skala}&drehung=${p.drehung}&v=${p.kennung}`;
   if (p.kachel) url += `&x=${p.kachel.x}&y=${p.kachel.y}&b=${p.kachel.b}&h=${p.kachel.h}`;
+  if (p.ausblenden) url += `&a=${p.ausblenden}`;
+  if (p.ohne) url += `&o=${p.ohne}`;
   return url;
+}
+
+/** Datei mit Token herunterladen (Browser-Modus) */
+export async function herunterladen(url: string, name: string): Promise<void> {
+  const antwort = await fetch(url, { headers: { "X-Agentur-Token": token } });
+  if (!antwort.ok) throw new ApiFehler("Datei konnte nicht geladen werden.");
+  const blob = await antwort.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+
+/** URL mit Token für iframes (Druckvorschau) */
+export function mitToken(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}t=${encodeURIComponent(token)}`;
 }
 
 export async function bildLaden(url: string, signal: AbortSignal): Promise<Blob> {

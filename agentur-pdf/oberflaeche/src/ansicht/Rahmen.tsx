@@ -1,6 +1,7 @@
 // Tabs, Eigenschaftsleiste, Statusleiste, Meldungen, Passwortdialog.
 
-import { BookOpen, ChevronsDown, Columns2, FileText, Lock, Minus, Pin, Plus, RectangleVertical, X } from "lucide-react";
+import { BookOpen, ChevronsDown, Columns2, FileText, Lock, Minus, Pin, Plus, RectangleVertical, Trash2, X } from "lucide-react";
+import { ART_NAMEN, auswahlLoeschen, FARBEN, stilAendern, stilFuer } from "../zustand/anmerkungen";
 import { useEffect, useRef, useState } from "react";
 import { dokumentSchliessen, oeffnenDialog } from "../zustand/aktionen";
 import { Kontextmenue } from "./Kontextmenue";
@@ -18,6 +19,8 @@ import {
   zoomSetzen,
 } from "../zustand/store";
 import type { AnsichtsModus } from "../typen";
+
+const KEINE_STEMPEL: { text: string; farbe: string }[] = [];
 
 // ------------------------------------------------------------------- Tabs
 export function Tabs() {
@@ -102,25 +105,92 @@ export function Tabs() {
 }
 
 // --------------------------------------------------- Eigenschaftsleiste
-/** Erscheint nur bei aktivem Werkzeug (kontextabhängig, nicht dauerhaft). */
+const STEUERUNG: Record<string, { farbe?: boolean; fuellung?: boolean; breite?: boolean; deckkraft?: boolean; schrift?: boolean }> = {
+  hervorheben: { farbe: true },
+  unterstreichen: { farbe: true, deckkraft: true },
+  durchstreichen: { farbe: true, deckkraft: true },
+  wellenlinie: { farbe: true, deckkraft: true },
+  notiz: { farbe: true },
+  textfeld: { farbe: true, fuellung: true, breite: true, schrift: true },
+  schreibmaschine: { farbe: true, schrift: true },
+  rechteck: { farbe: true, fuellung: true, breite: true, deckkraft: true },
+  ellipse: { farbe: true, fuellung: true, breite: true, deckkraft: true },
+  linie: { farbe: true, breite: true, deckkraft: true },
+  pfeil: { farbe: true, breite: true, deckkraft: true },
+  freihand: { farbe: true, breite: true, deckkraft: true },
+  stempel: { schrift: true },
+  bild: { deckkraft: true },
+  unterschrift: { deckkraft: true },
+};
+
+const HINWEISE: Partial<Record<string, string>> = {
+  textauswahl: "Text mit der Maus markieren – dann kopieren (Strg+C), hervorheben oder schwärzen.",
+  hervorheben: "Text mit der Maus überstreichen.",
+  unterstreichen: "Text mit der Maus überstreichen.",
+  durchstreichen: "Text mit der Maus überstreichen.",
+  wellenlinie: "Text mit der Maus überstreichen.",
+  notiz: "Auf die Seite klicken, um eine Notiz zu setzen.",
+  textfeld: "Rechteck aufziehen (oder klicken) und Text eingeben.",
+  schreibmaschine: "Auf die Seite klicken und lostippen. Esc oder Klick daneben beendet.",
+  rechteck: "Rechteck aufziehen.",
+  ellipse: "Ellipse aufziehen.",
+  linie: "Linie ziehen – Umschalt rastet auf 45° ein.",
+  pfeil: "Pfeil ziehen – Umschalt rastet auf 45° ein.",
+  freihand: "Mit gedrückter Maustaste zeichnen.",
+  stempel: "Vorlage wählen und auf die Seite klicken.",
+  platzieren: "Auf die Seite klicken oder Rechteck aufziehen.",
+  abdecken: "Bereich aufziehen, der weiß überdeckt wird.",
+  schwaerzen: "Bereich aufziehen – wird zum Schwärzen vorgemerkt (rot). Endgültig erst mit „Schwärzungen anwenden“.",
+};
+
+/** Erscheint nur bei aktivem Werkzeug oder ausgewählter Anmerkung (kontextabhängig). */
 export function Eigenschaftsleiste() {
   const werkzeug = useZustand((z) => z.werkzeug);
   const fixiert = useZustand((z) => z.werkzeugFixiert);
   const lupeFaktor = useZustand((z) => z.lupeFaktor);
-  if (werkzeug === "hand") return null;
+  const auswahl = useZustand((z) => z.anmAuswahl);
+  const anm = useZustand((z) =>
+    z.anmAuswahl ? z.anmerkungen[z.anmAuswahl.dokId]?.seiten[String(z.anmAuswahl.seite)]?.find((a) => a.id === z.anmAuswahl!.id) ?? null : null,
+  );
+  const editor = useZustand((z) => z.editor);
+  useZustand((z) => z.stile); // neu zeichnen, wenn sich ein Stil ändert
+  const vorlagen = useZustand((z) => z.einstellungen?.stempel ?? KEINE_STEMPEL);
+  const vorlage = useZustand((z) => z.stempelVorlage);
+
+  const art = editor?.art ?? (auswahl && anm ? anm.art : werkzeug);
+  if (werkzeug === "hand" && !anm && !editor) return null;
+  const steuerung = STEUERUNG[art] ?? {};
+  const stil = editor
+    ? editor.stil
+    : anm
+      ? {
+          farbe: (anm.art === "schreibmaschine" ? anm.textfarbe : anm.farbe) ?? "#000000",
+          fuellung: anm.fuellung,
+          breite: anm.breite,
+          deckkraft: anm.deckkraft,
+          schriftgroesse: anm.schriftgroesse ?? 11,
+        }
+      : stilFuer(art);
+
   return (
     <div className="eigenschaftsleiste" role="toolbar" aria-label="Werkzeugeinstellungen">
-      {werkzeug === "textbereich" && (
+      {anm && !editor && (
+        <strong>
+          {ART_NAMEN[anm.art] ?? anm.art}
+          {anm.autor ? ` · ${anm.autor}` : ""}
+        </strong>
+      )}
+      {!anm && !editor && werkzeug === "textbereich" && (
         <span>
           <strong>Text aus Bereich:</strong> Rechteck um den gewünschten Text aufziehen – er wird erkannt und kopiert.
         </span>
       )}
-      {werkzeug === "lassozoom" && (
+      {!anm && !editor && werkzeug === "lassozoom" && (
         <span>
           <strong>Bereich zoomen:</strong> Rechteck aufziehen · Klick = 2× vergrößern · Umschalt+Klick = verkleinern
         </span>
       )}
-      {werkzeug === "lupe" && (
+      {!anm && !editor && werkzeug === "lupe" && (
         <>
           <strong>Lupe:</strong>
           <label>
@@ -135,15 +205,96 @@ export function Eigenschaftsleiste() {
           </label>
         </>
       )}
+      {!anm && !editor && werkzeug === "stempel" && (
+        <label>
+          Stempel
+          <select value={vorlage} onChange={(e) => setzen({ stempelVorlage: Number(e.target.value) })} aria-label="Stempelvorlage">
+            {vorlagen.map((v, i) => (
+              <option key={i} value={i}>
+                {v.text.split("\n")[0]}
+              </option>
+            ))}
+          </select>
+          <button className="link" onClick={() => setzen({ dialog: { art: "stempel" } })}>
+            Verwalten …
+          </button>
+        </label>
+      )}
+      {steuerung.farbe && <Farbwahl titel={art === "schreibmaschine" || art === "textfeld" ? "Textfarbe" : "Farbe"} wert={stil.farbe} aendern={(farbe) => farbe && stilAendern({ farbe })} />}
+      {steuerung.fuellung && <Farbwahl titel="Füllung" wert={stil.fuellung} leer aendern={(fuellung) => stilAendern({ fuellung })} />}
+      {steuerung.breite && (
+        <label>
+          Linie
+          <select value={stil.breite} onChange={(e) => stilAendern({ breite: Number(e.target.value) })} aria-label="Linienbreite">
+            {[0, 0.5, 1, 1.5, 2, 3, 4, 6, 8].map((b) => (
+              <option key={b} value={b}>
+                {b === 0 ? "ohne" : `${String(b).replace(".", ",")} pt`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {steuerung.schrift && (
+        <label>
+          Schrift
+          <select value={stil.schriftgroesse} onChange={(e) => stilAendern({ schriftgroesse: Number(e.target.value) })} aria-label="Schriftgröße">
+            {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48].map((g) => (
+              <option key={g} value={g}>
+                {g} pt
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {steuerung.deckkraft && (
+        <label>
+          Deckkraft
+          <select value={Math.round(stil.deckkraft * 100)} onChange={(e) => stilAendern({ deckkraft: Number(e.target.value) / 100 })} aria-label="Deckkraft">
+            {[100, 75, 50, 25].map((d) => (
+              <option key={d} value={d}>
+                {d} %
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {!anm && !editor && HINWEISE[werkzeug] && <span className="leise">{HINWEISE[werkzeug]}</span>}
       <span className="abstand" />
-      {(werkzeug === "lassozoom" || werkzeug === "textbereich") && (
+      {anm && !editor && (
+        <button className="umschalter" onClick={() => auswahlLoeschen()}>
+          <Trash2 size={14} /> Löschen
+        </button>
+      )}
+      {!anm && !editor && werkzeug !== "hand" && werkzeug !== "lupe" && (
         <button className={fixiert ? "umschalter an" : "umschalter"} onClick={() => setzen({ werkzeugFixiert: !fixiert })} aria-pressed={fixiert}>
           <Pin size={14} /> Werkzeug fixieren
         </button>
       )}
-      <button className="umschalter" onClick={() => setzen({ werkzeug: "hand" })}>
-        Beenden (Esc)
+      <button className="umschalter" onClick={() => setzen({ werkzeug: "hand", anmAuswahl: null, platzieren: null, textAuswahl: null })}>
+        {anm && !editor ? "Auswahl aufheben (Esc)" : "Beenden (Esc)"}
       </button>
+    </div>
+  );
+}
+
+function Farbwahl(p: { titel: string; wert: string | null; aendern: (f: string | null) => void; leer?: boolean }) {
+  return (
+    <div className="farbwahl" role="group" aria-label={p.titel}>
+      <span>{p.titel}</span>
+      {p.leer && (
+        <button className={`farbe keine${p.wert === null ? " gewaehlt" : ""}`} title="Keine" aria-label="Keine Füllung" onClick={() => p.aendern(null)} />
+      )}
+      {FARBEN.map((f) => (
+        <button
+          key={f}
+          className={`farbe${p.wert?.toUpperCase() === f ? " gewaehlt" : ""}`}
+          style={{ background: f }}
+          title={f}
+          aria-label={`Farbe ${f}`}
+          onClick={() => p.aendern(f)}
+        />
+      ))}
+      <input type="color" value={p.wert ?? "#ffffff"} onChange={(e) => p.aendern(e.target.value.toUpperCase())} aria-label={`${p.titel} frei wählen`} />
     </div>
   );
 }

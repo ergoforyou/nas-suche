@@ -119,12 +119,15 @@ def erstelle_app(
         h: int | None = None,
         v: str | None = None,
         a: str | None = None,
+        o: str | None = None,
     ):
         kachel = (x, y, b, h) if None not in (x, y, b, h) else None
         # a = ausgeblendete Anmerkungsgruppen, z. B. "kommentar,stempel"
         ausblenden = frozenset(g for g in (a or "").split(",") if g)
+        # o = einzelne Anmerkungen ausblenden (werden gerade bearbeitet)
+        ohne = frozenset(int(x) for x in (o or "").split(",") if x.isdigit())
         auftrag = asyncio.ensure_future(
-            im_mupdf_thread(dokumente.render, dok_id, seite, skala, drehung, kachel, v, ausblenden)
+            im_mupdf_thread(dokumente.render, dok_id, seite, skala, drehung, kachel, v, ausblenden, ohne)
         )
         # Solange der Auftrag noch in der Warteschlange steht: Wurde die Seite
         # inzwischen weggescrollt (Anfrage abgebrochen), Auftrag verwerfen.

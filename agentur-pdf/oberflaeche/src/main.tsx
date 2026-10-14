@@ -5,6 +5,8 @@ import { App } from "./App";
 import "./module/start";
 import "./module/seiten";
 import "./module/konvertieren";
+import "./module/kommentieren";
+import "./module/schuetzen";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(

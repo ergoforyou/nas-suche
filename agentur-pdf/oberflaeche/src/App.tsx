@@ -13,6 +13,7 @@ import { Startseite } from "./ansicht/Startseite";
 import { api } from "./api";
 import { dateienOeffnen, naechsterTreffer, sitzungMerken, starten } from "./zustand/aktionen";
 import { dateienEinfuegen } from "./zustand/seitenaktionen";
+import { auswahlLoeschen, textAuswahlKopieren } from "./zustand/anmerkungen";
 import { abonnieren, holen, setzen, useZustand } from "./zustand/store";
 
 // Tastenkürzel nach Acrobat-Konvention → Befehls-IDs
@@ -21,6 +22,7 @@ const MIT_STRG: Record<string, string> = {
   s: "datei.speichern",
   w: "datei.schliessen",
   f: "ansicht.suchen",
+  p: "ausgabe.drucken",
   "0": "zoom.ganzeseite",
   "1": "zoom.100",
   "2": "zoom.seitenbreite",
@@ -28,7 +30,15 @@ const MIT_STRG: Record<string, string> = {
   "=": "zoom.rein",
   "-": "zoom.raus",
 };
-const EINZELTASTEN: Record<string, string> = { h: "werkzeug.hand", z: "werkzeug.lassozoom", l: "werkzeug.lupe", t: "ocr.bereich" };
+const EINZELTASTEN: Record<string, string> = {
+  h: "werkzeug.hand",
+  z: "werkzeug.lassozoom",
+  l: "werkzeug.lupe",
+  t: "ocr.bereich",
+  m: "werkzeug.hervorheben",
+  v: "werkzeug.textauswahl",
+  s: "werkzeug.schreibmaschine",
+};
 // Tastencodes statt Zeichen, da Umschalt das Zeichen je nach Tastaturlayout ändert
 const PLUS_CODES = ["BracketRight", "Equal", "NumpadAdd"];
 const MINUS_CODES = ["Slash", "Minus", "NumpadSubtract"];
@@ -116,6 +126,23 @@ export function App() {
         return;
       }
       if (holen().befehlssucheOffen || holen().passwortAnfrage) return;
+      // Anmerkung löschen / Textauswahl kopieren / Auswahl aufheben
+      if (!imFeld && !holen().dialog) {
+        if ((e.key === "Delete" || e.key === "Backspace") && holen().anmAuswahl) {
+          e.preventDefault();
+          auswahlLoeschen();
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.code === "KeyC" && holen().textAuswahl) {
+          e.preventDefault();
+          void textAuswahlKopieren();
+          return;
+        }
+        if (e.key === "Escape" && (holen().anmAuswahl || holen().textAuswahl || holen().platzieren)) {
+          setzen({ anmAuswahl: null, textAuswahl: null, platzieren: null, ...(holen().werkzeug === "platzieren" ? { werkzeug: "hand" } : {}) });
+          return;
+        }
+      }
       const id = kuerzelBefehl(e, Boolean(imFeld));
       if (!id) return;
       e.preventDefault();

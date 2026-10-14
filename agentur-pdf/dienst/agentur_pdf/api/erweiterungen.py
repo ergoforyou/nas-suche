@@ -455,15 +455,17 @@ def einrichten(
         seiten: list[int] = Body(...),
         dpi: int = Body(200),
         format: str = Body("png"),  # noqa: A002
-        ordner: str | None = Body(None),
+        pfad: str | None = Body(None),
     ):
         def erzeugen():
             dok = dokumente.get(dok_id)
             return ausgabe.seiten_als_bilder(dok.doc, seiten, dpi, format, dok.titel)
 
         daten, name = await im_mupdf_thread(erzeugen)
-        if ordner:
-            ziel = Path(ordner) / name
+        if pfad:
+            ziel = Path(os.path.abspath(pfad))
+            if ziel.suffix.lower() != Path(name).suffix:
+                ziel = ziel.with_name(ziel.name + Path(name).suffix)
             await asyncio.get_running_loop().run_in_executor(None, _atomar_schreiben, ziel, daten)
             return {"pfad": str(ziel)}
         typ = "application/zip" if name.endswith(".zip") else ("image/jpeg" if format == "jpg" else "image/png")

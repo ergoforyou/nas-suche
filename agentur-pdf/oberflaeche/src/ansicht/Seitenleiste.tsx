@@ -1,17 +1,21 @@
-// Linke Seitenleiste: Miniaturen (Standard), Lesezeichen, Suche.
+// Linke Seitenleiste: Miniaturen (Standard), Lesezeichen, Suche, Kommentare, Ebenen.
 
-import { ChevronDown, ChevronRight, Files, Bookmark, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Files, Bookmark, Layers3, MessageSquare, Search, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { Miniaturen } from "./Miniaturen";
 import { naechsterTreffer, suchen } from "../zustand/aktionen";
 import { aktivesDokument, setzen, springen, useZustand } from "../zustand/store";
-import type { Dokument, Lesezeichen, Seitenleistenpanel } from "../typen";
+import type { Dokument, Ebene, Gruppe, Lesezeichen, Seitenleistenpanel } from "../typen";
+import { ART_NAMEN, GRUPPEN_NAMEN, alleAnmerkungen, anmerkungenLoeschen, gruppeUmschalten } from "../zustand/anmerkungen";
+import { anwenden } from "../zustand/seitenaktionen";
 
 const PANELS: { id: Seitenleistenpanel; titel: string; icon: typeof Files }[] = [
   { id: "miniaturen", titel: "Seiten", icon: Files },
   { id: "lesezeichen", titel: "Lesezeichen", icon: Bookmark },
   { id: "suche", titel: "Suche", icon: Search },
+  { id: "kommentare", titel: "Kommentare", icon: MessageSquare },
+  { id: "ebenen", titel: "Ebenen", icon: Layers3 },
 ];
 
 export function Seitenleiste() {
@@ -43,6 +47,8 @@ export function Seitenleiste() {
         {leiste.panel === "miniaturen" && dok && <Miniaturen dok={dok} groesse={leiste.miniGroesse} />}
         {leiste.panel === "lesezeichen" && dok && <LesezeichenPanel dok={dok} />}
         {leiste.panel === "suche" && <SuchePanel />}
+        {leiste.panel === "kommentare" && dok && <KommentarPanel dok={dok} />}
+        {leiste.panel === "ebenen" && dok && <EbenenPanel dok={dok} />}
         {!dok && leiste.panel !== "suche" && <p className="leer-hinweis">Kein Dokument geöffnet.</p>}
       </div>
       {leiste.panel === "miniaturen" && dok && (
@@ -214,5 +220,95 @@ function hervorheben(text: string, begriff: string) {
       <mark>{text.slice(i, i + begriff.length)}</mark>
       {text.slice(i + begriff.length)}
     </>
+  );
+}
+
+// ------------------------------------------------------------ Kommentare
+function KommentarPanel({ dok }: { dok: Dokument }) {
+  useZustand((z) => z.anmerkungen[dok.id]);
+  const auswahl = useZustand((z) => z.anmAuswahl);
+  const [filter, setFilter] = useState<Gruppe | "alle">("alle");
+  const liste = alleAnmerkungen(dok.id).filter((a) => filter === "alle" || a.gruppe === filter);
+  return (
+    <div className="kommentar-panel">
+      <select value={filter} onChange={(e) => setFilter(e.target.value as Gruppe | "alle")} aria-label="Filter">
+        <option value="alle">Alle Anmerkungen</option>
+        {(Object.keys(GRUPPEN_NAMEN) as Gruppe[]).map((g) => (
+          <option key={g} value={g}>
+            {GRUPPEN_NAMEN[g]}
+          </option>
+        ))}
+      </select>
+      {!liste.length && <p className="leer-hinweis">Keine Anmerkungen. Werkzeuge unter „Kommentieren“ und „Bearbeiten“.</p>}
+      <ul>
+        {liste.map((a) => {
+          const text = a.art === "schreibmaschine" || a.art === "textfeld" || a.art === "stempel" ? a.text ?? a.inhalt : a.inhalt || a.text_darunter || "";
+          const gewaehlt = auswahl?.dokId === dok.id && auswahl.id === a.id;
+          return (
+            <li key={`${a.seite}-${a.id}`} className={gewaehlt ? "gewaehlt" : ""}>
+              <button
+                className="kommentar-eintrag"
+                onClick={() => {
+                  springen(dok.id, a.seite, a.rechteck);
+                  setzen({ werkzeug: "hand", anmAuswahl: { dokId: dok.id, seite: a.seite, id: a.id } });
+                }}
+              >
+                <span className="kommentar-kopf">
+                  <span className={`kommentar-farbe gruppe-${a.gruppe}`} style={{ background: a.farbe ?? a.textfarbe ?? undefined }} />
+                  <strong>{ART_NAMEN[a.art] ?? a.art}</strong>
+                  <span className="leise">S. {a.seite + 1}</span>
+                  <span className="abstand" />
+                  <span className="leise">{a.autor}</span>
+                </span>
+                {text && <span className="kommentar-text">{text}</span>}
+                {a.datum && <span className="leise klein">{new Date(a.datum).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</span>}
+              </button>
+              <button className="kommentar-loeschen" aria-label="Löschen" title="Löschen" onClick={() => void anmerkungenLoeschen(dok.id, [{ seite: a.seite, id: a.id }])}>
+                <Trash2 size={13} />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Ebenen
+function EbenenPanel({ dok }: { dok: Dokument }) {
+  const ausblenden = useZustand((z) => z.ausblenden);
+  const [ebenen, setEbenen] = useState<Ebene[] | null>(null);
+  useEffect(() => {
+    api.ebenen(dok.id).then(setEbenen).catch(() => setEbenen([]));
+  }, [dok.id, dok.version]);
+  return (
+    <div className="ebenen-panel">
+      <h3>Anmerkungen</h3>
+      {(Object.keys(GRUPPEN_NAMEN) as Gruppe[]).map((g) => (
+        <label key={g} className="auswahl-zeile">
+          <input type="checkbox" checked={!ausblenden.includes(g)} onChange={() => gruppeUmschalten(g)} /> {GRUPPEN_NAMEN[g]}
+        </label>
+      ))}
+      <p className="leise klein">Gilt nur für die Anzeige. Beim Drucken und Exportieren wird extra gefragt.</p>
+      <h3>Ebenen im Dokument</h3>
+      {ebenen === null && <p className="leer-hinweis">Lade …</p>}
+      {ebenen?.length === 0 && <p className="leer-hinweis">Keine Ebenen. (Nach der Texterkennung gibt es die Ebene „OCR-Text“.)</p>}
+      {ebenen?.map((e) => (
+        <label key={e.id} className="auswahl-zeile">
+          <input
+            type="checkbox"
+            checked={e.an}
+            onChange={async (ev) => {
+              try {
+                anwenden(await api.ebeneSchalten(dok.id, e.id, ev.target.checked));
+              } catch {
+                /* Meldung nicht nötig – Liste lädt neu */
+              }
+            }}
+          />{" "}
+          {e.name || "(ohne Namen)"}
+        </label>
+      ))}
+    </div>
   );
 }

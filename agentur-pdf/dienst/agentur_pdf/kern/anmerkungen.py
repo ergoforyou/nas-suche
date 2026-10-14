@@ -630,13 +630,15 @@ def muster_suchen(doc: pymupdf.Document, muster: str, eigener_begriff: str = "")
 
 
 # --------------------------------------------------------------- Sichtbarkeit
-def gruppen_ausblenden_seite(doc: pymupdf.Document, seite: pymupdf.Page, gruppen: frozenset[str] | set[str]) -> list[tuple[int, int, int]]:
+def gruppen_ausblenden_seite(
+    doc: pymupdf.Document, seite: pymupdf.Page, gruppen: frozenset[str] | set[str], ohne: frozenset[int] = frozenset()
+) -> list[tuple[int, int, int]]:
     """Setzt vorübergehend das Hidden-Flag für Anmerkungen der Gruppen auf
     einer Seite. Gibt die alten Flags zurück (für ``gruppen_wiederherstellen``)."""
     alt = []
     for a in seite.annots():
         art = _ARTEN.get(a.type[0])
-        if art and _gruppe_ermitteln(doc, a, art) in gruppen:
+        if art and (a.xref in ohne or _gruppe_ermitteln(doc, a, art) in gruppen):
             alt.append((seite.number, a.xref, a.flags))
             a.set_flags(a.flags | pymupdf.PDF_ANNOT_IS_HIDDEN)
     return alt

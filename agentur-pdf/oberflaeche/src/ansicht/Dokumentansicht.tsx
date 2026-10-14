@@ -20,6 +20,8 @@ import {
 import { ansichtAendern, holen, setzen, useZustand, werkzeugBenutzt, zoomBegrenzen } from "../zustand/store";
 import { bereichstextErkennen } from "../zustand/ocr";
 import { Seite } from "./Seite";
+import { AnmerkungsEbene } from "./Anmerkungen";
+import { anmerkungenLaden } from "../zustand/anmerkungen";
 
 interface Anker {
   seite: number;
@@ -38,6 +40,14 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
   const sprung = useZustand((z) => z.sprung);
   const suche = useZustand((z) => z.suche);
   const unsicher = useZustand((z) => z.unsicher[dokId]);
+  const ausblenden = useZustand((z) => z.ausblenden.join(","));
+  const bearbeitet = useZustand((z) => (z.editor?.dokId === dokId && z.editor.id !== null ? z.editor : null));
+  const version = useZustand((z) => z.dokumente.find((d) => d.id === dokId)?.version ?? -1);
+
+  // Anmerkungen und Formularfelder zur aktuellen Dokumentfassung laden
+  useEffect(() => {
+    if (version >= 0) void anmerkungenLaden(dokId, version);
+  }, [dokId, version]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState({ b: 0, h: 0, x: 0, y: 0 });
@@ -493,6 +503,18 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
                 sichtbar={bereich}
                 markierungen={markierungen}
                 unsicher={unsichereWoerter}
+                ausblenden={ausblenden || undefined}
+                ohne={bearbeitet?.seite === box.seite ? String(bearbeitet.id) : undefined}
+              />
+              <AnmerkungsEbene
+                dokId={dokId}
+                seite={box.seite}
+                kennung={dok.kennungen[box.seite] ?? ""}
+                b={box.b}
+                h={box.h}
+                drehung={ansicht.drehung}
+                breitePt={seiten[box.seite].breite}
+                hoehePt={seiten[box.seite].hoehe}
               />
             </div>
           );
