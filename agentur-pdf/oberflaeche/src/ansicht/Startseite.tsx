@@ -1,9 +1,10 @@
 // Startseite (kein Dokument offen): Öffnen, zuletzt geöffnet, Favoriten-Ordner.
 
-import { ArrowUp, Clock, FileText, Folder, FolderOpen, Plus, Star, Trash2, X } from "lucide-react";
+import { ArrowUp, Clock, FileText, Folder, FolderOpen, Layers, Plus, Star, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { oeffnenDialog, pfadOeffnen } from "../zustand/aktionen";
+import { zusammenfuehrenOeffnen } from "../zustand/konvertieren";
 import { melden, useZustand } from "../zustand/store";
 import type { OrdnerInhalt, ZuletztEintrag } from "../typen";
 
@@ -50,10 +51,15 @@ export function Startseite() {
     <div className="startseite">
       <section className="start-kopf">
         <h1>Agentur-PDF</h1>
-        <p>Datei öffnen oder hierher ziehen – PDF, Bilder und Scans.</p>
-        <button className="primaer gross" onClick={() => void oeffnenDialog()}>
-          <FolderOpen size={20} /> Datei öffnen …
-        </button>
+        <p>Datei öffnen oder hierher ziehen – PDF, Scans, Bilder, Word, Excel und E-Mails.</p>
+        <div className="start-knoepfe">
+          <button className="primaer gross" onClick={() => void oeffnenDialog()}>
+            <FolderOpen size={20} /> Datei öffnen …
+          </button>
+          <button className="zweitrangig gross" onClick={() => zusammenfuehrenOeffnen([])}>
+            <Layers size={20} /> Dateien zusammenführen …
+          </button>
+        </div>
         <p className="hinweis">
           Tipp: <kbd>Strg</kbd>+<kbd>K</kbd> findet jede Funktion per Stichwort.
         </p>

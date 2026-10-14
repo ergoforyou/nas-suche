@@ -1442,3 +1442,184 @@ input[type="range"] {
 .leise {
   color: var(--text-3);
 }
+
+/* =================================================== M3: Zusammenführen */
+.start-knoepfe {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.zweitrangig {
+  border: 1px solid var(--linie-stark);
+  background: var(--hg-flaeche);
+  border-radius: var(--radius);
+  padding: 7px 16px;
+  font-weight: 600;
+}
+
+.zweitrangig.gross {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 22px;
+  font-size: 15px;
+}
+
+.zweitrangig:hover {
+  background: var(--hg-hover);
+}
+
+.zf-dialog {
+  width: 620px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+}
+
+.zf-liste {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  min-height: 120px;
+  max-height: 44vh;
+  overflow-y: auto;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  background: var(--hg);
+}
+
+.zf-liste li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  background: var(--hg-flaeche);
+  border: 1px solid transparent;
+  cursor: grab;
+}
+
+.zf-liste li.zieht {
+  opacity: 0.45;
+}
+
+.zf-liste li.ueber-oben {
+  box-shadow: 0 -3px 0 var(--akzent);
+}
+
+.zf-liste li.ueber-unten {
+  box-shadow: 0 3px 0 var(--akzent);
+}
+
+.zf-liste li.zf-leer {
+  background: none;
+  cursor: default;
+  justify-content: center;
+  padding: 36px 12px;
+}
+
+.zf-liste .griff {
+  color: var(--text-3);
+}
+
+.zf-nr {
+  width: 20px;
+  text-align: right;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.zf-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zf-werkzeuge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.balken {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--hg-gedrueckt);
+  overflow: hidden;
+}
+
+.balken > div {
+  height: 100%;
+  background: var(--akzent);
+  transition: width 0.2s ease;
+}
+
+.zf-fortschritt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.zf-fortschritt.fehler {
+  color: #c42b1c;
+}
+
+@keyframes drehen {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dreht {
+  animation: drehen 1s linear infinite;
+}
+
+/* Aufträge unten rechts */
+.auftraege {
+  position: fixed;
+  right: 16px;
+  bottom: 44px;
+  z-index: 180;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 340px;
+}
+
+.auftrag {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie);
+  border-radius: 8px;
+  box-shadow: var(--schatten-gross);
+}
+
+.auftrag.fertig > svg:first-child {
+  color: #1a7f37;
+}
+
+.auftrag.fehler > svg:first-child {
+  color: #c42b1c;
+}
+
+.auftrag-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.auftrag-text span {
+  font-size: 12px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}

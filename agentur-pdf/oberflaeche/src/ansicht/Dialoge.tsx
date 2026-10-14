@@ -5,12 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { speichern } from "../zustand/seitenaktionen";
 import { seitenEntfernen, teilen } from "../zustand/seitenaktionen";
 import { holen, setzen, useZustand } from "../zustand/store";
+import { ZusammenfuehrenDialog } from "./Zusammenfuehren";
 
 export function Dialoge() {
   const dialog = useZustand((z) => z.dialog);
   if (!dialog) return null;
   if (dialog.art === "teilen") return <TeilenDialog dokId={dialog.dokId} />;
   if (dialog.art === "leerseiten") return <LeerseitenLeiste dokId={dialog.dokId} gefunden={dialog.seiten.length} />;
+  if (dialog.art === "zusammenfuehren") return <ZusammenfuehrenDialog eintraege={dialog.eintraege} />;
   return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
 }
 

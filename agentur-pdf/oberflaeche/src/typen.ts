@@ -8,6 +8,8 @@ export interface DokumentInfo {
   id: string;
   titel: string;
   pfad: string | null;
+  /** Vorschlag für „Speichern unter“ (Ordner der Quelldateien) */
+  ordner: string | null;
   version: number;
   seitenanzahl: number;
   seiten: SeitenInfo[];
@@ -93,3 +95,28 @@ export interface Sitzung {
 }
 
 export type Seitenleistenpanel = "miniaturen" | "lesezeichen" | "suche";
+
+export interface Auftrag {
+  id: string;
+  titel: string;
+  status: "wartet" | "laeuft" | "fertig" | "fehler" | "abgebrochen";
+  fortschritt: number;
+  schritt: string;
+  fehler: string;
+  ergebnis: { dokumente?: string[]; dateien?: string[]; oeffnen?: boolean };
+}
+
+export type Ereignis =
+  | { art: "auftrag"; auftrag: Auftrag }
+  | { art: "zusammenfuehren"; dateien: string[] }
+  | { art: "oeffnen"; dokumente: string[] }
+  | { art: "meldung"; text: string };
+
+/** Eintrag im Zusammenführen-Dialog: Datei auf dem PC (Pfad) oder hochgeladen */
+export interface ZfEintrag {
+  schluessel: string;
+  name: string;
+  pfad?: string;
+  upload?: string;
+  laedt?: boolean;
+}

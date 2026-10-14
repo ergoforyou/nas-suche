@@ -2,6 +2,7 @@
 
 import { api, ApiFehler } from "../api";
 import type { Ansicht, DokumentInfo, Sitzung } from "../typen";
+import { brauchtUmwandlung, DATEIAUSWAHL, ereignisschleifeStarten, umwandelnStarten, umwandelnUndOeffnen } from "./konvertieren";
 import { aktivesDokument, dokumentEntfernen, dokumentHinzufuegen, holen, melden, setzen, springen } from "./store";
 
 function fehlerText(e: unknown): string {
@@ -33,11 +34,18 @@ async function mitPasswort(titel: string, versuch: (pw?: string) => Promise<Doku
 
 export async function pfadOeffnen(pfad: string, ansicht?: Partial<Ansicht>): Promise<void> {
   const name = pfad.split(/[\\/]/).pop() ?? pfad;
+  if (brauchtUmwandlung(name)) {
+    await umwandelnStarten([{ pfad }], false);
+    return;
+  }
   await mitPasswort(name, (pw) => api.oeffnen(pfad, pw), ansicht);
 }
 
 export async function dateienOeffnen(dateien: File[]): Promise<void> {
-  for (const datei of dateien) {
+  // Word, Excel, Mails … werden im Hintergrund umgewandelt
+  const umzuwandeln = dateien.filter((d) => brauchtUmwandlung(d.name));
+  if (umzuwandeln.length) void umwandelnUndOeffnen(umzuwandeln);
+  for (const datei of dateien.filter((d) => !brauchtUmwandlung(d.name))) {
     // pywebview (Windows-App) liefert beim Ablegen den echten Pfad mit.
     const vollerPfad = (datei as File & { pywebviewFullPath?: string }).pywebviewFullPath;
     if (vollerPfad) await pfadOeffnen(vollerPfad);
@@ -63,7 +71,7 @@ export async function oeffnenDialog(): Promise<void> {
     dateiAuswahl = document.createElement("input");
     dateiAuswahl.type = "file";
     dateiAuswahl.multiple = true;
-    dateiAuswahl.accept = ".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif,.xps";
+    dateiAuswahl.accept = DATEIAUSWAHL;
     dateiAuswahl.onchange = () => {
       const liste = [...(dateiAuswahl?.files ?? [])];
       if (dateiAuswahl) dateiAuswahl.value = "";
@@ -183,6 +191,7 @@ export async function starten(): Promise<void> {
       /* Datei fehlt oder verschoben – überspringen */
     }
   }
+  ereignisschleifeStarten();
   const z = holen();
   const sitzAktiv = sitzung.aktiv !== null ? z.dokumente[sitzung.aktiv]?.id : undefined;
   for (const info of offen) dokumentHinzufuegen(info);

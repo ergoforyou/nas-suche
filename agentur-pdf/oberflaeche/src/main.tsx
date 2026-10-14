@@ -4,6 +4,7 @@ import { App } from "./App";
 // Module melden ihre Befehle beim Befehlsregister an (je Menüregister ein Modul).
 import "./module/start";
 import "./module/seiten";
+import "./module/konvertieren";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(

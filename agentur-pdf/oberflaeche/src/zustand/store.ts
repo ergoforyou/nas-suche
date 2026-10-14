@@ -10,7 +10,9 @@ import type {
   Seitenleistenpanel,
   Treffer,
   Werkzeug,
+  ZfEintrag,
   ZoomModus,
+  Auftrag,
 } from "../typen";
 
 export const ZOOM_MIN = 0.1;
@@ -33,7 +35,8 @@ export interface Meldung {
 export type Dialog =
   | { art: "teilen"; dokId: string }
   | { art: "leerseiten"; dokId: string; seiten: number[] }
-  | { art: "ungespeichert"; dokId: string; weiter: () => void };
+  | { art: "ungespeichert"; dokId: string; weiter: () => void }
+  | { art: "zusammenfuehren"; eintraege: ZfEintrag[] };
 
 export interface Zustand {
   dokumente: Dokument[];
@@ -43,6 +46,8 @@ export interface Zustand {
   /** zuletzt aktive Dokumente, neuestes zuerst (für „Nebeneinander“) */
   verlauf: string[];
   dialog: Dialog | null;
+  /** laufende und gerade beendete Hintergrundaufträge */
+  auftraege: Auftrag[];
   register: string;
   werkzeug: Werkzeug;
   werkzeugFixiert: boolean;
@@ -63,6 +68,7 @@ let zustand: Zustand = {
   bereiche: [],
   verlauf: [],
   dialog: null,
+  auftraege: [],
   register: "start",
   werkzeug: "hand",
   werkzeugFixiert: false,

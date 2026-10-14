@@ -1,7 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
-import type { Aenderungsantwort, DokumentInfo, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
+import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 function tokenErmitteln(): string {
   const anker = new URLSearchParams(window.location.hash.slice(1));
@@ -63,6 +63,7 @@ export const api = {
       `/api/dokumente/hochladen?name=${enc(datei.name)}${passwort ? `&passwort=${enc(passwort)}` : ""}`,
       datei,
     ),
+  info: (id: string) => anfrage<DokumentInfo>("GET", `/api/dokumente/${id}`),
   schliessen: (id: string) => anfrage<{ ok: boolean }>("DELETE", `/api/dokumente/${id}`),
   suche: (id: string, q: string, signal?: AbortSignal) =>
     anfrage<Omit<Treffer, "dokId">[]>("GET", `/api/dokumente/${id}/suche?q=${enc(q)}`, undefined, signal),
@@ -102,6 +103,14 @@ export const api = {
   rueckgaengig: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/rueckgaengig`),
   wiederholen: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/wiederholen`),
   speichern: (id: string, pfad?: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/speichern`, { pfad: pfad ?? null }),
+  // Zusammenführen / Umwandeln (Hintergrundaufträge)
+  uploadTemp: (datei: Blob, name: string) => anfrage<{ id: string; name: string }>("POST", `/api/uploads?name=${enc(name)}`, datei),
+  zusammenfuehren: (eintraege: { pfad?: string; upload?: string }[], lesezeichen: boolean, anhaenge: boolean) =>
+    anfrage<Auftrag>("POST", "/api/zusammenfuehren", { eintraege, lesezeichen, anhaenge }),
+  umwandeln: (eintraege: { pfad?: string; upload?: string }[], speichern: boolean) =>
+    anfrage<Auftrag>("POST", "/api/umwandeln", { eintraege, speichern }),
+  auftragAbbrechen: (id: string) => anfrage("DELETE", `/api/auftraege/${id}`),
+  ereignisse: () => anfrage<{ ereignisse: Ereignis[]; auftraege: Auftrag[] }>("GET", "/api/ereignisse"),
   dateiLaden: async (id: string): Promise<Blob> => {
     const antwort = await fetch(`/api/dokumente/${id}/datei`, { headers: { "X-Agentur-Token": token } });
     if (!antwort.ok) throw new ApiFehler("Datei konnte nicht erzeugt werden.");

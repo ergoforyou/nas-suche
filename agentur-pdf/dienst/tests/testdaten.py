@@ -61,3 +61,20 @@ def mit_leerseiten(pfad: Path) -> Path:
     doc.save(pfad)
     doc.close()
     return pfad
+
+
+def foto(pfad: Path) -> Path:
+    from PIL import Image
+
+    Image.new("RGB", (600, 800), (180, 40, 40)).save(pfad, quality=90)
+    return pfad
+
+
+def word(pfad: Path, absatz: str) -> Path:
+    import docx
+
+    d = docx.Document()
+    d.add_heading("Versicherungsangebot", 1)
+    d.add_paragraph(absatz)
+    d.save(pfad)
+    return pfad

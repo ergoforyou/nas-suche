@@ -10,6 +10,7 @@ const H = { "X-Agentur-Token": "e2e" };
 export async function zuruecksetzen(page: Page) {
   const offen = (await (await page.request.get("/api/dokumente", { headers: H })).json()) as { id: string }[];
   for (const d of offen) await page.request.delete(`/api/dokumente/${d.id}`, { headers: H });
+  await page.request.get("/api/ereignisse", { headers: H }); // alte Ereignisse verwerfen
   await page.request.put("/api/sitzung", { headers: H, data: { dokumente: [], aktiv: null } });
   await page.request.post("/api/dokumente/oeffnen", { headers: H, data: { pfad: join(DATEN, "150_seiten.pdf") } });
 }

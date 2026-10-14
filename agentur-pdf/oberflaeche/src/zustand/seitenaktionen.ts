@@ -235,7 +235,10 @@ export async function wiederholen(d = aktivesDokument()): Promise<void> {
 // ---------------------------------------------------------- Speichern
 function namensvorschlag(d: Dokument): string {
   const name = d.titel.toLowerCase().endsWith(".pdf") ? d.titel : d.titel.replace(/\.[^.]+$/, "") + ".pdf";
-  return d.pfad ? d.pfad.replace(/[^\\/]+$/, name) : name;
+  if (d.pfad) return d.pfad.replace(/[^\\/]+$/, name);
+  // Neue Dokumente (z. B. zusammengeführt): Ordner der Quelldateien vorschlagen
+  if (d.ordner) return `${d.ordner}${d.ordner.includes("\\") ? "\\" : "/"}${name}`;
+  return name;
 }
 
 export async function speichernUnter(d = aktiv()): Promise<boolean> {

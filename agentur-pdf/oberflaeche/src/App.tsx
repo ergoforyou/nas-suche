@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Befehlssuche } from "./befehle/Befehlssuche";
 import { ausfuehren } from "./befehle/register";
 import { Bereiche } from "./ansicht/Bereiche";
+import { Auftraege } from "./ansicht/Auftraege";
 import { Dialoge } from "./ansicht/Dialoge";
 import { Menueband } from "./ansicht/Menueband";
 import { Eigenschaftsleiste, Meldungen, Passwortdialog, Statusleiste, Tabs } from "./ansicht/Rahmen";
@@ -175,13 +176,14 @@ export function App() {
         {seitenleisteOffen && <Seitenleiste />}
         {seitenleisteOffen && <Trennlinie breite={seitenleisteBreite} />}
         <section className="dokumentbereich">
-          {aktiv && <Dialoge />}
+          <Dialoge />
           {aktiv ? <Bereiche /> : <Startseite />}
         </section>
       </main>
       <Statusleiste />
       <Befehlssuche />
       <Passwortdialog />
+      <Auftraege />
       <Meldungen />
       {ablage && <div className="ablage-hinweis">Dateien hier ablegen zum Öffnen</div>}
     </div>

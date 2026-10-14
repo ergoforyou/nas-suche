@@ -11,6 +11,8 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:8766",
     viewport: { width: 1400, height: 900 },
+    // Bei Fehlschlag Aufzeichnung behalten (npx playwright show-trace …)
+    trace: "retain-on-failure",
     launchOptions: existsSync(headlessShell) ? { executablePath: headlessShell } : {},
   },
   webServer: {
