@@ -1,0 +1,45 @@
+Agentur-PDF – Testversion
+=========================
+
+STARTEN
+  ZIP-Datei vollständig entpacken (z. B. nach C:\Agentur-PDF) und
+  „Agentur-PDF.exe“ doppelklicken. Keine Installation, keine Adminrechte.
+
+  Windows zeigt beim ersten Start evtl. „Der Computer wurde durch Windows
+  geschützt“ (das Programm ist noch nicht signiert): „Weitere Informationen“
+  → „Trotzdem ausführen“.
+
+  Benötigt wird Microsoft Edge WebView2 – auf Windows 10/11 normalerweise
+  vorhanden. Falls das Fenster leer bleibt: „WebView2 Runtime“ bei Microsoft
+  herunterladen und installieren.
+
+RECHTSKLICK IM EXPLORER EINRICHTEN
+  Im Programm oben links auf „Testversion“ klicken → „Rechtsklick-Einträge
+  einrichten“. Danach gibt es beim Rechtsklick auf PDFs, Bilder, Word-,
+  Excel- und Maildateien:
+    • Mit Agentur-PDF öffnen
+    • Zu einer PDF zusammenführen   (auch mehrere Dateien markiert)
+    • In PDF umwandeln
+  Unter Windows 11 unter „Weitere Optionen anzeigen“.
+  Wichtig: Den Ordner danach nicht mehr verschieben (sonst neu einrichten).
+
+WAS IN DIESER TESTVERSION GEHT
+  • Anzeigen, Zoom, Suche, Tabs, Nebeneinander, Miniaturen
+  • Seiten verschieben/kopieren (auch zwischen Dokumenten), drehen, löschen,
+    einfügen, extrahieren, teilen, Leerseiten entfernen, Rückgängig (Strg+Z)
+  • Zusammenführen (PDF, Bilder, Word, Excel, E-Mails) – ohne MS Office
+  • Texterkennung (OCR), „Text aus Bereich“ (Taste T), Überwachungsordner
+  • Befehlssuche: Strg+K
+
+NOCH NICHT ENTHALTEN (folgt)
+  Kommentieren/Markieren, Textfelder, Stempel, Unterschriften/Bilder mit
+  Freistellung, Screenshot-Werkzeug, Schwärzen, Passwort, Drucken,
+  Komprimieren. Die Register „Kommentieren“, „Bearbeiten“, „Schützen“
+  sind deshalb noch leer.
+
+BEI PROBLEMEN
+  Das Fehlerprotokoll liegt unter  %APPDATA%\AgenturPDF\protokoll.log
+  (im Programm: „Testversion“ anklicken → Pfad wird angezeigt).
+  Bitte zusammen mit einer kurzen Beschreibung schicken.
+
+  Bitte zum Testen KEINE Originale verwenden, sondern Kopien.

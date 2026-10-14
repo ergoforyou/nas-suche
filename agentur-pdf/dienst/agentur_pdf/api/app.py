@@ -453,6 +453,34 @@ def erstelle_app(
         await extern_ausfuehren(aktion, dateien)
         return {"ok": True}
 
+    # ---------------------------------------------------------------- System
+    @app.get("/api/system")
+    async def system():
+        from ..benutzer.speicher import datenordner
+        from ..kern.konvertierung import libreoffice_finden
+
+        return {
+            "version": __version__,
+            "windows": os.name == "nt",
+            "datenordner": str(datenordner()),
+            "tesseract": ocr.tesseract_finden(),
+            "beste_modelle": ocr.tessdata_finden() is not None,
+            "libreoffice": libreoffice_finden(),
+            "woerterbuch": woerterbuch().verfuegbar,
+        }
+
+    @app.post("/api/system/explorer")
+    async def explorer_menue(einrichten: bool = Body(True, embed=True)):
+        """Rechtsklick-Einträge im Explorer anlegen/entfernen (nur Windows, pro Benutzer)."""
+        if os.name != "nt":
+            raise DokumentFehler("Die Explorer-Einträge gibt es nur unter Windows.")
+        from ..windows import explorer
+
+        if einrichten:
+            return {"ok": True, "anzahl": explorer.einrichten()}
+        explorer.entfernen()
+        return {"ok": True, "anzahl": 0}
+
     # -------------------------------------------------------------- Benutzer
     @app.get("/api/einstellungen")
     async def einstellungen():

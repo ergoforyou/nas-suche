@@ -122,6 +122,17 @@ export const api = {
   ueberwachung: () => anfrage<{ regeln: OrdnerRegel[]; protokoll: UeberwachungsProtokoll[] }>("GET", "/api/ueberwachung"),
   ueberwachungSetzen: (regeln: OrdnerRegel[]) =>
     anfrage<{ regeln: OrdnerRegel[]; protokoll: UeberwachungsProtokoll[] }>("PUT", "/api/ueberwachung", regeln),
+  system: () =>
+    anfrage<{
+      version: string;
+      windows: boolean;
+      datenordner: string;
+      tesseract: string | null;
+      beste_modelle: boolean;
+      libreoffice: string | null;
+      woerterbuch: boolean;
+    }>("GET", "/api/system"),
+  explorerMenue: (einrichten: boolean) => anfrage<{ ok: boolean; anzahl: number }>("POST", "/api/system/explorer", { einrichten }),
   dateiLaden: async (id: string): Promise<Blob> => {
     const antwort = await fetch(`/api/dokumente/${id}/datei`, { headers: { "X-Agentur-Token": token } });
     if (!antwort.ok) throw new ApiFehler("Datei konnte nicht erzeugt werden.");

@@ -1720,3 +1720,54 @@ input[type="range"] {
   align-items: center;
   gap: 6px;
 }
+
+/* ======================================================== Testversion / Info */
+.testversion {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--akzent);
+  border: 1px solid var(--akzent-mittel);
+  background: var(--akzent-hell);
+}
+
+.bausteine {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bausteine li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.bausteine li span {
+  display: flex;
+  flex-direction: column;
+}
+
+.bausteine small {
+  color: var(--text-3);
+  word-break: break-all;
+}
+
+.bausteine li.ok > svg {
+  color: #1a7f37;
+}
+
+.bausteine li.fehlt > svg {
+  color: #c42b1c;
+}
+
+.dialog code {
+  font-size: 11px;
+  word-break: break-all;
+  user-select: text;
+}

@@ -39,6 +39,7 @@ export type Dialog =
   | { art: "zusammenfuehren"; eintraege: ZfEintrag[] }
   | { art: "ocr"; dokId: string }
   | { art: "ueberwachung" }
+  | { art: "info" }
   | { art: "bereichstext"; text: string; sicherheit: number };
 
 export interface Zustand {

@@ -92,3 +92,14 @@ def test_kaputte_datei_meldet_fehler_einmal(tmp_path):
 def test_inaktive_und_fehlende_ordner_werden_ignoriert(tmp_path):
     u = Ueberwachung(lambda: [{"ordner": str(tmp_path / "gibtsnicht")}, {"ordner": str(tmp_path), "aktiv": False}], direkt, lambda e: None)
     assert u.durchgang() == []
+
+
+def test_jede_datei_genau_einmal_auch_bei_grossbuchstaben(tmp_path):
+    """Grossgeschriebene Endung (SCAN.PDF) wird gefunden, aber nicht doppelt –
+    und erst im zweiten Durchgang (Scanner könnte noch schreiben)."""
+    eingang = tmp_path / "ein"
+    eingang.mkdir()
+    u = Ueberwachung(lambda: [{"ordner": str(eingang), "leerseiten_entfernen": False}], direkt, lambda e: None)
+    scan_mit_rueckseiten(eingang / "x.pdf").rename(eingang / "SCAN.PDF")
+    assert u.durchgang() == []
+    assert [e["datei"] for e in u.durchgang()] == ["SCAN.PDF"]

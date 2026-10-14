@@ -197,5 +197,62 @@ def _server_loop(server: uvicorn.Server) -> asyncio.AbstractEventLoop:
     raise RuntimeError("Server-Loop nicht gefunden")
 
 
+def _protokoll_einrichten() -> Path:
+    """Fehlerprotokoll unter %APPDATA%\\AgenturPDF\\protokoll.log (rotierend).
+    Das Windows-Programm hat kein Konsolenfenster – ohne Protokoll wären
+    Fehler unsichtbar."""
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    from .benutzer.speicher import datenordner
+
+    datei = datenordner() / "protokoll.log"
+    handler = RotatingFileHandler(datei, maxBytes=2_000_000, backupCount=2, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    wurzel = logging.getLogger()
+    wurzel.addHandler(handler)
+    wurzel.setLevel(logging.INFO)
+    for name in ("uvicorn.error", "uvicorn"):
+        logging.getLogger(name).addHandler(handler)
+    if getattr(sys, "frozen", False) and sys.stderr is None:
+        # Fenster-Programm: print()/Tracebacks ins Protokoll umleiten
+        sys.stdout = sys.stderr = open(datei.with_name("ausgabe.log"), "a", encoding="utf-8", buffering=1)
+    return datei
+
+
+def _fehlerfenster(text: str) -> None:
+    """Fehler beim Start sichtbar machen (Windows-Meldungsfenster)."""
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(None, text, "Agentur-PDF – Fehler", 0x10)
+            return
+        except Exception:  # noqa: BLE001
+            pass
+    print(text, file=sys.stderr)
+
+
+def start() -> int:
+    """Einstiegspunkt der .exe: Protokoll + verständliche Fehlermeldung."""
+    import logging
+    import traceback
+
+    protokoll = _protokoll_einrichten()
+    logging.info("Agentur-PDF %s startet: %s", __import__("agentur_pdf").__version__, sys.argv[1:])
+    try:
+        return main()
+    except SystemExit:
+        raise
+    except Exception:  # noqa: BLE001
+        logging.exception("Absturz beim Start")
+        _fehlerfenster(
+            "Agentur-PDF konnte nicht gestartet werden.\n\n"
+            f"{traceback.format_exc(limit=3)}\n"
+            f"Details stehen im Protokoll:\n{protokoll}"
+        )
+        return 1
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(start())

@@ -34,6 +34,11 @@ def _hunspell_pfad() -> Path | None:
     kandidaten = [os.environ.get("AGENTUR_PDF_HUNSPELL", "")]
     basis = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
     kandidaten += [str(basis / "hunspell" / "de_DE"), str(Path(sys.executable).parent / "hunspell" / "de_DE")]
+    # Wörterbuch aus dem mitgelieferten oder installierten LibreOffice
+    for lo in (basis / "libreoffice", Path(sys.executable).parent / "libreoffice", *(
+        Path(os.environ[v]) / "LibreOffice" for v in ("PROGRAMFILES", "PROGRAMFILES(X86)") if os.environ.get(v)
+    )):
+        kandidaten.append(str(lo / "share" / "extensions" / "dict-de" / "de_DE_frami"))
     kandidaten += ["/usr/share/hunspell/de_DE", "/usr/share/myspell/de_DE"]
     for k in kandidaten:
         if k and Path(k + ".dic").is_file() and Path(k + ".aff").is_file():

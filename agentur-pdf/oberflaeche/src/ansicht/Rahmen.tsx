@@ -31,6 +31,9 @@ export function Tabs() {
       <div className="tabs-logo" aria-hidden>
         <FileText size={16} />
         <span>Agentur-PDF</span>
+        <button className="testversion" title="Testversion – Einrichtung und Version anzeigen" onClick={() => setzen({ dialog: { art: "info" } })}>
+          Testversion
+        </button>
       </div>
       {dokumente.map((d, i) => (
         <div

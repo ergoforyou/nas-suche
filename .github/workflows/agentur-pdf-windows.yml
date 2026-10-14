@@ -1,0 +1,113 @@
+name: Agentur-PDF Windows-Testversion
+
+on:
+  push:
+    branches: [claude/happy-cerf-jpm98y]
+    paths: ["agentur-pdf/**", ".github/workflows/agentur-pdf-windows.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Tesseract und LibreOffice installieren
+        run: choco install -y --no-progress tesseract libreoffice-fresh
+
+      - name: Beste Erkennungsmodelle laden (tessdata_best)
+        run: |
+          New-Item -ItemType Directory -Force tessdata_best | Out-Null
+          foreach ($l in "deu", "eng") {
+            Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata_best/raw/main/$l.traineddata" -OutFile "tessdata_best/$l.traineddata"
+          }
+          # Ausrichtungserkennung gibt es nur im Standard-Satz
+          Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata/raw/main/osd.traineddata" -OutFile "tessdata_best/osd.traineddata"
+          Get-ChildItem tessdata_best
+
+      - name: Oberfläche bauen
+        working-directory: agentur-pdf/oberflaeche
+        run: |
+          npm ci
+          npm run build
+
+      - name: Python-Pakete
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "agentur-pdf/dienst[windows,test]" pyinstaller
+
+      - name: Tests unter Windows
+        id: tests
+        continue-on-error: true
+        working-directory: agentur-pdf/dienst
+        env:
+          AGENTUR_PDF_TESSERACT: C:\Program Files\Tesseract-OCR\tesseract.exe
+          AGENTUR_PDF_TESSDATA: ${{ github.workspace }}\tessdata_best
+        run: python -m pytest -q -p no:cacheprovider 2>&1 | Tee-Object -FilePath ..\..\testergebnis.txt; exit $LASTEXITCODE
+
+      - name: Programm packen (PyInstaller)
+        working-directory: agentur-pdf/installer
+        run: |
+          python symbol_erzeugen.py
+          pyinstaller agentur_pdf.spec --noconfirm
+          ./bausteine_windows.ps1 -Ziel "dist\Agentur-PDF" -Tessdata "..\..\tessdata_best"
+
+      - name: Probelauf der fertigen .exe
+        working-directory: agentur-pdf/installer
+        run: python probelauf.py "dist\Agentur-PDF\Agentur-PDF.exe" 2>&1 | Tee-Object -FilePath ..\..\probelauf.txt; exit $LASTEXITCODE
+
+      - name: ZIP erstellen
+        working-directory: agentur-pdf/installer/dist
+        run: |
+          7z a -tzip -mx=7 "${{ github.workspace }}\Agentur-PDF-Testversion.zip" "Agentur-PDF" | Out-Null
+          Get-Item "${{ github.workspace }}\Agentur-PDF-Testversion.zip" | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB)}}
+
+      - name: Zusammenfassung
+        if: always()
+        run: |
+          "## Agentur-PDF Windows-Testversion" >> $env:GITHUB_STEP_SUMMARY
+          "Tests unter Windows: **${{ steps.tests.outcome }}**" >> $env:GITHUB_STEP_SUMMARY
+          if (Test-Path testergebnis.txt) { '```' >> $env:GITHUB_STEP_SUMMARY; Get-Content testergebnis.txt -Tail 25 >> $env:GITHUB_STEP_SUMMARY; '```' >> $env:GITHUB_STEP_SUMMARY }
+          if (Test-Path probelauf.txt) { "### Probelauf der .exe" >> $env:GITHUB_STEP_SUMMARY; '```' >> $env:GITHUB_STEP_SUMMARY; Get-Content probelauf.txt -Tail 40 >> $env:GITHUB_STEP_SUMMARY; '```' >> $env:GITHUB_STEP_SUMMARY }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Agentur-PDF-Testversion
+          path: Agentur-PDF-Testversion.zip
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Testberichte
+          path: |
+            testergebnis.txt
+            probelauf.txt
+
+      - name: Als Vorab-Version veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: agentur-pdf-test-${{ github.run_number }}
+          name: Agentur-PDF Testversion ${{ github.run_number }}
+          prerelease: true
+          target_commitish: ${{ github.sha }}
+          files: Agentur-PDF-Testversion.zip
+          body: |
+            Windows-Testversion von Agentur-PDF (Stand ${{ github.sha }}).
+            ZIP entpacken, `Agentur-PDF.exe` starten – Details in `LIESMICH.txt`.
+            Tests unter Windows: ${{ steps.tests.outcome }}

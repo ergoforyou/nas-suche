@@ -150,8 +150,10 @@ class Ueberwachung:
             regel = OrdnerRegel.aus_dict(roh)
             if not regel.aktiv or not Path(regel.ordner).is_dir():
                 continue
-            for pfad in sorted(Path(regel.ordner).glob("*.pdf")) + sorted(Path(regel.ordner).glob("*.PDF")):
-                if pfad.name.startswith((".", "~")) or not pfad.is_file():
+            # Endung ohne Rücksicht auf Groß-/Kleinschreibung prüfen – NICHT „*.pdf“ und
+            # „*.PDF“ getrennt suchen: Unter Windows liefern beide dieselben Dateien.
+            for pfad in sorted(Path(regel.ordner).iterdir()):
+                if pfad.suffix.lower() != ".pdf" or pfad.name.startswith((".", "~")) or not pfad.is_file():
                     continue
                 ergebnis = self._pruefen(pfad, regel)
                 if ergebnis:
@@ -177,8 +179,9 @@ class Ueberwachung:
         eintrag = {"datei": pfad.name, "ordner": regel.ordner, "zeit": time.time()}
         try:
             ergebnis = datei_verarbeiten(pfad, regel, self._mupdf)
-            eintrag.update(ok=True, **ergebnis)
-            self._erledigt_merken(Path(ergebnis["datei"]))
+            ergebnis_pfad = ergebnis.pop("datei")
+            eintrag.update(ok=True, ergebnis_datei=ergebnis_pfad, **ergebnis)
+            self._erledigt_merken(Path(ergebnis_pfad))
             text = f"Scan verarbeitet: {pfad.name} ({ergebnis['erkannt']} Seite(n) erkannt"
             if ergebnis.get("leerseiten_entfernt"):
                 text += f", {ergebnis['leerseiten_entfernt']} Leerseite(n) entfernt"

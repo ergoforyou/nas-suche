@@ -6,6 +6,7 @@ import { speichern } from "../zustand/seitenaktionen";
 import { seitenEntfernen, teilen } from "../zustand/seitenaktionen";
 import { holen, setzen, useZustand } from "../zustand/store";
 import { ZusammenfuehrenDialog } from "./Zusammenfuehren";
+import { InfoDialog } from "./InfoDialog";
 import { BereichstextDialog, OcrDialog, UeberwachungDialog } from "./OcrDialoge";
 
 export function Dialoge() {
@@ -16,6 +17,7 @@ export function Dialoge() {
   if (dialog.art === "zusammenfuehren") return <ZusammenfuehrenDialog eintraege={dialog.eintraege} />;
   if (dialog.art === "ocr") return <OcrDialog dokId={dialog.dokId} />;
   if (dialog.art === "ueberwachung") return <UeberwachungDialog />;
+  if (dialog.art === "info") return <InfoDialog />;
   if (dialog.art === "bereichstext") return <BereichstextDialog text={dialog.text} sicherheit={dialog.sicherheit} />;
   return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
 }
