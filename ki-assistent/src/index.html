@@ -44,6 +44,7 @@
       <nav class="tabs" id="tabs">
         <button data-tab="persona" class="active">Persona</button>
         <button data-tab="avatar">Avatar</button>
+        <button data-tab="memory">Gedächtnis</button>
         <button data-tab="voice">Sprache</button>
         <button data-tab="conn">Verbindung</button>
       </nav>
@@ -110,6 +111,16 @@
         <input id="avFile" type="file" accept="image/*" hidden />
       </label>
 
+      <h3>Posen</h3>
+      <p class="hint">Weitere Bilder derselben Figur, z. B. Hand gehoben oder Kinn aufgestützt – am besten mit gleichem
+        Bildausschnitt. Du legst fest, wann eine Pose erscheint; die App blendet weich über.</p>
+      <div id="poseList" class="pose-list"></div>
+      <div class="row wrap">
+        <button id="poseAdd">＋ Pose hinzufügen</button>
+        <button id="poseEditMain">Grundbild bearbeiten</button>
+      </div>
+      <p class="hint edit-info" id="editInfo"></p>
+
       <h3>Hintergrund entfernen (freistellen)</h3>
       <p class="hint">Passiert beim Hochladen automatisch: Einfarbige Hintergründe (z. B. weiße Wand) werden per
         Farbe entfernt, normale Fotos per lokaler KI (einmaliger Download ~25 MB). Bilder mit transparentem
@@ -158,6 +169,23 @@
         <input id="avEyesFile" type="file" accept="image/*" hidden />
       </details>
       <button id="avTest">▶ Testsprechen</button>
+    </div>
+
+    <div class="tab" data-tab="memory" hidden>
+      <p class="hint">Das Gedächtnis gehört zur aktiven Persona und liegt nur auf diesem Rechner
+        (in der Datendatei der App). Es wird bei jeder Anfrage an LM Studio mitgeschickt.</p>
+      <label class="check"><input id="mOn" type="checkbox" /> Gedächtnis für diese Persona verwenden</label>
+      <label class="check"><input id="mLearn" type="checkbox" /> Automatisch dazulernen (nach jeder Antwort)</label>
+      <p class="hint">Beim Dazulernen fragt die App dein Modell in LM Studio kurz, welche Fakten aus dem Gespräch
+        dauerhaft nützlich sind (z. B. Name, Beruf, Vorlieben, Absprachen). Du kannst auch einfach sagen:
+        „Merk dir, dass …“.</p>
+      <h3>Erinnerungen <span id="mCount" class="hint"></span></h3>
+      <div id="mList" class="memory-list"></div>
+      <div class="row">
+        <input id="mNew" type="text" placeholder="Neue Erinnerung, z. B. „Jens mag kurze Antworten“" style="flex:1" />
+        <button id="mAdd">＋</button>
+      </div>
+      <button id="mClear" class="danger">Alles vergessen</button>
     </div>
 
     <div class="tab" data-tab="voice" hidden>

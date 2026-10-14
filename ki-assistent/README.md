@@ -58,6 +58,20 @@ Unter ⚙ → **Avatar**:
    Alternativ nur die Mundmitte anklicken.
 4. Beide **Augen** anklicken (für das Blinzeln), dann **▶ Testsprechen**.
 
+### Posen
+
+Unter ⚙ → Avatar → **Posen** weitere Bilder derselben Figur hinzufügen (z. B. Hand gehoben, Kinn aufgestützt),
+möglichst mit gleichem Bildausschnitt. Für jede Pose festlegen, wann sie erscheint: beim Sprechen, Nachdenken,
+Zuhören oder ab und zu in Ruhe. Die App blendet weich über; Mund, Blinzeln und Kopfbewegung laufen in jeder Pose
+weiter. Mund und Augen werden vom Grundbild übernommen und können pro Pose (✎) korrigiert werden.
+
+### Gedächtnis
+
+Unter ⚙ → **Gedächtnis**: Nach jeder Antwort fragt die App das Modell in LM Studio kurz, welche Fakten dauerhaft
+nützlich sind („Jens arbeitet bei …“, „mag kurze Antworten“, „merk dir, dass …“), und speichert sie lokal pro
+Persona. Sie werden künftig mitgeschickt. Einträge lassen sich ansehen, bearbeiten, löschen oder selbst
+hinzufügen. Beim Export einer Persona wird das Gedächtnis nicht mitgegeben.
+
 ### Sprache
 
 - **Piper** liest mit natürlichen Stimmen; englische Sätze automatisch mit der englischen Stimme.

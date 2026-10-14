@@ -116,32 +116,126 @@ export class Avatar {
     this.flip = !!config.flip;
     // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
     this.layout = { x: 0, y: 0, scale: 1, ...(this.useLayout ? config.stage ?? {} : {}) };
-    const img = await loadImage(config.image, this.host);
-    const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
-    this.w = Math.round(img.width * scale);
-    this.h = Math.round(img.height * scale);
-    this.base = toCanvas(img, this.w, this.h, this.doc);
-    this.frame = toCanvas(img, this.w, this.h, this.doc);
-    this.frameCtx = this.frame.getContext('2d', { willReadFrequently: true });
-    const extra = async (src) => (src ? toCanvas(await loadImage(src, this.host), this.w, this.h, this.doc) : null);
-    this.mouthImg = await extra(config.mouthImage);
-    this.eyesImg = await extra(config.eyesImage);
-    // Hat das Bild transparente Bereiche (freigestellt)? Dann kein weichgezeichneter Bildhintergrund.
-    const corners = this.base.getContext('2d', { willReadFrequently: true });
-    this.hasAlpha = [
-      [0, 0],
-      [this.w - 1, 0],
-      [0, this.h - 1],
-      [this.w - 1, this.h - 1],
-    ].some(([x, y]) => corners.getImageData(x, y, 1, 1).data[3] < 128);
-    const mask = await extra(config.mouthMask);
-    this.maskData = mask ? mask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.w, this.h).data : null;
-    this.prepareMouth();
-    this.prepareEyes();
-    this.prepareHead();
+    // Ebene 0 = Grundbild, danach die Posen. Jede Ebene hat eigene Mund-/Augen-/Kopfdaten.
+    const cfgs = [config, ...(config.poses ?? []).filter((p) => p?.image)];
+    const layers = [];
+    for (const c of cfgs) {
+      try {
+        layers.push(await this.createLayer(c));
+      } catch (e) {
+        if (!layers.length) throw e; // Grundbild muss laden, defekte Posen werden übersprungen
+      }
+    }
+    this.layers = layers;
+    const main = layers[0];
+    Object.assign(this, { w: main.w, h: main.h, base: main.base, hasAlpha: main.hasAlpha });
+    this.current = Math.min(this.current ?? 0, layers.length - 1);
+    this.prev = null;
+    this.poseUntil = 0;
     this.bg = null;
-    this.lastOpenPx = -1;
     this.ready = true;
+  }
+
+  /** Eine Bild-Ebene vorbereiten. Die Ebene erbt alles Gemeinsame (Zustand, Bewegung) vom Avatar. */
+  async createLayer(cfg) {
+    const L = Object.create(this);
+    L.config = cfg;
+    L.lastOpenPx = -1;
+    L.blinkWasDrawn = false;
+    const img = await loadImage(cfg.image, this.host);
+    const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+    L.w = Math.round(img.width * scale);
+    L.h = Math.round(img.height * scale);
+    L.base = toCanvas(img, L.w, L.h, this.doc);
+    L.frame = toCanvas(img, L.w, L.h, this.doc);
+    L.frameCtx = L.frame.getContext('2d', { willReadFrequently: true });
+    const extra = async (src) => (src ? toCanvas(await loadImage(src, this.host), L.w, L.h, this.doc) : null);
+    L.mouthImg = await extra(cfg.mouthImage);
+    L.eyesImg = await extra(cfg.eyesImage);
+    // Hat das Bild transparente Bereiche (freigestellt)? Dann kein weichgezeichneter Bildhintergrund.
+    const corners = L.base.getContext('2d', { willReadFrequently: true });
+    L.hasAlpha = [
+      [0, 0],
+      [L.w - 1, 0],
+      [0, L.h - 1],
+      [L.w - 1, L.h - 1],
+    ].some(([x, y]) => corners.getImageData(x, y, 1, 1).data[3] < 128);
+    const mask = await extra(cfg.mouthMask);
+    L.maskData = mask ? mask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, L.w, L.h).data : null;
+    L.prepareMouth();
+    L.prepareEyes();
+    L.prepareHead();
+    return L;
+  }
+
+  /** Mund und Augen der Ebene für den aktuellen Moment einzeichnen. */
+  buildFrame() {
+    if (this.mouthImg) {
+      this.frameCtx.drawImage(this.base, 0, 0);
+      if (this.open > 0.08) {
+        this.frameCtx.globalAlpha = Math.min(1, this.open * 2.2);
+        this.frameCtx.drawImage(this.mouthImg, 0, 0);
+        this.frameCtx.globalAlpha = 1;
+      }
+      this.lastOpenPx = -1;
+    } else {
+      if (this.blinkWasDrawn) {
+        // Augenbereich zurücksetzen
+        this.frameCtx.drawImage(this.base, 0, 0);
+        this.lastOpenPx = -1;
+      }
+      this.renderMouth(this.open);
+    }
+    this.renderEyes(this.frameCtx, this.blink);
+    this.blinkWasDrawn = this.blink > 0.02 || !!this.mouthImg;
+  }
+
+  // ---------- Posen: passend zum Zustand wechseln, weich überblenden ----------
+  /** Für den Editor: eine bestimmte Ebene festhalten (null = automatisch). */
+  previewPose(index) {
+    this.forcePose = index;
+  }
+
+  switchPose(i, now) {
+    if (i === this.current) return;
+    this.prev = this.current;
+    this.current = i;
+    this.fadeStart = now;
+  }
+
+  updatePose(now) {
+    const n = this.layers?.length ?? 0;
+    if (this.forcePose != null) return this.switchPose(Math.min(this.forcePose, n - 1), now);
+    if (n < 2) return this.switchPose(0, now);
+    const st = this.speaking ? 'speak' : this.thinking ? 'think' : this.listening ? 'listen' : 'idle';
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const cand = [];
+    for (let i = 1; i < n; i++) if ((this.layers[i].config.trigger ?? 'speak') === st) cand.push(i);
+    if (st !== this.poseState) {
+      this.poseState = st;
+      this.poseUntil = 0;
+    }
+    if (now < this.poseUntil) return;
+    const pick = (list) => list[Math.floor(Math.random() * list.length)];
+    let next = 0;
+    let hold;
+    if (st === 'idle') {
+      // meist das Grundbild, ab und zu eine Ruhe-Pose
+      if (this.current === 0 && cand.length && Math.random() < 0.45) {
+        next = pick(cand);
+        hold = rnd(2500, 5500);
+      } else hold = rnd(5000, 12000);
+    } else if (st === 'speak') {
+      // beim Sprechen zwischen Grundbild und Sprech-Posen wechseln
+      const options = [0, ...cand].filter((i) => i !== this.current);
+      next = cand.length ? pick(options.length ? options : [0]) : 0;
+      hold = rnd(2200, 4500);
+    } else {
+      next = cand.length ? pick(cand) : 0;
+      hold = 1e9; // bleibt, solange der Zustand anhält
+    }
+    this.switchPose(next, now);
+    this.poseUntil = now + hold;
   }
 
   /**
@@ -315,7 +409,7 @@ export class Avatar {
 
   // ---------- Verhalten: kleine Kopfbewegungen je nach Zustand ----------
   updateBehaviour(now, dt) {
-    const h = this.head;
+    const h = (this.layers?.[this.current] ?? this).head;
     if (!h) return;
     const B = (this.behaviour ??= {
       tilt: 0, look: 0, nod: 0, vt: 0, vl: 0, vn: 0,
@@ -580,30 +674,20 @@ export class Avatar {
     const bt = (now - this.blinkStart) / 160;
     this.blink = bt < 1 ? Math.sin(bt * Math.PI) : 0;
 
-    // Frame zusammensetzen
-    if (this.mouthImg) {
-      this.frameCtx.drawImage(this.base, 0, 0);
-      if (this.open > 0.08) {
-        this.frameCtx.globalAlpha = Math.min(1, this.open * 2.2);
-        this.frameCtx.drawImage(this.mouthImg, 0, 0);
-        this.frameCtx.globalAlpha = 1;
-      }
-      this.lastOpenPx = -1;
-    } else {
-      if (this.blinkWasDrawn) {
-        // Augenbereich zurücksetzen
-        this.frameCtx.drawImage(this.base, 0, 0);
-        this.lastOpenPx = -1;
-      }
-      this.renderMouth(this.open);
-    }
-    this.renderEyes(this.frameCtx, this.blink);
-    this.blinkWasDrawn = this.blink > 0.02 || !!this.mouthImg;
-
     const dt = Math.min(100, now - (this.lastNow ?? now));
     this.lastNow = now;
     this.updateBehaviour(now, dt);
-    const posed = this.renderPose();
+    this.updatePose(now);
+    const fade = this.prev == null ? 1 : Math.min(1, (now - this.fadeStart) / 380);
+    if (fade >= 1) this.prev = null;
+    const visible = [];
+    if (this.prev != null && this.layers[this.prev]) visible.push([this.layers[this.prev], 1]);
+    const cur = this.layers[this.current] ?? this.layers[0];
+    visible.push([cur, this.prev != null ? fade : 1]);
+    const drawn = visible.map(([L, a]) => {
+      L.buildFrame();
+      return [L, L.renderPose(), a];
+    });
 
     // Körperbewegung: atmen, wiegen, beim Sprechen nicken
     const m = this.motion;
@@ -631,7 +715,13 @@ export class Avatar {
     if (this.flip) ctx.scale(-1, 1);
     ctx.scale(1 + this.lean, 1 + breathe + this.lean);
     ctx.translate(Math.sin(t * 0.4) * 2 * m, -talk * dh * 0.3);
-    ctx.drawImage(posed, -dw / 2, -dh, dw, dh);
+    // Posen mit anderem Seitenverhältnis auf gleiche Höhe bringen, unten mittig ausgerichtet
+    for (const [L, img, a] of drawn) {
+      const lw = dh * (L.w / L.h);
+      ctx.globalAlpha = a;
+      ctx.drawImage(img, -lw / 2, -dh, lw, dh);
+    }
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 

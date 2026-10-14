@@ -33,6 +33,8 @@ function defaultPersona() {
     greeting: 'Hallo! Ich bin Max. Was kann ich für dich tun?',
     language: 'de',
     style: 'ausfuehrlich',
+    memoryOn: true,
+    memory: [],
     avatar: structuredClone(DEFAULT_AVATAR),
     voice: { engine: 'piper', de: DEFAULT_VOICES.de, en: DEFAULT_VOICES.en, systemVoice: '', rate: 1 },
   };
@@ -43,6 +45,8 @@ function migratePersona(p) {
   const d = defaultPersona();
   p.language ??= 'de';
   p.style ??= 'gespraech';
+  p.memoryOn ??= true;
+  p.memory ??= [];
   p.voice = { ...d.voice, ...(p.voice ?? {}) };
   if (p.voice.piperVoice) {
     const lang = p.voice.piperVoice.startsWith('en') ? 'en' : 'de';
@@ -69,6 +73,7 @@ const DEFAULT_SETTINGS = {
   floating: false,
   outputOpen: false,
   offline: false,
+  memoryLearn: true,
 };
 
 const RULES = {
@@ -82,6 +87,9 @@ const RULES = {
       'vorgelesen). Danach darfst du ausführlich werden und Markdown verwenden (Überschriften, Listen, Tabellen, ' +
       'Codeblöcke), wenn es der Übersicht dient.',
     name: (n) => `Dein Name ist ${n}.`,
+    memory: (items) =>
+      `Was du aus früheren Gesprächen über dein Gegenüber weißt (dein Gedächtnis):\n${items}\n` +
+      'Nutze dieses Wissen natürlich, wenn es passt, ohne es aufzuzählen.',
   },
   en: {
     lang: 'Always answer in English.',
@@ -92,6 +100,9 @@ const RULES = {
       'Start with one or two sentences that summarise the answer in a way that sounds good when read aloud. ' +
       'After that you may go into detail and use Markdown (headings, lists, tables, code blocks) where helpful.',
     name: (n) => `Your name is ${n}.`,
+    memory: (items) =>
+      `What you remember about the user from earlier conversations (your memory):\n${items}\n` +
+      'Use this knowledge naturally when relevant, without listing it.',
   },
 };
 
@@ -265,7 +276,9 @@ function buildMessages() {
   const p = persona();
   const r = RULES[p.language] ?? RULES.de;
   const parts = [p.prompt?.trim()];
-  if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech, r.lang);
+  if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech);
+  if (p.memoryOn && p.memory?.length) parts.push(r.memory(p.memory.map((m) => `- ${m.text}`).join('\n')));
+  if (p.style !== 'frei') parts.push(r.lang);
   const sys = parts.filter(Boolean).join('\n\n');
   const h = history().slice(-state.settings.historyLimit);
   return sys ? [{ role: 'system', content: sys }, ...h] : h;
@@ -331,6 +344,7 @@ async function send(text) {
   if (!text || state.busy) return;
   tts.stop();
   tts.newTurn();
+  cancelLearning();
   state.ttsErrorShown = false;
   state.busy = true;
   setBusyUi(true);
@@ -374,6 +388,7 @@ async function send(text) {
       save();
     } else bubble.remove();
     output.update(answer, true);
+    if (answer && !error) scheduleLearning(text, answer);
     if (error) addBubble('error', error);
     state.busy = false;
     state.currentChatId = null;
@@ -411,6 +426,159 @@ async function send(text) {
     },
   );
 }
+
+// ---------------------------------------------------------------- Gedächtnis
+const LEARN_PROMPT = {
+  de:
+    'Du pflegst das Langzeitgedächtnis eines persönlichen Assistenten. Lies den Gesprächsausschnitt und gib NUR neue, ' +
+    'dauerhaft nützliche Fakten über den Nutzer zurück (z. B. Name, Beruf, Firma, Projekte, Vorlieben, Abneigungen, ' +
+    'wichtige Termine, Absprachen, ausdrückliche Bitten wie „merk dir …“). Keine Allgemeinwissen-Fakten, nichts über den ' +
+    'Assistenten selbst, nichts Vorübergehendes, nichts schon Bekanntes. Jeder Fakt als kurzer, eigenständiger Satz in ' +
+    'der dritten Person. Antworte ausschließlich mit einem JSON-Array von Strings, z. B. ["Jens arbeitet bei ergoforyou."]. ' +
+    'Wenn es nichts Neues gibt: []',
+  en:
+    'You maintain the long-term memory of a personal assistant. Read the excerpt and return ONLY new, lastingly useful ' +
+    'facts about the user (name, job, company, projects, preferences, dislikes, important dates, agreements, explicit ' +
+    '"remember that…" requests). No general knowledge, nothing about the assistant, nothing temporary, nothing already ' +
+    'known. Each fact as a short standalone sentence in third person. Reply only with a JSON array of strings, or [] if ' +
+    'there is nothing new.',
+};
+
+let learnTimer = null;
+function cancelLearning() {
+  clearTimeout(learnTimer);
+  if (state.learnId) desktop.abortChat(state.learnId);
+  state.learnId = null;
+}
+
+function scheduleLearning(question, answer) {
+  const p = persona();
+  if (!p.memoryOn || !state.settings.memoryLearn) return;
+  cancelLearning();
+  learnTimer = setTimeout(() => learn(p, question, answer).catch(() => {}), 1200);
+}
+
+function addMemory(p, text) {
+  const t = text.trim().replace(/\s+/g, ' ');
+  if (t.length < 3 || t.length > 300) return false;
+  const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  if (p.memory.some((m) => norm(m.text) === norm(t))) return false;
+  p.memory.push({ id: newId(), text: t, created: Date.now() });
+  // Gedächtnis begrenzen: älteste Einträge fallen heraus
+  if (p.memory.length > 60) p.memory.splice(0, p.memory.length - 60);
+  return true;
+}
+
+async function learn(p, question, answer) {
+  const model = await ensureModel();
+  const known = p.memory.map((m) => `- ${m.text}`).join('\n') || '(noch nichts)';
+  const lang = p.language === 'en' ? 'en' : 'de';
+  const excerpt =
+    lang === 'en'
+      ? `Known facts:\n${known}\n\nExcerpt:\nUser: ${question}\nAssistant: ${answer.slice(0, 2500)}`
+      : `Bekannte Fakten:\n${known}\n\nGesprächsausschnitt:\nNutzer: ${question}\nAssistent: ${answer.slice(0, 2500)}`;
+  const id = newId();
+  state.learnId = id;
+  const raw = await new Promise((resolve) => {
+    let out = '';
+    desktop.chat(
+      {
+        id,
+        baseUrl: state.settings.baseUrl,
+        model,
+        temperature: 0,
+        messages: [
+          { role: 'system', content: LEARN_PROMPT[lang] },
+          { role: 'user', content: excerpt },
+        ],
+      },
+      (ev) => {
+        if (ev.type === 'delta') out += ev.payload;
+        else resolve(ev.type === 'done' ? out : '');
+      },
+    );
+  });
+  if (state.learnId !== id) return; // abgebrochen
+  state.learnId = null;
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/g, '');
+  const m = text.match(/\[[\s\S]*\]/);
+  if (!m) return;
+  let facts;
+  try {
+    facts = JSON.parse(m[0]);
+  } catch {
+    return;
+  }
+  const added = (Array.isArray(facts) ? facts : []).filter((f) => typeof f === 'string' && addMemory(p, f));
+  if (!added.length) return;
+  save();
+  if (p === persona()) {
+    const note = addBubble('note', `💾 Gemerkt: ${added.join(' · ')}`);
+    note.title = 'Im Gedächtnis gespeichert (⚙ → Gedächtnis)';
+    renderMemory();
+  }
+}
+
+function renderMemory() {
+  const p = persona();
+  const list = $('mList');
+  if (!list) return;
+  list.innerHTML = '';
+  $('mOn').checked = !!p.memoryOn;
+  $('mLearn').checked = !!state.settings.memoryLearn;
+  $('mCount').textContent = p.memory.length ? `(${p.memory.length})` : '';
+  if (!p.memory.length) {
+    list.innerHTML = '<p class="hint">Noch keine Erinnerungen.</p>';
+    return;
+  }
+  [...p.memory].reverse().forEach((m) => {
+    const row = document.createElement('div');
+    row.className = 'memory-row';
+    const input = document.createElement('input');
+    input.value = m.text;
+    input.title = new Date(m.created).toLocaleString('de-DE');
+    input.onchange = () => {
+      m.text = input.value.trim();
+      if (!m.text) p.memory.splice(p.memory.indexOf(m), 1);
+      save();
+      renderMemory();
+    };
+    const del = document.createElement('button');
+    del.textContent = '🗑';
+    del.title = 'Vergessen';
+    del.onclick = () => {
+      p.memory.splice(p.memory.indexOf(m), 1);
+      save();
+      renderMemory();
+    };
+    row.append(input, del);
+    list.appendChild(row);
+  });
+}
+
+$('mOn').onchange = (e) => {
+  persona().memoryOn = e.target.checked;
+  save();
+};
+$('mLearn').onchange = (e) => {
+  state.settings.memoryLearn = e.target.checked;
+  save();
+};
+const addMemoryFromInput = () => {
+  if (addMemory(persona(), $('mNew').value)) {
+    $('mNew').value = '';
+    save();
+    renderMemory();
+  }
+};
+$('mAdd').onclick = addMemoryFromInput;
+$('mNew').onkeydown = (e) => e.key === 'Enter' && addMemoryFromInput();
+$('mClear').onclick = () => {
+  if (!confirm(`Alle ${persona().memory.length} Erinnerungen von „${persona().name}“ löschen?`)) return;
+  persona().memory = [];
+  save();
+  renderMemory();
+};
 
 function setBusyUi(busy) {
   $('btnSend').hidden = busy;
@@ -514,7 +682,12 @@ async function setFloating(on, { fromWindow = false } = {}) {
   if (on) {
     try {
       const av = persona().avatar;
-      if (!av.original && !hasTransparency(await imageToCanvas(av.image, 256))) await cutoutAvatar('auto');
+      if (!av.original && !hasTransparency(await imageToCanvas(av.image, 256))) {
+        const keep = editIndex;
+        editIndex = -1;
+        await cutoutAvatar('auto');
+        editIndex = keep;
+      }
       await floating.open(persona().avatar);
       updateBadge();
     } catch (e) {
@@ -580,8 +753,10 @@ document.addEventListener('keydown', (e) => {
     toggleMic();
   }
   if (e.key === 'Escape') {
-    if (!$('drawer').hidden) $('drawer').hidden = true;
-    else stopAll();
+    if (!$('drawer').hidden) {
+      $('drawer').hidden = true;
+      previewEdited();
+    } else stopAll();
   }
 });
 setInterval(() => {
@@ -621,15 +796,21 @@ $('btnSettings').onclick = () => {
   if (!$('drawer').hidden) {
     fillSettings();
     loadPresets();
+    renderMemory();
   }
+  previewEdited();
 };
-$('btnCloseDrawer').onclick = () => ($('drawer').hidden = true);
+$('btnCloseDrawer').onclick = () => {
+  $('drawer').hidden = true;
+  previewEdited();
+};
 $('tabs').onclick = (e) => {
   const tab = e.target.dataset?.tab;
   if (!tab) return;
   for (const b of $('tabs').children) b.classList.toggle('active', b.dataset.tab === tab);
   for (const t of document.querySelectorAll('.tab')) t.hidden = t.dataset.tab !== tab;
   if (tab === 'avatar') drawMarkers();
+  if (tab === 'memory') renderMemory();
   if (tab === 'conn') {
     refreshModels();
     refreshModelInfo();
@@ -654,12 +835,13 @@ function fillSettings() {
   $('pStyle').value = p.style;
 
   $('avFloating').checked = s.floating;
-  $('avMouthW').value = p.avatar.mouth?.w ?? 0.1;
-  $('avEyeR').value = p.avatar.eyes?.[0]?.r ?? 0.03;
+  $('avMouthW').value = target().mouth?.w ?? 0.1;
+  $('avEyeR').value = target().eyes?.[0]?.r ?? 0.03;
   $('avMotion').value = p.avatar.motion ?? 1;
-  $('avOpen').value = p.avatar.mouthOpen ?? 1;
+  $('avOpen').value = target().mouthOpen ?? 1;
   $('avFlip').checked = !!p.avatar.flip;
-  $('avRestore').disabled = !p.avatar.original;
+  $('avRestore').disabled = !target().original;
+  renderPoseList();
 
   $('vSpeak').checked = s.speak;
   $('vEngine').value = p.voice.engine;
@@ -770,6 +952,7 @@ $('pPresetNew').onclick = () => {
   p.id = newId();
   p.name = preset.name.slice(0, 40);
   p.greeting = '';
+  p.memory = [];
   applyPreset(p, preset);
   switchTo(p);
   status(`Neue Persona „${p.name}“ angelegt – Avatar und Stimme wurden von der bisherigen übernommen.`);
@@ -797,6 +980,7 @@ $('personaCopy').onclick = () => {
   const p = structuredClone(persona());
   p.id = newId();
   p.name += ' (Kopie)';
+  p.memory = [];
   switchTo(p);
 };
 $('personaDelete').onclick = () => {
@@ -812,6 +996,8 @@ $('personaDelete').onclick = () => {
 $('personaExport').onclick = () => {
   const p = structuredClone(persona());
   delete p.id;
+  // Das Gedächtnis ist privat und wird nicht mit exportiert
+  delete p.memory;
   const blob = new Blob([JSON.stringify({ kiAssistentPersona: 1, ...p }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -843,6 +1029,9 @@ $('clearHistory').onclick = () => {
 };
 
 // ---------------------------------------------------------------- Avatar-Editor
+// Bearbeitet wird entweder das Grundbild (editIndex = -1) oder eine Pose.
+let editIndex = -1;
+const target = () => (editIndex >= 0 ? persona().avatar.poses?.[editIndex] : null) ?? persona().avatar;
 let markMode = null;
 let markerImg = null;
 let markerImgSrc = null;
@@ -898,8 +1087,9 @@ async function drawMarkers() {
 function avatarChanged() {
   save();
   applyAvatar();
+  renderPoseList();
   drawMarkers();
-  $('avRestore').disabled = !persona().avatar.original;
+  $('avRestore').disabled = !target().original;
 }
 
 for (const b of document.querySelectorAll('[data-mark]')) {
@@ -910,7 +1100,7 @@ let maskCanvas = null; // Maske in Bildauflösung (max. 1024 px)
 let maskFor = null;
 
 async function getMaskCanvas(create = false) {
-  const av = persona().avatar;
+  const av = target();
   const key = av.image + '|' + (av.mouthMask ?? '');
   if (maskCanvas && maskFor === key) return maskCanvas;
   if (!av.mouthMask && !create) return null;
@@ -956,7 +1146,7 @@ $('markerCanvas').addEventListener('pointermove', (e) => painting && paintAt(e))
 $('markerCanvas').addEventListener('pointerup', async () => {
   if (!painting) return;
   painting = false;
-  const av = persona().avatar;
+  const av = target();
   const derived = mouthFromMask(maskCanvas);
   av.mouthMask = derived ? maskCanvas.toDataURL('image/png') : null;
   if (derived) av.mouth = derived;
@@ -980,12 +1170,12 @@ function paintAt(e) {
 }
 
 $('avMaskClear').onclick = () => {
-  persona().avatar.mouthMask = null;
+  target().mouthMask = null;
   maskCanvas = null;
   avatarChanged();
 };
 $('avOpen').oninput = (e) => {
-  persona().avatar.mouthOpen = +e.target.value;
+  target().mouthOpen = +e.target.value;
   avatarChanged();
 };
 
@@ -1007,7 +1197,7 @@ $('markerCanvas').onclick = (e) => {
   const r = e.target.getBoundingClientRect();
   const x = (e.clientX - r.left) / r.width;
   const y = (e.clientY - r.top) / r.height;
-  const av = persona().avatar;
+  const av = target();
   if (markMode === 'mouth') av.mouth = { x, y, w: av.mouth?.w ?? 0.1 };
   else {
     const i = markMode === 'eye0' ? 0 : 1;
@@ -1022,12 +1212,12 @@ $('markerCanvas').onclick = (e) => {
   avatarChanged();
 };
 $('avMouthW').oninput = (e) => {
-  const av = persona().avatar;
+  const av = target();
   av.mouth = { ...(av.mouth ?? { x: 0.5, y: 0.5 }), w: +e.target.value };
   avatarChanged();
 };
 $('avEyeR').oninput = (e) => {
-  for (const eye of persona().avatar.eyes ?? []) eye.r = +e.target.value;
+  for (const eye of target().eyes ?? []) eye.r = +e.target.value;
   avatarChanged();
 };
 $('avFlip').onchange = (e) => {
@@ -1086,7 +1276,7 @@ $('avFile').onchange = async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  const av = persona().avatar;
+  const av = target();
   av.image = await readImage(file);
   av.original = null;
   av.crop = null;
@@ -1097,6 +1287,11 @@ $('avFile').onchange = async (e) => {
   av.eyes = [];
   avatarChanged();
   await cutoutAvatar('auto');
+  if (editIndex >= 0 && (await copyMarkersFromMain(av))) {
+    status('Pose hinzugefügt – Mund und Augen wurden vom Grundbild übernommen. Bei Bedarf korrigieren.');
+    avatarChanged();
+    return;
+  }
   const face = await detectFace(av.image);
   if (face) {
     av.mouth = face.mouth;
@@ -1114,7 +1309,7 @@ $('avFile').onchange = async (e) => {
  * Das Original bleibt erhalten; Markierungen und Lippen-Maske werden mitverschoben.
  */
 async function cutoutAvatar(mode = 'auto') {
-  const av = persona().avatar;
+  const av = target();
   const buttons = [$('avCutout'), $('avCutoutAi')];
   buttons.forEach((b) => (b.disabled = true));
   try {
@@ -1160,10 +1355,116 @@ async function cutoutAvatar(mode = 'auto') {
   }
 }
 
+// ---- Posen
+/** Markierungen und Lippen-Maske des Grundbilds auf eine Pose übertragen (gleicher Bildausschnitt angenommen). */
+async function copyMarkersFromMain(pose) {
+  const main = persona().avatar;
+  if (!main.mouth && !main.mouthMask) return false;
+  const mainOrig = await imageToCanvas(main.original ?? main.image);
+  const poseOrig = await imageToCanvas(pose.original ?? pose.image);
+  // beide Originale auf gleiche Größe beziehen
+  const sx = poseOrig.width / mainOrig.width;
+  const sy = poseOrig.height / mainOrig.height;
+  const mainCrop = main.crop ?? { x: 0, y: 0, w: mainOrig.width, h: mainOrig.height };
+  const from = { x: mainCrop.x * sx, y: mainCrop.y * sy, w: mainCrop.w * sx, h: mainCrop.h * sy };
+  const to = pose.crop ?? { x: 0, y: 0, w: poseOrig.width, h: poseOrig.height };
+  pose.mouth = main.mouth ? { ...main.mouth } : null;
+  pose.eyes = (main.eyes ?? []).map((e) => ({ ...e }));
+  pose.mouthMask = main.mouthMask ?? null;
+  pose.mouthOpen = main.mouthOpen;
+  const img = await imageToCanvas(pose.image);
+  await remapMask(pose, from, to, img.width, img.height);
+  remapMarkers(pose, from, to);
+  return true;
+}
+
+const TRIGGERS = [
+  ['speak', 'beim Sprechen'],
+  ['think', 'beim Nachdenken'],
+  ['listen', 'beim Zuhören'],
+  ['idle', 'in Ruhe, ab und zu'],
+];
+
+function setEditIndex(i) {
+  editIndex = i;
+  maskCanvas = null;
+  setMarkMode(null);
+  fillSettings();
+  drawMarkers();
+  previewEdited();
+}
+
+/** Im Editor die gerade bearbeitete Pose anzeigen. */
+function previewEdited() {
+  const poses = persona().avatar.poses ?? [];
+  let layer = null;
+  if (editIndex >= 0 && poses[editIndex]?.image) layer = 1 + poses.slice(0, editIndex).filter((p) => p.image).length;
+  const drawerOpen = !$('drawer').hidden;
+  avatar.previewPose(drawerOpen ? layer ?? (editIndex >= 0 ? null : 0) : null);
+  floating.avatar?.previewPose(drawerOpen ? layer ?? (editIndex >= 0 ? null : 0) : null);
+}
+
+function renderPoseList() {
+  const list = $('poseList');
+  if (!list) return;
+  const poses = (persona().avatar.poses ??= []);
+  list.innerHTML = '';
+  poses.forEach((pose, i) => {
+    const row = document.createElement('div');
+    row.className = 'pose-row' + (i === editIndex ? ' editing' : '');
+    const img = document.createElement('img');
+    if (pose.image) img.src = pose.image;
+    const name = document.createElement('input');
+    name.value = pose.name ?? `Pose ${i + 1}`;
+    name.oninput = () => {
+      pose.name = name.value;
+      save();
+    };
+    const trig = document.createElement('select');
+    for (const [v, label] of TRIGGERS) trig.add(new Option(label, v, false, v === (pose.trigger ?? 'speak')));
+    trig.onchange = () => {
+      pose.trigger = trig.value;
+      save();
+      applyAvatar();
+    };
+    const edit = document.createElement('button');
+    edit.textContent = '✎';
+    edit.title = 'Diese Pose bearbeiten (Mund, Augen, Freistellen)';
+    edit.onclick = () => setEditIndex(i);
+    const del = document.createElement('button');
+    del.textContent = '🗑';
+    del.title = 'Pose löschen';
+    del.onclick = () => {
+      if (!confirm(`Pose „${pose.name ?? i + 1}“ löschen?`)) return;
+      poses.splice(i, 1);
+      if (editIndex >= poses.length) editIndex = -1;
+      setEditIndex(editIndex === i ? -1 : editIndex > i ? editIndex - 1 : editIndex);
+      avatarChanged();
+    };
+    row.append(img, name, trig, edit, del);
+    list.appendChild(row);
+  });
+  $('editInfo').textContent =
+    editIndex >= 0
+      ? `Du bearbeitest: ${poses[editIndex]?.name ?? 'Pose'} – Freistellen, Mund und Augen gelten für diese Pose.`
+      : poses.length
+        ? 'Du bearbeitest: Grundbild.'
+        : '';
+}
+
+$('poseAdd').onclick = () => {
+  const poses = (persona().avatar.poses ??= []);
+  poses.push({ id: newId(), name: `Pose ${poses.length + 1}`, trigger: 'speak', image: null });
+  editIndex = poses.length - 1;
+  renderPoseList();
+  $('avFile').click();
+};
+$('poseEditMain').onclick = () => setEditIndex(-1);
+
 $('avCutout').onclick = () => cutoutAvatar('color');
 $('avCutoutAi').onclick = () => cutoutAvatar('ai');
 $('avRestore').onclick = async () => {
-  const av = persona().avatar;
+  const av = target();
   if (!av.original) return;
   const canvas = await imageToCanvas(av.original);
   const full = { x: 0, y: 0, w: canvas.width, h: canvas.height };
@@ -1175,14 +1476,15 @@ $('avRestore').onclick = async () => {
   avatarChanged();
 };
 $('avDefault').onclick = () => {
-  persona().avatar = structuredClone(DEFAULT_AVATAR);
+  if (editIndex >= 0) return status('Die Standard-Figur ersetzt nur das Grundbild – bitte zuerst „Grundbild bearbeiten“ wählen.');
+  persona().avatar = { ...structuredClone(DEFAULT_AVATAR), poses: persona().avatar.poses ?? [] };
   fillSettings();
   avatarChanged();
 };
 $('avAuto').onclick = async () => {
-  const face = await detectFace(persona().avatar.image);
+  const face = await detectFace(target().image);
   if (!face) return status('Automatische Erkennung nicht möglich – bitte manuell markieren.');
-  Object.assign(persona().avatar, face);
+  Object.assign(target(), face);
   avatarChanged();
 };
 $('avFloating').onchange = (e) => setFloating(e.target.checked);
@@ -1192,17 +1494,17 @@ const extraImage = (key) => async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f) return;
-  persona().avatar[key] = await readImage(f);
+  target()[key] = await readImage(f);
   avatarChanged();
 };
 $('avMouthFile').onchange = extraImage('mouthImage');
 $('avEyesFile').onchange = extraImage('eyesImage');
 $('avMouthClear').onclick = () => {
-  persona().avatar.mouthImage = null;
+  target().mouthImage = null;
   avatarChanged();
 };
 $('avEyesClear').onclick = () => {
-  persona().avatar.eyesImage = null;
+  target().eyesImage = null;
   avatarChanged();
 };
 const testPhrase = () =>
