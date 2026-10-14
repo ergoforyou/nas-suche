@@ -121,6 +121,8 @@ export class Avatar {
     this.config = config;
     this.motion = config.motion ?? 1;
     this.idleHead = config.idleHead ?? 0.25; // Kopfbewegung im Leerlauf (0 = still)
+    this.vrmYaw = config.vrmYaw ?? 0; // 3D-Figur: Drehung in Grad
+    this.vrmFraming = config.vrmFraming ?? 'brust'; // 3D-Figur: Bildausschnitt
     this.flip = !!config.flip;
     // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
     this.layout = { x: 0, y: 0, scale: 1, ...(this.useLayout ? config.stage ?? {} : {}) };
@@ -169,6 +171,8 @@ export class Avatar {
         blink: this.blink,
         motion: this.motion,
         idleHead: this.idleHead,
+        yaw: this.vrmYaw ?? 0,
+        framing: this.vrmFraming ?? 'brust',
       });
     return L;
   }

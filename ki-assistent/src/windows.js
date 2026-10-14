@@ -26,7 +26,8 @@ function openChild(url, name) {
 }
 
 export class FloatingAvatar {
-  constructor({ onActivate, onClosed }) {
+  constructor({ onActivate, onClosed, onRotate }) {
+    this.onRotate = onRotate;
     this.onActivate = onActivate;
     this.onClosed = onClosed;
     this.win = null;
@@ -95,6 +96,7 @@ export class FloatingAvatar {
       kind: 'window',
       desktop,
       onActivate: () => this.onActivate?.(),
+      onRotate: (yaw) => this.onRotate?.(yaw),
       onSelect: (on) => setIgnore(!on && true),
     });
     doc.addEventListener('mousemove', (e) => {

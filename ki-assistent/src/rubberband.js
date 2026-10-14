@@ -120,6 +120,8 @@ export class RubberBand {
     if (e.button !== 0) return;
     const p = this.local(e);
     if (!this.avatar.hitTest(p.x, p.y)) return this.select(false);
+    // 3D-Figur: Umschalttaste + Ziehen dreht die Figur
+    if (e.shiftKey && this.avatar.layers?.[0]?.isVrm) return this.rotateStart(e);
     this.select(true);
     e.preventDefault();
     const desktop = this.opts.desktop;
@@ -157,6 +159,29 @@ export class RubberBand {
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
       this.opts.onChange?.(this.avatar.layout);
+    };
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+  }
+
+  rotateStart(e) {
+    e.preventDefault();
+    const canvas = this.avatar.canvas;
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {}
+    const x0 = e.clientX;
+    const yaw0 = this.avatar.vrmYaw ?? 0;
+    const move = (ev) => {
+      let yaw = yaw0 + (ev.clientX - x0) * 0.7;
+      yaw = ((((yaw + 180) % 360) + 360) % 360) - 180;
+      this.avatar.vrmYaw = Math.round(yaw);
+      this.opts.onRotating?.(this.avatar.vrmYaw);
+    };
+    const up = () => {
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup', up);
+      this.opts.onRotate?.(this.avatar.vrmYaw);
     };
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);

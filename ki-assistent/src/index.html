@@ -129,6 +129,19 @@
         <button id="avVrmOff" hidden>Wieder Bild verwenden</button>
       </div>
       <div id="avVrmInfo" class="hint"></div>
+      <div id="avVrmOpts" hidden>
+        <label>Drehung <span id="avVrmYawVal" class="hint"></span>
+          <input id="avVrmYaw" type="range" min="-180" max="180" step="1" /></label>
+        <p class="hint">Oder direkt: <b>Umschalttaste gedrückt halten und die Figur mit der Maus nach links/rechts ziehen</b>
+          (im Chatfenster und als freie Figur).</p>
+        <label>Bildausschnitt
+          <select id="avVrmFraming">
+            <option value="kopf">Kopf &amp; Schultern</option>
+            <option value="brust">Brustbild</option>
+            <option value="ganz">Ganzkörper</option>
+          </select>
+        </label>
+      </div>
       <input id="avVrmFile" type="file" accept=".vrm" hidden />
 
       <h3>Posen</h3>

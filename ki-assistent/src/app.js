@@ -213,10 +213,23 @@ new RubberBand($('stage'), avatar, {
     persona().avatar.stage = { ...layout };
     save();
   },
+  onRotating: (yaw) => setVrmYaw(yaw, false),
+  onRotate: (yaw) => setVrmYaw(yaw),
 });
+
+/** Drehung der 3D-Figur überall übernehmen (Chatfenster, freie Figur, Regler). */
+function setVrmYaw(yaw, persist = true) {
+  persona().avatar.vrmYaw = yaw;
+  avatar.vrmYaw = yaw;
+  if (floating.avatar) floating.avatar.vrmYaw = yaw;
+  $('avVrmYaw').value = yaw;
+  $('avVrmYawVal').textContent = `${yaw}°`;
+  if (persist) save();
+}
 
 const floating = new FloatingAvatar({
   onActivate: () => toggleMic(),
+  onRotate: (yaw) => setVrmYaw(yaw),
   onClosed: () => setFloating(false, { fromWindow: true }),
 });
 const output = new OutputWindow();
@@ -1185,6 +1198,10 @@ function fillSettings() {
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
   $('avVrmOff').hidden = !p.avatar.vrm;
+  $('avVrmOpts').hidden = !p.avatar.vrm;
+  $('avVrmYaw').value = p.avatar.vrmYaw ?? 0;
+  $('avVrmYawVal').textContent = `${p.avatar.vrmYaw ?? 0}°`;
+  $('avVrmFraming').value = p.avatar.vrmFraming ?? 'brust';
   $('avMouthState').textContent = target().mouthImage ? '✔ vorhanden' : '– automatisch (Mund wird aus dem Bild geöffnet)';
   $('avEyesState').textContent = target().eyesImage ? '✔ vorhanden' : '– automatisch (Lider werden gezeichnet)';
   $('avVrmInfo').textContent = p.avatar.vrm
@@ -1900,6 +1917,13 @@ $('avVrmFile').onchange = async (e) => {
   }
   fillSettings();
   avatarChanged();
+};
+$('avVrmYaw').oninput = (e) => setVrmYaw(+e.target.value);
+$('avVrmFraming').onchange = (e) => {
+  persona().avatar.vrmFraming = e.target.value;
+  avatar.vrmFraming = e.target.value;
+  if (floating.avatar) floating.avatar.vrmFraming = e.target.value;
+  save();
 };
 $('avVrmOff').onclick = () => {
   const av = persona().avatar;

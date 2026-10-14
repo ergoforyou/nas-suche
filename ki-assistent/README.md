@@ -49,6 +49,8 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
 Unter ⚙ → Avatar → **„VRM-Datei laden …“** eine 3D-Figur im VRM-Format laden. Sie bewegt sich live: Kopf und Blick,
 Lippen zur Stimme, Atmen, Blinzeln, Nachdenken, Zuhören. Kostenlos erstellen mit **VRoid Studio** (vroid.com/Steam) →
 „Exportieren“ → .vrm. Rahmen, Verschieben, Größe und die freie Figur auf dem Desktop funktionieren wie bei Bildern.
+**Drehen:** Regler unter ⚙ → Avatar oder Umschalttaste halten und die Figur mit der Maus seitlich ziehen.
+**Bildausschnitt:** Kopf & Schultern, Brustbild oder Ganzkörper.
 
 ### 2D-Figur aus mehreren Bildern
 

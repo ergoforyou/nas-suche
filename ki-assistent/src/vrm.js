@@ -59,20 +59,31 @@ export async function createVrmFigure(doc, url, { width = 820, height = 900 } = 
   restArms();
   vrm.update(0);
 
-  // Kamera: Brustbild (Hüfte bis etwas über den Kopf)
+  // Kamera: Bildausschnitt wählbar (Kopf & Schultern, Brustbild, Ganzkörper)
   vrm.scene.updateMatrixWorld(true);
   const pos = (o, fallback) => (o ? o.getWorldPosition(new THREE.Vector3()) : fallback);
   const headPos = pos(B.head, new THREE.Vector3(0, 1.4, 0));
   const hipsPos = pos(B.hips, new THREE.Vector3(0, headPos.y * 0.6, 0));
-  const top = headPos.y + 0.22;
-  const bottom = hipsPos.y + (headPos.y - hipsPos.y) * 0.05;
+  const footY = Math.min(pos(bone('leftFoot'), new THREE.Vector3()).y, pos(bone('rightFoot'), new THREE.Vector3()).y, hipsPos.y);
   const fov = 22;
   const camera = new THREE.PerspectiveCamera(fov, width / height, 0.1, 50);
-  const span = top - bottom;
-  const dist = span / 2 / Math.tan(THREE.MathUtils.degToRad(fov / 2)) * 1.04;
-  const centerY = (top + bottom) / 2;
-  camera.position.set(0, centerY, headPos.z + dist);
-  camera.lookAt(0, centerY, headPos.z);
+  const FRAMES = {
+    kopf: { top: headPos.y + 0.2, bottom: headPos.y - 0.32 },
+    brust: { top: headPos.y + 0.22, bottom: hipsPos.y + (headPos.y - hipsPos.y) * 0.05 },
+    ganz: { top: headPos.y + 0.25, bottom: footY - 0.06 },
+  };
+  let framing = null;
+  const setFraming = (name) => {
+    framing = FRAMES[name] ? name : 'brust';
+    const { top, bottom } = FRAMES[framing];
+    const dist = ((top - bottom) / 2 / Math.tan(THREE.MathUtils.degToRad(fov / 2))) * 1.04;
+    const centerY = (top + bottom) / 2;
+    camera.position.set(0, centerY, headPos.z + dist);
+    camera.lookAt(0, centerY, headPos.z);
+  };
+  setFraming('brust');
+  // Drehung um die eigene Achse (VRM-0-Figuren sind bereits um 180° gedreht)
+  const baseYaw = vrm.scene.rotation.y;
 
   // Blick folgt leicht der Kamera
   if (vrm.lookAt) {
@@ -87,9 +98,12 @@ export async function createVrmFigure(doc, url, { width = 820, height = 900 } = 
 
   /**
    * Ein Bild zeichnen.
-   * st: { speaking, thinking, listening, open (0..1 Mundöffnung), blink (0..1), motion, idleHead }
+   * st: { speaking, thinking, listening, open (0..1 Mundöffnung), blink (0..1), motion, idleHead,
+   *       yaw (Drehung in Grad), framing ('kopf' | 'brust' | 'ganz') }
    */
   function render(st) {
+    if ((st.framing ?? 'brust') !== framing) setFraming(st.framing ?? 'brust');
+    vrm.scene.rotation.y = baseYaw + THREE.MathUtils.degToRad(st.yaw ?? 0);
     const now = performance.now();
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
