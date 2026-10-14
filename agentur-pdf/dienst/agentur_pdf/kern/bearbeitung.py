@@ -333,25 +333,7 @@ class Bearbeitung:
 
     # ----------------------------------------------------------- Leerseiten
     def leerseiten_finden(self, dok_id: str) -> list[int]:
-        dok = self.speicher.get(dok_id)
-        leer = []
-        for seite in dok.doc:
-            if seite.get_text("text").strip():
-                continue
-            if seite.first_annot is not None:
-                continue
-            pix = seite.get_pixmap(matrix=pymupdf.Matrix(0.5, 0.5), colorspace=pymupdf.csGRAY, alpha=False)
-            b, h = pix.width, pix.height
-            rx, ry = int(b * LEER_RAND), int(h * LEER_RAND)
-            daten = pix.samples
-            dunkel = gesamt = 0
-            for y in range(ry, h - ry, 2):
-                zeile = daten[y * pix.stride + rx : y * pix.stride + b - rx : 2]
-                gesamt += len(zeile)
-                dunkel += sum(1 for v in zeile if v < 160)
-            if gesamt and dunkel / gesamt < LEER_SCHWELLE:
-                leer.append(seite.number)
-        return leer
+        return leerseiten_im_dokument(self.speicher.get(dok_id).doc)
 
     # -------------------------------------------------------------- Speichern
     def speichern(self, dok_id: str, pfad: str | None = None) -> str:
@@ -379,6 +361,28 @@ class Bearbeitung:
     def datei_bytes(self, dok_id: str) -> bytes:
         dok = self.speicher.get(dok_id)
         return dok.doc.tobytes(garbage=3, deflate=True)
+
+
+def leerseiten_im_dokument(doc: pymupdf.Document) -> list[int]:
+    """Seiten ohne Text, Anmerkungen und nennenswerte Druckerschwärze."""
+    leer = []
+    for seite in doc:
+        if seite.get_text("text").strip():
+            continue
+        if seite.first_annot is not None:
+            continue
+        pix = seite.get_pixmap(matrix=pymupdf.Matrix(0.5, 0.5), colorspace=pymupdf.csGRAY, alpha=False)
+        b, h = pix.width, pix.height
+        rx, ry = int(b * LEER_RAND), int(h * LEER_RAND)
+        daten = pix.samples
+        dunkel = gesamt = 0
+        for y in range(ry, h - ry, 2):
+            zeile = daten[y * pix.stride + rx : y * pix.stride + b - rx : 2]
+            gesamt += len(zeile)
+            dunkel += sum(1 for v in zeile if v < 160)
+        if gesamt and dunkel / gesamt < LEER_SCHWELLE:
+            leer.append(seite.number)
+    return leer
 
 
 def _bereich_text(seiten: list[int]) -> str:

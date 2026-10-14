@@ -23,6 +23,9 @@ STANDARD_EINSTELLUNGEN: dict[str, Any] = {
     "standard_zoom": "seitenbreite",
     "miniatur_groesse": 120,
     "seitenleiste_breite": 220,
+    "ocr_sprachen": "deu+eng",
+    # Überwachungsordner: [{ordner, ziel, original_sichern, leerseiten_entfernen, aktiv}]
+    "ueberwachung": [],
 }
 
 

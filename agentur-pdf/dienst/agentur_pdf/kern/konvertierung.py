@@ -254,6 +254,21 @@ def _msg_lesen(daten: bytes) -> _Mail:
     return _Mail(n.betreff, n.absender, n.an, n.cc, n.datum, n.text, n.html, [(a.name, a.daten) for a in n.anhaenge])
 
 
+def adressen_lesbar(kopf: str) -> str:
+    """„"'max@x.de'" <max@x.de>“ → „max@x.de“; „"Müller, Anna" <a@x.de>“ → „Müller, Anna <a@x.de>“."""
+    from email.utils import getaddresses
+
+    teile = []
+    for name, adresse in getaddresses([kopf]):
+        name = name.strip().strip("'\"").strip()
+        if not adresse:
+            if name:
+                teile.append(name)
+            continue
+        teile.append(adresse if not name or name.lower() == adresse.lower() else f"{name} <{adresse}>")
+    return ", ".join(teile) if teile else kopf
+
+
 def html_bereinigen(inhalt: str) -> str:
     """Nur den <body> verwenden, Skripte/Stile/externe Bilder entfernen."""
     treffer = re.search(r"<body[^>]*>(.*)</body>", inhalt, re.I | re.S)
@@ -267,7 +282,7 @@ def html_bereinigen(inhalt: str) -> str:
 
 def _mail_zu_pdf(name: str, daten: bytes, mupdf: Mupdf, mit_anhaengen: bool, tiefe: int) -> Teil:
     mail = _msg_lesen(daten) if name.lower().endswith(".msg") else _eml_lesen(daten)
-    zeilen = [("Von", mail.absender), ("An", mail.an), ("Cc", mail.cc)]
+    zeilen = [("Von", adressen_lesbar(mail.absender)), ("An", adressen_lesbar(mail.an)), ("Cc", adressen_lesbar(mail.cc))]
     if mail.datum:
         lokal = mail.datum.astimezone() if mail.datum.tzinfo else mail.datum
         zeilen.append(("Datum", lokal.strftime("%d.%m.%Y %H:%M")))

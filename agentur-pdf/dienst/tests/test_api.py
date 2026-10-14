@@ -154,3 +154,37 @@ def test_docx_direkt_oeffnen_verweist_auf_umwandeln(client, tmp_path):
     p = tmp_path / "x.docx"
     p.write_bytes(b"x")
     assert "umgewandelt" in client.post("/api/dokumente/oeffnen", json={"pfad": str(p)}).json()["fehler"]
+
+
+def test_ocr_ueber_api(client, tmp_path):
+    import scan_hilfen
+    import testdaten
+    from agentur_pdf.kern import ocr as _ocr
+
+    if _ocr.tesseract_finden() is None:
+        import pytest
+
+        pytest.skip("Tesseract fehlt")
+    status = client.get("/api/ocr/status").json()
+    assert status["verfuegbar"] and "deu" in status["sprachen"]
+    quelle = pymupdf.open(testdaten.versicherungsbrief(tmp_path / "b.pdf", seiten=2))
+    scan_hilfen.als_scan(quelle).save(tmp_path / "s.pdf")
+    info = client.post("/api/dokumente/oeffnen", json={"pfad": str(tmp_path / "s.pdf")}).json()
+    assert client.get(f"/api/dokumente/{info['id']}/textstatus").json() == {"seiten": 2, "ohne_text": 2, "erste_ohne_text": [0]}
+    a = client.post(f"/api/dokumente/{info['id']}/ocr", json={}).json()
+    fertig = _warten(client, a["id"], 120)
+    assert fertig["status"] == "fertig", fertig
+    assert fertig["ergebnis"]["ocr"]["erkannt"] == 2 and fertig["ergebnis"]["aktualisieren"]
+    assert client.get(f"/api/dokumente/{info['id']}/textstatus").json()["ohne_text"] == 0
+    assert len(client.get(f"/api/dokumente/{info['id']}/suche", params={"q": "Prämie"}).json()) == 2
+    # Bereichs-OCR: oberer Teil der ersten Seite
+    text = client.post(f"/api/dokumente/{info['id']}/ocr/bereich", json={"seite": 0, "rechteck": [0.05, 0.05, 0.8, 0.13]}).json()["text"]
+    assert "Versicherungsschein" in text
+
+
+def test_ueberwachung_einstellen(client, tmp_path):
+    assert client.put("/api/ueberwachung", json=[{"ordner": str(tmp_path / "fehlt")}]).status_code == 400
+    r = client.put("/api/ueberwachung", json=[{"ordner": str(tmp_path), "original_sichern": False}]).json()
+    assert r["regeln"][0]["ordner"] == str(tmp_path) and r["regeln"][0]["original_sichern"] is False
+    assert client.get("/api/einstellungen").json()["ueberwachung"][0]["leerseiten_entfernen"] is True
+    client.put("/api/ueberwachung", json=[])

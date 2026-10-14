@@ -192,3 +192,10 @@ def test_abbrechen(speicher, tmp_path, brief):
     a.abbrechen()
     with pytest.raises(Abgebrochen):
         zusammenfuehren([Eintrag("brief.pdf", str(brief))], speicher, a, lambda f, *x, **k: f(*x, **k))
+
+
+def test_adressen_lesbar():
+    from agentur_pdf.kern.konvertierung import adressen_lesbar
+
+    assert adressen_lesbar('"\'werkstatt@example.de\'" <werkstatt@example.de>') == "werkstatt@example.de"
+    assert adressen_lesbar('"Müller, Anna (AV)" <anna@example.de>, b@example.de') == "Müller, Anna (AV) <anna@example.de>, b@example.de"

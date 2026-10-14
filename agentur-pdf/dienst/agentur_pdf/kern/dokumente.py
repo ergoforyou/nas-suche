@@ -74,6 +74,8 @@ class OffenesDokument:
     vor: list[Schnappschuss] = field(default_factory=list)
     # Vorschlag für „Speichern unter“ bei neuen Dokumenten (z. B. Ordner der Quelldateien)
     ordner_vorschlag: str | None = None
+    # Ergebnis der Texterkennung je Seiten-ID (Sicherheit, unsichere Wörter)
+    ocr_info: dict[str, dict] = field(default_factory=dict)
 
     def kennung(self, seite: int) -> str:
         sid = self.seiten_ids[seite]

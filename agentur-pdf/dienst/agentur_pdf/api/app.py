@@ -18,6 +18,10 @@ from ..kern.auftraege import Auftrag, AuftragsVerwaltung
 from ..kern.dokumente import DokumentFehler, DokumentSpeicher
 from ..kern.konvertierung import braucht_umwandlung, unterstuetzt
 from ..kern.mupdf_thread import im_mupdf_thread, im_mupdf_thread_sync
+from ..kern import ocr
+from ..kern.ocr_auftrag import OcrOptionen, bereich_erkennen, dokument_erkennen, unsichere_woerter
+from ..kern.ueberwachung import Ueberwachung
+from ..kern.woerterbuch import woerterbuch
 from ..kern.zusammenfuehren import Eintrag, Uploads, umwandeln, zusammenfuehren
 from .sicherheit import pruefe_anfrage
 
@@ -251,6 +255,91 @@ def erstelle_app(
             return {"verfuegbar": False, "pfad": None}
         pfad = await asyncio.get_running_loop().run_in_executor(None, app.state.speichern_dialog, vorschlag)
         return {"verfuegbar": True, "pfad": pfad}
+
+    # --------------------------------------------------- Texterkennung (OCR)
+    @app.get("/api/ocr/status")
+    async def ocr_status():
+        return {
+            "verfuegbar": ocr.tesseract_finden() is not None,
+            "sprachen": ocr.sprachen_verfuegbar(),
+            "beste_modelle": ocr.tessdata_finden() is not None,
+            "woerterbuch": woerterbuch().verfuegbar,
+        }
+
+    @app.post("/api/dokumente/{dok_id}/ocr")
+    async def ocr_starten(
+        dok_id: str,
+        seiten: list[int] | None = Body(None),
+        sprachen: str | None = Body(None),
+        erzwingen: bool = Body(False),
+        ausrichten: bool = Body(True),
+        entzerren: bool = Body(True),
+    ):
+        await im_mupdf_thread(dokumente.get, dok_id)  # existiert?
+        optionen = OcrOptionen(sprachen or benutzer.einstellungen()["ocr_sprachen"], erzwingen, ausrichten, entzerren)
+        titel = await im_mupdf_thread(lambda: f"Texterkennung „{dokumente.get(dok_id).titel}“")
+        a = auftraege.starten(
+            titel, lambda auf: dokument_erkennen(dok_id, seiten, optionen, dokumente, bearbeitung, auf, im_mupdf_thread_sync)
+        )
+        return a.als_dict()
+
+    @app.post("/api/dokumente/{dok_id}/ocr/bereich")
+    async def ocr_bereich(dok_id: str, seite: int = Body(...), rechteck: list[float] = Body(...), sprachen: str | None = Body(None)):
+        sprachen = sprachen or benutzer.einstellungen()["ocr_sprachen"]
+        vorbereitet = await im_mupdf_thread(bereich_erkennen, dokumente, dok_id, seite, rechteck, sprachen)
+        ergebnis = await asyncio.get_running_loop().run_in_executor(None, lambda: ocr.erkennen(vorbereitet, sprachen, False, True))
+        return {"text": ergebnis.text, "sicherheit": round(ergebnis.sicherheit, 1)}
+
+    @app.get("/api/dokumente/{dok_id}/ocr/unsicher")
+    async def ocr_unsicher(dok_id: str):
+        return await im_mupdf_thread(unsichere_woerter, dokumente, dok_id)
+
+    @app.get("/api/dokumente/{dok_id}/textstatus")
+    async def textstatus(dok_id: str):
+        """Wie viele Seiten haben keinen Text (→ Hinweis „Texterkennung starten“)?"""
+
+        def zaehlen():
+            doc = dokumente.get(dok_id).doc
+            ohne = [s.number for s in doc if not ocr.hat_text(s)]
+            return {"seiten": doc.page_count, "ohne_text": len(ohne), "erste_ohne_text": ohne[:1]}
+
+        return await im_mupdf_thread(zaehlen)
+
+    # ---------------------------------------------------- Überwachungsordner
+    ueberwachung = Ueberwachung(lambda: benutzer.einstellungen()["ueberwachung"], im_mupdf_thread_sync, ereignisse.hinzufuegen)
+    app.state.ueberwachung = ueberwachung
+    if benutzer.einstellungen()["ueberwachung"]:
+        ueberwachung.starten()
+
+    @app.get("/api/ueberwachung")
+    async def ueberwachung_holen():
+        return {"regeln": benutzer.einstellungen()["ueberwachung"], "protokoll": ueberwachung.protokoll}
+
+    @app.put("/api/ueberwachung")
+    async def ueberwachung_setzen(regeln: list[dict] = Body(...)):
+        bereinigt = []
+        for r in regeln:
+            ordner = (r.get("ordner") or "").strip().strip('"')
+            if not ordner:
+                continue
+            if not os.path.isdir(ordner):
+                raise DokumentFehler(f"Ordner nicht gefunden: {ordner}")
+            ziel = (r.get("ziel") or "").strip().strip('"')
+            if ziel and not os.path.isdir(ziel):
+                raise DokumentFehler(f"Zielordner nicht gefunden: {ziel}")
+            bereinigt.append(
+                {
+                    "ordner": os.path.abspath(ordner),
+                    "ziel": os.path.abspath(ziel) if ziel else "",
+                    "original_sichern": bool(r.get("original_sichern", True)),
+                    "leerseiten_entfernen": bool(r.get("leerseiten_entfernen", True)),
+                    "aktiv": bool(r.get("aktiv", True)),
+                }
+            )
+        benutzer.einstellungen_setzen({"ueberwachung": bereinigt})
+        if bereinigt:
+            ueberwachung.starten()
+        return {"regeln": bereinigt, "protokoll": ueberwachung.protokoll}
 
     # ------------------------------------------- Zusammenführen & Umwandeln
     def eintraege_aufloesen(roh: list[dict]) -> list[Eintrag]:
