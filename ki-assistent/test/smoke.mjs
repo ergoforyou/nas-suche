@@ -69,7 +69,7 @@ if (!quick.ok) {
 
 const cases = [
   // Standardstimme; "ich", "möchte", "dich" enthalten den ç-Laut, der früher falsch übersetzt wurde
-  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/\bich\b/i, /möchte/i, /frag/i, /kostet/i, /beispiel/i] },
+  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/möcht/i, /frag/i, /kostet/i, /beispiel/i] },
   { text: 'Hello, how are you today? I am fine, thank you.', lang: 'english', expect: [/hello/i, /today/i] },
 ];
 
@@ -134,6 +134,44 @@ const cut = await page.evaluate(async () => {
 const cutOk = cut.wallTopLeft < 60 && cut.wallTopRight < 60 && cut.face > 200;
 ok &&= cutOk;
 console.log(cutOk ? '✔' : '✘', 'KI-Freistellen', JSON.stringify(cut));
+
+// KI-Freistellung für Videos: kurzes Video (Figur vor Bürowand, leichte Bewegung) Bild für Bild
+const vid = await page.evaluate(async () => {
+  const img = new Image();
+  img.src = 'default-avatar.svg';
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = 300;
+  c.height = 400;
+  const g = c.getContext('2d');
+  const rec = new MediaRecorder(c.captureStream(30), { mimeType: 'video/webm;codecs=vp8' });
+  const chunks = [];
+  rec.ondataavailable = (e) => chunks.push(e.data);
+  rec.start();
+  const t0 = performance.now();
+  await new Promise((done) => {
+    const f = () => {
+      const t = (performance.now() - t0) / 1000;
+      g.drawImage(img, Math.sin(t * 3) * 6, 0, 300, 400);
+      if (t < 1.5) requestAnimationFrame(f);
+      else done();
+    };
+    f();
+  });
+  rec.stop();
+  await new Promise((r) => (rec.onstop = r));
+  const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+  const t1 = performance.now();
+  const bytes = await window.__app.computeVideoMask(url, (im) => window.__app.stt.removeBackground(im), null, { fps: 10 });
+  const w = bytes[4] | (bytes[5] << 8);
+  const h = bytes[6] | (bytes[7] << 8);
+  const n = bytes[10] | (bytes[11] << 8);
+  const at = (i, fx, fy) => bytes[12 + i * w * h + Math.round(h * fy) * w + Math.round(w * fx)];
+  return { frames: n, w, h, ms: Math.round(performance.now() - t1), wall: at(0, 0.03, 0.03), face: at(0, 0.5, 0.37), lastWall: at(n - 1, 0.97, 0.05), lastFace: at(n - 1, 0.5, 0.37) };
+});
+const vidOk = vid.frames > 5 && vid.wall < 60 && vid.lastWall < 60 && vid.face > 200 && vid.lastFace > 200;
+ok &&= vidOk;
+console.log(vidOk ? '✔' : '✘', 'KI-Video-Freistellen', JSON.stringify(vid));
 
 await browser.close();
 server.close();

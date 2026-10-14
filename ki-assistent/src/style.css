@@ -244,3 +244,5 @@ body.floating .stage { display: none; }
 .pose-opts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: -2px 0 4px 48px; font-size: 12px; color: var(--muted); }
 .pose-opts label { display: flex; align-items: center; gap: 4px; margin: 0; }
 .pose-opts input[type=range] { width: 90px; }
+.pose-opts select { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; padding: 2px 4px; }
+.pose-opts button { padding: 2px 8px; font-size: 12px; }

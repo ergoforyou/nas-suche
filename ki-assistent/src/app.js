@@ -1,7 +1,8 @@
 import { Avatar, avatarState, detectFace, loadImage } from './avatar.js';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
-import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha } from './cutout.js';
+import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor } from './cutout.js';
+import { computeVideoMask } from './videomask.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
 import { RubberBand } from './rubberband.js';
@@ -1478,12 +1479,17 @@ $('avFile').onchange = async (e) => {
     if (av.video) desktop.deleteMedia(av.video);
     av.video = await desktop.saveMedia(new Uint8Array(await file.arrayBuffer()), file.name.split('.').pop());
     av.image = null;
-    av.key ??= true;
     av.keyTol ??= 30;
     av.loop ??= false;
-    status('Video-Pose hinzugefügt. Hintergrund wird live entfernt – falls nötig „Hintergrund entfernen“ abwählen oder Toleranz anpassen.');
+    if (av.mask) desktop.deleteMedia(av.mask);
+    av.mask = null;
+    // Greenscreen -> schnelles Farbverfahren, sonst (z. B. weiße Wand) KI-Freistellung
+    av.cutMode = (await isGreenScreen(av.video)) ? 'color' : 'ai';
+    delete av.key;
     avatarChanged();
     previewEdited();
+    if (av.cutMode === 'ai') await computeMaskFor(av);
+    else status('Video-Pose hinzugefügt – Greenscreen erkannt, wird live entfernt.');
     return;
   }
   av.video = null;
@@ -1562,6 +1568,56 @@ async function cutoutAvatar(mode = 'auto') {
     return false;
   } finally {
     buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+// ---- Video-Freistellung
+async function videoFirstFrame(url) {
+  const v = document.createElement('video');
+  v.muted = true;
+  v.src = url;
+  await new Promise((resolve, reject) => {
+    v.onloadeddata = resolve;
+    v.onerror = () => reject(new Error('Video konnte nicht geladen werden'));
+  });
+  const c = document.createElement('canvas');
+  c.width = 160;
+  c.height = Math.max(2, Math.round((160 * v.videoHeight) / v.videoWidth));
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  v.src = '';
+  return c;
+}
+
+async function isGreenScreen(url) {
+  try {
+    const c = await videoFirstFrame(url);
+    const [r, g, b] = borderColor(c.getContext('2d').getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+    return g > r + 30 && g > b + 30;
+  } catch {
+    return false;
+  }
+}
+
+/** Video einmal Bild für Bild per KI freistellen und die Masken speichern. */
+async function computeMaskFor(pose) {
+  try {
+    status('Video wird per KI freigestellt … (einmalig)');
+    const t0 = performance.now();
+    const bytes = await computeVideoMask(
+      pose.video,
+      (img) => stt.removeBackground(img, progressStatus('Freistellen')),
+      (done, total) => status(`Video wird per KI freigestellt … ${done} / ${total} Bilder`),
+    );
+    if (pose.mask) desktop.deleteMedia(pose.mask);
+    pose.mask = await desktop.saveMedia(bytes, 'mask');
+    pose.cutMode = 'ai';
+    save();
+    applyAvatar();
+    previewEdited();
+    renderPoseList();
+    status(`Video freigestellt (${((performance.now() - t0) / 1000).toFixed(0)} s). Passt es nicht: Freistell-Art in der Posen-Liste ändern.`);
+  } catch (e) {
+    status(`KI-Freistellen fehlgeschlagen: ${friendlyError(e)} – Freistell-Art „Einfarbige Wand“ versuchen.`);
   }
 }
 
@@ -1658,6 +1714,7 @@ function renderPoseList() {
     del.onclick = () => {
       if (!confirm(`Pose „${pose.name ?? i + 1}“ löschen?`)) return;
       if (pose.video) desktop.deleteMedia(pose.video);
+      if (pose.mask) desktop.deleteMedia(pose.mask);
       poses.splice(i, 1);
       if (editIndex >= poses.length) editIndex = -1;
       setEditIndex(editIndex === i ? -1 : editIndex > i ? editIndex - 1 : editIndex);
@@ -1695,7 +1752,34 @@ function renderPoseList() {
         previewEdited();
       };
       tol.append('Toleranz', r);
-      opts.append(check('Schleife', 'loop'), check('Hintergrund entfernen', 'key'), tol);
+      const modeLabel = document.createElement('label');
+      const mode = document.createElement('select');
+      const current = pose.cutMode ?? (pose.key ? 'color' : 'none');
+      for (const [v, label] of [
+        ['ai', 'KI (beste Qualität)'],
+        ['flood', 'Einfarbige Wand'],
+        ['color', 'Greenscreen'],
+        ['none', 'nicht freistellen'],
+      ])
+        mode.add(new Option(label, v, false, v === current));
+      mode.onchange = async () => {
+        pose.cutMode = mode.value;
+        delete pose.key;
+        save();
+        if (pose.cutMode === 'ai' && !pose.mask) await computeMaskFor(pose);
+        applyAvatar();
+        previewEdited();
+        renderPoseList();
+      };
+      modeLabel.append('Freistellen', mode);
+      opts.append(check('Schleife', 'loop'), modeLabel);
+      if (current === 'flood' || current === 'color') opts.append(tol);
+      if (current === 'ai') {
+        const redo = document.createElement('button');
+        redo.textContent = pose.mask ? 'KI neu berechnen' : 'KI-Freistellung berechnen';
+        redo.onclick = () => computeMaskFor(pose);
+        opts.append(redo);
+      }
       list.appendChild(opts);
     }
   });
@@ -1974,6 +2058,7 @@ window.__app = {
   floatingReady: () => !!floating.avatar?.ready,
   debugVoice,
   selfTest,
+  computeVideoMask,
   outputReady: () => output.isOpen && !!output.win.document.getElementById('content'),
 };
 

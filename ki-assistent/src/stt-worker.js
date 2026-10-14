@@ -39,12 +39,19 @@ async function load(model, progress) {
 // Freistellen per KI (MODNet: auf Personen spezialisiertes Matting-Modell, ~25 MB, Apache-2.0)
 let matting = null;
 async function removeBackground({ rgba, width, height }, progress) {
-  matting ??= pipeline('background-removal', 'Xenova/modnet', { dtype: 'fp32', progress_callback: progress }).catch(
-    (e) => {
-      matting = null;
-      throw e;
-    },
-  );
+  // Auf der Grafikkarte (WebGPU) deutlich schneller – wichtig für Videos mit vielen Einzelbildern
+  matting ??= (async () => {
+    const adapter = await navigator.gpu?.requestAdapter().catch(() => null);
+    if (adapter) {
+      try {
+        return await pipeline('background-removal', 'Xenova/modnet', { device: 'webgpu', dtype: 'fp32', progress_callback: progress });
+      } catch {}
+    }
+    return pipeline('background-removal', 'Xenova/modnet', { device: 'wasm', dtype: 'fp32', progress_callback: progress });
+  })().catch((e) => {
+    matting = null;
+    throw e;
+  });
   const seg = await matting;
   const img = new RawImage(new Uint8ClampedArray(rgba), width, height, 4);
   const [out] = await seg(img);

@@ -8,6 +8,7 @@
 //  2. Bildwechsel: Optional eigene Bilder "Mund offen" und "Augen zu" hochladen.
 
 import { borderColor } from './cutout.js';
+import { loadVideoMask } from './videomask.js';
 
 const MAX_SIDE = 1024;
 const MAX_VIDEO_SIDE = 640; // Videos werden pro Bild verarbeitet – kleiner halten
@@ -165,7 +166,20 @@ export class Avatar {
     L.frame.width = L.w;
     L.frame.height = L.h;
     L.frameCtx = L.frame.getContext('2d', { willReadFrequently: true });
-    L.hasAlpha = !!cfg.key;
+    // Freistellen: 'color' (Greenscreen), 'flood' (einfarbige Wand), 'ai' (vorberechnete KI-Masken), 'none'
+    L.cutMode = cfg.cutMode ?? (cfg.key ? 'color' : 'none');
+    if (L.cutMode === 'ai' && cfg.mask) {
+      try {
+        L.mask = await loadVideoMask(cfg.mask);
+        L.w = L.mask.w;
+        L.h = L.mask.h;
+        L.frame.width = L.w;
+        L.frame.height = L.h;
+      } catch {
+        L.mask = null;
+      }
+    }
+    L.hasAlpha = L.cutMode !== 'none';
     L.keyColor = null;
     L.lastVideoTime = -1;
     return L;
@@ -179,9 +193,23 @@ export class Avatar {
     const g = this.frameCtx;
     g.clearRect(0, 0, this.w, this.h);
     g.drawImage(v, 0, 0, this.w, this.h);
-    if (!this.config.key) return;
+    const mode = this.cutMode;
+    if (mode === 'none' || (mode === 'ai' && !this.mask)) return;
     const img = g.getImageData(0, 0, this.w, this.h);
     const d = img.data;
+    if (mode === 'ai') {
+      // vorberechnete KI-Maske des passenden Einzelbilds anwenden
+      const M = this.mask;
+      const a = M.frame(Math.min(M.n - 1, Math.max(0, Math.round(v.currentTime * M.fps))));
+      for (let p = 0, i = 3; p < a.length; p++, i += 4) d[i] = a[p];
+      g.putImageData(img, 0, 0);
+      return;
+    }
+    if (mode === 'flood') {
+      this.floodKey(d);
+      g.putImageData(img, 0, 0);
+      return;
+    }
     // Hintergrundfarbe aus dem ersten Bild bestimmen und beibehalten (sonst flackert es)
     this.keyColor ??= borderColor(d, this.w, this.h);
     const [kr, kg, kb] = this.keyColor;
@@ -201,6 +229,60 @@ export class Avatar {
       }
     }
     g.putImageData(img, 0, 0);
+  }
+
+  /** Einfarbige Wand entfernen: nur Hintergrund, der vom Bildrand aus zusammenhängt (weiße Kleidung bleibt). */
+  floodKey(d) {
+    const W = this.w;
+    const H = this.h;
+    this.keyColor ??= borderColor(d, W, H);
+    const [kr, kg, kb] = this.keyColor;
+    const t1 = ((this.config.keyTol ?? 30) / 100) * 160;
+    const t2 = t1 * 1.5;
+    const dist = (p) => {
+      const i = p * 4;
+      const dr = d[i] - kr;
+      const dg = d[i + 1] - kg;
+      const db = d[i + 2] - kb;
+      return Math.sqrt(dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11) * 1.7;
+    };
+    const bg = (this.floodBuf ??= new Uint8Array(W * H));
+    bg.fill(0);
+    const stack = (this.floodStack ??= new Int32Array(W * H));
+    let sp = 0;
+    const seed = (p) => {
+      if (!bg[p] && dist(p) <= t1) {
+        bg[p] = 1;
+        stack[sp++] = p;
+      }
+    };
+    // Nur vom oberen Rand und den oberen zwei Dritteln der Seiten aus füllen: Eine Person reicht meist bis zum
+    // unteren Bildrand – sonst würde helle Kleidung dort als Hintergrund "ausgelaufen".
+    for (let x = 0; x < W; x++) seed(x);
+    for (let y = 0; y < H * 0.66; y++) {
+      seed(y * W);
+      seed(y * W + W - 1);
+    }
+    while (sp) {
+      const p = stack[--sp];
+      const x = p % W;
+      if (x > 0) seed(p - 1);
+      if (x < W - 1) seed(p + 1);
+      if (p >= W) seed(p - W);
+      if (p < W * (H - 1)) seed(p + W);
+    }
+    for (let p = 0; p < W * H; p++) {
+      if (bg[p]) d[p * 4 + 3] = 0;
+      else {
+        // weicher Rand: Pixel direkt neben dem Hintergrund mit ähnlicher Farbe teiltransparent
+        const x = p % W;
+        const near = (x > 0 && bg[p - 1]) || (x < W - 1 && bg[p + 1]) || (p >= W && bg[p - W]) || (p < W * (H - 1) && bg[p + W]);
+        if (near) {
+          const di = dist(p);
+          if (di < t2) d[p * 4 + 3] = Math.round((d[p * 4 + 3] * (di - t1)) / (t2 - t1));
+        }
+      }
+    }
   }
 
   /** Eine Bild-Ebene vorbereiten. Die Ebene erbt alles Gemeinsame (Zustand, Bewegung) vom Avatar. */
