@@ -83,6 +83,7 @@ const DEFAULT_SETTINGS = {
   offline: false,
   memoryLearn: true,
   ttsServerUrl: 'http://localhost:8004',
+  floatingSize: 0.4,
 };
 
 const RULES = {
@@ -845,6 +846,8 @@ function fillSettings() {
   $('pStyle').value = p.style;
 
   $('avFloating').checked = s.floating;
+  $('avFloatSize').value = s.floatingSize;
+  $('avFloatSizeVal').textContent = `${Math.round(s.floatingSize * 100)} %`;
   $('avMouthW').value = target().mouth?.w ?? 0.1;
   $('avEyeR').value = target().eyes?.[0]?.r ?? 0.03;
   $('avMotion').value = p.avatar.motion ?? 1;
@@ -1742,6 +1745,12 @@ $('avAuto').onclick = async () => {
   avatarChanged();
 };
 $('avFloating').onchange = (e) => setFloating(e.target.checked);
+$('avFloatSize').oninput = (e) => {
+  state.settings.floatingSize = +e.target.value;
+  $('avFloatSizeVal').textContent = `${Math.round(state.settings.floatingSize * 100)} %`;
+  if (floating.isOpen && floating.avatar) desktop.avatarSetSize(state.settings.floatingSize, floating.avatar.w / floating.avatar.h);
+  save();
+};
 $('avMouthUp').onclick = () => $('avMouthFile').click();
 $('avEyesUp').onclick = () => $('avEyesFile').click();
 const extraImage = (key) => async (e) => {

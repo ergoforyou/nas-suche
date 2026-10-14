@@ -101,8 +101,10 @@
 
     <div class="tab" data-tab="avatar" hidden>
       <label class="check"><input id="avFloating" type="checkbox" /> Figur frei auf dem Desktop anzeigen</label>
-      <p class="hint">Freischwebend: Figur anklicken zeigt einen Rahmen – ziehen verschiebt, Ecken ändern die Größe
-        (oder Mausrad). Doppelklick: sprechen. Rechtsklick: Menü (Chat öffnen, Ausgabe …).</p>
+      <label>Größe der freien Figur (Anteil der Bildschirmhöhe) <span id="avFloatSizeVal" class="hint"></span>
+        <input id="avFloatSize" type="range" min="0.15" max="1" step="0.01" /></label>
+      <p class="hint">Freischwebend: Figur anklicken zeigt einen Rahmen – ziehen verschiebt, Ecken, Mausrad oder die
+        Tasten + / − ändern die Größe. Doppelklick: sprechen. Rechtsklick: Menü (Chat öffnen, Größer/Kleiner …).</p>
       <label>Avatar-Bild
         <div class="row wrap">
           <button id="avUpload">Bild hochladen …</button>

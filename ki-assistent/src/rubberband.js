@@ -8,12 +8,12 @@ const STYLE = `
 .rb { position: absolute; border: 1.5px dashed rgba(91,156,245,.95); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
       pointer-events: none; z-index: 5; box-sizing: border-box; }
 .rb[hidden] { display: none; }
-.rb i { position: absolute; width: 12px; height: 12px; background: #5b9cf5; border: 2px solid #fff;
-        border-radius: 3px; pointer-events: auto; box-sizing: border-box; }
-.rb .nw { left: -7px; top: -7px; cursor: nwse-resize; }
-.rb .ne { right: -7px; top: -7px; cursor: nesw-resize; }
-.rb .sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
-.rb .se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.rb i { position: absolute; width: 18px; height: 18px; background: #5b9cf5; border: 2px solid #fff;
+        border-radius: 4px; pointer-events: auto; box-sizing: border-box; }
+.rb .nw { left: -2px; top: -2px; cursor: nwse-resize; }
+.rb .ne { right: -2px; top: -2px; cursor: nesw-resize; }
+.rb .sw { left: -2px; bottom: -2px; cursor: nesw-resize; }
+.rb .se { right: -2px; bottom: -2px; cursor: nwse-resize; }
 `;
 
 export class RubberBand {
@@ -53,7 +53,21 @@ export class RubberBand {
       const p = this.local(e);
       if (this.avatar.hitTest(p.x, p.y)) opts.onActivate?.();
     });
-    this.doc.addEventListener('keydown', (e) => e.key === 'Escape' && this.select(false));
+    this.doc.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') return this.select(false);
+      if (!this.selected) return;
+      const grow = e.key === '+' || e.key === 'ArrowUp';
+      const shrink = e.key === '-' || e.key === 'ArrowDown';
+      if (!grow && !shrink) return;
+      e.preventDefault();
+      const f = grow ? 1.08 : 1 / 1.08;
+      if (this.opts.kind === 'window') this.opts.desktop.avatarResize(f, this.avatar.w / this.avatar.h);
+      else {
+        const L = this.avatar.layout;
+        this.avatar.layout = { ...L, scale: Math.max(0.2, Math.min(4, L.scale * f)) };
+        this.opts.onChange?.(this.avatar.layout);
+      }
+    });
     if (opts.kind === 'window') this.win.addEventListener('blur', () => this.select(false));
 
     const loop = () => {

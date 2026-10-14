@@ -335,6 +335,12 @@ function runSmokeTest() {
       const after = avatarWin.getBounds();
       console.log('Avatar-Größe:', JSON.stringify(before), '->', JSON.stringify(after));
       if (after.height <= before.height) return fail('Avatar-Fenster lässt sich nicht vergrößern');
+      ipcMain.emit('avatar:setSize', null, { fraction: 0.3 });
+      await new Promise((r) => setTimeout(r, 300));
+      const sized = avatarWin.getBounds();
+      const wa = screen.getDisplayMatching(sized).workArea;
+      console.log('Avatar-Größe per Regler (30 %):', JSON.stringify(sized), 'Arbeitsfläche', wa.height);
+      if (Math.abs(sized.height - Math.round(wa.height * 0.3)) > 2) return fail('Größen-Regler wirkt nicht');
       await js('window.__app.openOutput()');
       await new Promise((r) => setTimeout(r, 1500));
       if (!(await js('!!window.__app.outputReady()'))) return fail('Ausgabefenster nicht bereit');
@@ -469,6 +475,22 @@ ipcMain.on('avatar:resizeStart', (_e, { corner, aspect }) => {
       });
     }, 16),
   };
+});
+
+// Größe direkt setzen (Regler in den Einstellungen): Anteil an der Bildschirmhöhe, unten mittig verankert
+ipcMain.on('avatar:setSize', (_e, { fraction, aspect }) => {
+  if (!avatarWin) return;
+  const b = avatarWin.getBounds();
+  const wa = screen.getDisplayMatching(b).workArea;
+  const height = Math.round(Math.max(120, Math.min(wa.height, wa.height * fraction)));
+  const width = Math.round(height * (aspect || b.width / b.height));
+  avatarWin.setBounds({
+    x: Math.round(Math.min(Math.max(wa.x, b.x + b.width / 2 - width / 2), wa.x + wa.width - width)),
+    y: Math.round(Math.min(Math.max(wa.y, b.y + b.height - height), wa.y + wa.height - height)),
+    width,
+    height,
+  });
+  patchData({ avatarBounds: avatarWin.getBounds() });
 });
 
 ipcMain.on('avatar:menu', (_e, { listening }) => {

@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('desktop', {
   avatarResize: (factor, aspect) => ipcRenderer.send('avatar:resize', { factor, aspect }),
   avatarMenu: (state) => ipcRenderer.send('avatar:menu', state),
   avatarResizeStart: (corner, aspect) => ipcRenderer.send('avatar:resizeStart', { corner, aspect }),
+  avatarSetSize: (fraction, aspect) => ipcRenderer.send('avatar:setSize', { fraction, aspect }),
 
   // Medien (Video-Posen)
   saveMedia: (bytes, ext) => ipcRenderer.invoke('media:save', { bytes, ext }),
