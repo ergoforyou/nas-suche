@@ -4,6 +4,7 @@ import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './
 import { removeBackground } from './cutout.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
+import { debugVoice } from './piper.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
@@ -1249,6 +1250,7 @@ window.__app = {
   setFloating,
   openOutput,
   floatingReady: () => !!floating.avatar?.ready,
+  debugVoice,
   outputReady: () => output.isOpen && !!output.win.document.getElementById('content'),
 };
 

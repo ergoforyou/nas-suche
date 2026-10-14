@@ -107,9 +107,11 @@ export function mapPhonemeIds({ phonemes, phoneme_ids }, idMap) {
       // Kombinierende Zeichen (z. B. c + ̧ = ç) wieder zusammensetzen
       const next = tokens[i + 1];
       if (next?.p && /^\p{M}$/u.test(next.p)) {
-        const composed = (t.p + next.p).normalize('NFC');
-        if (idMap[composed]) {
-          ids.push(...idMap[composed], ...PAD);
+        // Die Stimme kann den Laut zusammengesetzt (ç) oder zerlegt (c + ̧) in ihrer Tabelle führen
+        const pair = t.p + next.p;
+        const key = [pair.normalize('NFC'), pair.normalize('NFD'), pair].find((k) => idMap[k]);
+        if (key) {
+          ids.push(...idMap[key], ...PAD);
           i++;
           continue;
         }
@@ -138,6 +140,14 @@ async function loadVoice(id, onProgress) {
     p.catch(() => voices.delete(id));
   }
   return voices.get(id);
+}
+
+/** Für Tests/Fehlersuche: Tabelle und IDs eines Textes ansehen. */
+export async function debugVoice(id, text) {
+  const { config } = await loadVoice(id);
+  const ph = await phonemize(text, config.espeak?.voice ?? 'de');
+  const special = Object.entries(config.phoneme_id_map).filter(([k]) => /[^\x20-\x7e]/.test(k) && /[çç]/u.test(k));
+  return { num_symbols: config.num_symbols, special, phonemes: ph.phonemes, ids: mapPhonemeIds(ph, config.phoneme_id_map) };
 }
 
 export function preloadVoice(id, onProgress) {

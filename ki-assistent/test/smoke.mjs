@@ -49,6 +49,9 @@ await page.addInitScript(() => {
 await page.goto('http://localhost:8799/index.html');
 await page.waitForFunction(() => window.__app);
 
+console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.debugVoice('de_DE-thorsten-high', 'ich'))));
+console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.debugVoice('de_DE-thorsten-medium', 'ich'))));
+
 const cases = [
   { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/ich/i, /frag/i] },
   { text: 'Hello, how are you today? I am fine, thank you.', lang: 'english', expect: [/hello/i, /today/i] },
