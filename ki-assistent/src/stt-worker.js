@@ -14,11 +14,17 @@ async function load(model, progress) {
   asr = null;
   const tryCreate = (dev, dtype) =>
     pipeline('automatic-speech-recognition', model, { device: dev, dtype, progress_callback: progress });
-  try {
-    if (!('gpu' in navigator)) throw new Error('kein WebGPU');
-    asr = await tryCreate('webgpu', { encoder_model: 'fp32', decoder_model_merged: 'q4' });
-    device = 'webgpu';
-  } catch {
+  // WebGPU nur nutzen, wenn wirklich eine Grafikkarte verfügbar ist – sonst CPU (WASM).
+  const adapter = await navigator.gpu?.requestAdapter().catch(() => null);
+  if (adapter) {
+    try {
+      asr = await tryCreate('webgpu', { encoder_model: 'fp32', decoder_model_merged: 'q4' });
+      device = 'webgpu';
+    } catch {
+      asr = null;
+    }
+  }
+  if (!asr) {
     asr = await tryCreate('wasm', 'q8');
     device = 'wasm';
   }

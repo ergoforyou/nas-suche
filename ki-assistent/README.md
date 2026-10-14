@@ -18,7 +18,7 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
 
 1. **LM Studio** installieren, ein Modell laden (z. B. Qwen3 8B, Llama 3.1 8B, Mistral) und unter
    **Developer → Start Server** den lokalen Server starten.
-2. `KI-Assistent-…-nsis.exe` (Installer, legt eine Desktop-Verknüpfung an) oder `KI-Assistent-…-portable.exe`
+2. `KI-Assistent-…-Setup.exe` (Installer, legt eine Desktop-Verknüpfung an) oder `KI-Assistent-…-portable.exe`
    (ohne Installation) starten.
 3. Lostippen oder auf 🎤 klicken (bzw. **Strg + Leertaste**) und sprechen. Nach einer kurzen Sprechpause
    wird automatisch abgeschickt.

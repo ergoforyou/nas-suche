@@ -35,19 +35,20 @@
     "directories": {
       "output": "release"
     },
-    "win": {
-      "artifactName": "KI-Assistent-${version}-${arch}-${target}.${ext}"
-    },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "KI-Assistent-${version}-Setup.${ext}"
     },
     "mac": {
       "category": "public.app-category.productivity"
     },
     "linux": {
       "category": "Utility"
+    },
+    "portable": {
+      "artifactName": "KI-Assistent-${version}-portable.${ext}"
     }
   }
 }
