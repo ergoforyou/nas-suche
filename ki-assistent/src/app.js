@@ -1198,6 +1198,7 @@ function fillSettings() {
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
   $('avVrmOff').hidden = !p.avatar.vrm;
+  renderMorphList();
   $('avVrmOpts').hidden = !p.avatar.vrm;
   $('avVrmYaw').value = p.avatar.vrmYaw ?? 0;
   $('avVrmYawVal').textContent = `${p.avatar.vrmYaw ?? 0}°`;
@@ -1932,6 +1933,55 @@ $('avVrmOff').onclick = () => {
   delete av.vrmName;
   fillSettings();
   avatarChanged();
+};
+
+// ---- Bewegungsbilder (Morphing im Leerlauf)
+function renderMorphList() {
+  const av = persona().avatar;
+  const list = $('avMorphList');
+  list.innerHTML = '';
+  (av.morphs ?? []).forEach((src, i) => {
+    const row = document.createElement('div');
+    row.className = 'pose-row';
+    const img = document.createElement('img');
+    img.src = src;
+    const label = document.createElement('span');
+    label.textContent = `Bewegungsbild ${i + 1}`;
+    label.style.flex = '1';
+    const play = document.createElement('button');
+    play.textContent = '▶';
+    play.title = 'Übergang ansehen';
+    play.onclick = () => {
+      avatar.previewMorph(i);
+      floating.avatar?.previewMorph(i);
+    };
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.title = 'Entfernen';
+    del.onclick = () => {
+      av.morphs.splice(i, 1);
+      renderMorphList();
+      avatarChanged();
+    };
+    row.append(img, label, play, del);
+    list.appendChild(row);
+  });
+  $('avMorphAdd').disabled = (av.morphs?.length ?? 0) >= 4;
+}
+$('avMorphAdd').onclick = () => $('avMorphFile').click();
+$('avMorphFile').onchange = async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  const av = persona().avatar;
+  av.morphs ??= [];
+  for (const f of files) {
+    if (av.morphs.length >= 4) break;
+    status('Bewegungsbild wird vorbereitet …');
+    av.morphs.push(await alignToBase(av, await readImage(f)));
+  }
+  renderMorphList();
+  avatarChanged();
+  status('Bewegungsbild hinzugefügt – mit ▶ den Übergang ansehen.');
 };
 
 $('avUpload').onclick = () => $('avFile').click();

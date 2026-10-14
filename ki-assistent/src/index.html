@@ -210,6 +210,15 @@
       </div>
       <input id="avMouthFile" type="file" accept="image/*" hidden />
       <input id="avEyesFile" type="file" accept="image/*" hidden />
+
+      <h3>Bewegungsbilder (flüssige Bewegung im Leerlauf)</h3>
+      <p class="hint">Bis zu 4 weitere Bilder derselben Figur im <b>gleichen Bildausschnitt</b>, aber leicht anders:
+        Kopf etwas geneigt, Blick zur Seite, Lächeln, Schultern leicht gedreht. Die App berechnet, wie sich jeder Bildpunkt
+        bewegt, und verformt die Figur im Leerlauf <b>fließend</b> zwischen den Bildern – keine harten Übergänge.
+        Je kleiner die Unterschiede, desto natürlicher. Zum Sprechen kehrt sie zum Grundbild zurück.</p>
+      <div id="avMorphList" class="pose-list"></div>
+      <button id="avMorphAdd">＋ Bewegungsbild …</button>
+      <input id="avMorphFile" type="file" accept="image/*" multiple hidden />
       <button id="avTest">▶ Testsprechen</button>
     </div>
 

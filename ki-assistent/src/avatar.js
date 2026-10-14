@@ -9,6 +9,7 @@
 
 import { borderColor } from './cutout.js';
 import { loadVideoMask } from './videomask.js';
+import { createMorpher } from './morph.js';
 
 const MAX_SIDE = 1024;
 const MAX_VIDEO_SIDE = 640; // Videos werden pro Bild verarbeitet – kleiner halten
@@ -73,6 +74,7 @@ export class Avatar {
 
   destroy() {
     this.active = false;
+    this.layers?.forEach((L) => L.morpher?.dispose());
     this.layers?.forEach((L) => L.isVideo && L.video.pause());
     this.vrmFigure?.dispose();
     this.vrmFigure = null;
@@ -140,7 +142,10 @@ export class Avatar {
         if (!layers.length) throw e; // Grundbild muss laden, defekte Posen werden übersprungen
       }
     }
-    this.layers?.forEach((L) => L.isVideo && L.video.pause());
+    this.layers?.forEach((L) => {
+      if (L.isVideo) L.video.pause();
+      L.morpher?.dispose();
+    });
     this.layers = layers;
     const main = layers[0];
     Object.assign(this, { w: main.w, h: main.h, base: main.base, hasAlpha: main.hasAlpha });
@@ -350,12 +355,81 @@ export class Avatar {
     L.prepareMouth();
     L.prepareEyes();
     L.prepareHead();
+    // Bewegungsbilder: fließender Übergang zwischen Grundbild und Zusatzbildern im Leerlauf
+    L.morpher = null;
+    const morphs = (cfg.morphs ?? []).filter(Boolean).slice(0, 4);
+    if (morphs.length) {
+      try {
+        const imgs = [];
+        for (const src of morphs) imgs.push(toCanvas(await loadImage(src, this.host), L.w, L.h, this.doc));
+        const key = (s) => `${s.length}:${s.slice(-64)}`;
+        L.morpher = createMorpher(this.doc, L.base, imgs, [key(cfg.image), ...morphs.map(key)]);
+      } catch (e) {
+        console.warn('Bewegungsbilder:', e);
+      }
+    }
     return L;
+  }
+
+  /** Vorschau im Editor: sofort zu Bewegungsbild i und nach kurzer Zeit zurück. */
+  previewMorph(i) {
+    const now = performance.now();
+    this.morph = { t: this.morph?.t ?? 0, idx: i, last: i, phase: 'pose', until: now + 2600 };
+  }
+
+  /** Bewegungsbilder: im Leerlauf ab und zu fließend zu einem Zusatzbild und zurück. */
+  updateMorph(now, dt) {
+    const L = this.layers?.[this.current];
+    const M = (this.morph ??= { t: 0, idx: 0, phase: 'base', until: now + 2000, last: -1 });
+    if (!L?.morpher || this.prev != null) {
+      M.t = 0;
+      this.morphT = 0;
+      return;
+    }
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const busy = this.speaking || this.listening || this.forcePose != null;
+    if (busy) {
+      // zum Sprechen/Zuhören zurück zum Grundbild (dort sitzen Mund- und Augenanimation)
+      M.phase = 'base';
+      M.until = now + rnd(2500, 5000);
+    } else if (now > M.until) {
+      if (M.phase === 'base') {
+        const n = L.morpher.count;
+        let i = Math.floor(Math.random() * n);
+        if (n > 1 && i === M.last) i = (i + 1) % n;
+        M.idx = M.last = i;
+        M.phase = 'pose';
+        M.until = now + rnd(2600, 5200);
+      } else {
+        M.phase = 'base';
+        M.until = now + rnd(2500, 6000);
+      }
+    }
+    const target = M.phase === 'pose' ? 1 : 0;
+    const step = dt / (busy ? 220 : 1300);
+    M.t += Math.max(-step, Math.min(step, target - M.t));
+    this.morphT = M.t * M.t * (3 - 2 * M.t); // weich anfahren und abbremsen
+    this.morphIdx = M.idx;
   }
 
   /** Mund und Augen der Ebene für den aktuellen Moment einzeichnen. */
   buildFrame() {
     if (this.isVideo) return this.buildVideoFrame();
+    if (this.morpher) {
+      const t = this.morphT ?? 0;
+      if (t > 0.003) {
+        this.frameCtx.clearRect(0, 0, this.w, this.h);
+        this.frameCtx.drawImage(this.morpher.render(this.morphIdx ?? 0, t), 0, 0);
+        this.morphDrawn = true;
+        return;
+      }
+      if (this.morphDrawn) {
+        this.frameCtx.clearRect(0, 0, this.w, this.h);
+        this.frameCtx.drawImage(this.base, 0, 0);
+        this.lastOpenPx = -1;
+        this.morphDrawn = false;
+      }
+    }
     if (this.mouthImg) {
       this.frameCtx.drawImage(this.base, 0, 0);
       if (this.open > 0.08) {
@@ -895,6 +969,7 @@ export class Avatar {
     this.lastNow = now;
     this.updateBehaviour(now, dt);
     this.updatePose(now);
+    this.updateMorph(now, dt);
     const fade = this.prev == null ? 1 : Math.min(1, (now - this.fadeStart) / 380);
     if (fade >= 1) this.prev = null;
     this.pauseHiddenVideos();

@@ -57,6 +57,10 @@ Lippen zur Stimme, Atmen, Blinzeln, Nachdenken, Zuhören. Kostenlos erstellen mi
 Avatar-Bild plus ② dasselbe Bild mit offenem Mund und ③ mit geschlossenen Augen (gleicher Bildausschnitt). Die
 Freistellung des Avatar-Bilds wird automatisch übernommen. Für Bewegung im Leerlauf zusätzlich Posen oder kurze Videos.
 
+**Bewegungsbilder (Morphing):** bis zu 4 weitere Bilder derselben Figur mit kleinen Unterschieden (Kopf geneigt,
+Blick zur Seite, Lächeln). Die App berechnet den optischen Fluss zwischen den Bildern und verformt die Figur im
+Leerlauf fließend dazwischen – deutlich natürlicher als Überblenden. Zum Sprechen geht es zurück zum Grundbild.
+
 ### Eigene Persona & Avatar
 
 Systemprompts aus **LM Studio** (gespeicherte Presets und die Systemprompts deiner Chats) lassen sich unter
