@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'" />
+  <title>Avatar</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+    canvas { width: 100%; height: 100%; display: block; }
+    .pill {
+      position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%);
+      background: rgba(10, 12, 16, .78); color: #e8eaef; border: 1px solid #323743;
+      font: 12px "Segoe UI", system-ui, sans-serif; padding: 2px 10px; border-radius: 999px; white-space: nowrap;
+      pointer-events: none;
+    }
+    .pill.listening { border-color: #e0605b; }
+    .pill[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="pill" class="pill" hidden></div>
+</body>
+</html>

@@ -1,13 +1,16 @@
-import { Avatar, detectFace, loadImage } from './avatar.js';
+import { Avatar, avatarState, detectFace, loadImage } from './avatar.js';
 import { SpeechInput } from './stt.js';
-import { SpeechOutput, SentenceSplitter, PIPER_VOICES } from './tts.js';
+import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
+import { removeBackground } from './cutout.js';
+import { renderMarkdown, addCopyButtons } from './markdown.js';
+import { FloatingAvatar, OutputWindow } from './windows.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
 
 // ---------------------------------------------------------------- Daten
 const DEFAULT_AVATAR = {
-  image: 'default-avatar.svg',
+  image: 'default-figur.svg',
   mouth: { x: 0.5, y: 0.4625, w: 0.1 },
   eyes: [
     { x: 0.4367, y: 0.3625, r: 0.03 },
@@ -26,9 +29,26 @@ function defaultPersona() {
       'Du bist Max, ein freundlicher, hilfsbereiter Assistent, der hinter seinem Schreibtisch sitzt. ' +
       'Du sprichst locker, aber kompetent, und duzt dein Gegenüber.',
     greeting: 'Hallo! Ich bin Max. Was kann ich für dich tun?',
+    language: 'de',
+    style: 'ausfuehrlich',
     avatar: structuredClone(DEFAULT_AVATAR),
-    voice: { engine: 'piper', piperVoice: 'de_DE-thorsten-medium', systemVoice: '', rate: 1 },
+    voice: { engine: 'piper', de: DEFAULT_VOICES.de, en: DEFAULT_VOICES.en, systemVoice: '', rate: 1 },
   };
+}
+
+/** Ältere gespeicherte Personas auf den aktuellen Stand bringen. */
+function migratePersona(p) {
+  const d = defaultPersona();
+  p.language ??= 'de';
+  p.style ??= 'gespraech';
+  p.voice = { ...d.voice, ...(p.voice ?? {}) };
+  if (p.voice.piperVoice) {
+    const lang = p.voice.piperVoice.startsWith('en') ? 'en' : 'de';
+    p.voice[lang] = p.voice.piperVoice;
+    delete p.voice.piperVoice;
+  }
+  p.avatar ??= structuredClone(DEFAULT_AVATAR);
+  return p;
 }
 
 const DEFAULT_SETTINGS = {
@@ -37,17 +57,41 @@ const DEFAULT_SETTINGS = {
   temperature: 0.7,
   historyLimit: 20,
   speak: true,
+  maxSentences: 0,
   sttModel: 'onnx-community/whisper-base',
-  sttLang: 'german',
+  sttLang: 'persona',
   handsFree: false,
   sensitivity: 0.015,
   alwaysOnTop: false,
   stageHeight: null,
+  floating: false,
+  outputOpen: false,
+  offline: false,
 };
 
-const SPEECH_RULES =
-  'Deine Antworten werden laut vorgelesen. Antworte deshalb natürlich und gesprächig, meist in ' +
-  'wenigen Sätzen, ohne Markdown, Listen, Tabellen oder Emojis – außer du wirst ausdrücklich darum gebeten.';
+const RULES = {
+  de: {
+    lang: 'Antworte immer auf Deutsch – auch wenn die Frage oder Fachbegriffe englisch sind.',
+    gespraech:
+      'Deine Antworten werden laut vorgelesen. Antworte natürlich und gesprächig, meist in wenigen Sätzen, ' +
+      'ohne Markdown, Listen, Tabellen oder Emojis – außer du wirst ausdrücklich darum gebeten.',
+    ausfuehrlich:
+      'Beginne mit ein bis zwei Sätzen, die die Antwort gesprochen gut verständlich zusammenfassen (sie werden ' +
+      'vorgelesen). Danach darfst du ausführlich werden und Markdown verwenden (Überschriften, Listen, Tabellen, ' +
+      'Codeblöcke), wenn es der Übersicht dient.',
+    name: (n) => `Dein Name ist ${n}.`,
+  },
+  en: {
+    lang: 'Always answer in English.',
+    gespraech:
+      'Your answers are read aloud. Reply naturally and conversationally, usually in a few sentences, ' +
+      'without Markdown, lists, tables or emojis unless explicitly asked.',
+    ausfuehrlich:
+      'Start with one or two sentences that summarise the answer in a way that sounds good when read aloud. ' +
+      'After that you may go into detail and use Markdown (headings, lists, tables, code blocks) where helpful.',
+    name: (n) => `Your name is ${n}.`,
+  },
+};
 
 const state = {
   settings: { ...DEFAULT_SETTINGS },
@@ -76,8 +120,10 @@ function save() {
 
 function friendlyError(e) {
   const msg = String(e?.message ?? e);
-  if (/fetch|network|ERR_/i.test(msg)) {
-    return 'Modell-Download fehlgeschlagen. Beim ersten Benutzen wird einmalig eine Internetverbindung benötigt.';
+  if (/fetch|network|ERR_|503|Offline/i.test(msg)) {
+    return state.settings.offline
+      ? 'Offline-Modus ist aktiv und das Modell ist noch nicht heruntergeladen (⚙ → Verbindung).'
+      : 'Modell-Download fehlgeschlagen. Beim ersten Benutzen wird einmalig eine Internetverbindung benötigt.';
   }
   return msg;
 }
@@ -87,13 +133,13 @@ const avatar = new Avatar($('avatar'));
 const status = (text) => ($('status').textContent = text ?? '');
 
 const tts = new SpeechOutput({
-  onLevel: (v) => avatar.setLevel(v),
+  onLevel: (v) => (avatarState.level = v),
   onSpeakingChange: (on) => {
-    avatar.speaking = on;
+    avatarState.speaking = on;
     updateBadge();
     if (!on) maybeListenHandsFree();
   },
-  onStatus: (text) => status(/fehler/i.test(text) && /fetch/i.test(text) ? friendlyError(text) : text),
+  onStatus: (text) => status(/fehler|übersprungen/i.test(text) && /fetch|503/i.test(text) ? friendlyError(text) : text),
 });
 
 const stt = new SpeechInput({
@@ -102,20 +148,40 @@ const stt = new SpeechInput({
   },
 });
 
+const floating = new FloatingAvatar({
+  onClick: () => toggleMic(),
+  onClosed: () => setFloating(false, { fromWindow: true }),
+});
+const output = new OutputWindow();
+
 function applyVoice() {
   const p = persona();
-  tts.configure({ ...p.voice });
+  tts.configure({
+    engine: p.voice.engine,
+    voices: { de: p.voice.de, en: p.voice.en },
+    language: p.language,
+    systemVoice: p.voice.systemVoice,
+    rate: p.voice.rate,
+    maxSentences: state.settings.maxSentences,
+  });
   stt.model = state.settings.sttModel;
-  stt.language = state.settings.sttLang;
+  stt.language = state.settings.sttLang === 'auto' ? null : p.language === 'en' ? 'english' : 'german';
+}
+
+function applyAvatar() {
+  const cfg = persona().avatar;
+  avatar.setConfig(cfg).catch((e) => status(e.message));
+  if (floating.isOpen) floating.setConfig(cfg).catch((e) => status(e.message));
 }
 
 function applyPersona() {
   const p = persona();
   $('titleName').textContent = p.name || 'KI-Assistent';
   document.title = p.name || 'KI-Assistent';
-  avatar.setConfig(p.avatar).catch((e) => status(e.message));
+  applyAvatar();
   applyVoice();
   renderChat();
+  output.setHistory(history());
 }
 
 // ---------------------------------------------------------------- Chat-Anzeige
@@ -123,17 +189,20 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-function formatText(text) {
-  return escapeHtml(text)
-    .replace(/```([\s\S]*?)```/g, '<code>$1</code>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+function fillBubble(div, role, text) {
+  if (role === 'assistant') {
+    div.classList.add('md');
+    div.innerHTML = renderMarkdown(text);
+    addCopyButtons(div);
+  } else {
+    div.innerHTML = escapeHtml(text);
+  }
 }
 
 function addBubble(role, text) {
   const div = document.createElement('div');
   div.className = `msg ${role}`;
-  div.innerHTML = formatText(text);
+  fillBubble(div, role, text);
   $('chat').appendChild(div);
   $('chat').scrollTop = $('chat').scrollHeight;
   return div;
@@ -154,12 +223,13 @@ function updateBadge() {
     text = '● hört zu …';
     b.classList.add('listening');
   } else if (state.transcribing) text = 'versteht …';
-  else if (avatar.thinking) text = 'denkt nach …';
-  else if (avatar.speaking) text = 'spricht …';
+  else if (avatarState.thinking) text = 'denkt nach …';
+  else if (avatarState.speaking) text = '';
   else if (state.settings.handsFree) text = 'bereit – sprich einfach';
   b.textContent = text;
   b.hidden = !text;
-  avatar.listening = stt.listening;
+  avatarState.listening = stt.listening;
+  floating.setBadge(text, stt.listening);
   $('btnMic').classList.toggle('listening', stt.listening);
   $('btnMic').classList.toggle('busy', !!state.transcribing);
   $('btnMic').classList.toggle('handsfree', state.settings.handsFree);
@@ -168,9 +238,12 @@ function updateBadge() {
 // ---------------------------------------------------------------- LM Studio
 function buildMessages() {
   const p = persona();
-  const sys = `${p.prompt || ''}\n\nDein Name ist ${p.name}. ${SPEECH_RULES}`.trim();
+  const r = RULES[p.language] ?? RULES.de;
+  const parts = [p.prompt?.trim()];
+  if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech, r.lang);
+  const sys = parts.filter(Boolean).join('\n\n');
   const h = history().slice(-state.settings.historyLimit);
-  return [{ role: 'system', content: sys }, ...h];
+  return sys ? [{ role: 'system', content: sys }, ...h] : h;
 }
 
 /** Entfernt <think>…</think>-Abschnitte von Reasoning-Modellen aus dem Stream. */
@@ -232,16 +305,18 @@ async function send(text) {
   text = text.trim();
   if (!text || state.busy) return;
   tts.stop();
+  tts.newTurn();
   state.busy = true;
   setBusyUi(true);
 
   history().push({ role: 'user', content: text });
   addBubble('user', text);
   save();
+  output.begin(text);
 
   const bubble = addBubble('assistant', '');
   bubble.classList.add('typing');
-  avatar.thinking = true;
+  avatarState.thinking = true;
   updateBadge();
 
   let answer = '';
@@ -249,19 +324,30 @@ async function send(text) {
   const speak = state.settings.speak;
   const splitter = new SentenceSplitter((s) => speak && tts.enqueue(s));
 
+  // Darstellung gedrosselt aktualisieren (Markdown neu rendern ist nicht gratis)
+  let renderTimer = null;
+  const render = () => {
+    renderTimer = null;
+    fillBubble(bubble, 'assistant', answer.trimStart());
+    $('chat').scrollTop = $('chat').scrollHeight;
+    output.update(answer);
+  };
+
   const finish = (error) => {
+    clearTimeout(renderTimer);
     const rest = think.flush();
     answer += rest;
     splitter.push(rest);
     splitter.flush();
     bubble.classList.remove('typing');
-    avatar.thinking = false;
+    avatarState.thinking = false;
     answer = answer.trim();
     if (answer) {
-      bubble.innerHTML = formatText(answer);
+      fillBubble(bubble, 'assistant', answer);
       history().push({ role: 'assistant', content: answer });
       save();
     } else bubble.remove();
+    output.update(answer, true);
     if (error) addBubble('error', error);
     state.busy = false;
     state.currentChatId = null;
@@ -287,12 +373,13 @@ async function send(text) {
       if (ev.type === 'delta') {
         const visible = think.push(ev.payload);
         if (!visible) return;
-        if (avatar.thinking && visible.trim()) avatar.thinking = false;
+        if (avatarState.thinking && visible.trim()) {
+          avatarState.thinking = false;
+          updateBadge();
+        }
         answer += visible;
-        bubble.innerHTML = formatText(answer.trimStart());
-        $('chat').scrollTop = $('chat').scrollHeight;
         splitter.push(visible);
-        updateBadge();
+        renderTimer ??= setTimeout(render, 60);
       } else if (ev.type === 'error') finish(ev.payload);
       else finish();
     },
@@ -313,7 +400,16 @@ function stopAll() {
 
 // ---------------------------------------------------------------- Spracheingabe
 // Typische Whisper-"Halluzinationen" bei Stille herausfiltern.
-const NOISE = [/^untertitel/i, /^vielen dank( fürs zuschauen)?[.!]*$/i, /^\W*$/, /^\[.*\]$/, /^\(.*\)$/, /amara\.org/i];
+const NOISE = [
+  /^untertitel/i,
+  /^vielen dank( fürs zuschauen)?[.!]*$/i,
+  /^thanks? (you )?for watching/i,
+  /^thank you[.!]*$/i,
+  /^\W*$/,
+  /^\[.*\]$/,
+  /^\(.*\)$/,
+  /amara\.org/i,
+];
 
 async function listenOnce({ handsFree = false } = {}) {
   if (state.micActive) return;
@@ -374,40 +470,86 @@ function progressStatus(label) {
   };
 }
 
-$('btnMic').onclick = () => {
+function toggleMic() {
   if (stt.listening) return stt.stop();
   if (state.micActive) return;
   tts.stop();
   listenOnce();
-};
+}
+$('btnMic').onclick = toggleMic;
+
+// ---------------------------------------------------------------- Freischwebende Figur & Ausgabefenster
+async function setFloating(on, { fromWindow = false } = {}) {
+  state.settings.floating = on;
+  document.body.classList.toggle('floating', on);
+  $('btnFloat').classList.toggle('active', on);
+  $('avFloating').checked = on;
+  save();
+  if (on) {
+    try {
+      await floating.open(persona().avatar);
+      updateBadge();
+    } catch (e) {
+      status(`Figur konnte nicht geöffnet werden: ${e.message}`);
+      setFloating(false);
+    }
+  } else if (!fromWindow) {
+    floating.close();
+  }
+}
+
+async function openOutput() {
+  try {
+    await output.open();
+    state.settings.outputOpen = true;
+    save();
+  } catch (e) {
+    status(`Ausgabefenster: ${e.message}`);
+  }
+}
+
+$('btnFloat').onclick = () => setFloating(!state.settings.floating);
+$('btnOutput').onclick = () => (output.isOpen ? output.win.focus() : openOutput());
+setInterval(() => {
+  if (state.settings.outputOpen && !output.isOpen && output.win) {
+    // vom Benutzer geschlossen
+    output.win = null;
+    state.settings.outputOpen = false;
+    save();
+  }
+}, 1000);
+
+desktop.onCommand((cmd) => {
+  if (cmd === 'mic') toggleMic();
+  if (cmd === 'output') openOutput();
+  if (cmd === 'dock') setFloating(false);
+});
 
 // ---------------------------------------------------------------- Eingabe & Fenster
 const input = $('input');
-input.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    const t = input.value;
-    input.value = '';
-    autoGrow();
-    send(t);
-  }
-});
 const autoGrow = () => {
   input.style.height = 'auto';
   input.style.height = Math.min(140, input.scrollHeight) + 'px';
 };
-input.addEventListener('input', autoGrow);
-$('btnSend').onclick = () => {
+const submit = () => {
   const t = input.value;
   input.value = '';
   autoGrow();
   send(t);
 };
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    submit();
+  }
+});
+input.addEventListener('input', autoGrow);
+$('btnSend').onclick = submit;
 $('btnStop').onclick = stopAll;
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.code === 'Space') {
     e.preventDefault();
-    $('btnMic').click();
+    toggleMic();
   }
   if (e.key === 'Escape') {
     if (!$('drawer').hidden) $('drawer').hidden = true;
@@ -457,8 +599,16 @@ $('tabs').onclick = (e) => {
   for (const b of $('tabs').children) b.classList.toggle('active', b.dataset.tab === tab);
   for (const t of document.querySelectorAll('.tab')) t.hidden = t.dataset.tab !== tab;
   if (tab === 'avatar') drawMarkers();
-  if (tab === 'conn') refreshModels();
+  if (tab === 'conn') {
+    refreshModels();
+    refreshModelInfo();
+  }
 };
+
+function fillSelect(sel, options, value) {
+  sel.innerHTML = '';
+  for (const [id, label] of options) sel.add(new Option(label, id, false, id === value));
+}
 
 function fillSettings() {
   const p = persona();
@@ -469,27 +619,34 @@ function fillSettings() {
   $('pName').value = p.name;
   $('pPrompt').value = p.prompt;
   $('pGreeting').value = p.greeting;
+  $('pLang').value = p.language;
+  $('pStyle').value = p.style;
 
+  $('avFloating').checked = s.floating;
   $('avMouthW').value = p.avatar.mouth?.w ?? 0.1;
   $('avEyeR').value = p.avatar.eyes?.[0]?.r ?? 0.03;
   $('avMotion').value = p.avatar.motion ?? 1;
+  $('avOpen').value = p.avatar.mouthOpen ?? 1;
+  $('avRestore').disabled = !p.avatar.original;
 
   $('vSpeak').checked = s.speak;
   $('vEngine').value = p.voice.engine;
-  $('vPiper').innerHTML = '';
-  for (const [id, label] of PIPER_VOICES) $('vPiper').add(new Option(label, id, false, id === p.voice.piperVoice));
+  fillSelect($('vPiperDe'), PIPER_VOICES.de, p.voice.de);
+  fillSelect($('vPiperEn'), PIPER_VOICES.en, p.voice.en);
   fillSystemVoices();
   $('vRate').value = p.voice.rate;
+  $('vMax').value = s.maxSentences;
   toggleEngineFields();
 
   $('sModel').value = s.sttModel;
-  $('sLang').value = s.sttLang;
+  $('sLang').value = s.sttLang === 'auto' ? 'auto' : 'persona';
   $('sHandsFree').checked = s.handsFree;
   $('sSens').value = s.sensitivity;
 
   $('cUrl').value = s.baseUrl;
   $('cTemp').value = s.temperature;
   $('cHistory').value = s.historyLimit;
+  $('cOffline').checked = s.offline;
   drawMarkers();
 }
 
@@ -510,6 +667,13 @@ function toggleEngineFields() {
 }
 
 // Persona-Felder
+const personaField = (id, key, after) => {
+  $(id).oninput = (e) => {
+    persona()[key] = e.target.value;
+    after?.(e.target.value);
+    save();
+  };
+};
 $('personaSelect').onchange = (e) => {
   stopAll();
   state.activeId = e.target.value;
@@ -517,40 +681,40 @@ $('personaSelect').onchange = (e) => {
   applyPersona();
   fillSettings();
 };
-$('pName').oninput = (e) => {
-  persona().name = e.target.value;
-  $('titleName').textContent = e.target.value || 'KI-Assistent';
-  $('personaSelect').selectedOptions[0].text = e.target.value || 'Ohne Namen';
+personaField('pName', 'name', (v) => {
+  $('titleName').textContent = v || 'KI-Assistent';
+  $('personaSelect').selectedOptions[0].text = v || 'Ohne Namen';
+});
+personaField('pPrompt', 'prompt');
+personaField('pGreeting', 'greeting');
+$('pLang').onchange = (e) => {
+  persona().language = e.target.value;
+  applyVoice();
   save();
 };
-$('pPrompt').oninput = (e) => {
-  persona().prompt = e.target.value;
+$('pStyle').onchange = (e) => {
+  persona().style = e.target.value;
   save();
 };
-$('pGreeting').oninput = (e) => {
-  persona().greeting = e.target.value;
+const switchTo = (p) => {
+  state.personas.push(p);
+  state.activeId = p.id;
   save();
+  applyPersona();
+  fillSettings();
 };
 $('personaNew').onclick = () => {
   const p = defaultPersona();
   p.name = 'Neue Persona';
   p.prompt = 'Du bist ein hilfsbereiter Assistent.';
   p.greeting = 'Hallo!';
-  state.personas.push(p);
-  state.activeId = p.id;
-  save();
-  applyPersona();
-  fillSettings();
+  switchTo(p);
 };
 $('personaCopy').onclick = () => {
   const p = structuredClone(persona());
   p.id = newId();
   p.name += ' (Kopie)';
-  state.personas.push(p);
-  state.activeId = p.id;
-  save();
-  applyPersona();
-  fillSettings();
+  switchTo(p);
 };
 $('personaDelete').onclick = () => {
   if (state.personas.length < 2) return alert('Die letzte Persona kann nicht gelöscht werden.');
@@ -581,12 +745,7 @@ $('personaImportFile').onchange = async (e) => {
     const data = JSON.parse(await file.text());
     if (!data.kiAssistentPersona) throw new Error('Keine gültige Persona-Datei');
     delete data.kiAssistentPersona;
-    const p = { ...defaultPersona(), ...data, id: newId() };
-    state.personas.push(p);
-    state.activeId = p.id;
-    save();
-    applyPersona();
-    fillSettings();
+    switchTo(migratePersona({ ...defaultPersona(), ...data, id: newId() }));
   } catch (err) {
     alert(`Import fehlgeschlagen: ${err.message}`);
   }
@@ -597,12 +756,18 @@ $('clearHistory').onclick = () => {
   state.history[persona().id] = [];
   save();
   renderChat();
+  output.setHistory([]);
 };
 
-// Avatar-Editor
+// ---------------------------------------------------------------- Avatar-Editor
 let markMode = null;
 let markerImg = null;
 let markerImgSrc = null;
+
+function setMarkMode(mode) {
+  markMode = mode;
+  for (const o of document.querySelectorAll('[data-mark]')) o.classList.toggle('active', o.dataset.mark === markMode);
+}
 
 async function drawMarkers() {
   const p = persona();
@@ -618,8 +783,21 @@ async function drawMarkers() {
   c.height = h;
   const g = c.getContext('2d');
   g.drawImage(markerImg, 0, 0, w, h);
+  const mask = await getMaskCanvas();
+  if (mask) {
+    // Maske rot eingefärbt darüberlegen
+    const tint = document.createElement('canvas');
+    tint.width = w;
+    tint.height = h;
+    const tg = tint.getContext('2d');
+    tg.drawImage(mask, 0, 0, w, h);
+    tg.globalCompositeOperation = 'source-in';
+    tg.fillStyle = 'rgba(255, 60, 90, 0.55)';
+    tg.fillRect(0, 0, w, h);
+    g.drawImage(tint, 0, 0);
+  }
   g.lineWidth = 2;
-  const m = p.avatar.mouth;
+  const m = p.avatar.mouthMask ? null : p.avatar.mouth;
   if (m) {
     g.strokeStyle = '#ff6b6b';
     g.beginPath();
@@ -636,18 +814,113 @@ async function drawMarkers() {
 
 function avatarChanged() {
   save();
-  avatar.setConfig(persona().avatar).catch((e) => status(e.message));
+  applyAvatar();
   drawMarkers();
+  $('avRestore').disabled = !persona().avatar.original;
 }
 
 for (const b of document.querySelectorAll('[data-mark]')) {
-  b.onclick = () => {
-    markMode = markMode === b.dataset.mark ? null : b.dataset.mark;
-    for (const o of document.querySelectorAll('[data-mark]')) o.classList.toggle('active', o.dataset.mark === markMode);
-  };
+  b.onclick = () => setMarkMode(markMode === b.dataset.mark ? null : b.dataset.mark);
 }
+// ---- Lippen-Maske malen
+let maskCanvas = null; // Maske in Bildauflösung (max. 1024 px)
+let maskFor = null;
+
+async function getMaskCanvas(create = false) {
+  const av = persona().avatar;
+  const key = av.image + '|' + (av.mouthMask ?? '');
+  if (maskCanvas && maskFor === key) return maskCanvas;
+  if (!av.mouthMask && !create) return null;
+  const img = markerImg ?? (await loadImage(av.image));
+  const s = Math.min(1, 1024 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * s);
+  c.height = Math.round(img.height * s);
+  if (av.mouthMask) c.getContext('2d').drawImage(await loadImage(av.mouthMask), 0, 0, c.width, c.height);
+  maskCanvas = c;
+  maskFor = key;
+  return c;
+}
+
+/** Mund-Markierung aus der Maske ableiten (Mitte und Breite). */
+function mouthFromMask(c) {
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width;
+  let x1 = -1;
+  let y0 = c.height;
+  let y1 = -1;
+  for (let y = 0; y < c.height; y++)
+    for (let x = 0; x < c.width; x++)
+      if (d[(y * c.width + x) * 4 + 3] > 64) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+  if (x1 < 0) return null;
+  return { x: (x0 + x1) / 2 / c.width, y: (y0 + y1) / 2 / c.height, w: (x1 - x0 + 1) / c.width };
+}
+
+let painting = false;
+$('markerCanvas').addEventListener('pointerdown', async (e) => {
+  if (markMode !== 'paint' && markMode !== 'erase') return;
+  painting = true;
+  e.target.setPointerCapture(e.pointerId);
+  await getMaskCanvas(true);
+  paintAt(e);
+});
+$('markerCanvas').addEventListener('pointermove', (e) => painting && paintAt(e));
+$('markerCanvas').addEventListener('pointerup', async () => {
+  if (!painting) return;
+  painting = false;
+  const av = persona().avatar;
+  const derived = mouthFromMask(maskCanvas);
+  av.mouthMask = derived ? maskCanvas.toDataURL('image/png') : null;
+  if (derived) av.mouth = derived;
+  maskFor = av.image + '|' + (av.mouthMask ?? '');
+  avatarChanged();
+});
+
+function paintAt(e) {
+  if (!maskCanvas) return;
+  const r = e.target.getBoundingClientRect();
+  const x = ((e.clientX - r.left) / r.width) * maskCanvas.width;
+  const y = ((e.clientY - r.top) / r.height) * maskCanvas.height;
+  const size = (+$('avBrush').value / r.width) * maskCanvas.width;
+  const g = maskCanvas.getContext('2d');
+  g.globalCompositeOperation = markMode === 'erase' ? 'destination-out' : 'source-over';
+  g.fillStyle = '#ff0000';
+  g.beginPath();
+  g.arc(x, y, size / 2, 0, Math.PI * 2);
+  g.fill();
+  drawMarkers();
+}
+
+$('avMaskClear').onclick = () => {
+  persona().avatar.mouthMask = null;
+  maskCanvas = null;
+  avatarChanged();
+};
+$('avOpen').oninput = (e) => {
+  persona().avatar.mouthOpen = +e.target.value;
+  avatarChanged();
+};
+
+/** Maske bei Zuschnitt/Wiederherstellen mitverschieben. */
+async function remapMask(av, from, to, outW, outH) {
+  if (!av.mouthMask) return;
+  const img = await loadImage(av.mouthMask);
+  const c = document.createElement('canvas');
+  c.width = outW;
+  c.height = outH;
+  const sx = outW / to.w;
+  const sy = outH / to.h;
+  c.getContext('2d').drawImage(img, (from.x - to.x) * sx, (from.y - to.y) * sy, from.w * sx, from.h * sy);
+  av.mouthMask = c.toDataURL('image/png');
+}
+
 $('markerCanvas').onclick = (e) => {
-  if (!markMode) return;
+  if (!markMode || markMode === 'paint' || markMode === 'erase') return;
   const r = e.target.getBoundingClientRect();
   const x = (e.clientX - r.left) / r.width;
   const y = (e.clientY - r.top) / r.height;
@@ -662,9 +935,7 @@ $('markerCanvas').onclick = (e) => {
   }
   // nach dem Setzen automatisch zum nächsten Punkt springen
   const order = ['mouth', 'eye0', 'eye1'];
-  const next = order[order.indexOf(markMode) + 1] ?? null;
-  markMode = next;
-  for (const o of document.querySelectorAll('[data-mark]')) o.classList.toggle('active', o.dataset.mark === markMode);
+  setMarkMode(order[order.indexOf(markMode) + 1] ?? null);
   avatarChanged();
 };
 $('avMouthW').oninput = (e) => {
@@ -679,25 +950,41 @@ $('avEyeR').oninput = (e) => {
 $('avMotion').oninput = (e) => {
   persona().avatar.motion = +e.target.value;
   avatar.motion = +e.target.value;
+  if (floating.avatar) floating.avatar.motion = +e.target.value;
   save();
 };
+
+async function imageToCanvas(src, max = 1024) {
+  const img = await loadImage(src);
+  const s = Math.min(1, max / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * s);
+  c.height = Math.round(img.height * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
 
 /** Bild verkleinern (max. 1024 px) und als Data-URL speichern. */
 async function readImage(file) {
   const url = URL.createObjectURL(file);
   try {
-    const img = await loadImage(url);
-    const s = Math.min(1, 1024 / Math.max(img.width, img.height));
-    const c = document.createElement('canvas');
-    c.width = Math.round(img.width * s);
-    c.height = Math.round(img.height * s);
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return file.type === 'image/png' || file.type === 'image/webp'
+    const c = await imageToCanvas(url);
+    return file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/svg+xml'
       ? c.toDataURL('image/png')
       : c.toDataURL('image/jpeg', 0.92);
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// Markierungen zwischen Originalbild und zugeschnittenem Bild umrechnen
+function remapMarkers(av, from, to) {
+  // from/to: { x, y, w, h } Ausschnitt in Original-Pixeln
+  const mx = (x) => (x * from.w + from.x - to.x) / to.w;
+  const my = (y) => (y * from.h + from.y - to.y) / to.h;
+  const sx = from.w / to.w;
+  if (av.mouth) av.mouth = { x: mx(av.mouth.x), y: my(av.mouth.y), w: av.mouth.w * sx };
+  av.eyes = (av.eyes ?? []).map((e) => ({ x: mx(e.x), y: my(e.y), r: e.r * sx }));
 }
 
 $('avUpload').onclick = () => $('avFile').click();
@@ -707,6 +994,9 @@ $('avFile').onchange = async (e) => {
   if (!file) return;
   const av = persona().avatar;
   av.image = await readImage(file);
+  av.original = null;
+  av.crop = null;
+  av.mouthMask = null;
   av.mouthImage = null;
   av.eyesImage = null;
   const face = await detectFace(av.image);
@@ -717,10 +1007,48 @@ $('avFile').onchange = async (e) => {
   } else {
     av.mouth = null;
     av.eyes = [];
-    markMode = 'mouth';
-    for (const o of document.querySelectorAll('[data-mark]')) o.classList.toggle('active', o.dataset.mark === markMode);
-    status('Bitte jetzt im Bild auf den Mund klicken, danach auf beide Augen.');
+    setMarkMode('paint');
+    status('Bitte die Lippen ausmalen (🖌) oder die Mundmitte anklicken, danach beide Augen. Für die freie Figur: „Hintergrund entfernen“.');
   }
+  avatarChanged();
+};
+
+$('avCutout').onclick = async () => {
+  const av = persona().avatar;
+  const btn = $('avCutout');
+  btn.disabled = true;
+  try {
+    const src = av.original ?? av.image;
+    const canvas = await imageToCanvas(src);
+    const { canvas: out, crop, removed } = removeBackground(canvas, { tolerance: +$('avTol').value });
+    if (removed < 0.02) {
+      status('Kein einfarbiger Hintergrund gefunden – Toleranz erhöhen oder ein Bild mit transparentem Hintergrund verwenden.');
+      return;
+    }
+    const full = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+    await remapMask(av, av.crop ?? full, crop, out.width, out.height);
+    remapMarkers(av, av.crop ?? full, crop);
+    av.original ??= src;
+    av.crop = crop;
+    av.image = out.toDataURL('image/png');
+    status(`Hintergrund entfernt (${Math.round(removed * 100)} % des Bildes). Passt es nicht, Toleranz ändern und erneut klicken.`);
+    avatarChanged();
+  } catch (err) {
+    status(`Freistellen fehlgeschlagen: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+};
+$('avRestore').onclick = async () => {
+  const av = persona().avatar;
+  if (!av.original) return;
+  const canvas = await imageToCanvas(av.original);
+  const full = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+  await remapMask(av, av.crop, full, canvas.width, canvas.height);
+  remapMarkers(av, av.crop, full);
+  av.image = av.original;
+  av.original = null;
+  av.crop = null;
   avatarChanged();
 };
 $('avDefault').onclick = () => {
@@ -734,22 +1062,18 @@ $('avAuto').onclick = async () => {
   Object.assign(persona().avatar, face);
   avatarChanged();
 };
+$('avFloating').onchange = (e) => setFloating(e.target.checked);
 $('avMouthUp').onclick = () => $('avMouthFile').click();
 $('avEyesUp').onclick = () => $('avEyesFile').click();
-$('avMouthFile').onchange = async (e) => {
+const extraImage = (key) => async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f) return;
-  persona().avatar.mouthImage = await readImage(f);
+  persona().avatar[key] = await readImage(f);
   avatarChanged();
 };
-$('avEyesFile').onchange = async (e) => {
-  const f = e.target.files[0];
-  e.target.value = '';
-  if (!f) return;
-  persona().avatar.eyesImage = await readImage(f);
-  avatarChanged();
-};
+$('avMouthFile').onchange = extraImage('mouthImage');
+$('avEyesFile').onchange = extraImage('eyesImage');
 $('avMouthClear').onclick = () => {
   persona().avatar.mouthImage = null;
   avatarChanged();
@@ -758,43 +1082,41 @@ $('avEyesClear').onclick = () => {
   persona().avatar.eyesImage = null;
   avatarChanged();
 };
-const testPhrase = () => persona().greeting || `Hallo, ich bin ${persona().name}. So klinge ich.`;
-$('avTest').onclick = () => {
+const testPhrase = () =>
+  persona().greeting ||
+  (persona().language === 'en' ? `Hi, I am ${persona().name}. This is my voice.` : `Hallo, ich bin ${persona().name}. So klinge ich.`);
+const speakTest = () => {
   tts.stop();
+  tts.newTurn();
   tts.enqueue(testPhrase());
 };
+$('avTest').onclick = speakTest;
 
-// Stimme
+// ---------------------------------------------------------------- Stimme
+const voiceField = (id, key, numeric) => {
+  $(id).onchange = $(id).oninput = (e) => {
+    persona().voice[key] = numeric ? +e.target.value : e.target.value;
+    if (key === 'engine') toggleEngineFields();
+    applyVoice();
+    save();
+  };
+};
+voiceField('vEngine', 'engine');
+voiceField('vPiperDe', 'de');
+voiceField('vPiperEn', 'en');
+voiceField('vSystem', 'systemVoice');
+voiceField('vRate', 'rate', true);
 $('vSpeak').onchange = (e) => {
   state.settings.speak = e.target.checked;
   if (!e.target.checked) tts.stop();
   save();
 };
-$('vEngine').onchange = (e) => {
-  persona().voice.engine = e.target.value;
-  toggleEngineFields();
+$('vMax').onchange = (e) => {
+  state.settings.maxSentences = Math.max(0, Math.min(50, +e.target.value || 0));
   applyVoice();
   save();
 };
-$('vPiper').onchange = (e) => {
-  persona().voice.piperVoice = e.target.value;
-  applyVoice();
-  save();
-};
-$('vSystem').onchange = (e) => {
-  persona().voice.systemVoice = e.target.value;
-  applyVoice();
-  save();
-};
-$('vRate').oninput = (e) => {
-  persona().voice.rate = +e.target.value;
-  applyVoice();
-  save();
-};
-$('vTest').onclick = () => {
-  tts.stop();
-  tts.enqueue(testPhrase());
-};
+$('vTest').onclick = speakTest;
 
 // Spracherkennung
 $('sModel').onchange = (e) => {
@@ -816,15 +1138,18 @@ $('sPreload').onclick = async () => {
   try {
     status('Lade Spracherkennung …');
     await stt.preload(progressStatus('Spracherkennung'));
-    status('Lade Stimme …');
-    await tts.preload((p) => p.total && status(`Stimme wird geladen … ${Math.round((p.loaded / p.total) * 100)} %`));
+    status('Lade Stimmen …');
+    await tts.preload(
+      ({ loaded, total }) => total && status(`Stimme wird geladen … ${Math.round((loaded / total) * 100)} %`),
+    );
     status('Sprachmodelle sind bereit – ab jetzt funktioniert alles offline.');
+    refreshModelInfo();
   } catch (e) {
     status(friendlyError(e));
   }
 };
 
-// Verbindung
+// ---------------------------------------------------------------- Verbindung & Datenschutz
 $('cUrl').onchange = (e) => {
   state.settings.baseUrl = e.target.value.trim() || DEFAULT_SETTINGS.baseUrl;
   state.settings.model = '';
@@ -844,6 +1169,17 @@ $('cHistory').onchange = (e) => {
   save();
 };
 $('cRefresh').onclick = () => refreshModels();
+$('cOffline').onchange = (e) => {
+  state.settings.offline = e.target.checked;
+  desktop.setOffline(e.target.checked);
+  save();
+};
+$('cOpenModels').onclick = () => desktop.openModelDir();
+
+async function refreshModelInfo() {
+  const { dir, bytes } = await desktop.modelInfo();
+  $('cModels').textContent = `Gespeicherte Sprachmodelle: ${(bytes / 1048576).toFixed(0)} MB in ${dir}`;
+}
 
 async function refreshModels() {
   const sel = $('cModel');
@@ -871,10 +1207,12 @@ async function refreshModels() {
 async function init() {
   const data = (await desktop.loadData()) ?? {};
   state.settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-  state.personas = data.personas?.length ? data.personas : [defaultPersona()];
+  if (state.settings.sttLang !== 'auto') state.settings.sttLang = 'persona';
+  state.personas = data.personas?.length ? data.personas.map(migratePersona) : [defaultPersona()];
   state.activeId = data.activeId ?? state.personas[0].id;
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;
   state.history = data.history ?? {};
+  desktop.setOffline(state.settings.offline);
 
   if (state.settings.stageHeight) {
     document.documentElement.style.setProperty('--stage-h', state.settings.stageHeight + 'px');
@@ -883,6 +1221,8 @@ async function init() {
   applyPersona();
   updateBadge();
   save();
+  if (state.settings.floating) setFloating(true);
+  if (state.settings.outputOpen) openOutput();
 
   desktop
     .listModels(state.settings.baseUrl)
@@ -893,7 +1233,18 @@ async function init() {
   if (state.settings.handsFree) maybeListenHandsFree();
 }
 
-// Für Fehlersuche in den DevTools
-window.__app = { avatar, tts, stt, state };
+// Für Fehlersuche und den automatischen Selbsttest
+window.__app = {
+  avatar,
+  tts,
+  stt,
+  state,
+  floating,
+  output,
+  setFloating,
+  openOutput,
+  floatingReady: () => !!floating.avatar?.ready,
+  outputReady: () => output.isOpen && !!output.win.document.getElementById('content'),
+};
 
 init();

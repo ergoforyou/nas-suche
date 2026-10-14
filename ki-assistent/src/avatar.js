@@ -14,32 +14,39 @@ function smoothstep(a, b, x) {
   return t * t * (3 - 2 * t);
 }
 
-export function loadImage(src) {
+export function loadImage(src, host = window) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
+    const img = new host.Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Bild konnte nicht geladen werden'));
     img.src = src;
   });
 }
 
-function toCanvas(img, w, h) {
-  const c = document.createElement('canvas');
+function toCanvas(img, w, h, doc = document) {
+  const c = doc.createElement('canvas');
   c.width = w;
   c.height = h;
   c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, w, h);
   return c;
 }
 
+/** Gemeinsamer Zustand, damit Chatfenster und freischwebende Figur synchron sind. */
+export const avatarState = { level: 0, speaking: false, thinking: false, listening: false };
+
 export class Avatar {
-  constructor(canvas) {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {{transparent?: boolean}} opts transparent = ohne Hintergrund (freischwebend)
+   */
+  constructor(canvas, { transparent = false } = {}) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.level = 0; // Ziel-Lautstärke 0..1
+    this.host = canvas.ownerDocument.defaultView;
+    this.doc = canvas.ownerDocument;
+    this.transparent = transparent;
+    this.ctx = canvas.getContext('2d', { willReadFrequently: transparent });
+    this.state = avatarState;
     this.open = 0; // geglättete Mundöffnung 0..1
-    this.speaking = false;
-    this.thinking = false;
-    this.listening = false;
     this.blink = 0;
     this.nextBlink = performance.now() + 2500;
     this.blinkStart = 0;
@@ -47,17 +54,49 @@ export class Avatar {
     this.config = null;
     this.ready = false;
     this.lastOpenPx = -1;
-    new ResizeObserver(() => this.resize()).observe(canvas);
+    this.active = true;
+    new this.host.ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
     const loop = (t) => {
+      if (!this.active) return;
       this.draw(t / 1000);
-      requestAnimationFrame(loop);
+      this.host.requestAnimationFrame(loop);
     };
-    requestAnimationFrame(loop);
+    this.host.requestAnimationFrame(loop);
+  }
+
+  destroy() {
+    this.active = false;
+  }
+
+  // Kompatibilität: Zustand liegt im gemeinsamen Objekt
+  get speaking() {
+    return this.state.speaking;
+  }
+  set speaking(v) {
+    this.state.speaking = v;
+  }
+  get thinking() {
+    return this.state.thinking;
+  }
+  set thinking(v) {
+    this.state.thinking = v;
+  }
+  get listening() {
+    return this.state.listening;
+  }
+  set listening(v) {
+    this.state.listening = v;
+  }
+  get level() {
+    return this.state.level;
+  }
+  set level(v) {
+    this.state.level = v;
   }
 
   resize() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = this.host.devicePixelRatio || 1;
     const r = this.canvas.getBoundingClientRect();
     this.canvas.width = Math.max(1, Math.round(r.width * dpr));
     this.canvas.height = Math.max(1, Math.round(r.height * dpr));
@@ -65,22 +104,33 @@ export class Avatar {
   }
 
   /**
-   * config: { image, mouthImage?, eyesImage?, mouth?: {x,y,w}, eyes?: [{x,y,r}], motion? }
+   * config: { image, mouthImage?, eyesImage?, mouthMask?, mouth?: {x,y,w}, eyes?: [{x,y,r}], motion?, mouthOpen? }
    * Koordinaten normiert auf 0..1 bezogen auf Bildbreite/-höhe.
    */
   async setConfig(config) {
     this.ready = false;
     this.config = config;
     this.motion = config.motion ?? 1;
-    const img = await loadImage(config.image);
+    const img = await loadImage(config.image, this.host);
     const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
     this.w = Math.round(img.width * scale);
     this.h = Math.round(img.height * scale);
-    this.base = toCanvas(img, this.w, this.h);
-    this.frame = toCanvas(img, this.w, this.h);
+    this.base = toCanvas(img, this.w, this.h, this.doc);
+    this.frame = toCanvas(img, this.w, this.h, this.doc);
     this.frameCtx = this.frame.getContext('2d', { willReadFrequently: true });
-    this.mouthImg = config.mouthImage ? toCanvas(await loadImage(config.mouthImage), this.w, this.h) : null;
-    this.eyesImg = config.eyesImage ? toCanvas(await loadImage(config.eyesImage), this.w, this.h) : null;
+    const extra = async (src) => (src ? toCanvas(await loadImage(src, this.host), this.w, this.h, this.doc) : null);
+    this.mouthImg = await extra(config.mouthImage);
+    this.eyesImg = await extra(config.eyesImage);
+    // Hat das Bild transparente Bereiche (freigestellt)? Dann kein weichgezeichneter Bildhintergrund.
+    const corners = this.base.getContext('2d', { willReadFrequently: true });
+    this.hasAlpha = [
+      [0, 0],
+      [this.w - 1, 0],
+      [0, this.h - 1],
+      [this.w - 1, this.h - 1],
+    ].some(([x, y]) => corners.getImageData(x, y, 1, 1).data[3] < 128);
+    const mask = await extra(config.mouthMask);
+    this.maskData = mask ? mask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.w, this.h).data : null;
     this.prepareMouth();
     this.prepareEyes();
     this.bg = null;
@@ -88,21 +138,155 @@ export class Avatar {
     this.ready = true;
   }
 
+  /**
+   * Mundbereich vorbereiten. Grundlage ist entweder eine aufgemalte Lippen-Maske
+   * (genau) oder die Mund-Markierung (geschätzt). Pro Bildspalte wird die Lippenfuge
+   * gesucht (dunkelste Zeile), an der sich der Mund später öffnet, und die Farbe für
+   * den Mundinnenraum aus den Lippen selbst abgeleitet.
+   */
   prepareMouth() {
     this.mouthRegion = null;
-    const m = this.config.mouth;
-    if (!m || this.mouthImg) return;
-    const mx = m.x * this.w;
-    const my = m.y * this.h;
-    const mw = Math.max(6, m.w * this.w);
-    const halfW = mw * 0.95;
-    const jawH = mw * 1.5;
-    const x0 = Math.max(0, Math.floor(mx - halfW));
-    const x1 = Math.min(this.w, Math.ceil(mx + halfW));
-    const y0 = Math.max(0, Math.floor(my - mw * 0.6));
-    const y1 = Math.min(this.h, Math.ceil(my + jawH));
-    const src = this.base.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0);
-    this.mouthRegion = { mx, my, mw, halfW, jawH, x0, y0, x1, y1, src, out: new ImageData(src.width, src.height) };
+    if (this.mouthImg) return;
+    const W = this.w;
+    const H = this.h;
+    const baseData = this.base.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    const lum = (x, y) => {
+      const i = (y * W + x) * 4;
+      return baseData[i] * 0.3 + baseData[i + 1] * 0.59 + baseData[i + 2] * 0.11;
+    };
+
+    // Spaltenbereich + Zeilenbereich je Spalte bestimmen
+    let cols = null; // { x0, x1, top: [], bottom: [] }
+    if (this.maskData) {
+      const m = this.maskData;
+      let x0 = W;
+      let x1 = -1;
+      const top = new Float32Array(W).fill(-1);
+      const bottom = new Float32Array(W).fill(-1);
+      for (let x = 0; x < W; x++) {
+        for (let y = 0; y < H; y++) {
+          if (m[(y * W + x) * 4 + 3] > 64) {
+            if (top[x] < 0) top[x] = y;
+            bottom[x] = y;
+          }
+        }
+        if (top[x] >= 0) {
+          if (x < x0) x0 = x;
+          x1 = x;
+        }
+      }
+      if (x1 > x0 + 3) cols = { x0, x1, top, bottom };
+    }
+    if (!cols) {
+      const mk = this.config.mouth;
+      if (!mk) return;
+      const mx = mk.x * W;
+      const my = mk.y * H;
+      const mw = Math.max(6, mk.w * W);
+      const x0 = Math.max(0, Math.round(mx - mw / 2));
+      const x1 = Math.min(W - 1, Math.round(mx + mw / 2));
+      const top = new Float32Array(W).fill(-1);
+      const bottom = new Float32Array(W).fill(-1);
+      for (let x = x0; x <= x1; x++) {
+        // Lippenhöhe zur Mitte hin größer (Linsenform)
+        const t = 1 - Math.pow((x - mx) / (mw / 2), 2);
+        const half = Math.max(1, mw * 0.16 * Math.sqrt(Math.max(0, t)));
+        top[x] = Math.max(0, my - half);
+        bottom[x] = Math.min(H - 1, my + half);
+      }
+      cols = { x0, x1, top, bottom };
+    }
+
+    const { x0, x1, top, bottom } = cols;
+    const mw = x1 - x0 + 1;
+    const mx = (x0 + x1) / 2;
+
+    // Lippenfuge je Spalte: dunkelste Zeile im mittleren Lippenbereich, danach geglättet
+    const seamRaw = new Float32Array(W);
+    const shapeRaw = new Float32Array(W);
+    let maxSpan = 1;
+    for (let x = x0; x <= x1; x++) maxSpan = Math.max(maxSpan, bottom[x] - top[x] + 1);
+    const inner = [0, 0, 0, 0];
+    for (let x = x0; x <= x1; x++) {
+      if (top[x] < 0) continue;
+      const a = Math.round(top[x] + (bottom[x] - top[x]) * 0.2);
+      const b = Math.round(top[x] + (bottom[x] - top[x]) * 0.8);
+      let best = a;
+      let bestL = Infinity;
+      for (let y = a; y <= b; y++) {
+        const l = lum(x, y) + lum(Math.max(0, x - 1), y) + lum(Math.min(W - 1, x + 1), y);
+        if (l < bestL) {
+          bestL = l;
+          best = y;
+        }
+      }
+      seamRaw[x] = best;
+      shapeRaw[x] = (bottom[x] - top[x] + 1) / maxSpan;
+      // Innenfarbe: Farbe der Lippenfuge
+      const i = (best * W + x) * 4;
+      inner[0] += baseData[i];
+      inner[1] += baseData[i + 1];
+      inner[2] += baseData[i + 2];
+      inner[3]++;
+    }
+    const smooth = (arr, r) => {
+      const out = new Float32Array(W);
+      for (let x = x0; x <= x1; x++) {
+        let sum = 0;
+        let n = 0;
+        for (let k = -r; k <= r; k++) {
+          const xx = x + k;
+          if (xx >= x0 && xx <= x1 && top[xx] >= 0) {
+            sum += arr[xx];
+            n++;
+          }
+        }
+        out[x] = n ? sum / n : arr[x];
+      }
+      return out;
+    };
+    const r = Math.max(1, Math.round(mw * 0.06));
+    const seam = smooth(seamRaw, r);
+    const shape = smooth(shapeRaw, r);
+    // Form zu den Mundwinkeln hin weich auslaufen lassen
+    for (let x = x0; x <= x1; x++) {
+      const edge = Math.min(x - x0, x1 - x) / (mw * 0.18);
+      shape[x] = Math.min(1, shape[x]) * Math.min(1, Math.max(0, edge)) ** 0.6;
+    }
+
+    // Mundinnenraum: abgedunkelte, leicht ins Rote gezogene Lippenfugenfarbe
+    const n = Math.max(1, inner[3]);
+    const lr = inner[0] / n;
+    const lg = inner[1] / n;
+    const lb = inner[2] / n;
+    const innerColor = [lr * 0.38 + 18, lg * 0.22 + 4, lb * 0.24 + 6];
+
+    const seamMin = Math.min(...Array.from(seam.subarray(x0, x1 + 1)));
+    const seamMax = Math.max(...Array.from(seam.subarray(x0, x1 + 1)));
+    const maxOpen = mw * 0.26 * (this.config.mouthOpen ?? 1);
+    const upH = Math.max(4, maxSpan * 1.2); // Bereich oberhalb, der mit der Oberlippe mitgeht
+    const jawH = Math.max(maxSpan * 1.5, mw * 0.7); // Bereich unterhalb (Unterlippe, Kinnansatz) – Gesichtskontur bleibt stehen
+    const rx0 = x0;
+    const rx1 = x1 + 1;
+    const ry0 = Math.max(0, Math.floor(seamMin - upH - 2));
+    const ry1 = Math.min(H, Math.ceil(seamMax + jawH));
+    const src = this.base
+      .getContext('2d', { willReadFrequently: true })
+      .getImageData(rx0, ry0, rx1 - rx0, ry1 - ry0);
+    this.mouthRegion = {
+      x0: rx0,
+      y0: ry0,
+      src,
+      out: new ImageData(src.width, src.height),
+      seam,
+      shape,
+      innerColor,
+      maxOpen,
+      upH,
+      jawH,
+      mx,
+      mw,
+    };
   }
 
   prepareEyes() {
@@ -137,13 +321,18 @@ export class Avatar {
   }
 
   // ---------- Bild für den aktuellen Frame aufbauen ----------
+  /**
+   * Öffnet die Lippen aus dem Bild selbst: Oberlippe hebt sich leicht, Unterlippe und
+   * Kinn gehen nach unten. Der entstehende Spalt bekommt eine aus den Lippen abgeleitete
+   * dunkle Farbe mit weichem Übergang – kein aufgesetzter Mund.
+   */
   renderMouth(open) {
     const R = this.mouthRegion;
     if (!R) return;
-    const openPx = Math.round(open * R.mw * 0.42 * 2) / 2;
+    const openPx = Math.round(open * R.maxOpen * 2) / 2;
     if (openPx === this.lastOpenPx) return;
     this.lastOpenPx = openPx;
-    const { src, out, x0, y0, mx, my, halfW, jawH, mw } = R;
+    const { src, out, x0, y0, seam, shape, innerColor, upH, jawH } = R;
     const W = src.width;
     const H = src.height;
     const s = src.data;
@@ -153,46 +342,55 @@ export class Avatar {
       this.frameCtx.putImageData(out, x0, y0);
       return;
     }
-    const flat = mw * 0.42;
-    for (let py = 0; py < H; py++) {
-      const y = y0 + py;
-      const dy = y - my;
-      const fy = dy < 0 ? 0 : 1 - smoothstep(0, jawH, dy);
-      for (let px = 0; px < W; px++) {
-        const x = x0 + px;
-        const ax = Math.abs(x - mx);
-        const fx = ax <= flat ? 1 : 1 - smoothstep(flat, halfW, ax);
-        const d = openPx * fx * fy;
+    const [ir, ig, ib] = innerColor;
+    const sample = (px, fy, i) => {
+      const a = Math.max(0, Math.min(H - 1, Math.floor(fy)));
+      const b = Math.min(H - 1, a + 1);
+      const t = Math.min(1, Math.max(0, fy - a));
+      const ia = (a * W + px) * 4;
+      const ib2 = (b * W + px) * 4;
+      o[i] = s[ia] + (s[ib2] - s[ia]) * t;
+      o[i + 1] = s[ia + 1] + (s[ib2 + 1] - s[ia + 1]) * t;
+      o[i + 2] = s[ia + 2] + (s[ib2 + 2] - s[ia + 2]) * t;
+      o[i + 3] = s[ia + 3] + (s[ib2 + 3] - s[ia + 3]) * t;
+    };
+    for (let px = 0; px < W; px++) {
+      const x = x0 + px;
+      const f = shape[x];
+      const sy = seam[x];
+      const O = openPx * f;
+      const U = O * 0.28; // Oberlippe hoch
+      const D = O - U; // Unterlippe/Kinn runter
+      for (let py = 0; py < H; py++) {
+        const y = y0 + py;
         const i = (py * W + px) * 4;
-        const sy = y - d;
-        if (dy >= 0 && sy < my && fx > 0.02) {
-          // Mundinnenraum: oben ein Hauch Zähne, sonst dunkel
-          const gap = d - dy; // Abstand bis zur Unterlippe
-          const depth = Math.min(1, dy / Math.max(1, d));
-          const teeth = depth < 0.22 && openPx > 4 ? 1 : 0;
-          const edge = Math.min(1, gap / 1.5, fx * 3);
-          const ir = teeth ? 225 : 70 - depth * 30;
-          const ig = teeth ? 215 : 22 - depth * 8;
-          const ib = teeth ? 210 : 28 - depth * 10;
-          // mit Originalpixel weich mischen
-          const syi = Math.min(H - 1, Math.max(0, Math.round(sy - y0)));
-          const si = (syi * W + px) * 4;
-          o[i] = s[si] * (1 - edge) + ir * edge;
-          o[i + 1] = s[si + 1] * (1 - edge) + ig * edge;
-          o[i + 2] = s[si + 2] * (1 - edge) + ib * edge;
-          o[i + 3] = 255;
+        if (O < 0.3) {
+          o[i] = s[i];
+          o[i + 1] = s[i + 1];
+          o[i + 2] = s[i + 2];
+          o[i + 3] = s[i + 3];
+          continue;
+        }
+        if (y < sy - U) {
+          // oberhalb: Oberlippe nach oben schieben, nach oben hin auslaufend
+          const d = U * (1 - smoothstep(0, upH, sy - U - y));
+          sample(px, y + d - y0, i);
+        } else if (y > sy + D) {
+          // unterhalb: Unterlippe und Kinn nach unten, zum Kinn hin auslaufend
+          const d = D * (1 - smoothstep(0, jawH, y - sy - D));
+          sample(px, y - d - y0, i);
         } else {
-          // bilineare Abtastung in y-Richtung
-          const fyy = sy - y0;
-          const a = Math.max(0, Math.min(H - 1, Math.floor(fyy)));
-          const b = Math.min(H - 1, a + 1);
-          const t = Math.min(1, Math.max(0, fyy - a));
-          const ia = (a * W + px) * 4;
-          const ib = (b * W + px) * 4;
-          o[i] = s[ia] + (s[ib] - s[ia]) * t;
-          o[i + 1] = s[ia + 1] + (s[ib + 1] - s[ia + 1]) * t;
-          o[i + 2] = s[ia + 2] + (s[ib + 2] - s[ia + 2]) * t;
-          o[i + 3] = s[ia + 3] + (s[ib + 3] - s[ia + 3]) * t;
+          // Mundöffnung: innen dunkel, zu den Lippenrändern hin weich
+          const t = (y - (sy - U)) / Math.max(0.5, U + D); // 0 oben .. 1 unten
+          const edge = Math.min(1, Math.min(y - (sy - U), sy + D - y) / 1.2 + 0.15);
+          const shade = 0.75 + 0.25 * Math.sin(t * Math.PI); // Mitte etwas heller (Zunge/Tiefe)
+          const k = Math.min(1, f * 2.5) * edge;
+          // Ausgangsfarbe: Lippenfuge an dieser Stelle
+          const si = (Math.max(0, Math.min(H - 1, Math.round(sy - y0))) * W + px) * 4;
+          o[i] = s[si] * (1 - k) + ir * shade * k;
+          o[i + 1] = s[si + 1] * (1 - k) + ig * shade * k;
+          o[i + 2] = s[si + 2] * (1 - k) + ib * shade * k;
+          o[i + 3] = 255;
         }
       }
     }
@@ -229,13 +427,21 @@ export class Avatar {
   }
 
   buildBackground() {
-    const c = document.createElement('canvas');
+    const c = this.doc.createElement('canvas');
     c.width = this.canvas.width;
     c.height = this.canvas.height;
     const g = c.getContext('2d');
-    const s = Math.max(c.width / this.w, c.height / this.h) * 1.1;
-    g.filter = 'blur(24px) brightness(0.55) saturate(1.1)';
-    g.drawImage(this.base, (c.width - this.w * s) / 2, (c.height - this.h * s) / 2, this.w * s, this.h * s);
+    // dezenter Verlauf, falls das Bild selbst transparent ist
+    const grad = g.createLinearGradient(0, 0, 0, c.height);
+    grad.addColorStop(0, '#26303f');
+    grad.addColorStop(1, '#12161d');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, c.width, c.height);
+    if (!this.hasAlpha) {
+      const s = Math.max(c.width / this.w, c.height / this.h) * 1.1;
+      g.filter = 'blur(24px) brightness(0.55) saturate(1.1)';
+      g.drawImage(this.base, (c.width - this.w * s) / 2, (c.height - this.h * s) / 2, this.w * s, this.h * s);
+    }
     this.bg = c;
   }
 
@@ -245,8 +451,10 @@ export class Avatar {
     const H = this.canvas.height;
     ctx.clearRect(0, 0, W, H);
     if (!this.ready) return;
-    if (!this.bg) this.buildBackground();
-    ctx.drawImage(this.bg, 0, 0);
+    if (!this.transparent) {
+      if (!this.bg) this.buildBackground();
+      ctx.drawImage(this.bg, 0, 0);
+    }
 
     // Mund glätten: schnell öffnen, etwas langsamer schließen
     const target = this.speaking ? this.level : 0;
@@ -290,7 +498,8 @@ export class Avatar {
     const lean = this.listening ? 0.012 * m : 0;
     this.lean = (this.lean ?? 0) + (lean - (this.lean ?? 0)) * 0.05;
 
-    const fit = Math.min(W / this.w, H / this.h);
+    // freischwebend etwas Rand lassen, damit beim Wiegen nichts abgeschnitten wird
+    const fit = Math.min(W / this.w, H / this.h) * (this.transparent ? 0.94 : 1);
     const dw = this.w * fit;
     const dh = this.h * fit;
     ctx.save();

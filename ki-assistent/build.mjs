@@ -28,7 +28,7 @@ await build({
   external: ['fs', 'path'],
 });
 
-for (const f of ['index.html', 'style.css', 'default-avatar.svg']) {
+for (const f of ['index.html', 'style.css', 'avatar.html', 'output.html', 'output.css', 'default-avatar.svg', 'default-figur.svg']) {
   fs.copyFileSync(path.join(root, 'src', f), path.join(dist, f));
 }
 

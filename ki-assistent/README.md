@@ -25,28 +25,46 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
 
 ### Bedienung
 
-- **🎤** – einmal zuhören. Im **Freihand-Modus** (⚙ → Sprache) hört der Assistent ständig zu, sobald er
-  fertig gesprochen hat.
+- **🎤** – einmal zuhören (oder **Strg + Leertaste**; systemweit **Strg + Alt + Leertaste**). Im
+  **Freihand-Modus** (⚙ → Sprache) hört der Assistent ständig zu, sobald er fertig gesprochen hat.
 - **■ / Esc** – Antwort und Sprachausgabe abbrechen.
-- **📌** – Fenster immer im Vordergrund.
-- Die Trennlinie unter dem Avatar lässt sich mit der Maus verschieben.
+- **🧍** – Figur frei auf dem Desktop: ziehen = verschieben, Mausrad = Größe, Klick = sprechen,
+  Doppelklick = Chat öffnen, Rechtsklick = Menü. Das Chatfenster kann dann geschlossen werden.
+- **📄** – Ausgabefenster: Antworten groß und formatiert wie in LM Studio (Überschriften, Listen,
+  Tabellen, Code mit Kopier-Knopf), mit ◀ ▶ durch frühere Antworten blättern.
+- **📌** – Chatfenster immer im Vordergrund.
 
 ### Eigene Persona & Avatar
 
-Unter ⚙ → **Persona**: Name, Charakter/Rolle (Systemprompt) und Begrüßung. Mehrere Personas sind möglich,
-jede hat ihren eigenen Gesprächsverlauf. Personas lassen sich als `.persona.json` exportieren und an andere
-weitergeben – das Avatarbild ist mit enthalten.
+Unter ⚙ → **Persona**: Name, Charakter/Rolle (Systemprompt), Begrüßung, **Antwortsprache** (Deutsch/Englisch)
+und **Antwortstil**:
+- *Ausführlich wie in LM Studio* – mit Formatierung; die ersten Sätze sind zum Vorlesen gedacht.
+- *Gesprächig & kurz* – optimiert fürs Vorlesen.
+- *Nur mein Systemprompt* – keinerlei Zusatzanweisungen der App.
+
+Personas lassen sich als `.persona.json` (inklusive Bild) exportieren und weitergeben.
 
 Unter ⚙ → **Avatar**:
 
-1. **Bild hochladen** – z. B. ein Foto oder eine Zeichnung von jemandem am Schreibtisch.
-2. Auf **👄 Mund** klicken und dann im Bild auf die Mundmitte klicken, danach auf beide Augen
-   (der Modus springt automatisch weiter). Mit den Reglern Mundbreite und Augengröße anpassen.
-3. **▶ Testsprechen** zum Ausprobieren.
+1. **Bild hochladen**, z. B. ein Foto vor einer weißen Wand.
+2. **✂ Hintergrund entfernen** stellt die Figur frei (Toleranz bei Bedarf anpassen). PNGs mit
+   transparentem Hintergrund funktionieren direkt.
+3. **🖌 Lippen ausmalen**: Ober- und Unterlippe mit der Maus anmalen. Beim Sprechen öffnen sich dann die
+   echten Lippen aus dem Bild (Oberlippe leicht hoch, Unterlippe runter), statt dass ein Mund aufgesetzt wird.
+   Alternativ nur die Mundmitte anklicken.
+4. Beide **Augen** anklicken (für das Blinzeln), dann **▶ Testsprechen**.
 
-Tipps: Frontal aufgenommene Gesichter mit geschlossenem Mund funktionieren am besten.
-Für gezeichnete Figuren kann man unter „Fortgeschritten“ zusätzlich eigene Bilder mit **offenem Mund** und
-**geschlossenen Augen** hochladen (PNGtuber-Stil); dann wird zwischen den Bildern überblendet.
+### Sprache
+
+- **Piper** liest mit natürlichen Stimmen; englische Sätze automatisch mit der englischen Stimme.
+  „Thorsten – beste Qualität“ und „Lessac“ klingen am besten.
+- **Höchstens vorlesen** begrenzt lange Antworten (der Rest steht im Ausgabefenster).
+
+### Datenschutz
+
+Gespräche, Sprache, Bilder und Personas bleiben auf dem Rechner. Die Oberfläche hat technisch keinen
+Internetzugriff; einzig der Hauptprozess lädt einmalig die Sprachmodelle von Hugging Face und speichert sie
+in `%APPDATA%\KI-Assistent\modelle`. Im **Offline-Modus** (⚙ → Verbindung) entfällt auch das.
 
 ## Entwickeln
 
@@ -67,7 +85,10 @@ Artefakt **KI-Assistent-Windows**). Ein Tag `ki-assistent-v0.1.0` erzeugt zusät
 main.js           Electron-Hauptprozess: Fenster, app://-Protokoll, LM-Studio-Anbindung (Streaming), Speicher
 preload.js        sichere Brücke zwischen Oberfläche und Hauptprozess
 src/app.js        Oberfläche: Chat, Einstellungen, Personas, Ablaufsteuerung
-src/avatar.js     Avatar-Animation (Canvas)
+src/avatar.js     Avatar-Animation (Canvas): Atmen, Blinzeln, Lippen öffnen
+src/cutout.js     Hintergrund entfernen (freistellen)
+src/windows.js    freischwebende Figur + Ausgabefenster
+src/piper.js      Piper-Anbindung mit korrekter Laut-Zuordnung je Stimme
 src/stt.js        Mikrofon + Sprechpausen-Erkennung
 src/stt-worker.js Whisper im Web-Worker
 src/tts.js        Piper / Systemstimmen, satzweise Ausgabe während die Antwort noch entsteht

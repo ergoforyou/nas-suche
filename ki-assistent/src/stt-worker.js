@@ -3,6 +3,9 @@
 import { pipeline, env } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
+// Modelle kommen über den Hauptprozess (app://local/models/hf/…), der sie auf der Festplatte speichert.
+env.remoteHost = new URL('models/hf/', self.location.href).href;
+env.useBrowserCache = false;
 env.backends.onnx.wasm.wasmPaths = new URL('wasm/tf/', self.location.href).href;
 
 let asr = null;
@@ -40,7 +43,7 @@ self.onmessage = async ({ data }) => {
     } else if (type === 'transcribe') {
       await load(data.model, (p) => self.postMessage({ id, type: 'progress', progress: p }));
       const out = await asr(data.audio, {
-        language: data.language || 'german',
+        ...(data.language ? { language: data.language } : {}), // ohne Angabe: Sprache automatisch erkennen
         task: 'transcribe',
         chunk_length_s: 30,
         stride_length_s: 5,

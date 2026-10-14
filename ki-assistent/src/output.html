@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'" />
+  <title>Ausgabe</title>
+  <link rel="stylesheet" href="output.css" />
+</head>
+<body>
+  <header>
+    <button id="prev" title="Vorherige Antwort">◀</button>
+    <span id="pos"></span>
+    <button id="next" title="Nächste Antwort">▶</button>
+    <span class="spacer"></span>
+    <button id="copy" title="Antwort kopieren">Kopieren</button>
+  </header>
+  <div id="question" class="question"></div>
+  <article id="content" class="markdown"></article>
+</body>
+</html>

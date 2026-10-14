@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d3a4f"/>
+      <stop offset="1" stop-color="#1c2433"/>
+    </linearGradient>
+    <linearGradient id="desk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a5a3b"/>
+      <stop offset="1" stop-color="#5b3a26"/>
+    </linearGradient>
+    <linearGradient id="shirt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3f7fbf"/>
+      <stop offset="1" stop-color="#2b5c8f"/>
+    </linearGradient>
+    <radialGradient id="skin" cx="0.45" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#f3c9a8"/>
+      <stop offset="1" stop-color="#d9a383"/>
+    </radialGradient>
+  </defs>
+  <!-- Oberkörper -->
+  <path d="M120 780 C120 560 170 470 300 462 C430 470 480 560 480 780 Z" fill="url(#shirt)"/>
+  <path d="M255 462 L300 520 L345 462 Z" fill="#e9eef5"/>
+  <!-- Hals -->
+  <path d="M262 380 L262 470 Q300 492 338 470 L338 380 Z" fill="#d49b7a"/>
+  <!-- Ohren -->
+  <ellipse cx="206" cy="305" rx="16" ry="28" fill="#dca585"/>
+  <ellipse cx="394" cy="305" rx="16" ry="28" fill="#dca585"/>
+  <!-- Kopf -->
+  <ellipse cx="300" cy="300" rx="95" ry="115" fill="url(#skin)"/>
+  <!-- Haare -->
+  <path d="M205 290 C195 190 260 165 305 168 C365 170 410 205 396 292 C385 240 360 222 330 220 C290 230 250 215 225 236 C214 252 210 270 205 290 Z" fill="#4a3426"/>
+  <!-- Augenbrauen -->
+  <path d="M240 254 Q262 244 284 252" stroke="#4a3426" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <path d="M316 252 Q338 244 360 254" stroke="#4a3426" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <!-- Augen -->
+  <ellipse cx="262" cy="290" rx="17" ry="11" fill="#fbfbfb"/>
+  <ellipse cx="338" cy="290" rx="17" ry="11" fill="#fbfbfb"/>
+  <circle cx="264" cy="291" r="8" fill="#4b6a8a"/>
+  <circle cx="340" cy="291" r="8" fill="#4b6a8a"/>
+  <circle cx="264" cy="291" r="4" fill="#111"/>
+  <circle cx="340" cy="291" r="4" fill="#111"/>
+  <circle cx="267" cy="288" r="2" fill="#fff"/>
+  <circle cx="343" cy="288" r="2" fill="#fff"/>
+  <!-- Nase -->
+  <path d="M300 300 Q292 330 290 340 Q300 348 312 340" stroke="#b9805f" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <!-- Mund -->
+  <path d="M272 370 Q300 380 328 370" stroke="#9c4a45" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M278 374 Q300 388 322 374" stroke="#c46f66" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <!-- Schreibtisch -->
+  <rect x="60" y="640" width="480" height="150" rx="10" fill="url(#desk)"/>
+  <rect x="50" y="630" width="500" height="16" rx="6" fill="#a06d4a"/>
+  <!-- Laptop (Rückseite) -->
+  <path d="M340 560 L510 560 L522 632 L328 632 Z" fill="#8f97a3"/>
+  <circle cx="425" cy="596" r="9" fill="#c9cfd8"/>
+  <!-- Tasse -->
+  <rect x="96" y="586" width="44" height="50" rx="6" fill="#e9eef5"/>
+  <path d="M140 596 Q158 602 140 622" stroke="#e9eef5" stroke-width="6" fill="none"/>
+</svg>

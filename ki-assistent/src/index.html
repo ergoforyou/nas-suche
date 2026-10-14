@@ -2,8 +2,9 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
+  <!-- Die Oberfläche darf nur mit der eigenen App sprechen (app://). Kein direkter Internetzugriff. -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self' data: blob: https:" />
+    content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self' data: blob:" />
   <title>KI-Assistent</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -11,6 +12,8 @@
   <header class="titlebar">
     <span class="title" id="titleName">KI-Assistent</span>
     <div class="titlebar-buttons">
+      <button id="btnFloat" title="Figur frei auf dem Desktop">🧍</button>
+      <button id="btnOutput" title="Ausgabefenster (formatierte Antworten)">📄</button>
       <button id="btnSettings" title="Einstellungen">⚙</button>
       <button id="btnPin" title="Immer im Vordergrund">📌</button>
       <button id="btnMin" title="Minimieren">–</button>
@@ -29,7 +32,7 @@
   <div class="status" id="status"></div>
 
   <footer class="composer">
-    <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste)">🎤</button>
+    <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste)">🎤</button>
     <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
     <button id="btnSend" class="round primary" title="Senden">➤</button>
     <button id="btnStop" class="round" title="Stopp" hidden>■</button>
@@ -57,10 +60,23 @@
         </div>
       </label>
       <label>Name <input id="pName" type="text" /></label>
-      <label>Charakter &amp; Rolle
+      <label>Charakter &amp; Rolle (Systemprompt)
         <textarea id="pPrompt" rows="7" placeholder="Du bist Max, ein freundlicher Büroassistent …"></textarea>
       </label>
       <label>Begrüßung <input id="pGreeting" type="text" placeholder="Hallo! Wie kann ich helfen?" /></label>
+      <label>Antwortsprache
+        <select id="pLang">
+          <option value="de">Deutsch</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label>Antwortstil
+        <select id="pStyle">
+          <option value="ausfuehrlich">Ausführlich wie in LM Studio (mit Formatierung)</option>
+          <option value="gespraech">Gesprächig &amp; kurz (zum Vorlesen optimiert)</option>
+          <option value="frei">Nur mein Systemprompt (keine Zusatzanweisungen)</option>
+        </select>
+      </label>
       <div class="row">
         <button id="personaExport">Persona exportieren</button>
         <button id="personaImport">Persona importieren</button>
@@ -70,23 +86,45 @@
     </div>
 
     <div class="tab" data-tab="avatar" hidden>
+      <label class="check"><input id="avFloating" type="checkbox" /> Figur frei auf dem Desktop anzeigen</label>
+      <p class="hint">Freischwebend: ziehen zum Verschieben, Mausrad für die Größe, Klick zum Sprechen,
+        Doppelklick öffnet den Chat, Rechtsklick für das Menü.</p>
       <label>Avatar-Bild
-        <div class="row">
+        <div class="row wrap">
           <button id="avUpload">Bild hochladen …</button>
-          <button id="avDefault">Standard-Avatar</button>
+          <button id="avDefault">Standard-Figur</button>
         </div>
         <input id="avFile" type="file" accept="image/*" hidden />
       </label>
-      <p class="hint">Klicke unten einen Modus an und dann auf die passende Stelle im Bild.
-        Der Mund wird dann beim Sprechen geöffnet, die Augen blinzeln.</p>
+
+      <h3>Hintergrund entfernen (freistellen)</h3>
+      <p class="hint">Für Fotos vor einfarbigem Hintergrund (z. B. weiße Wand). Bilder mit transparentem
+        Hintergrund (PNG) funktionieren direkt. Tipp: Auch „Paint“ in Windows 11 kann Hintergründe entfernen.</p>
+      <label>Toleranz <input id="avTol" type="range" min="5" max="80" step="1" value="30" /></label>
       <div class="row wrap">
-        <button data-mark="mouth" class="mark">👄 Mund</button>
+        <button id="avCutout">✂ Hintergrund entfernen</button>
+        <button id="avRestore">Original wiederherstellen</button>
+      </div>
+
+      <h3>Mund &amp; Augen</h3>
+      <p class="hint"><b>Am natürlichsten:</b> „🖌 Lippen ausmalen“ wählen und mit der Maus Ober- und Unterlippe
+        anmalen. Der Mund öffnet sich dann aus dem Bild heraus. Alternativ nur die Mundmitte anklicken.
+        Danach beide Augen anklicken.</p>
+      <div class="row wrap">
+        <button data-mark="paint" class="mark">🖌 Lippen ausmalen</button>
+        <button data-mark="erase" class="mark">⌫ Radierer</button>
+        <button id="avMaskClear">Maske löschen</button>
+      </div>
+      <div class="row wrap">
+        <button data-mark="mouth" class="mark">👄 Mundmitte</button>
         <button data-mark="eye0" class="mark">👁 Linkes Auge</button>
         <button data-mark="eye1" class="mark">👁 Rechtes Auge</button>
         <button id="avAuto">✨ Automatisch</button>
       </div>
-      <div class="marker-wrap"><canvas id="markerCanvas"></canvas></div>
-      <label>Mundbreite <input id="avMouthW" type="range" min="0.02" max="0.3" step="0.005" /></label>
+      <label id="avBrushWrap">Pinselgröße <input id="avBrush" type="range" min="2" max="40" step="1" value="10" /></label>
+      <div class="marker-wrap checker"><canvas id="markerCanvas"></canvas></div>
+      <label>Mundöffnung <input id="avOpen" type="range" min="0.3" max="2" step="0.05" /></label>
+      <label>Mundbreite (nur ohne ausgemalte Lippen) <input id="avMouthW" type="range" min="0.02" max="0.3" step="0.005" /></label>
       <label>Augengröße <input id="avEyeR" type="range" min="0.005" max="0.08" step="0.001" /></label>
       <label>Bewegungsstärke <input id="avMotion" type="range" min="0" max="2.5" step="0.1" /></label>
       <details>
@@ -113,9 +151,16 @@
           <option value="system">Systemstimme (Windows/macOS)</option>
         </select>
       </label>
-      <label id="vPiperWrap">Piper-Stimme <select id="vPiper"></select></label>
+      <div id="vPiperWrap">
+        <label>Deutsche Stimme <select id="vPiperDe"></select></label>
+        <label>Englische Stimme <select id="vPiperEn"></select></label>
+        <p class="hint">Englische Sätze werden automatisch mit der englischen Stimme gelesen.</p>
+      </div>
       <label id="vSystemWrap">Systemstimme <select id="vSystem"></select></label>
-      <label>Tempo <input id="vRate" type="range" min="0.6" max="1.6" step="0.05" /></label>
+      <label>Tempo <input id="vRate" type="range" min="0.7" max="1.5" step="0.05" /></label>
+      <label>Höchstens vorlesen (Sätze, 0 = alles)
+        <input id="vMax" type="number" min="0" max="50" />
+      </label>
       <button id="vTest">▶ Stimme testen</button>
 
       <h3>Spracherkennung</h3>
@@ -126,10 +171,10 @@
           <option value="onnx-community/whisper-small">Small – genau, langsamer (~250 MB)</option>
         </select>
       </label>
-      <label>Sprache
+      <label>Sprache beim Zuhören
         <select id="sLang">
-          <option value="german">Deutsch</option>
-          <option value="english">Englisch</option>
+          <option value="persona">wie Antwortsprache der Persona</option>
+          <option value="auto">automatisch erkennen</option>
         </select>
       </label>
       <label class="check"><input id="sHandsFree" type="checkbox" /> Freihändig: automatisch zuhören, wenn ich spreche</label>
@@ -151,6 +196,13 @@
       <label>Kreativität (Temperatur) <input id="cTemp" type="range" min="0" max="1.5" step="0.05" /></label>
       <label>Gedächtnis (Nachrichten im Kontext) <input id="cHistory" type="number" min="2" max="100" /></label>
       <div id="cInfo" class="hint"></div>
+
+      <h3>Datenschutz</h3>
+      <label class="check"><input id="cOffline" type="checkbox" /> Offline-Modus: keinerlei Internetverbindungen</label>
+      <p class="hint">Gespräche, Sprache und Bilder verlassen nie den Rechner. Ins Internet geht nur der
+        einmalige Download der Sprachmodelle – im Offline-Modus auch der nicht.</p>
+      <div id="cModels" class="hint"></div>
+      <button id="cOpenModels">Modellordner öffnen</button>
     </div>
   </div>
 

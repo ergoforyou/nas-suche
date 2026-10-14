@@ -1,39 +1,74 @@
 // Sprachausgabe: Piper (lokales neuronales TTS) oder die Systemstimmen des Betriebssystems.
 // Text wird satzweise in eine Warteschlange gelegt, damit die Antwort schon während
-// des Generierens gesprochen werden kann.
-import { TtsSession } from '@mintplex-labs/piper-tts-web';
+// des Generierens gesprochen werden kann. Pro Satz wird die Sprache erkannt und die
+// passende Stimme (Deutsch/Englisch) gewählt.
+import { synthesize, preloadVoice } from './piper.js';
 
-const WASM = {
-  onnxWasm: new URL('wasm/ort18/', location.href).href,
-  piperData: new URL('wasm/piper/piper_phonemize.data', location.href).href,
-  piperWasm: new URL('wasm/piper/piper_phonemize.wasm', location.href).href,
+export const PIPER_VOICES = {
+  de: [
+    ['de_DE-thorsten-high', 'Thorsten – männlich, beste Qualität'],
+    ['de_DE-thorsten-medium', 'Thorsten – männlich, schnell'],
+    ['de_DE-thorsten_emotional-medium', 'Thorsten emotional – männlich'],
+    ['de_DE-karlsson-low', 'Karlsson – männlich'],
+    ['de_DE-pavoque-low', 'Pavoque – männlich'],
+    ['de_DE-kerstin-low', 'Kerstin – weiblich'],
+    ['de_DE-ramona-low', 'Ramona – weiblich'],
+    ['de_DE-eva_k-x_low', 'Eva K. – weiblich (einfach)'],
+    ['de_DE-mls-medium', 'MLS – gemischt'],
+  ],
+  en: [
+    ['en_US-lessac-high', 'Lessac (US) – female, best quality'],
+    ['en_US-ryan-high', 'Ryan (US) – male, best quality'],
+    ['en_US-amy-medium', 'Amy (US) – female'],
+    ['en_US-joe-medium', 'Joe (US) – male'],
+    ['en_US-hfc_female-medium', 'HFC (US) – female'],
+    ['en_US-hfc_male-medium', 'HFC (US) – male'],
+    ['en_GB-alba-medium', 'Alba (UK) – female'],
+    ['en_GB-northern_english_male-medium', 'Northern English (UK) – male'],
+    ['en_GB-cori-high', 'Cori (UK) – female, best quality'],
+  ],
 };
-
-export const PIPER_VOICES = [
-  ['de_DE-thorsten-medium', 'Thorsten (männlich, mittel)'],
-  ['de_DE-thorsten-high', 'Thorsten (männlich, hoch)'],
-  ['de_DE-thorsten_emotional-medium', 'Thorsten emotional (männlich)'],
-  ['de_DE-karlsson-low', 'Karlsson (männlich)'],
-  ['de_DE-pavoque-low', 'Pavoque (männlich)'],
-  ['de_DE-eva_k-x_low', 'Eva K. (weiblich)'],
-  ['de_DE-kerstin-low', 'Kerstin (weiblich)'],
-  ['de_DE-ramona-low', 'Ramona (weiblich)'],
-  ['de_DE-mls-medium', 'MLS (gemischt)'],
-  ['en_US-hfc_female-medium', 'English – HFC female'],
-  ['en_US-ryan-medium', 'English – Ryan'],
-];
+export const DEFAULT_VOICES = { de: 'de_DE-thorsten-high', en: 'en_US-lessac-high' };
 
 export function cleanForSpeech(text) {
   return text
-    .replace(/```[\s\S]*?```/g, ' Codebeispiel. ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/^\s*\|.*\|\s*$/gm, ' ') // Tabellenzeilen nicht vorlesen
     .replace(/`([^`]*)`/g, '$1')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/https?:\/\/\S+/g, 'Link')
-    .replace(/[*_#>|~]+/g, ' ')
+    .replace(/^\s*([-*+]|\d+\.)\s+/gm, '')
+    .replace(/[*_#>|~^$]+/g, ' ')
     .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+    .replace(/[^\p{Script=Latin}\p{N}\p{P}\p{Zs}\s€$%&+=°§]/gu, ' ') // fremde Schriften überspringen
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+const DE_WORDS = new Set(
+  'der die das und ist nicht ich du wir sie es ein eine einen mit auf für von zu den dem im ist sind war hat haben auch noch nur wie was wenn dann aber oder schon sehr gut kann können wird werden mir dir mich dich sich hier dort heute gerne bitte danke ja nein über bei nach aus'.split(
+    ' ',
+  ),
+);
+const EN_WORDS = new Set(
+  'the and is are was were not you we they it a an with on for of to in this that have has be will would can could do does did what when if then but or very good me my your here there today please thanks yes no about at from just like so'.split(
+    ' ',
+  ),
+);
+
+/** Grobe Spracherkennung für einen Satz: 'de' oder 'en' (sonst Standard). */
+export function detectLanguage(text, fallback = 'de') {
+  const words = text.toLowerCase().match(/\p{L}+/gu) ?? [];
+  let de = 0;
+  let en = 0;
+  for (const w of words) {
+    if (DE_WORDS.has(w)) de++;
+    if (EN_WORDS.has(w)) en++;
+  }
+  if (/[äöüß]/i.test(text)) de += 2;
+  if (de === en) return fallback;
+  return de > en ? 'de' : 'en';
 }
 
 /** Teilt laufend eintreffenden Text in fertige Sätze. */
@@ -41,6 +76,7 @@ export class SentenceSplitter {
   constructor(onSentence) {
     this.buf = '';
     this.onSentence = onSentence;
+    this.inCode = false;
   }
   push(text) {
     this.buf += text;
@@ -50,13 +86,18 @@ export class SentenceSplitter {
     while ((m = re.exec(this.buf))) {
       const sentence = (m[1] ?? m[3] ?? '').trim();
       this.buf = this.buf.slice(m[0].length);
-      if (sentence) this.onSentence(sentence);
+      // Codeblöcke komplett überspringen
+      const fences = (sentence.match(/```/g) ?? []).length;
+      const wasInCode = this.inCode;
+      if (fences % 2) this.inCode = !this.inCode;
+      if (sentence && !wasInCode && !fences) this.onSentence(sentence);
     }
   }
   flush() {
     const rest = this.buf.trim();
     this.buf = '';
-    if (rest) this.onSentence(rest);
+    if (rest && !this.inCode && !rest.includes('```')) this.onSentence(rest);
+    this.inCode = false;
   }
 }
 
@@ -66,71 +107,75 @@ export class SpeechOutput {
     this.onSpeakingChange = onSpeakingChange ?? (() => {});
     this.onStatus = onStatus ?? (() => {});
     this.engine = 'piper';
-    this.piperVoice = 'de_DE-thorsten-medium';
+    this.voices = { ...DEFAULT_VOICES };
+    this.language = 'de';
     this.systemVoice = '';
     this.rate = 1;
+    this.maxSentences = 0;
     this.queue = [];
     this.playing = false;
     this.generation = 0;
-    this.session = null;
-    this.sessionVoice = null;
+    this.spokenInTurn = 0;
     this.ctx = null;
   }
 
-  configure({ engine, piperVoice, systemVoice, rate }) {
+  configure({ engine, voices, language, systemVoice, rate, maxSentences }) {
     if (engine) this.engine = engine;
-    if (piperVoice) this.piperVoice = piperVoice;
+    if (voices) this.voices = { ...DEFAULT_VOICES, ...voices };
+    if (language) this.language = language;
     if (systemVoice !== undefined) this.systemVoice = systemVoice;
     if (rate) this.rate = rate;
+    if (maxSentences !== undefined) this.maxSentences = maxSentences;
   }
 
   static systemVoices() {
     return speechSynthesis.getVoices();
   }
 
-  async getSession(onProgress) {
-    if (this.session && this.sessionVoice === this.piperVoice) return this.session;
-    TtsSession._instance = null; // Bibliothek nutzt ein Singleton – beim Stimmwechsel neu anlegen
-    this.session = null;
-    const s = new TtsSession({ voiceId: this.piperVoice, wasmPaths: WASM, progress: onProgress });
-    await s.waitReady;
-    this.session = s;
-    this.sessionVoice = this.piperVoice;
-    return s;
+  voiceFor(text) {
+    const lang = detectLanguage(text, this.language);
+    return this.voices[lang] ?? this.voices[this.language];
   }
 
-  preload(onProgress) {
-    if (this.engine !== 'piper') return Promise.resolve();
-    return this.getSession(onProgress);
+  async preload(onProgress) {
+    if (this.engine !== 'piper') return;
+    for (const id of new Set([this.voices[this.language], this.voices[this.language === 'de' ? 'en' : 'de']])) {
+      await preloadVoice(id, onProgress);
+    }
+  }
+
+  /** Neue Antwort beginnt: Satzzähler für "maximal vorlesen" zurücksetzen. */
+  newTurn() {
+    this.spokenInTurn = 0;
   }
 
   /** Satz in die Warteschlange legen. Piper-Audio wird sofort vorberechnet. */
   enqueue(text) {
     const clean = cleanForSpeech(text);
-    if (!clean) return;
+    if (!clean || !/[\p{L}\p{N}]/u.test(clean)) return;
+    if (this.maxSentences && this.spokenInTurn >= this.maxSentences) return;
+    this.spokenInTurn++;
     const gen = this.generation;
     const item = { text: clean, gen };
     if (this.engine === 'piper') {
-      item.audio = this.synthPiper(clean).catch((err) => {
-        this.onStatus(`Sprachausgabe-Fehler: ${err.message}`);
-        return null;
-      });
+      item.audio = synthesize(clean, this.voiceFor(clean), {
+        rate: this.rate,
+        onProgress: ({ loaded, total }) =>
+          total && this.onStatus(`Stimme wird geladen … ${Math.round((loaded / total) * 100)} % (nur beim ersten Mal)`),
+      })
+        .then((r) => {
+          this.onStatus('');
+          return r;
+        })
+        .catch((err) => {
+          // Ein fehlerhafter Satz soll nicht die ganze Ausgabe stoppen.
+          console.warn('Sprachausgabe:', clean, err);
+          this.onStatus(`Sprachausgabe: ein Satz wurde übersprungen (${err.message})`);
+          return null;
+        });
     }
     this.queue.push(item);
     if (!this.playing) this.playNext();
-  }
-
-  async synthPiper(text) {
-    // Nacheinander synthetisieren, die Piper-Sitzung ist nicht parallel nutzbar.
-    const prev = this.synthChain ?? Promise.resolve();
-    const run = prev.then(async () => {
-      const s = await this.getSession((p) => {
-        if (p.total) this.onStatus(`Lade Stimme … ${Math.round((p.loaded / p.total) * 100)} %`);
-      });
-      return s.predict(text);
-    });
-    this.synthChain = run.catch(() => {});
-    return run;
   }
 
   async playNext() {
@@ -147,8 +192,8 @@ export class SpeechOutput {
     }
     try {
       if (this.engine === 'piper') {
-        const blob = await item.audio;
-        if (blob && item.gen === this.generation) await this.playBlob(blob);
+        const result = await item.audio;
+        if (result && item.gen === this.generation) await this.playPcm(result.audio, result.sampleRate);
       } else {
         await this.speakSystem(item.text);
       }
@@ -158,33 +203,31 @@ export class SpeechOutput {
     if (item.gen === this.generation) this.playNext();
   }
 
-  async playBlob(blob) {
+  async playPcm(pcm, sampleRate) {
     this.ctx ??= new AudioContext();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
-    const buf = await this.ctx.decodeAudioData(await blob.arrayBuffer());
+    const buf = this.ctx.createBuffer(1, pcm.length, sampleRate);
+    buf.copyToChannel(pcm instanceof Float32Array ? pcm : Float32Array.from(pcm), 0);
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
-    src.playbackRate.value = this.rate;
     const analyser = this.ctx.createAnalyser();
     analyser.fftSize = 512;
     src.connect(analyser);
     analyser.connect(this.ctx.destination);
     const samples = new Float32Array(analyser.fftSize);
-    let raf;
-    const tick = () => {
+    // setInterval statt requestAnimationFrame: läuft auch, wenn das Chatfenster versteckt ist.
+    const timer = setInterval(() => {
       analyser.getFloatTimeDomainData(samples);
       let sum = 0;
       for (const v of samples) sum += v * v;
       this.onLevel(Math.min(1, Math.sqrt(sum / samples.length) * 6));
-      raf = requestAnimationFrame(tick);
-    };
+    }, 33);
     this.currentSource = src;
     await new Promise((resolve) => {
       src.onended = resolve;
       src.start();
-      tick();
     });
-    cancelAnimationFrame(raf);
+    clearInterval(timer);
     this.currentSource = null;
     this.onLevel(0);
   }
@@ -194,7 +237,7 @@ export class SpeechOutput {
       const u = new SpeechSynthesisUtterance(text);
       const voice = speechSynthesis.getVoices().find((v) => v.name === this.systemVoice);
       if (voice) u.voice = voice;
-      u.lang = voice?.lang ?? 'de-DE';
+      u.lang = voice?.lang ?? (this.language === 'en' ? 'en-US' : 'de-DE');
       u.rate = this.rate;
       // Systemstimmen liefern kein Audiosignal – Mundbewegung wird simuliert.
       let t = 0;

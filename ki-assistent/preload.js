@@ -3,12 +3,32 @@ const { contextBridge, ipcRenderer } = require('electron');
 const listeners = new Map();
 ipcRenderer.on('llm:event', (_e, msg) => listeners.get(msg.id)?.(msg));
 
+let commandHandler = () => {};
+ipcRenderer.on('cmd', (_e, cmd) => commandHandler(cmd));
+
 contextBridge.exposeInMainWorld('desktop', {
   loadData: () => ipcRenderer.invoke('data:load'),
   saveData: (data) => ipcRenderer.invoke('data:save', data),
   minimize: () => ipcRenderer.send('win:minimize'),
   close: () => ipcRenderer.send('win:close'),
+  show: () => ipcRenderer.send('win:show'),
+  quit: () => ipcRenderer.send('app:quit'),
   setAlwaysOnTop: (on) => ipcRenderer.send('win:alwaysOnTop', on),
+  onCommand: (fn) => (commandHandler = fn),
+
+  // freischwebende Figur
+  avatarIgnoreMouse: (ignore) => ipcRenderer.send('avatar:ignoreMouse', ignore),
+  avatarDragStart: () => ipcRenderer.send('avatar:dragStart'),
+  avatarDragEnd: () => ipcRenderer.send('avatar:dragEnd'),
+  avatarResize: (factor, aspect) => ipcRenderer.send('avatar:resize', { factor, aspect }),
+  avatarMenu: (state) => ipcRenderer.send('avatar:menu', state),
+
+  // Modelle / Netzwerk
+  modelInfo: () => ipcRenderer.invoke('models:info'),
+  openModelDir: () => ipcRenderer.send('models:open'),
+  setOffline: (on) => ipcRenderer.send('net:offline', on),
+
+  // LM Studio
   listModels: (baseUrl) => ipcRenderer.invoke('llm:models', baseUrl),
   chat: (req, onEvent) => {
     listeners.set(req.id, (msg) => {
