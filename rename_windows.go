@@ -40,8 +40,8 @@ func (p *Pane) rename() {
 		DefaultButton: &okBt,
 		CancelButton:  &cancelBt,
 		Title:         title,
-		MinSize:  Size{Width: 480},
-		Layout:   VBox{},
+		MinSize:       Size{Width: 480},
+		Layout:        VBox{},
 		Children: []Widget{
 			Label{Text: hint},
 			LineEdit{AssignTo: &edit, Text: value},
