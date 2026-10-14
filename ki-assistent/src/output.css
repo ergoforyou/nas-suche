@@ -32,3 +32,7 @@ article { flex: 1; overflow-y: auto; padding: 8px 28px 40px; user-select: text; 
 .markdown th { background: var(--panel-2); }
 .markdown hr { border: none; border-top: 1px solid var(--border); margin: 1.2em 0; }
 .empty { color: var(--muted); text-align: center; margin-top: 30vh; }
+.flash { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--accent);
+  border-radius: 8px; padding: 6px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+.flash[hidden] { display: none; }
+.flash button { margin-left: 8px; }

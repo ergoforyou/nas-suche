@@ -4,6 +4,7 @@
 import { Avatar, avatarState } from './avatar.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { RubberBand } from './rubberband.js';
+import { toDocx, toPrintHtml, fileBase } from './export.js';
 
 const desktop = window.desktop;
 
@@ -144,21 +145,69 @@ export class OutputWindow {
       $('copy').textContent = 'Kopiert ✓';
       setTimeout(() => ($('copy').textContent = 'Kopieren'), 1500);
     };
-    $('save').onclick = () => {
-      const e = this.entries[this.index];
+    const current = () => this.entries[this.index];
+    const done = (file) => {
+      if (!file) return;
+      this.flash(`Gespeichert: ${file.split(/[\\/]/).pop()}`, file);
+    };
+    const fail = (e) => this.flash(`Fehler beim Speichern: ${e.message}`);
+    $('pdf').onclick = async () => {
+      const e = current();
+      if (!e) return;
+      try {
+        done(await desktop.exportPdf(fileBase(e.question), toPrintHtml({ question: e.question, answer: e.answer })));
+      } catch (err) {
+        fail(err);
+      }
+    };
+    $('docx').onclick = async () => {
+      const e = current();
+      if (!e) return;
+      try {
+        const bytes = await toDocx({ question: e.question, answer: e.answer });
+        done(await desktop.exportSave(fileBase(e.question), 'docx', 'Word-Dokument', bytes));
+      } catch (err) {
+        fail(err);
+      }
+    };
+    $('save').onclick = async () => {
+      const e = current();
       if (!e) return;
       const text = `# ${e.question.replace(/\n/g, ' ')}\n\n${e.answer}\n`;
-      const a = w.document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
-      a.download = `Antwort-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.md`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      try {
+        done(await desktop.exportSave(fileBase(e.question), 'md', 'Markdown-Text', new TextEncoder().encode(text)));
+      } catch (err) {
+        fail(err);
+      }
     };
     w.document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft') this.show(this.index - 1);
       if (e.key === 'ArrowRight') this.show(this.index + 1);
     });
     this.show(this.entries.length - 1);
+  }
+
+  /** Kurze Meldung im Ausgabefenster (mit "Im Ordner zeigen"). */
+  flash(text, file) {
+    if (!this.isOpen) return;
+    const doc = this.win.document;
+    let bar = doc.getElementById('flash');
+    if (!bar) {
+      bar = doc.createElement('div');
+      bar.id = 'flash';
+      bar.className = 'flash';
+      doc.body.appendChild(bar);
+    }
+    bar.textContent = text + ' ';
+    if (file) {
+      const b = doc.createElement('button');
+      b.textContent = 'Im Ordner zeigen';
+      b.onclick = () => desktop.exportShow(file);
+      bar.appendChild(b);
+    }
+    bar.hidden = false;
+    clearTimeout(this.flashTimer);
+    this.flashTimer = setTimeout(() => (bar.hidden = true), 6000);
   }
 
   /** Verlauf setzen (aus der Chat-Historie). */

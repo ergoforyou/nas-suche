@@ -7,6 +7,7 @@ let commandHandler = () => {};
 ipcRenderer.on('cmd', (_e, cmd) => commandHandler(cmd));
 
 contextBridge.exposeInMainWorld('desktop', {
+  edition: ipcRenderer.sendSync('app:edition'),
   loadData: () => ipcRenderer.invoke('data:load'),
   saveData: (data) => ipcRenderer.invoke('data:save', data),
   minimize: () => ipcRenderer.send('win:minimize'),
@@ -24,6 +25,11 @@ contextBridge.exposeInMainWorld('desktop', {
   avatarMenu: (state) => ipcRenderer.send('avatar:menu', state),
   avatarResizeStart: (corner, aspect) => ipcRenderer.send('avatar:resizeStart', { corner, aspect }),
   avatarSetSize: (fraction, aspect) => ipcRenderer.send('avatar:setSize', { fraction, aspect }),
+
+  // Dokumente speichern
+  exportSave: (name, ext, label, bytes) => ipcRenderer.invoke('export:save', { name, ext, label, bytes }),
+  exportPdf: (name, html) => ipcRenderer.invoke('export:pdf', { name, html }),
+  exportShow: (file) => ipcRenderer.send('export:show', file),
 
   // Medien (Video-Posen)
   saveMedia: (bytes, ext) => ipcRenderer.invoke('media:save', { bytes, ext }),

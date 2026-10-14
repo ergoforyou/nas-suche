@@ -10,6 +10,9 @@ import { debugVoice, synthesize, piperState } from './piper.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
+// "lokal" = Ausgabe ganz ohne Cloud-Funktionen, "cloud" = mit Claude/ChatGPT/OpenAI-Stimme
+const EDITION = desktop.edition ?? 'cloud';
+const LOCAL_ONLY = EDITION === 'lokal';
 
 // ---------------------------------------------------------------- Daten
 const DEFAULT_AVATAR = {
@@ -915,13 +918,17 @@ function fillSettings() {
   $('cHistory').value = s.historyLimit;
   $('cOffline').checked = s.offline;
   $('cProvider').value = s.provider;
-  fillSelect($('cClaudeModel'), CLAUDE_MODELS, s.claudeModel);
-  $('cClaudeEffort').value = s.claudeEffort;
+  if (!LOCAL_ONLY) {
+    fillSelect($('cClaudeModel'), CLAUDE_MODELS, s.claudeModel);
+    $('cClaudeEffort').value = s.claudeEffort;
+  }
   toggleProviderFields();
   refreshKeys();
-  $('vCloudVoice').value = p.voice.cloud?.voice ?? 'nova';
-  $('vCloudStyle').value = p.voice.cloud?.instructions ?? '';
-  $('vCloudModel').value = s.cloudTtsModel;
+  if (!LOCAL_ONLY) {
+    $('vCloudVoice').value = p.voice.cloud?.voice ?? 'nova';
+    $('vCloudStyle').value = p.voice.cloud?.instructions ?? '';
+    $('vCloudModel').value = s.cloudTtsModel;
+  }
   drawMarkers();
 }
 
@@ -940,7 +947,7 @@ function toggleEngineFields() {
   $('vPiperWrap').hidden = engine !== 'piper';
   $('vSystemWrap').hidden = engine !== 'system';
   $('vServerWrap').hidden = engine !== 'server';
-  $('vCloudWrap').hidden = engine !== 'cloud';
+  if ($('vCloudWrap')) $('vCloudWrap').hidden = engine !== 'cloud';
   if (engine === 'cloud') refreshKeys();
   if (engine === 'server') refreshServer();
 }
@@ -2005,6 +2012,7 @@ $('cRefresh').onclick = () => refreshModels();
 
 // ---- KI-Anbieter (LM Studio lokal oder Cloud)
 function toggleProviderFields() {
+  if (LOCAL_ONLY) return;
   const p = state.settings.provider;
   $('cLocalWrap').hidden = p !== 'lmstudio';
   $('cClaudeWrap').hidden = p !== 'anthropic';
@@ -2013,6 +2021,7 @@ function toggleProviderFields() {
 }
 
 async function refreshKeys() {
+  if (LOCAL_ONLY) return {};
   const k = await desktop.keyStatus();
   const txt = (on) => (on ? `✔ Schlüssel hinterlegt${k.encrypted ? ' (verschlüsselt)' : ''}` : 'Kein Schlüssel hinterlegt');
   $('cClaudeKeyInfo').textContent = txt(k.anthropic);
@@ -2112,6 +2121,7 @@ async function init() {
   state.activeId = data.activeId ?? state.personas[0].id;
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;
   state.history = data.history ?? {};
+  applyEdition();
   desktop.setOffline(state.settings.offline);
 
   if (state.settings.stageHeight) {
@@ -2175,8 +2185,22 @@ async function selfTest() {
   }
 }
 
+/** Lokale Ausgabe: alle Cloud-Optionen aus der Oberfläche entfernen. */
+function applyEdition() {
+  if (!LOCAL_ONLY) return;
+  for (const sel of ['#cProvider option:not([value="lmstudio"])', '#vEngine option[value="cloud"]']) {
+    document.querySelectorAll(sel).forEach((o) => o.remove());
+  }
+  for (const id of ['cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap']) $(id)?.remove();
+  const prov = $('cProvider').closest('label');
+  if (prov) prov.hidden = true;
+  if (state.settings.provider !== 'lmstudio') state.settings.provider = 'lmstudio';
+  for (const p of state.personas) if (p.voice?.engine === 'cloud') p.voice.engine = 'piper';
+}
+
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  edition: EDITION,
   avatar,
   tts,
   stt,

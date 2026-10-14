@@ -11,6 +11,7 @@ const {
   Menu,
   globalShortcut,
   safeStorage,
+  dialog,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -20,6 +21,16 @@ const { friendlyCloudError, chatAnthropic, chatOpenAI } = require('./cloud.js');
 
 const DIST = path.join(__dirname, 'dist');
 const SMOKE = process.argv.includes('--smoke-test');
+
+// Zwei getrennte Ausgaben, die nebeneinander installiert werden können:
+//  - "lokal": ohne jede Cloud-Funktion
+//  - "cloud": zusätzlich Claude, ChatGPT und OpenAI-Stimme
+// Jede Ausgabe hat ihren eigenen Datenordner (Personas, Bilder, Videos, Gedächtnis).
+const EDITION = process.env.KI_EDITION || require('./package.json').edition || 'cloud';
+const APP_NAME = EDITION === 'lokal' ? 'KI-Assistent' : 'KI-Assistent Cloud';
+app.setName(APP_NAME);
+app.setPath('userData', path.join(app.getPath('appData'), APP_NAME));
+ipcMain.on('app:edition', (e) => (e.returnValue = EDITION));
 
 // Für die automatische Gesichtserkennung (FaceDetector) im Avatar-Editor.
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
@@ -53,6 +64,51 @@ function patchData(patch) {
 
 ipcMain.handle('data:load', () => loadData());
 ipcMain.handle('data:save', (_e, data) => patchData(data));
+
+// ---------------------------------------------------------------- Dokumente speichern (PDF, Word, Markdown)
+// Alles lokal: Word wird in der Oberfläche erzeugt, PDF hier über die Druckfunktion.
+async function askSavePath(name, ext, label) {
+  const parent = BrowserWindow.getFocusedWindow() ?? win;
+  const { canceled, filePath } = await dialog.showSaveDialog(parent, {
+    title: 'Speichern unter',
+    defaultPath: path.join(app.getPath('documents'), `${name}.${ext}`),
+    filters: [{ name: label, extensions: [ext] }],
+  });
+  return canceled ? null : filePath;
+}
+
+ipcMain.handle('export:save', async (_e, { name, ext, label, bytes }) => {
+  const file = await askSavePath(name, ext, label);
+  if (!file) return null;
+  fs.writeFileSync(file, Buffer.from(bytes));
+  return file;
+});
+
+ipcMain.handle('export:pdf', async (_e, { name, html }) => {
+  const file = await askSavePath(name, 'pdf', 'PDF-Dokument');
+  if (!file) return null;
+  // Unsichtbares Fenster ohne JavaScript, nur zum Setzen und Drucken des Dokuments
+  const pdfWin = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true } });
+  try {
+    pdfWin.webContents.session.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (_d, cb) => cb({ cancel: true }));
+    await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    const pdf = await pdfWin.webContents.printToPDF({
+      pageSize: 'A4',
+      printBackground: true,
+      margins: { top: 0.6, bottom: 0.6, left: 0.7, right: 0.7 },
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate:
+        '<div style="font-size:8px;color:#888;width:100%;text-align:center"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+    });
+    fs.writeFileSync(file, pdf);
+    return file;
+  } finally {
+    pdfWin.destroy();
+  }
+});
+
+ipcMain.on('export:show', (_e, file) => file && shell.showItemInFolder(file));
 
 // ---------------------------------------------------------------- Medien (Video-Posen)
 // Videos liegen als Dateien im Benutzerordner, nicht in daten.json.
@@ -201,7 +257,7 @@ function createWindow() {
     frame: false,
     backgroundColor: '#14161b',
     alwaysOnTop: data?.settings?.alwaysOnTop ?? false,
-    title: 'KI-Assistent',
+    title: APP_NAME,
     show: !SMOKE,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -353,9 +409,18 @@ function runSmokeTest() {
       console.log('Modell-Route:', cfg);
       if (cfg !== 'whisper') return fail('Modell-Download über app:// fehlgeschlagen');
       // Cloud-SDKs müssen sich im Hauptprozess laden lassen
-      const sdkOk = typeof require('@anthropic-ai/sdk').default === 'function' && typeof require('openai').default === 'function';
-      console.log('Cloud-SDKs geladen:', sdkOk);
-      if (!sdkOk) return fail('Cloud-SDKs fehlen');
+      console.log('Ausgabe:', EDITION, '| Datenordner:', app.getPath('userData'));
+      const uiEdition = await js('window.__app.edition');
+      const cloudOptions = await js("document.querySelectorAll('#cProvider option').length");
+      console.log('Oberfläche:', uiEdition, '| Anbieter-Auswahl:', cloudOptions);
+      if (uiEdition !== EDITION) return fail('Ausgabe in der Oberfläche falsch');
+      if (EDITION === 'lokal') {
+        if (cloudOptions !== 1) return fail('Lokale Ausgabe zeigt Cloud-Anbieter');
+      } else {
+        const sdkOk = typeof require('@anthropic-ai/sdk').default === 'function' && typeof require('openai').default === 'function';
+        console.log('Cloud-SDKs geladen:', sdkOk);
+        if (!sdkOk) return fail('Cloud-SDKs fehlen');
+      }
       // Sprachkette in der echten App: Piper spricht, Whisper erkennt
       const speech = await js('window.__app.selfTest()');
       console.log('Sprach-Selbsttest:', JSON.stringify(speech));
@@ -663,6 +728,7 @@ ipcMain.handle('keys:status', () => {
 });
 
 ipcMain.handle('keys:set', (_e, { provider, key }) => {
+  if (EDITION === 'lokal') throw new Error('Diese Ausgabe nutzt keine Cloud-Anbieter.');
   if (!['anthropic', 'openai'].includes(provider)) throw new Error('Unbekannter Anbieter');
   const all = readKeyFile();
   const clean = String(key ?? '').trim();
@@ -692,10 +758,13 @@ function openaiClient() {
 }
 
 function cloudBlocked(provider) {
-  return offline && provider !== 'lmstudio' ? 'Offline-Modus ist aktiv – Cloud-Anbieter sind gesperrt (⚙ → Verbindung).' : null;
+  if (provider === 'lmstudio') return null;
+  if (EDITION === 'lokal') return 'Diese Ausgabe arbeitet ausschließlich lokal – Cloud-Anbieter sind nicht enthalten.';
+  return offline ? 'Offline-Modus ist aktiv – Cloud-Anbieter sind gesperrt (⚙ → Verbindung).' : null;
 }
 
 ipcMain.handle('openai:models', async () => {
+  if (cloudBlocked('openai')) throw new Error(cloudBlocked('openai'));
   const { client } = openaiClient();
   const ids = [];
   for await (const m of client.models.list()) ids.push(m.id);

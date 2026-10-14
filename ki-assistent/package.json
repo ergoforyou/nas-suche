@@ -1,7 +1,7 @@
 {
   "name": "ki-assistent",
   "productName": "KI-Assistent",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Lokaler Desktop-Assistent mit Avatar, Spracherkennung und Sprachausgabe für LM Studio",
   "main": "main.js",
   "author": "ergoforyou",
@@ -18,6 +18,7 @@
     "@diffusionstudio/piper-wasm": "1.0.0",
     "@huggingface/transformers": "3.8.1",
     "@mintplex-labs/piper-tts-web": "1.0.5",
+    "docx": "^9.11.0",
     "dompurify": "3.3.0",
     "electron": "38.8.6",
     "electron-builder": "26.0.12",
@@ -63,5 +64,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.134.0",
     "openai": "7.33.0"
-  }
+  },
+  "edition": "cloud"
 }

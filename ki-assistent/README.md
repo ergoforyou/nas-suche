@@ -32,7 +32,9 @@ spricht. Spracherkennung und Sprachausgabe laufen ebenfalls lokal auf dem eigene
   ändern die Größe. Doppelklick = sprechen, Rechtsklick = Menü (Chat öffnen …). Das Chatfenster kann dann
   geschlossen werden. Auch im Chatfenster lässt sich die Figur so verschieben und skalieren.
 - **📄** – Ausgabefenster: Antworten groß und formatiert wie in LM Studio (Überschriften, Listen,
-  Tabellen, Code mit Kopier-Knopf), mit ◀ ▶ durch frühere Antworten blättern.
+  Tabellen, Code mit Kopier-Knopf), mit ◀ ▶ durch frühere Antworten blättern. Knöpfe **PDF**, **Word**
+  und **Text** speichern die Antwort als fertiges Dokument (A4-PDF mit Seitenzahlen, .docx mit echten
+  Überschriften, Listen und Tabellen, Markdown) – komplett lokal erzeugt.
 - **📌** – Chatfenster immer im Vordergrund.
 
 ### Eigene Persona & Avatar
@@ -89,6 +91,15 @@ Sprach-Server **Chatterbox** (MIT-Lizenz) genutzt werden. Er läuft auf der NVID
   Empfohlen: „Thorsten“ (Deutsch) und „Lessac“ (Englisch).
 - **Höchstens vorlesen** begrenzt lange Antworten (der Rest steht im Ausgabefenster).
 
+### Zwei getrennte Programme: „KI-Assistent“ (lokal) und „KI-Assistent Cloud“
+
+Es gibt zwei Installationen, die unabhängig nebeneinander laufen – jede mit eigenem Datenordner
+(`%APPDATA%\KI-Assistent` bzw. `%APPDATA%\KI-Assistent Cloud`), eigenen Personas, Gedächtnis und Einstellungen:
+
+- **KI-Assistent** (lokal): nur LM Studio und lokale Stimmen. Cloud-Anbieter und Schlüsselfelder gibt es
+  dort gar nicht; der Hauptprozess lehnt Cloud-Anfragen zusätzlich ab.
+- **KI-Assistent Cloud**: wie unten beschrieben, wahlweise Claude, ChatGPT oder weiterhin LM Studio.
+
 ### Cloud statt lokal (optional): Claude, ChatGPT, OpenAI-Stimme
 
 Ist die eigene Grafikkarte zu langsam, kann das Sprachmodell in der Cloud laufen – alles andere (Avatar, Posen,
@@ -99,6 +110,8 @@ Gedächtnis, Personas, Spracherkennung) bleibt lokal:
 - ⚙ → Sprache → Engine **OpenAI-Stimme**: ausdrucksstarke Stimmen ohne Grafikkarte (z. B. Nova, Shimmer),
   Sprechstil per Anweisung („warm und lebendig …“).
 - Schlüssel werden mit der Verschlüsselung von Windows gespeichert. Im Offline-Modus sind Cloud-Anbieter gesperrt.
+- An den Anbieter geht nur der Chattext (Systemprompt, Verlauf, Gedächtnis-Notizen) bzw. der vorzulesende
+  Satz. Bilder, Videos, Avatar und Sprachaufnahmen verlassen den Rechner nie.
 
 ### Datenschutz
 
