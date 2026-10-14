@@ -88,3 +88,69 @@ def test_einfuegen_hochgeladen_und_download(client, brief, tmp_path):
 
 def test_speichern_ohne_dialog_im_browser(client):
     assert client.post("/api/dialog/speichern", json={"vorschlag": "x.pdf"}).json() == {"verfuegbar": False, "pfad": None}
+
+
+def _warten(client, auftrag_id, zeit=30):
+    import time as _t
+
+    ende = _t.time() + zeit
+    while _t.time() < ende:
+        for a in client.get("/api/auftraege").json():
+            if a["id"] == auftrag_id and a["status"] not in ("wartet", "laeuft"):
+                return a
+        _t.sleep(0.05)
+    raise AssertionError("Auftrag nicht fertig")
+
+
+def test_zusammenfuehren_ueber_api_mit_upload(client, brief, tmp_path):
+    from PIL import Image
+
+    png = tmp_path / "s.png"
+    Image.new("RGB", (100, 100)).save(png)
+    up = client.post("/api/uploads", params={"name": "s.png"}, content=png.read_bytes()).json()
+    a = client.post(
+        "/api/zusammenfuehren", json={"eintraege": [{"pfad": str(brief)}, {"upload": up["id"]}], "lesezeichen": True}
+    ).json()
+    fertig = _warten(client, a["id"])
+    assert fertig["status"] == "fertig", fertig
+    dok_id = fertig["ergebnis"]["dokumente"][0]
+    info = client.get(f"/api/dokumente/{dok_id}").json()
+    assert info["seitenanzahl"] == 4 and info["geaendert"] and info["ordner"] == str(tmp_path)
+    # Fertiger Auftrag wird als Ereignis gemeldet (einmalig)
+    ereignisse = client.get("/api/ereignisse").json()["ereignisse"]
+    assert any(e["art"] == "auftrag" and e["auftrag"]["id"] == a["id"] for e in ereignisse)
+    assert not client.get("/api/ereignisse").json()["ereignisse"]
+
+
+def test_zusammenfuehren_fehler_wird_gemeldet(client, tmp_path):
+    kaputt = tmp_path / "kaputt.pdf"
+    kaputt.write_bytes(b"keine pdf")
+    a = client.post("/api/zusammenfuehren", json={"eintraege": [{"pfad": str(kaputt)}]}).json()
+    fertig = _warten(client, a["id"])
+    assert fertig["status"] == "fehler" and "kaputt.pdf" in fertig["fehler"]
+
+
+def test_extern_sammelt_explorer_aufrufe(client, brief, tmp_path):
+    """Explorer startet je markierter Datei einen Aufruf – alle landen in EINEM Dialog."""
+    import time as _t
+
+    zweite = tmp_path / "zweite.pdf"
+    zweite.write_bytes(brief.read_bytes())
+    client.post("/api/extern", json={"aktion": "zusammenfuehren", "dateien": [str(zweite)]})
+    client.post("/api/extern", json={"aktion": "zusammenfuehren", "dateien": [str(brief)]})
+    _t.sleep(1.2)
+    ereignisse = [e for e in client.get("/api/ereignisse").json()["ereignisse"] if e["art"] == "zusammenfuehren"]
+    assert len(ereignisse) == 1
+    assert ereignisse[0]["dateien"] == [str(brief), str(zweite)]
+
+
+def test_extern_oeffnen(client, brief):
+    client.post("/api/extern", json={"aktion": "oeffnen", "dateien": [str(brief)]})
+    ereignisse = client.get("/api/ereignisse").json()["ereignisse"]
+    assert ereignisse[0]["art"] == "oeffnen" and len(ereignisse[0]["dokumente"]) == 1
+
+
+def test_docx_direkt_oeffnen_verweist_auf_umwandeln(client, tmp_path):
+    p = tmp_path / "x.docx"
+    p.write_bytes(b"x")
+    assert "umgewandelt" in client.post("/api/dokumente/oeffnen", json={"pfad": str(p)}).json()["fehler"]

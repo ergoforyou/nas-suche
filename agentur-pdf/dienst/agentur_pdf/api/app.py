@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -13,8 +14,11 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from .. import __version__
 from ..benutzer.speicher import BenutzerSpeicher
 from ..kern.bearbeitung import Bearbeitung, quelle_oeffnen
+from ..kern.auftraege import Auftrag, AuftragsVerwaltung
 from ..kern.dokumente import DokumentFehler, DokumentSpeicher
-from ..kern.mupdf_thread import im_mupdf_thread
+from ..kern.konvertierung import braucht_umwandlung, unterstuetzt
+from ..kern.mupdf_thread import im_mupdf_thread, im_mupdf_thread_sync
+from ..kern.zusammenfuehren import Eintrag, Uploads, umwandeln, zusammenfuehren
 from .sicherheit import pruefe_anfrage
 
 OEFFENBARE_ENDUNGEN = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".xps", ".epub"}
@@ -27,6 +31,7 @@ def erstelle_app(
     oberflaeche_ordner: Path | None = None,
     datei_dialog: Callable[[], list[str]] | None = None,
     speichern_dialog: Callable[[str], str | None] | None = None,
+    fenster_vorholen: Callable[[], None] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Agentur-PDF", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     dokumente = dokumente or DokumentSpeicher()
@@ -36,6 +41,14 @@ def erstelle_app(
     app.state.datei_dialog = datei_dialog
     app.state.speichern_dialog = speichern_dialog
     bearbeitung = Bearbeitung(dokumente)
+    auftraege = AuftragsVerwaltung()
+    uploads = Uploads()
+    ereignisse = Ereignisse()
+    app.state.auftraege = auftraege
+    app.state.ereignisse = ereignisse
+    app.state.fenster_vorholen = fenster_vorholen
+    # Fertige Aufträge melden sich bei der Oberfläche (die sie dann öffnet)
+    auftraege.bei_ende = lambda a: ereignisse.hinzufuegen({"art": "auftrag", "auftrag": a.als_dict()})
 
     @app.middleware("http")
     async def sicherheit(request: Request, call_next):
@@ -64,6 +77,8 @@ def erstelle_app(
 
     @app.post("/api/dokumente/oeffnen")
     async def oeffnen(pfad: str = Body(..., embed=True), passwort: str | None = Body(None, embed=True)):
+        if braucht_umwandlung(pfad):
+            raise DokumentFehler("Diese Datei muss erst umgewandelt werden (Konvertieren → In PDF umwandeln).")
         dok = await im_mupdf_thread(dokumente.oeffnen_pfad, pfad, passwort)
         info = await im_mupdf_thread(dokumente.info, dok.id)
         if dok.pfad:
@@ -237,6 +252,118 @@ def erstelle_app(
         pfad = await asyncio.get_running_loop().run_in_executor(None, app.state.speichern_dialog, vorschlag)
         return {"verfuegbar": True, "pfad": pfad}
 
+    # ------------------------------------------- Zusammenführen & Umwandeln
+    def eintraege_aufloesen(roh: list[dict]) -> list[Eintrag]:
+        ergebnis = []
+        for e in roh:
+            if e.get("upload"):
+                ergebnis.append(uploads.get(e["upload"]))
+            elif e.get("pfad"):
+                pfad = os.path.abspath(e["pfad"])
+                if not os.path.isfile(pfad):
+                    raise DokumentFehler(f"Datei nicht gefunden: {pfad}")
+                ergebnis.append(Eintrag(os.path.basename(pfad), pfad))
+        for e in ergebnis:
+            if not unterstuetzt(e.name):
+                raise DokumentFehler(f"„{e.name}“: Dateityp wird nicht unterstützt.")
+        return ergebnis
+
+    @app.post("/api/uploads")
+    async def hochladen_temp(request: Request, name: str = Query(...)):
+        daten = await request.body()
+        if not daten:
+            raise DokumentFehler("Leere Datei.")
+        return {"id": uploads.speichern(name, daten), "name": os.path.basename(name)}
+
+    def zusammenfuehren_starten(eintraege: list[Eintrag], lesezeichen: bool, anhaenge: bool) -> Auftrag:
+        titel = f"{len(eintraege)} Dateien zusammenführen" if len(eintraege) > 1 else f"„{eintraege[0].name}“ umwandeln"
+        return auftraege.starten(
+            titel,
+            lambda a: zusammenfuehren(eintraege, dokumente, a, im_mupdf_thread_sync, lesezeichen, anhaenge),
+        )
+
+    def umwandeln_starten(eintraege: list[Eintrag], speichern: bool) -> Auftrag:
+        titel = f"{len(eintraege)} Dateien in PDF umwandeln" if len(eintraege) > 1 else f"„{eintraege[0].name}“ in PDF umwandeln"
+        return auftraege.starten(titel, lambda a: umwandeln(eintraege, dokumente, a, im_mupdf_thread_sync, speichern))
+
+    @app.post("/api/zusammenfuehren")
+    async def zusammenfuehren_api(
+        eintraege: list[dict] = Body(...), lesezeichen: bool = Body(True), anhaenge: bool = Body(True)
+    ):
+        return zusammenfuehren_starten(eintraege_aufloesen(eintraege), lesezeichen, anhaenge).als_dict()
+
+    @app.post("/api/umwandeln")
+    async def umwandeln_api(eintraege: list[dict] = Body(...), speichern: bool = Body(False)):
+        return umwandeln_starten(eintraege_aufloesen(eintraege), speichern).als_dict()
+
+    @app.get("/api/auftraege")
+    async def auftraege_liste():
+        return auftraege.liste()
+
+    @app.delete("/api/auftraege/{auftrag_id}")
+    async def auftrag_abbrechen(auftrag_id: str):
+        auftraege.get(auftrag_id).abbrechen()
+        return {"ok": True}
+
+    @app.get("/api/ereignisse")
+    async def ereignisse_abholen():
+        """Wird von der Oberfläche regelmäßig abgefragt: Aufträge + Ereignisse
+        (z. B. Dateien, die per Explorer-Rechtsklick übergeben wurden)."""
+        return {"ereignisse": ereignisse.abholen(), "auftraege": auftraege.liste()}
+
+    # --------------------------------------------- Übergabe von außen
+    sammler: dict = {"dateien": [], "timer": None, "lock": threading.Lock()}
+
+    def zusammenfuehren_sammeln(dateien: list[str]) -> None:
+        """Der Explorer startet bei Mehrfachauswahl ein Programm *je Datei*.
+        Alle Dateien, die kurz nacheinander eintreffen, landen in einem Dialog."""
+
+        def ausloesen() -> None:
+            with sammler["lock"]:
+                liste, sammler["dateien"], sammler["timer"] = sammler["dateien"], [], None
+            ereignisse.hinzufuegen({"art": "zusammenfuehren", "dateien": sorted(dict.fromkeys(liste), key=str.lower)})
+
+        with sammler["lock"]:
+            sammler["dateien"].extend(dateien)
+            if sammler["timer"]:
+                sammler["timer"].cancel()
+            sammler["timer"] = threading.Timer(0.8, ausloesen)
+            sammler["timer"].daemon = True
+            sammler["timer"].start()
+
+    async def extern_ausfuehren(aktion: str, dateien: list[str]) -> None:
+        dateien = [os.path.abspath(d) for d in dateien]
+        if aktion == "zusammenfuehren":
+            zusammenfuehren_sammeln(dateien)
+        elif aktion == "umwandeln":
+            umwandeln_starten(eintraege_aufloesen([{"pfad": d} for d in dateien]), speichern=True)
+        else:  # öffnen
+            direkt = [d for d in dateien if not braucht_umwandlung(d)]
+            umzuwandeln = [d for d in dateien if braucht_umwandlung(d)]
+            geoeffnet = []
+            for d in direkt:
+                try:
+                    dok = await im_mupdf_thread(dokumente.oeffnen_pfad, d)
+                    geoeffnet.append(dok.id)
+                    benutzer.zuletzt_hinzufuegen(dok.pfad or d, dok.titel, dok.doc.page_count)
+                except DokumentFehler as fehler:
+                    ereignisse.hinzufuegen({"art": "meldung", "text": f"{os.path.basename(d)}: {fehler}"})
+            if geoeffnet:
+                ereignisse.hinzufuegen({"art": "oeffnen", "dokumente": geoeffnet})
+            if umzuwandeln:
+                umwandeln_starten(eintraege_aufloesen([{"pfad": d} for d in umzuwandeln]), speichern=False)
+        if app.state.fenster_vorholen:
+            app.state.fenster_vorholen()
+
+    app.state.extern_ausfuehren = extern_ausfuehren
+
+    @app.post("/api/extern")
+    async def extern(aktion: str = Body("oeffnen"), dateien: list[str] = Body(...)):
+        """Übergabe von einer zweiten Programminstanz (Explorer-Rechtsklick,
+        Doppelklick auf PDF, während Agentur-PDF schon läuft)."""
+        await extern_ausfuehren(aktion, dateien)
+        return {"ok": True}
+
     # -------------------------------------------------------------- Benutzer
     @app.get("/api/einstellungen")
     async def einstellungen():
@@ -319,3 +446,22 @@ def erstelle_app(
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
     return app
+
+
+class Ereignisse:
+    """Warteschlange für Ereignisse an die Oberfläche (werden einmal abgeholt)."""
+
+    def __init__(self) -> None:
+        import threading
+
+        self._liste: list[dict] = []
+        self._lock = threading.Lock()
+
+    def hinzufuegen(self, ereignis: dict) -> None:
+        with self._lock:
+            self._liste.append(ereignis)
+
+    def abholen(self) -> list[dict]:
+        with self._lock:
+            liste, self._liste = self._liste, []
+            return liste

@@ -8,7 +8,9 @@ Startet den lokalen Dienst auf 127.0.0.1 und öffnet die Oberfläche
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
+import signal
 import socket
 import sys
 import threading
@@ -21,8 +23,8 @@ import uvicorn
 from .api.app import erstelle_app
 from .api.sicherheit import neues_token
 from .benutzer.speicher import BenutzerSpeicher
-from .kern.dokumente import DokumentFehler, DokumentSpeicher
-from .kern.mupdf_thread import im_mupdf_thread_sync
+from .kern.dokumente import DokumentSpeicher
+from .windows import instanz
 
 DATEITYPEN = ("PDF und Bilder (*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp)", "Alle Dateien (*.*)")
 
@@ -48,23 +50,45 @@ def freier_port() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="agentur-pdf", description="Agentur-PDF starten")
     parser.add_argument("dateien", nargs="*", help="Dateien, die sofort geöffnet werden")
+    aktionen = parser.add_mutually_exclusive_group()
+    aktionen.add_argument("--zusammenfuehren", action="store_true", help="Dateien zu einer PDF zusammenführen (Dialog)")
+    aktionen.add_argument("--umwandeln", action="store_true", help="Dateien in PDF umwandeln und daneben speichern")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--browser", action="store_true", help="Im Standardbrowser statt im App-Fenster öffnen")
     parser.add_argument("--nur-dienst", action="store_true", help="Nur den Dienst starten (Entwicklung)")
+    parser.add_argument("--neue-instanz", action="store_true", help="Nicht an laufende Instanz weiterreichen")
     parser.add_argument("--token", default=None, help="Festes Token (nur Entwicklung)")
+    parser.add_argument("--explorer-einrichten", action="store_true", help="Rechtsklick-Einträge im Explorer anlegen")
+    parser.add_argument("--explorer-entfernen", action="store_true", help="Rechtsklick-Einträge entfernen")
+    parser.add_argument("--explorer-reg", metavar="DATEI", help="Rechtsklick-Einträge als .reg-Datei exportieren")
     args = parser.parse_args(argv)
+
+    if args.explorer_einrichten or args.explorer_entfernen or args.explorer_reg:
+        from .windows import explorer
+
+        if args.explorer_reg:
+            Path(args.explorer_reg).write_text(explorer.als_reg_datei(explorer.eintraege(explorer.programm_aufruf())), encoding="utf-16")
+            print(f"Gespeichert: {args.explorer_reg}")
+        elif args.explorer_einrichten:
+            print(f"{explorer.einrichten()} Registry-Einträge angelegt.")
+        else:
+            explorer.entfernen()
+            print("Rechtsklick-Einträge entfernt.")
+        return 0
+    aktion = "zusammenfuehren" if args.zusammenfuehren else "umwandeln" if args.umwandeln else "oeffnen"
+
+    einzelinstanz = not (args.nur_dienst or args.neue_instanz)
+    if einzelinstanz:
+        # Läuft Agentur-PDF schon? Dann Dateien übergeben und fertig.
+        if instanz.senden(aktion, args.dateien):
+            return 0
+        if not instanz.sperre_holen(lambda: instanz.senden(aktion, args.dateien)):
+            return 0
 
     token = args.token or neues_token()
     port = args.port or freier_port()
     dokumente = DokumentSpeicher()
     benutzer = BenutzerSpeicher()
-
-    for datei in args.dateien:
-        try:
-            dok = im_mupdf_thread_sync(dokumente.oeffnen_pfad, datei)
-            benutzer.zuletzt_hinzufuegen(dok.pfad or datei, dok.titel, dok.doc.page_count)
-        except DokumentFehler as fehler:
-            print(f"Hinweis: {datei}: {fehler}", file=sys.stderr)
 
     webview = None
     if not (args.browser or args.nur_dienst):
@@ -97,6 +121,19 @@ def main(argv: list[str] | None = None) -> int:
             return None
         return ergebnis if isinstance(ergebnis, str) else ergebnis[0]
 
+    def fenster_vorholen() -> None:
+        """Fenster nach vorne holen, wenn Dateien von außen kommen."""
+        fenster = fenster_ref.get("fenster")
+        if fenster is None:
+            return
+        try:
+            fenster.restore()
+            fenster.show()
+            fenster.on_top = True  # kurzer Trick: Windows lässt sonst nur blinken
+            fenster.on_top = False
+        except Exception:  # noqa: BLE001 – nur Komfort
+            pass
+
     app = erstelle_app(
         token,
         dokumente=dokumente,
@@ -104,34 +141,60 @@ def main(argv: list[str] | None = None) -> int:
         oberflaeche_ordner=oberflaeche_ordner(),
         datei_dialog=datei_dialog if webview else None,
         speichern_dialog=speichern_dialog if webview else None,
+        fenster_vorholen=fenster_vorholen if webview else None,
     )
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     url = f"http://127.0.0.1:{port}/#t={token}"
 
-    if args.nur_dienst:
-        print(f"Agentur-PDF-Dienst läuft: {url}", flush=True)
-        server.run()
-        return 0
-
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     while not server.started:
+        if not thread.is_alive():
+            print("Dienst konnte nicht gestartet werden.", file=sys.stderr)
+            return 1
         time.sleep(0.02)
+    if einzelinstanz:
+        instanz.anmelden(port, token)
+        # Auch beim Beenden von außen (Abmelden, Taskmanager) sauber abmelden
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-    if webview is not None:
-        fenster_ref["fenster"] = webview.create_window(
-            "Agentur-PDF", url, width=1400, height=900, min_size=(900, 600), text_select=True
-        )
-        webview.start()
-    else:
-        print(f"Agentur-PDF läuft: {url}", flush=True)
-        webbrowser.open(url)
-        try:
+    try:
+        # Dateien vom Aufruf wie eine Übergabe von außen behandeln
+        if args.dateien:
+            asyncio.run_coroutine_threadsafe(_extern(app, aktion, args.dateien), _server_loop(server)).result(30)
+
+        if args.nur_dienst:
+            print(f"Agentur-PDF-Dienst läuft: {url}", flush=True)
             thread.join()
-        except KeyboardInterrupt:
-            pass
-    server.should_exit = True
+        elif webview is not None:
+            fenster_ref["fenster"] = webview.create_window(
+                "Agentur-PDF", url, width=1400, height=900, min_size=(900, 600), text_select=True
+            )
+            webview.start()
+        else:
+            print(f"Agentur-PDF läuft: {url}", flush=True)
+            webbrowser.open(url)
+            thread.join()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        if einzelinstanz:
+            instanz.abmelden()
+        server.should_exit = True
     return 0
+
+
+async def _extern(app, aktion: str, dateien: list[str]) -> None:
+    await app.state.extern_ausfuehren(aktion, dateien)
+
+
+def _server_loop(server: uvicorn.Server) -> asyncio.AbstractEventLoop:
+    """Event-Loop des Server-Threads (für Aufrufe aus dem Hauptthread)."""
+    for _ in range(100):
+        for s in server.servers:
+            return s.get_loop() if hasattr(s, "get_loop") else s._loop  # type: ignore[attr-defined]
+        time.sleep(0.02)
+    raise RuntimeError("Server-Loop nicht gefunden")
 
 
 if __name__ == "__main__":

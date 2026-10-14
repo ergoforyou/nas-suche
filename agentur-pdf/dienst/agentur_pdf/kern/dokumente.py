@@ -72,6 +72,8 @@ class OffenesDokument:
     seiten_versionen: dict[str, int] = field(default_factory=dict)
     zurueck: list[Schnappschuss] = field(default_factory=list)
     vor: list[Schnappschuss] = field(default_factory=list)
+    # Vorschlag für „Speichern unter“ bei neuen Dokumenten (z. B. Ordner der Quelldateien)
+    ordner_vorschlag: str | None = None
 
     def kennung(self, seite: int) -> str:
         sid = self.seiten_ids[seite]
@@ -159,6 +161,7 @@ class DokumentSpeicher:
             "id": dok.id,
             "titel": dok.titel,
             "pfad": dok.pfad,
+            "ordner": dok.ordner_vorschlag,
             "version": dok.version,
             "seitenanzahl": dok.doc.page_count,
             "seiten": seiten,
