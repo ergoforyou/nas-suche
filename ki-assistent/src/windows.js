@@ -159,6 +159,16 @@ export class OutputWindow {
       $('copy').textContent = 'Kopiert ✓';
       setTimeout(() => ($('copy').textContent = 'Kopieren'), 1500);
     };
+    $('save').onclick = () => {
+      const e = this.entries[this.index];
+      if (!e) return;
+      const text = `# ${e.question.replace(/\n/g, ' ')}\n\n${e.answer}\n`;
+      const a = w.document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
+      a.download = `Antwort-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.md`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    };
     w.document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft') this.show(this.index - 1);
       if (e.key === 'ArrowRight') this.show(this.index + 1);

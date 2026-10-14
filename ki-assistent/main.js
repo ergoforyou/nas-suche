@@ -14,6 +14,7 @@ const {
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
+const os = require('node:os');
 
 const DIST = path.join(__dirname, 'dist');
 const SMOKE = process.argv.includes('--smoke-test');
@@ -378,6 +379,60 @@ ipcMain.on('avatar:menu', (_e, { listening }) => {
     { type: 'separator' },
     { label: 'Beenden', click: () => ((quitting = true), app.quit()) },
   ]).popup({ window: avatarWin ?? win });
+});
+
+// ---------------------------------------------------------------- LM-Studio-Presets
+// Der Systemprompt aus dem LM-Studio-Chat gilt nicht automatisch für Anfragen über die API.
+// Deshalb lesen wir die gespeicherten Presets ein, damit sie in eine Persona übernommen werden können.
+function presetDirs() {
+  const home = os.homedir();
+  return [
+    path.join(home, '.lmstudio', 'config-presets'),
+    path.join(home, '.lmstudio', 'hub', 'presets'),
+    path.join(home, '.cache', 'lm-studio', 'config-presets'),
+  ];
+}
+
+function findPresetFiles(dir, depth = 0, out = []) {
+  if (depth > 4 || !fs.existsSync(dir)) return out;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) findPresetFiles(p, depth + 1, out);
+    else if (/\.json$/i.test(e.name)) out.push(p);
+  }
+  return out;
+}
+
+function parsePreset(file) {
+  try {
+    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    let systemPrompt = null;
+    let temperature = null;
+    // Neues Format (LM Studio 0.3+): { operation: { fields: [{ key, value }] } }; Felder können verschachtelt sein
+    const walk = (node) => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (typeof node.key === 'string' && 'value' in node) {
+        if (node.key.endsWith('systemPrompt') && typeof node.value === 'string') systemPrompt ??= node.value;
+        if (node.key.endsWith('temperature') && typeof node.value === 'number') temperature ??= node.value;
+      }
+      Object.values(node).forEach(walk);
+    };
+    walk(json);
+    // Altes Format (LM Studio 0.2): { inference_params: { pre_prompt, temp } }
+    systemPrompt ??= json.inference_params?.pre_prompt ?? null;
+    temperature ??= json.inference_params?.temp ?? null;
+    if (!systemPrompt) return null;
+    const name = json.name ?? path.basename(file).replace(/(\.preset)?\.json$/i, '');
+    return { name, systemPrompt, temperature, file };
+  } catch {
+    return null;
+  }
+}
+
+ipcMain.handle('lmstudio:presets', () => {
+  const files = presetDirs().flatMap((d) => findPresetFiles(d));
+  return files.map(parsePreset).filter(Boolean);
 });
 
 // ---------------------------------------------------------------- LM Studio (OpenAI-kompatible API)

@@ -93,6 +93,32 @@ for (const c of cases) {
   console.log(pass ? '✔' : '✘', JSON.stringify({ text: c.text, ...result }));
 }
 
+// KI-Freistellen: Figur vor Bürowand (Verlauf, Fenster, Regal) -> Wand transparent, Gesicht bleibt
+const cut = await page.evaluate(async () => {
+  const img = new Image();
+  img.src = 'default-avatar.svg';
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = 600;
+  c.height = 800;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0, 600, 800);
+  const t0 = performance.now();
+  const rgba = await window.__app.stt.removeBackground(g.getImageData(0, 0, 600, 800));
+  const alpha = (x, y) => rgba[(y * 600 + x) * 4 + 3];
+  return {
+    ms: Math.round(performance.now() - t0),
+    wallTopLeft: alpha(20, 20),
+    wallTopRight: alpha(580, 40),
+    window: alpha(110, 120),
+    face: alpha(300, 300),
+    shirt: alpha(300, 560),
+  };
+});
+const cutOk = cut.wallTopLeft < 60 && cut.wallTopRight < 60 && cut.face > 200;
+ok &&= cutOk;
+console.log(cutOk ? '✔' : '✘', 'KI-Freistellen', JSON.stringify(cut));
+
 await browser.close();
 server.close();
 if (!ok) {

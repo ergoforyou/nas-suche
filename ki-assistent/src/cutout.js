@@ -130,41 +130,83 @@ export function removeBackground(canvas, { tolerance = 30, feather = 1.5 } = {})
     for (let p = 0; p < w * h; p++) if (bgMask[p]) a[p] = 0;
   }
 
-  // Maske anwenden und Begrenzungsrahmen bestimmen
-  let minX = w;
-  let minY = h;
-  let maxX = -1;
-  let maxY = -1;
-  for (let p = 0; p < w * h; p++) {
-    const v = Math.round(d[p * 4 + 3] * a[p]);
-    d[p * 4 + 3] = v;
-    if (v > 16) {
-      const x = p % w;
-      const y = (p / w) | 0;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-  if (maxX < 0) return { canvas, crop: { x: 0, y: 0, w, h }, removed: 0 };
-
-  const pad = Math.round(Math.max(w, h) * 0.02);
-  const crop = {
-    x: Math.max(0, minX - pad),
-    y: Math.max(0, minY - pad),
-    w: Math.min(w, maxX + pad + 1) - Math.max(0, minX - pad),
-    h: Math.min(h, maxY + pad + 1) - Math.max(0, minY - pad),
-  };
+  // Maske anwenden
+  for (let p = 0; p < w * h; p++) d[p * 4 + 3] = Math.round(d[p * 4 + 3] * a[p]);
   const full = canvas.ownerDocument.createElement('canvas');
   full.width = w;
   full.height = h;
   full.getContext('2d').putImageData(img, 0, 0);
+  return { ...cropToContent(full), removed: removed / (w * h) };
+}
+
+/** Auf die sichtbare Figur zuschneiden (mit etwas Rand). */
+export function cropToContent(canvas) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 16) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return { canvas, crop: { x: 0, y: 0, w, h } };
+  const pad = Math.round(Math.max(w, h) * 0.02);
+  const x0 = Math.max(0, minX - pad);
+  const y0 = Math.max(0, minY - pad);
+  const crop = { x: x0, y: y0, w: Math.min(w, maxX + pad + 1) - x0, h: Math.min(h, maxY + pad + 1) - y0 };
   const out = canvas.ownerDocument.createElement('canvas');
   out.width = crop.w;
   out.height = crop.h;
-  out.getContext('2d').drawImage(full, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
-  return { canvas: out, crop, removed: removed / (w * h) };
+  out.getContext('2d').drawImage(canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+  return { canvas: out, crop };
+}
+
+/** Ist der Bildrand weitgehend einfarbig (z. B. weiße Wand)? Dann reicht das schnelle Farbverfahren. */
+export function hasUniformBorder(canvas, tolerance = 30) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const [br, bg, bb] = borderColor(d, w, h);
+  let close = 0;
+  let total = 0;
+  const check = (x, y) => {
+    const i = (y * w + x) * 4;
+    const dist = Math.sqrt((d[i] - br) ** 2 * 0.3 + (d[i + 1] - bg) ** 2 * 0.59 + (d[i + 2] - bb) ** 2 * 0.11) * 1.7;
+    total++;
+    if (dist <= (tolerance / 100) * 160) close++;
+  };
+  for (let x = 0; x < w; x += 2) {
+    check(x, 0);
+    check(x, h - 1);
+  }
+  for (let y = 0; y < h; y += 2) {
+    check(0, y);
+    check(w - 1, y);
+  }
+  return close / total > 0.8;
+}
+
+/** Alpha-Kanal aus der KI-Freistellung übernehmen und zuschneiden. */
+export function applyAlpha(canvas, rgba) {
+  const g = canvas.getContext('2d', { willReadFrequently: true });
+  const img = g.getImageData(0, 0, canvas.width, canvas.height);
+  for (let i = 3; i < img.data.length; i += 4) img.data[i] = Math.min(img.data[i], rgba[i]);
+  const full = canvas.ownerDocument.createElement('canvas');
+  full.width = canvas.width;
+  full.height = canvas.height;
+  full.getContext('2d').putImageData(img, 0, 0);
+  let transparent = 0;
+  for (let i = 3; i < img.data.length; i += 4) if (img.data[i] < 40) transparent++;
+  return { ...cropToContent(full), removed: transparent / (canvas.width * canvas.height) };
 }
 
 /** Prüft, ob ein Bild bereits transparente Bereiche hat. */

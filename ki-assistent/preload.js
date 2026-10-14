@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('desktop', {
   setOffline: (on) => ipcRenderer.send('net:offline', on),
 
   // LM Studio
+  lmStudioPresets: () => ipcRenderer.invoke('lmstudio:presets'),
   listModels: (baseUrl) => ipcRenderer.invoke('llm:models', baseUrl),
   chat: (req, onEvent) => {
     listeners.set(req.id, (msg) => {

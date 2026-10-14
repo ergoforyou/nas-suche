@@ -60,6 +60,14 @@
         </div>
       </label>
       <label>Name <input id="pName" type="text" /></label>
+      <label>Systemprompt aus LM Studio übernehmen
+        <div class="row">
+          <select id="pPreset"><option value="">– Preset wählen –</option></select>
+          <button id="pPresetLoad" title="Presets neu einlesen">⟳</button>
+        </div>
+      </label>
+      <p class="hint" id="pPresetHint">Übernimmt den Systemprompt (und die Temperatur) eines in LM Studio gespeicherten
+        Presets. Der Antwortstil wird dabei auf „Nur mein Systemprompt“ gestellt.</p>
       <label>Charakter &amp; Rolle (Systemprompt)
         <textarea id="pPrompt" rows="7" placeholder="Du bist Max, ein freundlicher Büroassistent …"></textarea>
       </label>
@@ -98,13 +106,15 @@
       </label>
 
       <h3>Hintergrund entfernen (freistellen)</h3>
-      <p class="hint">Für Fotos vor einfarbigem Hintergrund (z. B. weiße Wand). Bilder mit transparentem
-        Hintergrund (PNG) funktionieren direkt. Tipp: Auch „Paint“ in Windows 11 kann Hintergründe entfernen.</p>
-      <label>Toleranz <input id="avTol" type="range" min="5" max="80" step="1" value="30" /></label>
+      <p class="hint">Passiert beim Hochladen automatisch: Einfarbige Hintergründe (z. B. weiße Wand) werden per
+        Farbe entfernt, normale Fotos per lokaler KI (einmaliger Download ~25 MB). Bilder mit transparentem
+        Hintergrund (PNG) bleiben unverändert.</p>
       <div class="row wrap">
-        <button id="avCutout">✂ Hintergrund entfernen</button>
+        <button id="avCutoutAi">✨ Freistellen mit KI</button>
+        <button id="avCutout">✂ Einfarbigen Hintergrund entfernen</button>
         <button id="avRestore">Original wiederherstellen</button>
       </div>
+      <label>Toleranz für einfarbige Hintergründe <input id="avTol" type="range" min="5" max="80" step="1" value="30" /></label>
 
       <h3>Mund &amp; Augen</h3>
       <p class="hint"><b>Am natürlichsten:</b> „🖌 Lippen ausmalen“ wählen und mit der Maus Ober- und Unterlippe

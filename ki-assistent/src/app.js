@@ -1,7 +1,7 @@
 import { Avatar, avatarState, detectFace, loadImage } from './avatar.js';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
-import { removeBackground } from './cutout.js';
+import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha } from './cutout.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
 import { debugVoice } from './piper.js';
@@ -493,6 +493,8 @@ async function setFloating(on, { fromWindow = false } = {}) {
   save();
   if (on) {
     try {
+      const av = persona().avatar;
+      if (!av.original && !hasTransparency(await imageToCanvas(av.image, 256))) await cutoutAvatar('auto');
       await floating.open(persona().avatar);
       updateBadge();
     } catch (e) {
@@ -596,7 +598,10 @@ $('stageResize').addEventListener('pointerdown', (e) => {
 // ---------------------------------------------------------------- Einstellungen
 $('btnSettings').onclick = () => {
   $('drawer').hidden = !$('drawer').hidden;
-  if (!$('drawer').hidden) fillSettings();
+  if (!$('drawer').hidden) {
+    fillSettings();
+    loadPresets();
+  }
 };
 $('btnCloseDrawer').onclick = () => ($('drawer').hidden = true);
 $('tabs').onclick = (e) => {
@@ -698,6 +703,32 @@ $('pLang').onchange = (e) => {
   applyVoice();
   save();
 };
+// Presets aus LM Studio
+let presets = [];
+async function loadPresets() {
+  presets = (await desktop.lmStudioPresets().catch(() => [])) ?? [];
+  const sel = $('pPreset');
+  sel.innerHTML = '';
+  sel.add(new Option(presets.length ? '– Preset wählen –' : 'Keine Presets in LM Studio gefunden', ''));
+  presets.forEach((p, i) => sel.add(new Option(p.name, String(i))));
+}
+$('pPresetLoad').onclick = loadPresets;
+$('pPreset').onchange = (e) => {
+  const preset = presets[+e.target.value];
+  if (!preset) return;
+  const p = persona();
+  if (p.prompt?.trim() && p.prompt !== preset.systemPrompt && !confirm('Den aktuellen Systemprompt durch das Preset ersetzen?')) {
+    e.target.value = '';
+    return;
+  }
+  p.prompt = preset.systemPrompt;
+  p.style = 'frei';
+  if (typeof preset.temperature === 'number') state.settings.temperature = preset.temperature;
+  save();
+  fillSettings();
+  status(`Systemprompt aus LM Studio übernommen: „${preset.name}“.`);
+};
+
 $('pStyle').onchange = (e) => {
   persona().style = e.target.value;
   save();
@@ -1005,31 +1036,52 @@ $('avFile').onchange = async (e) => {
   av.mouthMask = null;
   av.mouthImage = null;
   av.eyesImage = null;
+  av.mouth = null;
+  av.eyes = [];
+  avatarChanged();
+  await cutoutAvatar('auto');
   const face = await detectFace(av.image);
   if (face) {
     av.mouth = face.mouth;
     av.eyes = face.eyes;
     status('Gesicht erkannt – Markierungen bei Bedarf korrigieren.');
   } else {
-    av.mouth = null;
-    av.eyes = [];
     setMarkMode('paint');
-    status('Bitte die Lippen ausmalen (🖌) oder die Mundmitte anklicken, danach beide Augen. Für die freie Figur: „Hintergrund entfernen“.');
+    status('Bitte die Lippen ausmalen (🖌) oder die Mundmitte anklicken, danach beide Augen anklicken.');
   }
   avatarChanged();
 };
 
-$('avCutout').onclick = async () => {
+/**
+ * Figur freistellen. mode: 'auto' (einfarbig -> Farbe, sonst KI), 'color' oder 'ai'.
+ * Das Original bleibt erhalten; Markierungen und Lippen-Maske werden mitverschoben.
+ */
+async function cutoutAvatar(mode = 'auto') {
   const av = persona().avatar;
-  const btn = $('avCutout');
-  btn.disabled = true;
+  const buttons = [$('avCutout'), $('avCutoutAi')];
+  buttons.forEach((b) => (b.disabled = true));
   try {
     const src = av.original ?? av.image;
     const canvas = await imageToCanvas(src);
-    const { canvas: out, crop, removed } = removeBackground(canvas, { tolerance: +$('avTol').value });
+    if (mode === 'auto' && hasTransparency(canvas)) return false;
+    const useColor = mode === 'color' || (mode === 'auto' && hasUniformBorder(canvas, +$('avTol').value));
+    let result;
+    if (useColor) {
+      result = removeBackground(canvas, { tolerance: +$('avTol').value });
+    } else {
+      status('Figur wird per KI freigestellt …');
+      const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+      const rgba = await stt.removeBackground(imageData, progressStatus('Freistellen'));
+      result = applyAlpha(canvas, rgba);
+    }
+    const { canvas: out, crop, removed } = result;
     if (removed < 0.02) {
-      status('Kein einfarbiger Hintergrund gefunden – Toleranz erhöhen oder ein Bild mit transparentem Hintergrund verwenden.');
-      return;
+      status(
+        useColor
+          ? 'Kein einfarbiger Hintergrund gefunden – „✨ Freistellen mit KI“ versuchen.'
+          : 'Die KI hat keinen Hintergrund gefunden.',
+      );
+      return false;
     }
     const full = { x: 0, y: 0, w: canvas.width, h: canvas.height };
     await remapMask(av, av.crop ?? full, crop, out.width, out.height);
@@ -1037,14 +1089,22 @@ $('avCutout').onclick = async () => {
     av.original ??= src;
     av.crop = crop;
     av.image = out.toDataURL('image/png');
-    status(`Hintergrund entfernt (${Math.round(removed * 100)} % des Bildes). Passt es nicht, Toleranz ändern und erneut klicken.`);
+    status(
+      `Hintergrund entfernt (${useColor ? 'Farbverfahren' : 'KI'}). Passt es nicht: ` +
+        (useColor ? 'Toleranz ändern oder „✨ Freistellen mit KI“.' : '„Original wiederherstellen“.'),
+    );
     avatarChanged();
+    return true;
   } catch (err) {
-    status(`Freistellen fehlgeschlagen: ${err.message}`);
+    status(`Freistellen fehlgeschlagen: ${friendlyError(err)}`);
+    return false;
   } finally {
-    btn.disabled = false;
+    buttons.forEach((b) => (b.disabled = false));
   }
-};
+}
+
+$('avCutout').onclick = () => cutoutAvatar('color');
+$('avCutoutAi').onclick = () => cutoutAvatar('ai');
 $('avRestore').onclick = async () => {
   const av = persona().avatar;
   if (!av.original) return;

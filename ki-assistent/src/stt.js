@@ -33,6 +33,17 @@ export class SpeechInput {
     });
   }
 
+  /** Hintergrund per KI entfernen (läuft im Worker, damit die Oberfläche flüssig bleibt). */
+  async removeBackground(imageData, onProgress) {
+    const rgba = new Uint8ClampedArray(imageData.data);
+    const res = await this.call(
+      { type: 'cutout', rgba, width: imageData.width, height: imageData.height },
+      onProgress,
+      [rgba.buffer],
+    );
+    return res.rgba;
+  }
+
   preload(onProgress) {
     return this.call({ type: 'load', model: this.model }, onProgress);
   }

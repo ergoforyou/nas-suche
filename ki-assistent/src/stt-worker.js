@@ -1,6 +1,6 @@
 // Spracherkennung mit Whisper, läuft komplett lokal in einem Web-Worker.
 // Das Modell wird beim ersten Mal von Hugging Face geladen und danach im Cache gehalten.
-import { pipeline, env } from '@huggingface/transformers';
+import { pipeline, env, RawImage } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
 // Modelle kommen über den Hauptprozess (app://local/models/hf/…), der sie auf der Festplatte speichert.
@@ -34,6 +34,24 @@ async function load(model, progress) {
   loadedModel = model;
 }
 
+// Freistellen per KI (MODNet: auf Personen spezialisiertes Matting-Modell, ~25 MB, Apache-2.0)
+let matting = null;
+async function removeBackground({ rgba, width, height }, progress) {
+  matting ??= pipeline('background-removal', 'Xenova/modnet', { dtype: 'fp32', progress_callback: progress }).catch(
+    (e) => {
+      matting = null;
+      throw e;
+    },
+  );
+  const seg = await matting;
+  const img = new RawImage(new Uint8ClampedArray(rgba), width, height, 4);
+  const [out] = await seg(img);
+  // Ergebnis als RGBA in Originalgröße
+  const rgbaOut = out.channels === 4 ? out : out.rgba();
+  const resized = rgbaOut.width === width && rgbaOut.height === height ? rgbaOut : await rgbaOut.resize(width, height);
+  return new Uint8ClampedArray(resized.data);
+}
+
 self.onmessage = async ({ data }) => {
   const { id, type } = data;
   try {
@@ -49,6 +67,9 @@ self.onmessage = async ({ data }) => {
         stride_length_s: 5,
       });
       self.postMessage({ id, type: 'result', text: (out.text || '').trim() });
+    } else if (type === 'cutout') {
+      const rgba = await removeBackground(data, (p) => self.postMessage({ id, type: 'progress', progress: p }));
+      self.postMessage({ id, type: 'result', rgba }, [rgba.buffer]);
     }
   } catch (err) {
     self.postMessage({ id, type: 'error', error: String(err?.message || err) });
