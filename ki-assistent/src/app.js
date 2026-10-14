@@ -165,10 +165,11 @@ function save() {
 
 function friendlyError(e) {
   const msg = String(e?.message ?? e);
-  if (/fetch|network|ERR_|503|Offline/i.test(msg)) {
+  if (/fetch|network|ERR_|503|Offline|unavailable|trying to load file/i.test(msg)) {
     return state.settings.offline
       ? 'Offline-Modus ist aktiv und das Modell ist noch nicht heruntergeladen (⚙ → Verbindung).'
-      : 'Modell-Download fehlgeschlagen. Beim ersten Benutzen wird einmalig eine Internetverbindung benötigt.';
+      : 'Das Sprachmodell konnte nicht heruntergeladen werden – der Download-Server (Hugging Face) war nicht ' +
+          'erreichbar. Bitte in ein paar Minuten noch einmal versuchen. Danach liegt es dauerhaft auf dem Rechner.';
   }
   return msg;
 }
@@ -854,6 +855,28 @@ const waitIdle = async (ms) => {
   for (const end = Date.now() + ms; state.busy && Date.now() < end; ) await new Promise((r) => setTimeout(r, 50));
 };
 
+/** Spracherkennung; scheitert der Download des gewählten Modells, mit einem kleineren weiterversuchen. */
+const STT_FALLBACKS = ['onnx-community/whisper-base', 'onnx-community/whisper-tiny'];
+async function transcribeWithFallback(audio) {
+  try {
+    return await stt.transcribe(audio, progressStatus('Spracherkennung'));
+  } catch (e) {
+    if (!/unavailable|trying to load file|fetch|network|503/i.test(String(e?.message ?? e))) throw e;
+    for (const m of STT_FALLBACKS.filter((m) => m !== stt.model)) {
+      const wanted = stt.model;
+      try {
+        stt.model = m;
+        const text = await stt.transcribe(audio, progressStatus('Spracherkennung'));
+        status(`Hinweis: „${wanted.split('/').pop()}“ ließ sich nicht laden – nutze vorerst „${m.split('/').pop()}“.`);
+        return text;
+      } catch {
+        stt.model = wanted;
+      }
+    }
+    throw e;
+  }
+}
+
 async function listenOnce({ handsFree = false } = {}) {
   if (state.micActive) return;
   state.micActive = true;
@@ -889,7 +912,7 @@ async function listenOnce({ handsFree = false } = {}) {
     if (!audio || audio.length < 16000 * 0.35) return;
     state.transcribing = true;
     updateBadge();
-    const text = await stt.transcribe(audio, progressStatus('Spracherkennung'));
+    const text = await transcribeWithFallback(audio);
     status('');
     state.transcribing = false;
     updateBadge();

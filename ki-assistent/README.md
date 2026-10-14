@@ -132,7 +132,7 @@ Gedächtnis, Personas, Spracherkennung) bleibt lokal:
 
 Gespräche, Sprache, Bilder und Personas bleiben auf dem Rechner. Die Oberfläche hat technisch keinen
 Internetzugriff; einzig der Hauptprozess lädt einmalig die Sprachmodelle von Hugging Face und speichert sie
-in `%APPDATA%\KI-Assistent\modelle`. Im **Offline-Modus** (⚙ → Verbindung) entfällt auch das.
+in `%APPDATA%\KI-Assistent Modelle` (gemeinsam für beide Ausgaben). Im **Offline-Modus** (⚙ → Verbindung) entfällt auch das.
 
 ## Entwickeln
 

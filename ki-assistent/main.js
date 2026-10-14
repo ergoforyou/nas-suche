@@ -128,7 +128,11 @@ ipcMain.handle('media:delete', (_e, url) => {
 // Die Oberfläche selbst hat keinen Internetzugang (CSP). Sprachmodelle werden über
 // app://local/models/hf/<pfad> angefragt; der Hauptprozess liefert sie von der Festplatte
 // oder lädt sie einmalig von Hugging Face und legt sie dort ab.
-const modelDir = () => path.join(app.getPath('userData'), 'modelle');
+// Sprachmodelle sind keine persönlichen Daten: Beide Ausgaben (lokal/Cloud) teilen sich einen Modellordner,
+// damit nichts doppelt heruntergeladen werden muss. Ältere Ordner werden weiter mitbenutzt.
+const modelDir = () => path.join(app.getPath('appData'), 'KI-Assistent Modelle');
+const legacyModelDirs = () =>
+  ['KI-Assistent', 'KI-Assistent Cloud'].map((n) => path.join(app.getPath('appData'), n, 'modelle'));
 let offline = false;
 
 const MIME = {
@@ -181,9 +185,20 @@ async function serveModel(rel) {
   const target = path.normalize(path.join(modelDir(), 'hf', rel));
   if (!target.startsWith(path.join(modelDir(), 'hf'))) return new Response('Verboten', { status: 403 });
   if (fs.existsSync(target)) return serveFile(target);
+  for (const dir of legacyModelDirs()) {
+    const old = path.normalize(path.join(dir, 'hf', rel));
+    if (old.startsWith(path.join(dir, 'hf')) && fs.existsSync(old)) return serveFile(old);
+  }
   if (offline) return new Response('Offline-Modus: Modell nicht vorhanden', { status: 404 });
 
-  const upstream = await fetch(`https://huggingface.co/${rel}`, { redirect: 'follow' }).catch(() => null);
+  // Über den Netzwerkstapel von Chromium (nutzt System-Proxy und -Zertifikate), mit Wiederholungen,
+  // falls Hugging Face kurz nicht erreichbar ist oder überlastet antwortet.
+  let upstream = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    upstream = await net.fetch(`https://huggingface.co/${rel}`, { redirect: 'follow' }).catch(() => null);
+    if (upstream && (upstream.ok || upstream.status < 500)) break;
+  }
   if (!upstream) return new Response('Keine Internetverbindung', { status: 503 });
   if (!upstream.ok) return new Response(upstream.statusText, { status: upstream.status });
 
