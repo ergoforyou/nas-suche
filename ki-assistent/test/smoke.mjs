@@ -50,17 +50,18 @@ await page.goto('http://localhost:8799/index.html');
 await page.waitForFunction(() => window.__app);
 
 console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.debugVoice('de_DE-thorsten-high', 'ich'))));
-console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.debugVoice('de_DE-thorsten-medium', 'ich'))));
 
 const cases = [
-  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/ich/i, /frag/i] },
+  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/möchte/i, /dich/i, /frag/i] },
+  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', voice: 'de_DE-thorsten-medium', expect: [/möchte/i, /dich/i, /frag/i] },
   { text: 'Hello, how are you today? I am fine, thank you.', lang: 'english', expect: [/hello/i, /today/i] },
 ];
 
 let ok = true;
 for (const c of cases) {
-  const result = await page.evaluate(async ({ text, lang }) => {
+  const result = await page.evaluate(async ({ text, lang, voice: forced }) => {
     const { tts, stt } = window.__app;
+    if (forced) tts.configure({ voices: { de: forced } });
     const voice = tts.voiceFor(text);
     const t0 = performance.now();
     // gleicher Weg wie die App: Satz in die Warteschlange, Audio abfangen
@@ -81,7 +82,8 @@ for (const c of cases) {
     src.connect(off.destination);
     src.start();
     const audio = (await off.startRendering()).getChannelData(0).slice();
-    stt.model = 'onnx-community/whisper-base';
+    // genaueres Modell als "Prüfer", damit Fehler der Aussprache auffallen und nicht die der Erkennung
+    stt.model = 'onnx-community/whisper-small';
     stt.language = lang;
     const heard = await stt.transcribe(audio);
     return { voice, seconds: +(pcm.audio.length / pcm.sampleRate).toFixed(2), ttsMs: Math.round(t1 - t0), sttMs: Math.round(performance.now() - t1), heard };
