@@ -320,10 +320,11 @@
       </div>
 
       <div id="cClaudeWrap" hidden>
-        <label>API-Schlüssel (console.anthropic.com)
+        <label>API-Schlüssel (console.anthropic.com) – gilt für alle Personas
           <div class="row">
             <input id="cClaudeKey" type="password" placeholder="sk-ant-…" autocomplete="off" style="flex:1" />
             <button id="cClaudeKeySave">Speichern</button>
+            <button id="cClaudeKeyDel" title="Schlüssel entfernen" hidden>Entfernen</button>
           </div>
         </label>
         <div id="cClaudeKeyInfo" class="hint"></div>
@@ -346,10 +347,11 @@
       </div>
 
       <div id="cOpenaiWrap" hidden>
-        <label>API-Schlüssel (platform.openai.com)
+        <label>API-Schlüssel (platform.openai.com) – gilt für alle Personas
           <div class="row">
             <input id="cOpenaiKey" type="password" placeholder="sk-…" autocomplete="off" style="flex:1" />
             <button id="cOpenaiKeySave">Speichern</button>
+            <button id="cOpenaiKeyDel" title="Schlüssel entfernen" hidden>Entfernen</button>
           </div>
         </label>
         <div id="cOpenaiKeyInfo" class="hint"></div>

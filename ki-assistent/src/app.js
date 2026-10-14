@@ -1415,6 +1415,11 @@ const switchTo = (p) => {
 };
 $('personaNew').onclick = () => {
   const p = defaultPersona();
+  // Technik der aktuellen Persona übernehmen (Stimme, Sprache, Stil) – neu sind nur Name, Text, Figur, Gedächtnis
+  const cur = persona();
+  p.voice = structuredClone(cur.voice);
+  p.language = cur.language;
+  p.style = cur.style;
   p.name = 'Neue Persona';
   p.prompt = 'Du bist ein hilfsbereiter Assistent.';
   p.greeting = 'Hallo!';
@@ -2209,6 +2214,11 @@ async function refreshKeys() {
   const txt = (on) => (on ? `✔ Schlüssel hinterlegt${k.encrypted ? ' (verschlüsselt)' : ''}` : 'Kein Schlüssel hinterlegt');
   $('cClaudeKeyInfo').textContent = txt(k.anthropic);
   $('cOpenaiKeyInfo').textContent = txt(k.openai);
+  // gespeicherter Schlüssel: Feld bleibt leer (er wird nie angezeigt), aber nicht wie „fehlt“ aussehen
+  $('cClaudeKey').placeholder = k.anthropic ? '•••••••• gespeichert – nur zum Ändern neu eingeben' : 'sk-ant-…';
+  $('cOpenaiKey').placeholder = k.openai ? '•••••••• gespeichert – nur zum Ändern neu eingeben' : 'sk-…';
+  $('cClaudeKeyDel').hidden = !k.anthropic;
+  $('cOpenaiKeyDel').hidden = !k.openai;
   $('vCloudKeyInfo').textContent = k.openai ? '' : 'Für die OpenAI-Stimme bitte unter ⚙ → Verbindung einen OpenAI-Schlüssel hinterlegen.';
   return k;
 }
@@ -2240,6 +2250,7 @@ $('cProvider').onchange = (e) => {
   if (e.target.value === 'openai') refreshOpenaiModels();
 };
 const saveKey = (provider, inputId) => async () => {
+  if (!$(inputId).value.trim()) return status('Bitte erst einen Schlüssel eintragen – der gespeicherte bleibt so lange erhalten.');
   await desktop.setKey(provider, $(inputId).value);
   $(inputId).value = '';
   await refreshKeys();
@@ -2247,6 +2258,14 @@ const saveKey = (provider, inputId) => async () => {
   status('API-Schlüssel gespeichert.');
 };
 $('cClaudeKeySave').onclick = saveKey('anthropic', 'cClaudeKey');
+const deleteKey = (provider, name) => async () => {
+  if (!confirm(`${name}-Schlüssel wirklich von diesem Rechner entfernen?`)) return;
+  await desktop.setKey(provider, '');
+  await refreshKeys();
+  status('Schlüssel entfernt.');
+};
+$('cClaudeKeyDel').onclick = deleteKey('anthropic', 'Claude');
+$('cOpenaiKeyDel').onclick = deleteKey('openai', 'OpenAI');
 $('cOpenaiKeySave').onclick = saveKey('openai', 'cOpenaiKey');
 $('cClaudeModel').onchange = (e) => {
   state.settings.claudeModel = e.target.value;
