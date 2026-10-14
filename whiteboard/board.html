@@ -37,8 +37,22 @@
           <button id="zoomReset" class="tool" title="Auf 100 % zurücksetzen">100%</button>
           <button id="zoomIn" class="tool" title="Vergrößern">+</button>
         </div>
+        <button id="syncBtn" class="tool sync-btn" data-state="off"><span class="sync-dot"></span><span class="lbl">Nur lokal</span></button>
         <button id="exportBtn" class="tool" title="Dieses Board als ZIP exportieren (zum Weitergeben)"><span class="ico" data-icon="download"></span><span class="lbl">Export</span></button>
         <button id="importBtn" class="tool" title="Board-ZIP importieren"><span class="ico" data-icon="import"></span><span class="lbl">Import</span></button>
+      </div>
+      <div id="syncPanel" hidden>
+        <strong>Speicherort</strong>
+        <div class="sync-state"></div>
+        <div class="sync-folder muted small"></div>
+        <div class="sync-details muted small"></div>
+        <div class="sync-actions">
+          <button class="tool" data-sync="grant" hidden>Zugriff erlauben</button>
+          <button class="tool" data-sync="now" hidden>Jetzt abgleichen</button>
+          <button class="tool" data-sync="connect">Ordner auf dem Netzlaufwerk wählen…</button>
+          <button class="tool" data-sync="disconnect" hidden>Trennen</button>
+        </div>
+        <p class="muted small">Alle im Team wählen denselben Ordner – dann sehen alle dieselben Boards. Jedes Board ist dort ein normaler Unterordner mit den Dateien.</p>
       </div>
       <input type="file" id="fileInput" multiple hidden>
       <input type="file" id="importInput" accept=".zip,application/zip" hidden>

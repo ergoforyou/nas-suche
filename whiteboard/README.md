@@ -41,29 +41,53 @@ fällt nichts durch, bis du es angeklickt hast.
 - **Seitenbereich:** Rechtsklick aufs Erweiterungs-Symbol → „Whiteboard im
   Seitenbereich öffnen“ – dann bleibt es neben jeder Webseite sichtbar.
 
+## Speichern auf dem Netzlaufwerk (fürs Team)
+
+Oben rechts auf **„Nur lokal“** klicken → **„Ordner auf dem Netzlaufwerk wählen…“**
+→ z. B. `Z:\Whiteboard` oder `\\NAS\Team\Whiteboard` auswählen und Zugriff erlauben.
+Alle im Team machen das einmal mit **demselben Ordner** – dann sehen alle dieselben Boards.
+
+So sieht der Ordner danach aus:
+
+```
+Whiteboard\
+  Eingang\              ← jedes Board ist ein normaler Unterordner
+    Angebot_2026.pdf     ← mit den echten Dateien
+  Kunde Meier\
+    Vertrag.pdf
+  _whiteboard\          ← Verwaltung (Positionen, Notizen, Erledigt …) – nicht anfassen
+```
+
+- **Automatisch gespeichert:** Alles landet sofort lokal und wird alle paar Sekunden mit
+  dem Ordner abgeglichen. Änderungen von Kollegen erscheinen nach wenigen Sekunden
+  und sind als **NEU** markiert.
+- **Funktioniert auch im Explorer:** Eine Datei, die man direkt in einen Board-Ordner
+  legt, erscheint als neue Karte. Ein neuer Unterordner wird ein neues Board. Wird eine
+  Datei im Explorer bearbeitet, aktualisiert sich die Karte.
+- **Verschieben** einer Karte in ein anderes Board verschiebt auch die Datei in den
+  passenden Ordner.
+- **Laufwerk nicht erreichbar** (z. B. ohne VPN): Der Punkt wird orange, man arbeitet
+  normal weiter, alles wird nachgeholt, sobald das Laufwerk wieder da ist.
+- **Nach einem Chrome-Neustart** fragt Chrome ggf. einmal nach: Knopf **„Freigeben“**
+  oben rechts anklicken.
+- **Gleichzeitig dieselbe Karte bearbeitet?** Dann gilt die zuletzt gespeicherte Fassung.
+- Abgeglichen wird, solange das Whiteboard (Tab oder Seitenbereich) offen ist. Was per
+  Rechtsklick/Shortcut bei geschlossenem Whiteboard reinkommt, wird beim nächsten
+  Öffnen übertragen.
+- Wird ein Board umbenannt, behält der Ordner seinen ursprünglichen Namen.
+- Wer im NAS keine Schreibrechte auf den Ordner hat, kommt auch nicht ans Whiteboard –
+  die Rechte steuerst du also wie gewohnt über das NAS.
+
 ## Damit nichts verloren geht
 
-- Löschen legt in den **Papierkorb** (mit „Rückgängig“ bzw. `Strg+Z`). Endgültig
-  weg ist etwas erst, wenn man es dort löscht. Auch gelöschte Boards schieben
-  ihre Inhalte in den Papierkorb.
-- Gespeichert wird lokal im Chrome-Profil (IndexedDB, unbegrenzter Speicher,
-  dauerhaft angefordert).
-- **„Alles sichern (ZIP)“** erstellt eine komplette Sicherung inkl. aller Dateien.
-  Achtung: Wird die Erweiterung deinstalliert, sind die lokalen Daten weg –
-  vorher sichern.
-
-## Team-Zugriff
-
-**Heute schon:** Board über **Export** als ZIP speichern (z. B. auf das NAS oder
-ein geteiltes Laufwerk legen), Kollegen holen es per **Import** in ihr Whiteboard.
-Die ZIP enthält eine `whiteboard.json` und alle Dateien im Klartext-Ordner
-`dateien/` – also auch ohne Erweiterung lesbar.
-
-**Nächster Ausbauschritt (geplant):** Echte gemeinsame Boards über einen
-zentralen Speicher. Die gesamte Speicherlogik steckt in `db.js`, sodass dort ein
-Sync-Backend angeschlossen werden kann, ohne die Oberfläche umzubauen. Mögliche
-Ziele: NAS per WebDAV (z. B. Synology), Google Drive oder ein kleiner
-Server/Supabase für Live-Zusammenarbeit.
+- Löschen legt in den **Papierkorb** (mit „Rückgängig“ bzw. `Strg+Z`). Die Datei bleibt
+  bis dahin auch im Ordner. Erst „endgültig löschen“ entfernt sie – auch auf dem
+  Netzlaufwerk und für alle im Team. Gelöschte Boards schieben ihre Inhalte ebenfalls
+  in den Papierkorb.
+- Ohne Netzlaufwerk liegt alles lokal im Chrome-Profil (dauerhaft, auch nach Neustart).
+  Dann vor einer Deinstallation unbedingt **„Alles sichern (ZIP)“**.
+- **Export/Import** als ZIP funktioniert weiterhin, z. B. um ein Board an jemanden
+  außerhalb des Teams zu geben.
 
 ## Dateien
 
@@ -72,9 +96,11 @@ Server/Supabase für Live-Zusammenarbeit.
 | `manifest.json` | Erweiterungs-Definition (Manifest V3) |
 | `background.js` | Rechtsklick-Menüs, Screenshot-Shortcut, Zähler am Symbol |
 | `board.html/.css/.js` | Die Whiteboard-Oberfläche |
-| `db.js` | Speicher-Schicht (IndexedDB) – hier docken später Team-Funktionen an |
+| `db.js` | Lokale Speicher-Schicht (IndexedDB), zugleich Puffer für den Abgleich |
+| `nas.js` | Abgleich mit dem Ordner auf dem Netzlaufwerk |
 | `zip.js` | Export/Import als ZIP ohne externe Bibliotheken |
 
 **Berechtigungen:** „Zugriff auf alle Websites“ wird nur benötigt, um Bilder von
 Webseiten herunterzuladen und Screenshots per Shortcut aufzunehmen. Es werden
-keine Daten an irgendeinen Server gesendet.
+keine Daten an irgendeinen Server gesendet – gespeichert wird nur lokal und im
+gewählten Ordner.

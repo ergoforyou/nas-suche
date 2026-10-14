@@ -1,4 +1,5 @@
 import * as db from './db.js';
+import * as nas from './nas.js';
 import { createZip, readZip } from './zip.js';
 
 const TRASH = '__trash__';
@@ -62,6 +63,8 @@ async function init() {
   bindGlobal();
   await refresh();
   db.subscribe(scheduleRefresh);
+  nas.onStatus(renderSync);
+  nas.init().catch((err) => console.warn('Netzlaufwerk:', err));
 }
 
 function readPref(key) {
@@ -542,6 +545,7 @@ async function addNote(at, text = '') {
   const item = await db.addItem({ boardId: writableBoard(state.boardId), type: 'note', text, isNew: false, w: 240, h: 180, ...(at || insertPoint()) });
   state.focusId = text ? null : item.id;
   state.selected = item.id;
+  await refresh(); // sofort anzeigen und Schreibfokus setzen
 }
 
 async function addFiles(files, boardId = state.boardId, at = null) {
@@ -621,7 +625,7 @@ async function exportBoards(boards, label) {
   const data = { format: 'chrome-whiteboard', version: 1, exported: new Date().toISOString(), boards, items: [] };
   for (const board of boards) {
     for (const it of state.all.filter((i) => i.boardId === board.id && !i.deletedAt)) {
-      const copy = { ...it };
+      const { blobId: _b, syncedUpdated, fileStamp, isNew, ...copy } = it;
       if (it.blobId) {
         const blob = await db.getBlob(it.blobId);
         if (blob) {
@@ -655,15 +659,15 @@ async function importZip(file) {
       const id = db.uid();
       idMap.set(b.id, id);
       const name = names.has(b.name) ? `${b.name} (Import)` : b.name;
-      return { ...b, id, name, order: order++, created: Date.now() };
+      const { folder, syncedUpdated, deletedAt, ...rest } = b;
+      return { ...rest, id, name, order: order++, created: Date.now(), updated: Date.now() };
     });
     const items = [];
     const blobs = [];
     for (const it of data.items) {
       const copy = { ...it, id: db.uid(), boardId: idMap.get(it.boardId), isNew: true };
       if (!copy.boardId) continue;
-      delete copy.path;
-      delete copy.deletedAt;
+      for (const k of ['path', 'deletedAt', 'purgedAt', 'syncedUpdated', 'filePath', 'fileStamp']) delete copy[k];
       if (it.path) {
         const bytes = files.get(it.path);
         if (!bytes) continue;
@@ -693,7 +697,7 @@ function renderTrash() {
   info.textContent = 'Alles, was du entfernst, landet zuerst hier – endgültig weg ist es erst, wenn du es hier löschst.';
   trashView.append(head, info);
   head.querySelector('#emptyTrashBtn')?.addEventListener('click', async () => {
-    if (confirm(`${items.length} Elemente endgültig löschen? Das lässt sich nicht rückgängig machen.`)) {
+    if (confirm(`${items.length} Elemente endgültig löschen? Das lässt sich nicht rückgängig machen.${nasNote()}`)) {
       await db.purgeItems(items.map((i) => i.id));
     }
   });
@@ -728,7 +732,7 @@ function renderTrash() {
       toast(`Wiederhergestellt in „${boardName(it.boardId) || 'Eingang'}“`);
     });
     card.querySelector('[data-act="purge"]').addEventListener('click', () => {
-      if (confirm('Dieses Element endgültig löschen?')) db.purgeItems([it.id]);
+      if (confirm(`Dieses Element endgültig löschen?${nasNote()}`)) db.purgeItems([it.id]);
     });
     grid.append(card);
   }
@@ -738,6 +742,7 @@ function renderTrash() {
 // ---------- Ereignisse
 
 function bindToolbar() {
+  bindSync();
   $('#newBoardBtn').addEventListener('click', newBoard);
   $('#trashEntry').addEventListener('click', () => switchBoard(TRASH));
   $('#boardSelect').addEventListener('change', (e) => switchBoard(e.target.value));
@@ -965,6 +970,84 @@ function toast(msg, actionLabel, action) {
   t.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (t.hidden = true), 6000);
+}
+
+// ---------- Netzlaufwerk
+
+const nasNote = () =>
+  nas.getStatus().state === 'off' ? '' : '\n\nZugehörige Dateien werden auch auf dem Netzlaufwerk gelöscht – für alle im Team.';
+
+const SYNC_TEXT = {
+  off: ['Nur lokal', 'Noch kein Netzlaufwerk verbunden – alles liegt nur in diesem Chrome.'],
+  'needs-permission': ['Freigeben', 'Chrome braucht nach dem Neustart einmal deine Freigabe für den Ordner.'],
+  syncing: ['Gleiche ab…', 'Abgleich mit dem Netzlaufwerk läuft.'],
+  connected: ['Netzlaufwerk', 'Verbunden – Änderungen werden automatisch gespeichert.'],
+  offline: ['Nicht erreichbar', 'Netzlaufwerk gerade nicht erreichbar. Alles wird lokal gepuffert und nachgeholt.'],
+};
+
+function renderSync(st) {
+  const btn = $('#syncBtn');
+  const [label, text] = SYNC_TEXT[st.state] || SYNC_TEXT.off;
+  btn.dataset.state = st.state;
+  btn.querySelector('.lbl').textContent = label;
+  btn.title = st.name ? `${text}\nOrdner: ${st.name}` : text;
+  const panel = $('#syncPanel');
+  panel.querySelector('.sync-state').textContent = text;
+  panel.querySelector('.sync-folder').textContent = st.name ? `Ordner: ${st.name}` : '';
+  const details = [];
+  if (st.lastSync) details.push(`Zuletzt abgeglichen: ${new Date(st.lastSync).toLocaleTimeString('de-DE')}`);
+  if (st.pending) details.push(`${st.pending} Änderung(en) warten auf Übertragung`);
+  if (st.error) details.push(`Fehler: ${st.error}`);
+  panel.querySelector('.sync-details').textContent = details.join(' · ');
+  const on = st.state !== 'off';
+  panel.querySelector('[data-sync="connect"]').textContent = on ? 'Anderen Ordner wählen…' : 'Ordner auf dem Netzlaufwerk wählen…';
+  panel.querySelector('[data-sync="grant"]').hidden = st.state !== 'needs-permission';
+  panel.querySelector('[data-sync="now"]').hidden = !['connected', 'offline'].includes(st.state);
+  panel.querySelector('[data-sync="disconnect"]').hidden = !on;
+}
+
+function bindSync() {
+  const panel = $('#syncPanel');
+  $('#syncBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (nas.getStatus().state === 'needs-permission') return grantNas();
+    panel.hidden = !panel.hidden;
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!panel.hidden && !e.target.closest('#syncPanel, #syncBtn')) panel.hidden = true;
+  });
+  panel.addEventListener('click', async (e) => {
+    const act = e.target.closest('[data-sync]')?.dataset.sync;
+    if (!act) return;
+    if (act === 'connect') {
+      if (!nas.supported()) return toast('Dieser Browser kann keine Ordner freigeben – bitte Chrome oder Edge verwenden.');
+      try {
+        if (await nas.connect()) {
+          panel.hidden = true;
+          toast('Netzlaufwerk verbunden – deine Boards werden jetzt dort gespeichert.');
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') toast('Ordner konnte nicht verbunden werden: ' + err.message);
+      }
+    } else if (act === 'grant') {
+      await grantNas();
+    } else if (act === 'now') {
+      nas.syncNow();
+    } else if (act === 'disconnect') {
+      if (confirm('Verbindung zum Netzlaufwerk trennen?\n\nDeine Boards bleiben lokal erhalten, auf dem Laufwerk wird nichts gelöscht. Neue Änderungen werden dann aber nicht mehr dort gespeichert.')) {
+        await nas.disconnect();
+        panel.hidden = true;
+      }
+    }
+  });
+}
+
+async function grantNas() {
+  try {
+    await nas.grant();
+  } catch (err) {
+    toast('Freigabe nicht möglich: ' + err.message);
+  }
 }
 
 async function updateStorageInfo() {

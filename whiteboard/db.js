@@ -1,10 +1,11 @@
 // Speicher-Schicht des Whiteboards (IndexedDB).
-// Alles, was Boards, Elemente und Dateien betrifft, läuft über dieses Modul –
-// so lässt sich später ein Team-Backend (NAS, Cloud) dahinter setzen, ohne die
-// Oberfläche anzufassen.
+// Alles, was Boards, Elemente und Dateien betrifft, läuft über dieses Modul.
+// Die lokale Datenbank ist zugleich Puffer für den Abgleich mit dem
+// Netzlaufwerk (siehe nas.js): Gelöschtes bleibt als Markierung erhalten
+// (deletedAt / purgedAt), bis es auch dort entfernt wurde.
 
 const DB_NAME = 'whiteboard';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 export const INBOX_ID = 'inbox';
 export const BOARD_COLORS = ['#f5b700', '#e8590c', '#2f9e44', '#1c7ed6', '#7048e8', '#d6336c', '#0c8599'];
 
@@ -14,12 +15,15 @@ export function openDB() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
+      req.onupgradeneeded = (e) => {
         const db = req.result;
-        db.createObjectStore('boards', { keyPath: 'id' });
-        const items = db.createObjectStore('items', { keyPath: 'id' });
-        items.createIndex('boardId', 'boardId');
-        db.createObjectStore('blobs', { keyPath: 'id' });
+        if (e.oldVersion < 1) {
+          db.createObjectStore('boards', { keyPath: 'id' });
+          const items = db.createObjectStore('items', { keyPath: 'id' });
+          items.createIndex('boardId', 'boardId');
+          db.createObjectStore('blobs', { keyPath: 'id' });
+        }
+        if (e.oldVersion < 2) db.createObjectStore('meta');
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -56,7 +60,7 @@ export function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
-function notify() {
+export function notify() {
   channel.postMessage({ type: 'changed' });
   listeners.forEach((fn) => fn());
   refreshBadge();
@@ -71,23 +75,32 @@ export async function refreshBadge() {
 
 // ---------- Boards
 
-export async function listBoards() {
-  let boards = await request((await store('boards')).getAll());
+// Alle Boards inkl. gelöschter (für den Abgleich)
+export async function rawBoards() {
+  const boards = await request((await store('boards')).getAll());
   if (!boards.some((b) => b.id === INBOX_ID)) {
-    const inbox = { id: INBOX_ID, name: 'Eingang', color: BOARD_COLORS[0], created: Date.now(), order: 0 };
+    // updated: 0 → ein bereits vorhandenes Team-"Eingang" auf dem Laufwerk gewinnt immer
+    const inbox = { id: INBOX_ID, name: 'Eingang', folder: 'Eingang', color: BOARD_COLORS[0], created: Date.now(), updated: 0, order: 0 };
     await request((await store('boards', 'readwrite')).put(inbox));
     boards.push(inbox);
   }
+  return boards;
+}
+
+export async function listBoards() {
+  const boards = (await rawBoards()).filter((b) => !b.deletedAt);
   return boards.sort((a, b) => a.order - b.order || a.created - b.created);
 }
 
 export async function createBoard(name) {
   const boards = await listBoards();
+  const now = Date.now();
   const board = {
     id: uid(),
     name,
     color: BOARD_COLORS[boards.length % BOARD_COLORS.length],
-    created: Date.now(),
+    created: now,
+    updated: now,
     order: Math.max(...boards.map((b) => b.order)) + 1,
   };
   await request((await store('boards', 'readwrite')).put(board));
@@ -98,7 +111,7 @@ export async function createBoard(name) {
 export async function updateBoard(id, patch) {
   const s = await store('boards', 'readwrite');
   const board = await request(s.get(id));
-  if (board) await request(s.put({ ...board, ...patch }));
+  if (board) await request(s.put({ ...board, ...patch, updated: Date.now() }));
   notify();
 }
 
@@ -115,7 +128,8 @@ export async function deleteBoard(id) {
       if (!item.deletedAt) items.put({ ...item, deletedAt: now, boardName: board?.name });
     }
   };
-  tx.objectStore('boards').delete(id);
+  // Board bleibt als Löschmarkierung stehen, damit es beim Abgleich nicht zurückkommt.
+  if (board) tx.objectStore('boards').put({ ...board, deletedAt: now, updated: now });
   await done(tx);
   notify();
 }
@@ -132,13 +146,18 @@ export async function setTargetBoard(id) {
 
 // ---------- Elemente
 
-export async function allItems() {
+// Alle Elemente inkl. endgültig gelöschter, die noch nicht abgeglichen sind
+export async function rawItems() {
   return request((await store('items')).getAll());
+}
+
+export async function allItems() {
+  return (await rawItems()).filter((i) => !i.purgedAt);
 }
 
 export async function listItems(boardId) {
   const all = await request((await store('items')).index('boardId').getAll(boardId));
-  return all.filter((i) => !i.deletedAt);
+  return all.filter((i) => !i.deletedAt && !i.purgedAt);
 }
 
 export async function addItem(data, blob) {
@@ -215,8 +234,11 @@ export async function purgeItems(ids) {
   for (const id of ids) {
     items.get(id).onsuccess = (e) => {
       const item = e.target.result;
-      if (item?.blobId) tx.objectStore('blobs').delete(item.blobId);
-      items.delete(id);
+      if (!item) return;
+      if (item.blobId) tx.objectStore('blobs').delete(item.blobId);
+      // Schon auf dem Laufwerk? Dann Markierung behalten, bis es dort auch gelöscht ist.
+      if (item.syncedUpdated != null) items.put({ ...item, blobId: null, purgedAt: Date.now() });
+      else items.delete(id);
     };
   }
   await done(tx);
@@ -237,6 +259,40 @@ export async function importData(boards, items, blobs) {
   blobs.forEach((b) => tx.objectStore('blobs').put(b));
   await done(tx);
   notify();
+}
+
+// ---------- Rohzugriff für den Abgleich mit dem Netzlaufwerk (ohne Zeitstempel zu ändern)
+
+export async function putRaw(boards = [], items = [], blobs = [], deleteItemIds = [], deleteBlobIds = []) {
+  const db = await openDB();
+  const tx = db.transaction(['boards', 'items', 'blobs'], 'readwrite');
+  boards.forEach((b) => tx.objectStore('boards').put(b));
+  items.forEach((i) => tx.objectStore('items').put(i));
+  blobs.forEach((b) => tx.objectStore('blobs').put(b));
+  deleteItemIds.forEach((id) => tx.objectStore('items').delete(id));
+  deleteBlobIds.forEach((id) => tx.objectStore('blobs').delete(id));
+  await done(tx);
+}
+
+// Nur Sync-Felder setzen, wenn sich der Datensatz seitdem nicht geändert hat.
+export async function markSynced(storeName, id, expectedUpdated, patch) {
+  const db = await openDB();
+  const tx = db.transaction(storeName, 'readwrite');
+  const s = tx.objectStore(storeName);
+  s.get(id).onsuccess = (e) => {
+    const rec = e.target.result;
+    if (rec && rec.updated === expectedUpdated) s.put({ ...rec, ...patch });
+  };
+  await done(tx);
+}
+
+export async function getMeta(key) {
+  return request((await store('meta')).get(key));
+}
+
+export async function setMeta(key, value) {
+  const s = await store('meta', 'readwrite');
+  return request(value === undefined ? s.delete(key) : s.put(value, key));
 }
 
 // ---------- Platzierung
