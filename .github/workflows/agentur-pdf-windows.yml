@@ -40,6 +40,13 @@ jobs:
           Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata/raw/main/osd.traineddata" -OutFile "tessdata_best/osd.traineddata"
           Get-ChildItem tessdata_best
 
+      - name: Deutsches Wörterbuch laden (LibreOffice/Hunspell „frami“)
+        run: |
+          New-Item -ItemType Directory -Force hunspell | Out-Null
+          Invoke-WebRequest "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic" -OutFile "hunspell/de_DE.dic"
+          Invoke-WebRequest "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.aff" -OutFile "hunspell/de_DE.aff"
+          Get-ChildItem hunspell
+
       - name: Oberfläche bauen
         working-directory: agentur-pdf/oberflaeche
         run: |
@@ -53,11 +60,11 @@ jobs:
 
       - name: Tests unter Windows
         id: tests
-        continue-on-error: true
         working-directory: agentur-pdf/dienst
         env:
           AGENTUR_PDF_TESSERACT: C:\Program Files\Tesseract-OCR\tesseract.exe
           AGENTUR_PDF_TESSDATA: ${{ github.workspace }}\tessdata_best
+          AGENTUR_PDF_HUNSPELL: ${{ github.workspace }}\hunspell\de_DE
         run: python -m pytest -q -p no:cacheprovider 2>&1 | Tee-Object -FilePath ..\..\testergebnis.txt; exit $LASTEXITCODE
 
       - name: Programm packen (PyInstaller)
@@ -65,7 +72,7 @@ jobs:
         run: |
           python symbol_erzeugen.py
           pyinstaller agentur_pdf.spec --noconfirm
-          ./bausteine_windows.ps1 -Ziel "dist\Agentur-PDF" -Tessdata "..\..\tessdata_best"
+          ./bausteine_windows.ps1 -Ziel "dist\Agentur-PDF" -Tessdata "..\..\tessdata_best" -Hunspell "..\..\hunspell"
 
       - name: Probelauf der fertigen .exe
         working-directory: agentur-pdf/installer

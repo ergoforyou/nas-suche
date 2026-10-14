@@ -2,7 +2,8 @@
 # die Anleitung neben die gebaute Agentur-PDF.exe.
 param(
   [string]$Ziel = "dist\Agentur-PDF",
-  [string]$Tessdata = "..\..\tessdata_best"
+  [string]$Tessdata = "..\..\tessdata_best",
+  [string]$Hunspell = "..\..\hunspell"
 )
 $ErrorActionPreference = "Stop"
 
@@ -14,6 +15,10 @@ Remove-Item "$Ziel\tesseract\tessdata\*.traineddata" -ErrorAction SilentlyContin
 Write-Host "Erkennungsmodelle (tessdata_best) …"
 New-Item -ItemType Directory -Force "$Ziel\tessdata" | Out-Null
 Copy-Item "$Tessdata\*.traineddata" "$Ziel\tessdata\" -Force
+
+Write-Host "Wörterbuch (Hunspell de_DE) …"
+New-Item -ItemType Directory -Force "$Ziel\hunspell" | Out-Null
+Copy-Item "$Hunspell\de_DE.*" "$Ziel\hunspell\" -Force
 
 Write-Host "LibreOffice …"
 Copy-Item "C:\Program Files\LibreOffice" "$Ziel\libreoffice" -Recurse -Force

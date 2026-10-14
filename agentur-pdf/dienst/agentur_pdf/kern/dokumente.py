@@ -99,8 +99,15 @@ class DokumentSpeicher:
         for vorhanden in self._dokumente.values():
             if vorhanden.pfad and os.path.normcase(vorhanden.pfad) == os.path.normcase(pfad):
                 return vorhanden
+        # Datei komplett einlesen statt offen zu halten: Unter Windows ließe
+        # sich eine geöffnete Datei sonst nicht speichern/überschreiben
+        # (im Windows-Testlauf festgestellt), und andere Programme blieben gesperrt.
         try:
-            doc = pymupdf.open(pfad)
+            daten = Path(pfad).read_bytes()
+        except OSError as fehler:
+            raise DokumentFehler(f"Datei kann nicht gelesen werden: {fehler}") from fehler
+        try:
+            doc = pymupdf.open(stream=daten, filetype=Path(pfad).suffix.lstrip(".").lower() or "pdf")
         except Exception as fehler:  # noqa: BLE001 – MuPDF wirft diverse Typen
             raise DokumentFehler(f"Datei kann nicht geöffnet werden: {fehler}") from fehler
         return self._registrieren(doc, Path(pfad).name, pfad, passwort)

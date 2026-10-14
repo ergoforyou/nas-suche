@@ -21,6 +21,7 @@ def scan_mit_rueckseiten(pfad):
     for s in range(2):
         quelle.insert_pdf(brief, from_page=s, to_page=s)
         quelle.new_page()  # leere Rückseite (Duplex)
+    brief.close()  # Windows: offene Dateien lassen sich nicht löschen
     scan_hilfen.als_scan(quelle).save(pfad)
     pfad.with_suffix(".quelle.pdf").unlink()
     return pfad

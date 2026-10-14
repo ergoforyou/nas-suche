@@ -47,7 +47,8 @@ def quelle_oeffnen(daten: bytes | None = None, pfad: str | None = None, name: st
         if pfad is not None:
             if not os.path.isfile(pfad):
                 raise DokumentFehler(f"Datei nicht gefunden: {pfad}")
-            quelle = pymupdf.open(pfad)
+            daten = Path(pfad).read_bytes()  # Datei nicht offen halten (Windows-Sperren)
+            quelle = pymupdf.open(stream=daten, filetype=Path(pfad).suffix.lstrip(".").lower() or "pdf")
             name = name or pfad
         else:
             quelle = pymupdf.open(stream=daten, filetype=Path(name).suffix.lstrip(".").lower() or "pdf")

@@ -258,24 +258,37 @@ def _png(bild: np.ndarray, dpi: int) -> bytes:
 
 
 def _tesseract(bild_png: bytes, argumente: list[str], ausgabe: str) -> str:
+    """Tesseract mit Bild- und Ergebnis-DATEI aufrufen.
+
+    Bewusst nicht über stdin/stdout: Unter Windows lieferte die Pipe-Variante
+    leere Ergebnisse (im Windows-Testlauf festgestellt). Temporäre Dateien
+    funktionieren auf allen Systemen gleich.
+    """
+    import tempfile
+
     programm = tesseract_finden()
     if not programm:
         raise DokumentFehler("Die Texterkennung (Tesseract) wurde nicht gefunden. Bitte Agentur-PDF neu installieren.")
-    befehl = [programm, "stdin", "stdout"]
-    if tessdata_finden():
-        befehl += ["--tessdata-dir", tessdata_finden()]
-    befehl += argumente + [ausgabe]
-    umgebung = {**os.environ, "OMP_THREAD_LIMIT": "1"}  # wir parallelisieren über Seiten
-    try:
-        ergebnis = subprocess.run(
-            befehl, input=bild_png, capture_output=True, timeout=TESSERACT_ZEITLIMIT, env=umgebung, **_ohne_fenster()
-        )
-    except subprocess.TimeoutExpired:
-        raise DokumentFehler("Texterkennung dauerte zu lange und wurde abgebrochen.") from None
-    if ergebnis.returncode != 0:
-        meldung = ergebnis.stderr.decode(errors="replace").strip().splitlines()
-        raise DokumentFehler(f"Texterkennung fehlgeschlagen: {meldung[-1] if meldung else 'unbekannter Fehler'}")
-    return ergebnis.stdout.decode("utf-8", errors="replace")
+    with tempfile.TemporaryDirectory(prefix="agentur-pdf-ocr-") as arbeit:
+        bild = Path(arbeit) / "seite.png"
+        bild.write_bytes(bild_png)
+        basis = Path(arbeit) / "ergebnis"
+        befehl = [programm, str(bild), str(basis)]
+        if tessdata_finden():
+            befehl += ["--tessdata-dir", tessdata_finden()]
+        befehl += argumente + [ausgabe]
+        umgebung = {**os.environ, "OMP_THREAD_LIMIT": "1"}  # wir parallelisieren über Seiten
+        try:
+            ergebnis = subprocess.run(befehl, capture_output=True, timeout=TESSERACT_ZEITLIMIT, env=umgebung, **_ohne_fenster())
+        except subprocess.TimeoutExpired:
+            raise DokumentFehler("Texterkennung dauerte zu lange und wurde abgebrochen.") from None
+        if ergebnis.returncode != 0:
+            meldung = ergebnis.stderr.decode(errors="replace").strip().splitlines()
+            raise DokumentFehler(f"Texterkennung fehlgeschlagen: {meldung[-1] if meldung else 'unbekannter Fehler'}")
+        datei = basis.with_suffix("." + ausgabe)
+        if not datei.is_file():
+            raise DokumentFehler("Texterkennung lieferte kein Ergebnis.")
+        return datei.read_text(encoding="utf-8", errors="replace")
 
 
 def ausrichtung_erkennen(bild: np.ndarray, dpi: int) -> int:
