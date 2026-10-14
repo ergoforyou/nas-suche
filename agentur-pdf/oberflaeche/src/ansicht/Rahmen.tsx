@@ -107,6 +107,11 @@ export function Eigenschaftsleiste() {
   if (werkzeug === "hand") return null;
   return (
     <div className="eigenschaftsleiste" role="toolbar" aria-label="Werkzeugeinstellungen">
+      {werkzeug === "textbereich" && (
+        <span>
+          <strong>Text aus Bereich:</strong> Rechteck um den gewünschten Text aufziehen – er wird erkannt und kopiert.
+        </span>
+      )}
       {werkzeug === "lassozoom" && (
         <span>
           <strong>Bereich zoomen:</strong> Rechteck aufziehen · Klick = 2× vergrößern · Umschalt+Klick = verkleinern
@@ -128,7 +133,7 @@ export function Eigenschaftsleiste() {
         </>
       )}
       <span className="abstand" />
-      {werkzeug === "lassozoom" && (
+      {(werkzeug === "lassozoom" || werkzeug === "textbereich") && (
         <button className={fixiert ? "umschalter an" : "umschalter"} onClick={() => setzen({ werkzeugFixiert: !fixiert })} aria-pressed={fixiert}>
           <Pin size={14} /> Werkzeug fixieren
         </button>

@@ -1,7 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
-import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
+import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 function tokenErmitteln(): string {
   const anker = new URLSearchParams(window.location.hash.slice(1));
@@ -111,6 +111,17 @@ export const api = {
     anfrage<Auftrag>("POST", "/api/umwandeln", { eintraege, speichern }),
   auftragAbbrechen: (id: string) => anfrage("DELETE", `/api/auftraege/${id}`),
   ereignisse: () => anfrage<{ ereignisse: Ereignis[]; auftraege: Auftrag[] }>("GET", "/api/ereignisse"),
+  // Texterkennung
+  ocrStatus: () => anfrage<OcrStatus>("GET", "/api/ocr/status"),
+  ocrStarten: (id: string, o: { seiten?: number[] | null; sprachen?: string; erzwingen: boolean; ausrichten: boolean; entzerren: boolean }) =>
+    anfrage<Auftrag>("POST", `/api/dokumente/${id}/ocr`, o),
+  ocrBereich: (id: string, seite: number, rechteck: number[]) =>
+    anfrage<{ text: string; sicherheit: number }>("POST", `/api/dokumente/${id}/ocr/bereich`, { seite, rechteck }),
+  ocrUnsicher: (id: string) => anfrage<Record<string, [number, number, number, number][]>>("GET", `/api/dokumente/${id}/ocr/unsicher`),
+  textstatus: (id: string) => anfrage<{ seiten: number; ohne_text: number; erste_ohne_text: number[] }>("GET", `/api/dokumente/${id}/textstatus`),
+  ueberwachung: () => anfrage<{ regeln: OrdnerRegel[]; protokoll: UeberwachungsProtokoll[] }>("GET", "/api/ueberwachung"),
+  ueberwachungSetzen: (regeln: OrdnerRegel[]) =>
+    anfrage<{ regeln: OrdnerRegel[]; protokoll: UeberwachungsProtokoll[] }>("PUT", "/api/ueberwachung", regeln),
   dateiLaden: async (id: string): Promise<Blob> => {
     const antwort = await fetch(`/api/dokumente/${id}/datei`, { headers: { "X-Agentur-Token": token } });
     if (!antwort.ok) throw new ApiFehler("Datei konnte nicht erzeugt werden.");

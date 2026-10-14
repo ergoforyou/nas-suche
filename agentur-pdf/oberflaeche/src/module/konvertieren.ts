@@ -1,9 +1,11 @@
 // Register „Konvertieren“: Zusammenführen, In PDF umwandeln, Als PDF speichern.
 
-import { FileDown, FileInput, Layers } from "lucide-react";
+import { FileDown, FileInput, FolderSync, Layers, ScanText, TextSelect, TriangleAlert } from "lucide-react";
 import { registrieren } from "../befehle/register";
 import { umwandelnDialog, zusammenfuehrenOeffnen } from "../zustand/konvertieren";
 import { speichernUnter } from "../zustand/seitenaktionen";
+import { ocrDialog, unsicherUmschalten } from "../zustand/ocr";
+import { setzen, werkzeugWaehlen } from "../zustand/store";
 
 registrieren(
   {
@@ -39,5 +41,54 @@ registrieren(
     beschreibung: "Das aktuelle Dokument als PDF-Datei speichern.",
     ausfuehren: () => void speichernUnter(),
     aktiv: (z) => z.aktiv !== null,
+  },
+  // -------------------------------------------------------- Texterkennung
+  {
+    id: "ocr.dokument",
+    titel: "Texterkennung",
+    register: "konvertieren",
+    gruppe: "Texterkennung (OCR)",
+    icon: ScanText,
+    gross: true,
+    stichworte: ["ocr", "durchsuchbar", "scan", "text erkennen", "texterkennung"],
+    beschreibung: "Gescannte Seiten durchsuchbar machen – das Seitenbild bleibt unverändert.",
+    ausfuehren: () => ocrDialog(),
+    aktiv: (z) => z.aktiv !== null,
+  },
+  {
+    id: "ocr.bereich",
+    titel: "Text aus Bereich",
+    register: "konvertieren",
+    gruppe: "Texterkennung (OCR)",
+    icon: TextSelect,
+    gross: true,
+    kuerzel: "T",
+    stichworte: ["ocr", "kopieren", "ausschnitt", "rechteck", "text kopieren", "screenshot"],
+    beschreibung: "Rechteck aufziehen – der Text darin wird erkannt und in die Zwischenablage kopiert.",
+    ausfuehren: () => werkzeugWaehlen("textbereich"),
+    aktiv: (z) => z.aktiv !== null,
+    gewaehlt: (z) => z.werkzeug === "textbereich",
+  },
+  {
+    id: "ocr.unsicher",
+    titel: "Unsichere Wörter zeigen",
+    register: "konvertieren",
+    gruppe: "Texterkennung (OCR)",
+    icon: TriangleAlert,
+    stichworte: ["ocr", "prüfen", "qualität", "fehler"],
+    beschreibung: "Markiert Wörter, bei denen die Texterkennung unsicher war.",
+    ausfuehren: () => void unsicherUmschalten(),
+    aktiv: (z) => z.aktiv !== null,
+    gewaehlt: (z) => !!(z.aktiv && z.unsicher[z.aktiv]),
+  },
+  {
+    id: "ocr.ueberwachung",
+    titel: "Überwachungsordner",
+    register: "konvertieren",
+    gruppe: "Texterkennung (OCR)",
+    icon: FolderSync,
+    stichworte: ["scansnap", "scanner", "automatisch", "ordner", "eingang", "watch"],
+    beschreibung: "Neue Scans in einem Ordner automatisch durchsuchbar machen.",
+    ausfuehren: () => setzen({ dialog: { art: "ueberwachung" } }),
   },
 );

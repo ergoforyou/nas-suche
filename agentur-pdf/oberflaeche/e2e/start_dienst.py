@@ -25,5 +25,12 @@ testdaten.mit_leerseiten(ordner / "duplex.pdf")
 testdaten.foto(ordner / "foto.jpg")
 testdaten.word(ordner / "anschreiben.docx", "Anschreiben an Familie Weiß")
 (ordner / "kaputt.pdf").write_bytes(b"keine pdf")
+import pymupdf  # noqa: E402
+import scan_hilfen  # noqa: E402
+
+_brief = pymupdf.open(testdaten.versicherungsbrief(ordner / "_quelle.pdf", seiten=2))
+scan_hilfen.als_scan(_brief).save(ordner / "scan.pdf")
+scan_hilfen.als_scan(_brief, dpi=100, rauschen=40, jpeg=15).save(ordner / "schlecht.pdf")
+(ordner / "eingang").mkdir()
 print(f"Testdaten: {ordner}", flush=True)
 raise SystemExit(main(["--nur-dienst", "--port", "8766", "--token", "e2e", str(gross)]))

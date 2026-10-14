@@ -4,6 +4,8 @@ import { ausfuehren } from "./befehle/register";
 import { Bereiche } from "./ansicht/Bereiche";
 import { Auftraege } from "./ansicht/Auftraege";
 import { Dialoge } from "./ansicht/Dialoge";
+import { OcrHinweis } from "./ansicht/OcrDialoge";
+import { textstatusBeobachten } from "./zustand/ocr";
 import { Menueband } from "./ansicht/Menueband";
 import { Eigenschaftsleiste, Meldungen, Passwortdialog, Statusleiste, Tabs } from "./ansicht/Rahmen";
 import { Seitenleiste } from "./ansicht/Seitenleiste";
@@ -26,7 +28,7 @@ const MIT_STRG: Record<string, string> = {
   "=": "zoom.rein",
   "-": "zoom.raus",
 };
-const EINZELTASTEN: Record<string, string> = { h: "werkzeug.hand", z: "werkzeug.lassozoom", l: "werkzeug.lupe" };
+const EINZELTASTEN: Record<string, string> = { h: "werkzeug.hand", z: "werkzeug.lassozoom", l: "werkzeug.lupe", t: "ocr.bereich" };
 // Tastencodes statt Zeichen, da Umschalt das Zeichen je nach Tastaturlayout ändert
 const PLUS_CODES = ["BracketRight", "Equal", "NumpadAdd"];
 const MINUS_CODES = ["Slash", "Minus", "NumpadSubtract"];
@@ -64,6 +66,7 @@ export function App() {
 
   useEffect(() => {
     void starten();
+    return textstatusBeobachten();
   }, []);
 
   // Sitzung bei jeder Änderung an Tabs/Ansicht (verzögert) sichern
@@ -177,6 +180,7 @@ export function App() {
         {seitenleisteOffen && <Trennlinie breite={seitenleisteBreite} />}
         <section className="dokumentbereich">
           <Dialoge />
+          <OcrHinweis />
           {aktiv ? <Bereiche /> : <Startseite />}
         </section>
       </main>

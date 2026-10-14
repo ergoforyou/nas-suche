@@ -36,7 +36,10 @@ export type Dialog =
   | { art: "teilen"; dokId: string }
   | { art: "leerseiten"; dokId: string; seiten: number[] }
   | { art: "ungespeichert"; dokId: string; weiter: () => void }
-  | { art: "zusammenfuehren"; eintraege: ZfEintrag[] };
+  | { art: "zusammenfuehren"; eintraege: ZfEintrag[] }
+  | { art: "ocr"; dokId: string }
+  | { art: "ueberwachung" }
+  | { art: "bereichstext"; text: string; sicherheit: number };
 
 export interface Zustand {
   dokumente: Dokument[];
@@ -48,6 +51,12 @@ export interface Zustand {
   dialog: Dialog | null;
   /** laufende und gerade beendete Hintergrundaufträge */
   auftraege: Auftrag[];
+  /** Seiten ohne Text je Dokument (für den Hinweis „Texterkennung starten“) */
+  textlos: Record<string, number>;
+  /** ausgeblendete Hinweise je Dokument */
+  hinweisWeg: Record<string, boolean>;
+  /** unsichere Wörter je Dokument und Seite (nur wenn eingeblendet) */
+  unsicher: Record<string, Record<string, [number, number, number, number][]>>;
   register: string;
   werkzeug: Werkzeug;
   werkzeugFixiert: boolean;
@@ -69,6 +78,9 @@ let zustand: Zustand = {
   verlauf: [],
   dialog: null,
   auftraege: [],
+  textlos: {},
+  hinweisWeg: {},
+  unsicher: {},
   register: "start",
   werkzeug: "hand",
   werkzeugFixiert: false,

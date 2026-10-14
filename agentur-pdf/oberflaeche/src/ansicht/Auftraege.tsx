@@ -25,7 +25,7 @@ export function Auftraege() {
             )}
             <div className="auftrag-text">
               <strong>{a.titel}</strong>
-              <span>{a.status === "fehler" ? a.fehler : a.status === "abgebrochen" ? "Abgebrochen" : a.schritt}</span>
+              <span>{a.status === "fehler" ? a.fehler : a.status === "abgebrochen" ? "Abgebrochen" : a.status === "fertig" ? "Fertig" : a.schritt}</span>
               {laeuft && (
                 <div className="balken">
                   <div style={{ width: `${Math.round(a.fortschritt * 100)}%` }} />

@@ -11,7 +11,8 @@ Architektur und Plan: [docs/ARCHITEKTUR_UND_PLAN.md](docs/ARCHITEKTUR_UND_PLAN.m
 | M1 | Anzeigen: Tabs, Zoom (Strg+Mausrad, Regler, Seitenbreite/Ganze Seite/100 %, Bereich zoomen, Lupe), 4 Ansichtsmodi, Ansicht drehen, Miniaturen mit Größenregler, Lesezeichen, Volltextsuche (auch über alle Dokumente), zuletzt geöffnet, Favoriten-Ordner, Sitzung wiederherstellen, Passwort-PDFs | ✅ |
 | M2 | Seiten organisieren: Miniaturen mit Mehrfachauswahl (Strg/Umschalt), Drag & Drop innerhalb und zwischen Dokumenten (Strg = kopieren), Dateien aus Explorer zwischen Miniaturen ablegen, Nebeneinander-Ansicht mit eigener Miniaturleiste je Dokument, Rechtsklickmenü, Drehen/Löschen (Entf)/Duplizieren/Extrahieren, leere Seite/Datei/Zwischenablage einfügen, Teilen (Seitenanzahl, Leerseiten, Lesezeichen, Dateigröße), Leerseiten entfernen, Rückgängig/Wiederholen (auch dokumentübergreifend), Speichern/Speichern unter mit Nachfrage beim Schließen | ✅ |
 | M3 | Zusammenführen-Dialog (Reihenfolge per Drag & Drop/Pfeilen, Lesezeichen je Datei, Mail-Anhänge), Umwandlung von Word/Excel/PowerPoint/ODT/RTF (LibreOffice, kein MS Office nötig), Bildern (TIFF mehrseitig, HEIC, Handyfotos), Text und E-Mails (EML, Outlook-MSG), Hintergrundaufträge mit Fortschritt, Einzelinstanz, Explorer-Rechtsklick (`--explorer-einrichten`) | ✅ |
-| M4–M8 | siehe Plan | offen |
+| M4 | Texterkennung als unsichtbare Textebene (Seitenbild bleibt unverändert), Scan/Foto/Bildschirmfoto/Dunkelmodus, Schräglage und Ausrichtung, Umlaut-Rettung per Wörterbuch, Hinweis bei Scans ohne Text, „Text aus Bereich“ (Taste T), unsichere Wörter markieren, Überwachungsordner (ScanSnap) mit Leerseiten-Entfernung | ✅ |
+| M5–M8 | siehe Plan | offen |
 
 ## Starten (Entwicklung)
 
@@ -42,6 +43,16 @@ python -m agentur_pdf --explorer-reg einträge.reg   # zum Prüfen/Verteilen
 Einträge: „Mit Agentur-PDF öffnen“, „Zu einer PDF zusammenführen“ (auch bei
 Mehrfachauswahl – alle Dateien landen in einem Dialog), „In PDF umwandeln“.
 Unter Windows 11 erscheinen sie vorerst unter „Weitere Optionen anzeigen“.
+
+## Texterkennung an eigenen Dokumenten messen
+
+```bash
+python werkzeuge/ocr_messung.py "C:\Pfad\zu\Beispiel-PDFs"
+```
+
+Misst, wie viele Wörter wiedergefunden werden bzw. wie viele echte deutsche
+Wörter die Erkennung liefert (im Vergleich zu vorhandener Scanner-OCR).
+Die Dokumente verlassen den PC dabei nicht.
 
 ## Tests
 

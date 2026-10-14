@@ -1623,3 +1623,100 @@ input[type="range"] {
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
+
+/* ======================================================== M4: Texterkennung */
+.unsicher {
+  position: absolute;
+  border-bottom: 2px dashed #e07a00;
+  background: rgba(255, 160, 0, 0.12);
+  pointer-events: auto;
+  cursor: help;
+}
+
+.dokumentansicht.werkzeug-textbereich {
+  cursor: crosshair;
+}
+
+.gruppe {
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  padding: 6px 12px 8px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gruppe legend {
+  padding: 0 4px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.gruppe.regel {
+  gap: 6px;
+}
+
+.feld {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.feld input {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.dialog.sehr-breit {
+  width: 620px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.warnung {
+  color: #c42b1c !important;
+}
+
+.gefahr-text {
+  align-self: flex-start;
+  color: #c42b1c;
+}
+
+.textausgabe {
+  width: 100%;
+  font: 13px/1.45 var(--schrift);
+  padding: 8px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  background: var(--hg-flaeche);
+  color: var(--text);
+  resize: vertical;
+  user-select: text;
+}
+
+.protokoll summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.protokoll ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.protokoll li.fehler {
+  color: #c42b1c;
+}
+
+.dialog-knoepfe .primaer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

@@ -18,6 +18,7 @@ import {
   type SeitenBox,
 } from "../render/layout";
 import { ansichtAendern, holen, setzen, useZustand, werkzeugBenutzt, zoomBegrenzen } from "../zustand/store";
+import { bereichstextErkennen } from "../zustand/ocr";
 import { Seite } from "./Seite";
 
 interface Anker {
@@ -36,6 +37,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
   const lupeFaktor = useZustand((z) => z.lupeFaktor);
   const sprung = useZustand((z) => z.sprung);
   const suche = useZustand((z) => z.suche);
+  const unsicher = useZustand((z) => z.unsicher[dokId]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState({ b: 0, h: 0, x: 0, y: 0 });
@@ -245,12 +247,29 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
     if (werkzeug === "hand") {
       ziehen.current = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop };
       el.classList.add("ziehen");
-    } else if (werkzeug === "lassozoom") {
+    } else if (werkzeug === "lassozoom" || werkzeug === "textbereich") {
       const x = e.clientX - r.left + el.scrollLeft;
       const y = e.clientY - r.top + el.scrollTop;
       setLasso({ x0: x, y0: y, x1: x, y1: y });
     }
     e.preventDefault();
+  };
+
+  /** Aufgezogenes Rechteck (Inhaltskoordinaten) → Seite + normiertes Rechteck → Bereichs-OCR */
+  const bereichAuswerten = (x0: number, y0: number, b: number, h: number) => {
+    if (!layout || !ansicht || b < 6 || h < 6) return;
+    const mx = x0 + b / 2;
+    const my = y0 + h / 2;
+    const box = layout.boxen.find((k) => mx >= k.x && mx <= k.x + k.b && my >= k.y && my <= k.y + k.h);
+    if (!box) return;
+    const n: [number, number, number, number] = [
+      Math.max(0, (x0 - box.x) / box.b),
+      Math.max(0, (y0 - box.y) / box.h),
+      Math.min(1, (x0 + b - box.x) / box.b),
+      Math.min(1, (y0 + h - box.y) / box.h),
+    ];
+    // Ansichtsdrehung zurückrechnen → Koordinaten der (ungedreht) angezeigten Seite
+    void bereichstextErkennen(dokId, box.seite, rechteckDrehen(n, (360 - ansicht.drehung) % 360));
   };
 
   useEffect(() => {
@@ -279,6 +298,11 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
         const h = Math.abs(lasso.y1 - lasso.y0);
         setLasso(null);
         const r = el.getBoundingClientRect();
+        if (holen().werkzeug === "textbereich") {
+          bereichAuswerten(x0, y0, b, h);
+          werkzeugBenutzt();
+          return;
+        }
         if (b < 8 || h < 8) {
           // Klick ohne Aufziehen: eine Stufe vergrößern am Mauspunkt
           zoomAuf(zoom * (e.shiftKey ? 0.5 : 2), e.clientX - r.left, e.clientY - r.top);
@@ -452,6 +476,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
           const markierungen = suche.treffer
             .filter((t) => t.dokId === dokId && t.seite === box.seite)
             .map((t) => ({ r: t.rechteck, aktiv: t === aktiverTreffer }));
+          const unsichereWoerter = unsicher?.[String(box.seite)] ?? [];
           return (
             <div key={box.seite} className="seite" style={{ left: box.x, top: box.y, width: box.b, height: box.h }}>
               <Seite
@@ -467,6 +492,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
                 prioritaet={prio}
                 sichtbar={bereich}
                 markierungen={markierungen}
+                unsicher={unsichereWoerter}
               />
             </div>
           );

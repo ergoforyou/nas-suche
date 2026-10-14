@@ -33,7 +33,7 @@ export interface Aenderungsantwort {
 
 export type AnsichtsModus = "einzelseite" | "fortlaufend" | "doppelseite" | "doppelseite_fortlaufend";
 export type ZoomModus = "frei" | "seitenbreite" | "ganzeseite";
-export type Werkzeug = "hand" | "lassozoom" | "lupe";
+export type Werkzeug = "hand" | "lassozoom" | "lupe" | "textbereich";
 
 export interface Ansicht {
   modus: AnsichtsModus;
@@ -72,6 +72,7 @@ export interface Einstellungen {
   standard_zoom: ZoomModus;
   miniatur_groesse: number;
   seitenleiste_breite: number;
+  ocr_sprachen: string;
 }
 
 export interface ZuletztEintrag {
@@ -103,14 +104,56 @@ export interface Auftrag {
   fortschritt: number;
   schritt: string;
   fehler: string;
-  ergebnis: { dokumente?: string[]; dateien?: string[]; oeffnen?: boolean };
+  ergebnis: {
+    dokumente?: string[];
+    dateien?: string[];
+    oeffnen?: boolean;
+    aktualisieren?: boolean;
+    ocr?: OcrStatistik;
+  };
 }
 
 export type Ereignis =
   | { art: "auftrag"; auftrag: Auftrag }
   | { art: "zusammenfuehren"; dateien: string[] }
   | { art: "oeffnen"; dokumente: string[] }
-  | { art: "meldung"; text: string };
+  | { art: "meldung"; text: string }
+  | { art: "info"; text: string };
+
+export interface OcrStatistik {
+  erkannt: number;
+  uebersprungen: number;
+  seiten: number;
+  woerter: number;
+  unsicher: number;
+  gedreht: number;
+  sicherheit: number;
+}
+
+export interface OcrStatus {
+  verfuegbar: boolean;
+  sprachen: string[];
+  beste_modelle: boolean;
+  woerterbuch: boolean;
+}
+
+export interface OrdnerRegel {
+  ordner: string;
+  ziel: string;
+  original_sichern: boolean;
+  leerseiten_entfernen: boolean;
+  aktiv: boolean;
+}
+
+export interface UeberwachungsProtokoll {
+  datei: string;
+  ordner: string;
+  zeit: number;
+  ok: boolean;
+  fehler?: string;
+  erkannt?: number;
+  leerseiten_entfernt?: number;
+}
 
 /** Eintrag im Zusammenführen-Dialog: Datei auf dem PC (Pfad) oder hochgeladen */
 export interface ZfEintrag {

@@ -152,7 +152,7 @@ export async function umwandelnDialog(): Promise<void> {
 }
 
 // ------------------------------------------------------- Aufträge & Ereignisse
-function auftragMerken(auftrag: Auftrag): void {
+export function auftragMerken(auftrag: Auftrag): void {
   setzen((z) => ({ auftraege: [...z.auftraege.filter((a) => a.id !== auftrag.id), auftrag] }));
   schleifeBeschleunigen();
 }
@@ -183,8 +183,24 @@ async function ereignisVerarbeiten(e: Ereignis): Promise<void> {
       setzen((z) => ({ auftraege: z.auftraege.map((x) => (x.id === a.id ? a : x)) }));
       if (a.status === "fertig") {
         if (a.ergebnis.oeffnen && a.ergebnis.dokumente) await dokumenteOeffnen(a.ergebnis.dokumente);
+        if (a.ergebnis.aktualisieren && a.ergebnis.dokumente) {
+          const { nachOcr } = await import("./ocr");
+          for (const id of a.ergebnis.dokumente) await nachOcr(id);
+        }
         const dateien = a.ergebnis.dateien ?? [];
-        melden(dateien.length ? `Gespeichert: ${dateien.map((d) => d.split(/[\\/]/).pop()).join(", ")}` : `Fertig: ${a.titel}`);
+        const o = a.ergebnis.ocr;
+        if (o) {
+          melden(
+            o.erkannt
+              ? `Texterkennung fertig: ${o.erkannt} Seite(n), ${Math.round(o.sicherheit)} % sicher` +
+                  (o.unsicher ? `, ${o.unsicher} unsichere(s) Wort/Wörter` : "") +
+                  (o.gedreht ? `, ${o.gedreht} Seite(n) gedreht` : "") +
+                  (o.uebersprungen ? ` – ${o.uebersprungen} Seite(n) hatten schon Text` : "")
+              : "Alle Seiten enthalten bereits Text – nichts zu erkennen. (Option „Vorhandenen Text ersetzen“ erzwingt eine neue Erkennung.)",
+          );
+        } else {
+          melden(dateien.length ? `Gespeichert: ${dateien.map((d) => d.split(/[\\/]/).pop()).join(", ")}` : `Fertig: ${a.titel}`);
+        }
         // erfolgreiche Aufträge nach kurzer Zeit ausblenden
         setTimeout(() => auftragAusblenden(a.id), 2500);
       } else if (a.status === "fehler") {
@@ -202,6 +218,9 @@ async function ereignisVerarbeiten(e: Ereignis): Promise<void> {
       break;
     case "meldung":
       melden(e.text, "fehler");
+      break;
+    case "info":
+      melden(e.text);
       break;
   }
 }

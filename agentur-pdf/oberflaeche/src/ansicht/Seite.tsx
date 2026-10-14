@@ -24,6 +24,8 @@ export interface SeiteProps {
   /** sichtbarer Bereich der Seite in CSS-px relativ zur Seite (null = nicht sichtbar) */
   sichtbar: { x0: number; y0: number; x1: number; y1: number } | null;
   markierungen: { r: [number, number, number, number]; aktiv: boolean }[];
+  /** unsichere OCR-Wörter (normiert, angezeigte Seite ohne Ansichtsdrehung) */
+  unsicher?: [number, number, number, number][];
 }
 
 function useBild(url: string | null, prioritaet: number): string | null {
@@ -123,6 +125,17 @@ export const Seite = memo(function Seite(p: SeiteProps) {
       {kacheln.map((k) => (
         <Kachel key={k.key} url={k.url} links={k.links} oben={k.oben} b={k.b} h={k.h} prioritaet={p.prioritaet + 1} />
       ))}
+      {p.unsicher?.map((r, i) => {
+        const [x0, y0, x1, y1] = rechteckDrehen(r, p.drehung);
+        return (
+          <div
+            key={`u${i}`}
+            className="unsicher"
+            title="Unsicher erkannt – bitte prüfen"
+            style={{ left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` }}
+          />
+        );
+      })}
       {p.markierungen.map((m, i) => {
         const [x0, y0, x1, y1] = rechteckDrehen(m.r, p.drehung);
         return (
