@@ -165,7 +165,12 @@ function applyVoice() {
     maxSentences: state.settings.maxSentences,
   });
   stt.model = state.settings.sttModel;
-  stt.language = state.settings.sttLang === 'auto' ? null : p.language === 'en' ? 'english' : 'german';
+  // Whisper bekommt immer eine feste Sprache – ohne Angabe übersetzt es teils ins Englische.
+  stt.language = ['german', 'english'].includes(state.settings.sttLang)
+    ? state.settings.sttLang
+    : p.language === 'en'
+      ? 'english'
+      : 'german';
 }
 
 function applyAvatar() {
@@ -639,7 +644,7 @@ function fillSettings() {
   toggleEngineFields();
 
   $('sModel').value = s.sttModel;
-  $('sLang').value = s.sttLang === 'auto' ? 'auto' : 'persona';
+  $('sLang').value = ['german', 'english'].includes(s.sttLang) ? s.sttLang : 'persona';
   $('sHandsFree').checked = s.handsFree;
   $('sSens').value = s.sensitivity;
 
@@ -1207,7 +1212,7 @@ async function refreshModels() {
 async function init() {
   const data = (await desktop.loadData()) ?? {};
   state.settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-  if (state.settings.sttLang !== 'auto') state.settings.sttLang = 'persona';
+  if (!['german', 'english'].includes(state.settings.sttLang)) state.settings.sttLang = 'persona';
   state.personas = data.personas?.length ? data.personas.map(migratePersona) : [defaultPersona()];
   state.activeId = data.activeId ?? state.personas[0].id;
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;

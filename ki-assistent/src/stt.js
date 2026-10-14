@@ -20,7 +20,7 @@ export class SpeechInput {
       }
     };
     this.model = 'onnx-community/whisper-base';
-    this.language = 'german'; // null = automatisch
+    this.language = 'german';
     this.stream = null;
     this.ctx = null;
   }

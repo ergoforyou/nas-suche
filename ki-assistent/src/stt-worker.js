@@ -43,7 +43,7 @@ self.onmessage = async ({ data }) => {
     } else if (type === 'transcribe') {
       await load(data.model, (p) => self.postMessage({ id, type: 'progress', progress: p }));
       const out = await asr(data.audio, {
-        ...(data.language ? { language: data.language } : {}), // ohne Angabe: Sprache automatisch erkennen
+        language: data.language || 'german',
         task: 'transcribe',
         chunk_length_s: 30,
         stride_length_s: 5,

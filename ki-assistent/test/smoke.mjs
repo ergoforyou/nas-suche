@@ -50,13 +50,13 @@ await page.goto('http://localhost:8799/index.html');
 await page.waitForFunction(() => window.__app);
 
 const cases = [
-  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', expect: [/ich/i, /frag/i] },
-  { text: 'Hello, how are you today? I am fine, thank you.', expect: [/hello/i, /today/i] },
+  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/ich/i, /frag/i] },
+  { text: 'Hello, how are you today? I am fine, thank you.', lang: 'english', expect: [/hello/i, /today/i] },
 ];
 
 let ok = true;
 for (const c of cases) {
-  const result = await page.evaluate(async (text) => {
+  const result = await page.evaluate(async ({ text, lang }) => {
     const { tts, stt } = window.__app;
     const voice = tts.voiceFor(text);
     const t0 = performance.now();
@@ -79,10 +79,10 @@ for (const c of cases) {
     src.start();
     const audio = (await off.startRendering()).getChannelData(0).slice();
     stt.model = 'onnx-community/whisper-base';
-    stt.language = null; // automatisch erkennen
+    stt.language = lang;
     const heard = await stt.transcribe(audio);
     return { voice, seconds: +(pcm.audio.length / pcm.sampleRate).toFixed(2), ttsMs: Math.round(t1 - t0), sttMs: Math.round(performance.now() - t1), heard };
-  }, c.text);
+  }, c);
   const pass = c.expect.every((r) => r.test(result.heard));
   ok &&= pass;
   console.log(pass ? '✔' : '✘', JSON.stringify({ text: c.text, ...result }));
