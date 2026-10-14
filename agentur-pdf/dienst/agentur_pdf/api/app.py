@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .. import __version__
 from ..benutzer.speicher import BenutzerSpeicher
+from ..kern.bearbeitung import Bearbeitung, quelle_oeffnen
 from ..kern.dokumente import DokumentFehler, DokumentSpeicher
 from ..kern.mupdf_thread import im_mupdf_thread
 from .sicherheit import pruefe_anfrage
@@ -25,6 +26,7 @@ def erstelle_app(
     benutzer: BenutzerSpeicher | None = None,
     oberflaeche_ordner: Path | None = None,
     datei_dialog: Callable[[], list[str]] | None = None,
+    speichern_dialog: Callable[[str], str | None] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Agentur-PDF", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     dokumente = dokumente or DokumentSpeicher()
@@ -32,6 +34,8 @@ def erstelle_app(
     app.state.dokumente = dokumente
     app.state.benutzer = benutzer
     app.state.datei_dialog = datei_dialog
+    app.state.speichern_dialog = speichern_dialog
+    bearbeitung = Bearbeitung(dokumente)
 
     @app.middleware("http")
     async def sicherheit(request: Request, call_next):
@@ -115,6 +119,122 @@ def erstelle_app(
     @app.get("/api/dokumente/{dok_id}/lesezeichen")
     async def lesezeichen(dok_id: str):
         return await im_mupdf_thread(dokumente.lesezeichen, dok_id)
+
+    # ------------------------------------------------------ Seiten organisieren
+    async def antwort(ids: list[str], neu: list[str] | None = None, **extra):
+        def sammeln():
+            return {
+                "dokumente": [dokumente.info(i) for i in dict.fromkeys(ids)],
+                "neu": [dokumente.info(i) for i in (neu or [])],
+            }
+
+        return {**(await im_mupdf_thread(sammeln)), **extra}
+
+    @app.post("/api/dokumente/{dok_id}/seiten/drehen")
+    async def seiten_drehen(dok_id: str, seiten: list[int] = Body(...), grad: int = Body(90)):
+        await im_mupdf_thread(bearbeitung.drehen, dok_id, seiten, grad)
+        return await antwort([dok_id])
+
+    @app.post("/api/dokumente/{dok_id}/seiten/loeschen")
+    async def seiten_loeschen(dok_id: str, seiten: list[int] = Body(..., embed=True)):
+        await im_mupdf_thread(bearbeitung.loeschen, dok_id, seiten)
+        return await antwort([dok_id])
+
+    @app.post("/api/dokumente/{dok_id}/seiten/verschieben")
+    async def seiten_verschieben(dok_id: str, seiten: list[int] = Body(...), ziel: int = Body(...)):
+        positionen = await im_mupdf_thread(bearbeitung.verschieben, dok_id, seiten, ziel)
+        return await antwort([dok_id], auswahl=positionen)
+
+    @app.post("/api/dokumente/{dok_id}/seiten/duplizieren")
+    async def seiten_duplizieren(dok_id: str, seiten: list[int] = Body(..., embed=True)):
+        await im_mupdf_thread(bearbeitung.duplizieren, dok_id, seiten)
+        return await antwort([dok_id])
+
+    @app.post("/api/dokumente/{dok_id}/seiten/leer")
+    async def seite_leer(dok_id: str, position: int = Body(..., embed=True)):
+        await im_mupdf_thread(bearbeitung.leere_seite, dok_id, position)
+        return await antwort([dok_id], auswahl=[position])
+
+    @app.post("/api/dokumente/{dok_id}/seiten/einfuegen_pfad")
+    async def seiten_einfuegen_pfad(dok_id: str, position: int = Body(...), pfade: list[str] = Body(...)):
+        def einfuegen():
+            pos = position
+            for pfad in pfade:
+                quelle = quelle_oeffnen(pfad=pfad)
+                try:
+                    pos += bearbeitung.datei_einfuegen(dok_id, pos, quelle, f"„{os.path.basename(pfad)}“ einfügen")
+                finally:
+                    quelle.close()
+            return list(range(position, pos))
+
+        auswahl = await im_mupdf_thread(einfuegen)
+        return await antwort([dok_id], auswahl=auswahl)
+
+    @app.post("/api/dokumente/{dok_id}/seiten/einfuegen_datei")
+    async def seiten_einfuegen_datei(request: Request, dok_id: str, position: int = Query(...), name: str = Query(...)):
+        daten = await request.body()
+
+        def einfuegen():
+            quelle = quelle_oeffnen(daten=daten, name=name)
+            try:
+                return bearbeitung.datei_einfuegen(dok_id, position, quelle, f"„{name}“ einfügen")
+            finally:
+                quelle.close()
+
+        anzahl = await im_mupdf_thread(einfuegen)
+        return await antwort([dok_id], auswahl=list(range(position, position + anzahl)))
+
+    @app.post("/api/seiten/uebertragen")
+    async def seiten_uebertragen(
+        quelle: str = Body(...),
+        seiten: list[int] = Body(...),
+        ziel: str = Body(...),
+        position: int = Body(...),
+        verschieben: bool = Body(False),
+    ):
+        positionen = await im_mupdf_thread(bearbeitung.uebertragen, quelle, seiten, ziel, position, verschieben)
+        return await antwort([ziel, quelle], auswahl=positionen)
+
+    @app.post("/api/dokumente/{dok_id}/extrahieren")
+    async def extrahieren(dok_id: str, seiten: list[int] = Body(...), loeschen: bool = Body(False)):
+        neu = await im_mupdf_thread(bearbeitung.extrahieren, dok_id, seiten, loeschen)
+        return await antwort([dok_id], [neu.id])
+
+    @app.post("/api/dokumente/{dok_id}/teilen")
+    async def teilen(dok_id: str, modus: str = Body(...), wert: float = Body(0)):
+        ergebnis = await im_mupdf_thread(bearbeitung.teilen, dok_id, modus, wert)
+        return await antwort([dok_id], ergebnis["neu"], dateien=ergebnis["dateien"], teile=ergebnis["teile"])
+
+    @app.get("/api/dokumente/{dok_id}/leerseiten")
+    async def leerseiten(dok_id: str):
+        return await im_mupdf_thread(bearbeitung.leerseiten_finden, dok_id)
+
+    @app.post("/api/dokumente/{dok_id}/rueckgaengig")
+    async def rueckgaengig(dok_id: str):
+        return await antwort(await im_mupdf_thread(bearbeitung.rueckgaengig, dok_id))
+
+    @app.post("/api/dokumente/{dok_id}/wiederholen")
+    async def wiederholen(dok_id: str):
+        return await antwort(await im_mupdf_thread(bearbeitung.wiederholen, dok_id))
+
+    @app.post("/api/dokumente/{dok_id}/speichern")
+    async def speichern(dok_id: str, pfad: str | None = Body(None, embed=True)):
+        gespeichert = await im_mupdf_thread(bearbeitung.speichern, dok_id, pfad)
+        info = await im_mupdf_thread(dokumente.info, dok_id)
+        benutzer.zuletzt_hinzufuegen(gespeichert, info["titel"], info["seitenanzahl"])
+        return await antwort([dok_id], pfad=gespeichert)
+
+    @app.get("/api/dokumente/{dok_id}/datei")
+    async def datei(dok_id: str):
+        daten = await im_mupdf_thread(bearbeitung.datei_bytes, dok_id)
+        return Response(daten, media_type="application/pdf")
+
+    @app.post("/api/dialog/speichern")
+    async def dialog_speichern(vorschlag: str = Body("", embed=True)):
+        if app.state.speichern_dialog is None:
+            return {"verfuegbar": False, "pfad": None}
+        pfad = await asyncio.get_running_loop().run_in_executor(None, app.state.speichern_dialog, vorschlag)
+        return {"verfuegbar": True, "pfad": pfad}
 
     # -------------------------------------------------------------- Benutzer
     @app.get("/api/einstellungen")

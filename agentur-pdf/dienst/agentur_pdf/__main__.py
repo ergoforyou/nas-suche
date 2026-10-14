@@ -8,6 +8,7 @@ Startet den lokalen Dienst auf 127.0.0.1 und öffnet die Oberfläche
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import sys
 import threading
@@ -81,12 +82,28 @@ def main(argv: list[str] | None = None) -> int:
         ergebnis = fenster.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True, file_types=DATEITYPEN)
         return list(ergebnis or [])
 
+    def speichern_dialog(vorschlag: str) -> str | None:
+        fenster = fenster_ref.get("fenster")
+        if fenster is None:
+            return None
+        verzeichnis = os.path.dirname(vorschlag) if os.path.isabs(vorschlag) else ""
+        ergebnis = fenster.create_file_dialog(
+            webview.SAVE_DIALOG,
+            directory=verzeichnis,
+            save_filename=os.path.basename(vorschlag) or "Dokument.pdf",
+            file_types=("PDF-Dokument (*.pdf)",),
+        )
+        if not ergebnis:
+            return None
+        return ergebnis if isinstance(ergebnis, str) else ergebnis[0]
+
     app = erstelle_app(
         token,
         dokumente=dokumente,
         benutzer=benutzer,
         oberflaeche_ordner=oberflaeche_ordner(),
         datei_dialog=datei_dialog if webview else None,
+        speichern_dialog=speichern_dialog if webview else None,
     )
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     url = f"http://127.0.0.1:{port}/#t={token}"

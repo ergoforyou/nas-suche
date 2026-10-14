@@ -55,3 +55,36 @@ def test_ordner_listet_pdfs(client, brief, tmp_path):
     (tmp_path / "notiz.txt").write_text("x")
     inhalt = client.get("/api/ordner", params={"pfad": str(tmp_path)}).json()
     assert [d["name"] for d in inhalt["dateien"]] == ["brief.pdf"]
+
+
+def test_t3_ueber_api(client, tmp_path):
+    from test_bearbeitung import beschriftet
+
+    a = client.post("/api/dokumente/oeffnen", json={"pfad": str(beschriftet(tmp_path / "a.pdf", "A", 5))}).json()
+    b = client.post("/api/dokumente/oeffnen", json={"pfad": str(beschriftet(tmp_path / "b.pdf", "B", 3))}).json()
+    r = client.post(
+        "/api/seiten/uebertragen",
+        json={"quelle": a["id"], "seiten": [1, 2, 3], "ziel": b["id"], "position": 1, "verschieben": False},
+    ).json()
+    ziel = r["dokumente"][0]
+    assert ziel["seitenanzahl"] == 6 and ziel["geaendert"] and ziel["rueckgaengig"] == "Seiten kopieren"
+    assert r["auswahl"] == [1, 2, 3]
+    r = client.post(f"/api/dokumente/{b['id']}/rueckgaengig").json()
+    assert r["dokumente"][0]["seitenanzahl"] == 3 and r["dokumente"][0]["wiederholen"] == "Seiten kopieren"
+
+
+def test_einfuegen_hochgeladen_und_download(client, brief, tmp_path):
+    info = client.post("/api/dokumente/oeffnen", json={"pfad": str(brief)}).json()
+    r = client.post(
+        f"/api/dokumente/{info['id']}/seiten/einfuegen_datei",
+        params={"position": 0, "name": "zweit.pdf"},
+        content=brief.read_bytes(),
+    ).json()
+    assert r["dokumente"][0]["seitenanzahl"] == 6 and r["auswahl"] == [0, 1, 2]
+    pdf = client.get(f"/api/dokumente/{info['id']}/datei")
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert pymupdf.open("pdf", pdf.content).page_count == 6
+
+
+def test_speichern_ohne_dialog_im_browser(client):
+    assert client.post("/api/dialog/speichern", json={"vorschlag": "x.pdf"}).json() == {"verfuegbar": False, "pfad": None}

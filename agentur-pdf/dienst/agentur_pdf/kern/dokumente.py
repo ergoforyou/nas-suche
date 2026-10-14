@@ -35,14 +35,51 @@ def naechste_stufe(skala: float) -> float:
     return RENDER_STUFEN[-1]
 
 
+def neue_seiten_id() -> str:
+    return uuid.uuid4().hex[:10]
+
+
+@dataclass
+class Schnappschuss:
+    """Zustand eines Dokuments vor einer Änderung (für Rückgängig/Wiederholen)."""
+
+    daten: bytes
+    seiten_ids: list[str]
+    seiten_versionen: dict[str, int]
+    geaendert: bool
+    titel: str  # Name der Aktion, z. B. „Seiten löschen“
+    gruppe: str  # verbindet Schritte, die mehrere Dokumente betreffen
+
+    @property
+    def groesse(self) -> int:
+        return len(self.daten)
+
+
 @dataclass
 class OffenesDokument:
     id: str
     doc: pymupdf.Document
     titel: str
     pfad: str | None
+    passwort: str | None = None
+    war_verschluesselt: bool = False
     version: int = 0
-    seiten_versionen: list[int] = field(default_factory=list)
+    geaendert: bool = False
+    # Jede Seite hat eine stabile ID; ihr Inhalt eine Versionsnummer. Daraus
+    # entsteht die „Kennung“ für Render-Cache und Bild-URLs – so bleibt der
+    # Cache korrekt, auch wenn Seiten verschoben, gelöscht oder wiederhergestellt werden.
+    seiten_ids: list[str] = field(default_factory=list)
+    seiten_versionen: dict[str, int] = field(default_factory=dict)
+    zurueck: list[Schnappschuss] = field(default_factory=list)
+    vor: list[Schnappschuss] = field(default_factory=list)
+
+    def kennung(self, seite: int) -> str:
+        sid = self.seiten_ids[seite]
+        return f"{sid}.{self.seiten_versionen.get(sid, 0)}"
+
+    def seite_geaendert(self, seite: int) -> None:
+        sid = self.seiten_ids[seite]
+        self.seiten_versionen[sid] = self.seiten_versionen.get(sid, 0) + 1
 
 
 class DokumentSpeicher:
@@ -72,6 +109,7 @@ class DokumentSpeicher:
         return self._registrieren(doc, dateiname, None, passwort)
 
     def _registrieren(self, doc: pymupdf.Document, titel: str, pfad: str | None, passwort: str | None) -> OffenesDokument:
+        verschluesselt = bool(doc.needs_pass)
         if doc.needs_pass:
             if not passwort or not doc.authenticate(passwort):
                 doc.close()
@@ -87,7 +125,9 @@ class DokumentSpeicher:
             doc=doc,
             titel=titel,
             pfad=pfad,
-            seiten_versionen=[0] * doc.page_count,
+            passwort=passwort if verschluesselt else None,
+            war_verschluesselt=verschluesselt,
+            seiten_ids=[neue_seiten_id() for _ in range(doc.page_count)],
         )
         self._dokumente[dok.id] = dok
         return dok
@@ -122,8 +162,11 @@ class DokumentSpeicher:
             "version": dok.version,
             "seitenanzahl": dok.doc.page_count,
             "seiten": seiten,
-            "seiten_versionen": dok.seiten_versionen,
-            "verschluesselt": bool(dok.doc.is_encrypted),
+            "kennungen": [dok.kennung(i) for i in range(dok.doc.page_count)],
+            "verschluesselt": dok.war_verschluesselt,
+            "geaendert": dok.geaendert,
+            "rueckgaengig": dok.zurueck[-1].titel if dok.zurueck else None,
+            "wiederholen": dok.vor[-1].titel if dok.vor else None,
             "meta": {"titel": meta.get("title", ""), "autor": meta.get("author", "")},
         }
 
@@ -149,7 +192,7 @@ class DokumentSpeicher:
         if drehung % 90:
             raise DokumentFehler("Drehung muss ein Vielfaches von 90° sein.")
 
-        schluessel = (dok_id, seite_nr, dok.seiten_versionen[seite_nr], skala, drehung, kachel)
+        schluessel = (dok_id, dok.kennung(seite_nr), skala, drehung, kachel)
         treffer = self.cache.get(schluessel)
         if treffer is not None:
             return treffer
