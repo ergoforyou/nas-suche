@@ -1,0 +1,1246 @@
+/* Agentur-PDF – ruhiges Fluent-Design: neutral, eine Akzentfarbe. */
+
+:root {
+  --akzent: #b5121b;
+  --akzent-hell: color-mix(in srgb, var(--akzent) 10%, transparent);
+  --akzent-mittel: color-mix(in srgb, var(--akzent) 22%, transparent);
+  --hg: #f3f3f3;
+  --hg-flaeche: #ffffff;
+  --hg-leiste: #fafafa;
+  --hg-hover: #ebebeb;
+  --hg-gedrueckt: #e0e0e0;
+  --hg-dokument: #e6e6e6;
+  --text: #1b1b1b;
+  --text-2: #5c5c5c;
+  --text-3: #8a8a8a;
+  --linie: #e1e1e1;
+  --linie-stark: #c8c8c8;
+  --schatten: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --schatten-gross: 0 8px 32px rgba(0, 0, 0, 0.18);
+  --treffer: rgba(255, 196, 0, 0.38);
+  --treffer-aktiv: rgba(255, 120, 0, 0.5);
+  --radius: 6px;
+  --schrift: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+}
+
+:root[data-theme="dunkel"] {
+  --hg: #202020;
+  --hg-flaeche: #2b2b2b;
+  --hg-leiste: #272727;
+  --hg-hover: #353535;
+  --hg-gedrueckt: #3d3d3d;
+  --hg-dokument: #1a1a1a;
+  --text: #f0f0f0;
+  --text-2: #b8b8b8;
+  --text-3: #8a8a8a;
+  --linie: #383838;
+  --linie-stark: #4a4a4a;
+  --akzent-hell: color-mix(in srgb, var(--akzent) 22%, transparent);
+  --akzent-mittel: color-mix(in srgb, var(--akzent) 38%, transparent);
+  --schatten: 0 1px 3px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--schrift);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--hg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--akzent);
+  outline-offset: 1px;
+}
+
+kbd {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid var(--linie-stark);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--text-2);
+  background: var(--hg-flaeche);
+  white-space: nowrap;
+}
+
+input[type="text"],
+input:not([type]),
+input[type="password"],
+select {
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie-stark);
+  border-bottom-color: var(--text-3);
+  border-radius: 4px;
+  padding: 4px 8px;
+  user-select: text;
+}
+
+input[type="range"] {
+  accent-color: var(--akzent);
+}
+
+.primaer {
+  background: var(--akzent);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 7px 16px;
+  font-weight: 600;
+}
+
+.primaer:hover {
+  filter: brightness(1.08);
+}
+
+.primaer.gross {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 22px;
+  font-size: 15px;
+}
+
+.leer-hinweis {
+  color: var(--text-3);
+  padding: 12px;
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------ App */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ----------------------------------------------------------------- Tabs */
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 38px;
+  padding: 0 8px;
+  background: var(--hg);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.tabs-logo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  padding: 0 12px 0 4px;
+  font-weight: 600;
+  color: var(--akzent);
+  white-space: nowrap;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  min-width: 120px;
+  max-width: 240px;
+  padding: 0 6px 0 12px;
+  border-radius: 6px 6px 0 0;
+  color: var(--text-2);
+  cursor: default;
+  position: relative;
+}
+
+.tab:hover {
+  background: var(--hg-hover);
+}
+
+.tab.aktiv {
+  background: var(--hg-leiste);
+  color: var(--text);
+  box-shadow: 0 -1px 0 var(--linie) inset;
+}
+
+.tab.aktiv::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 0;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--akzent);
+}
+
+.tab-titel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-schliessen {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  opacity: 0.6;
+}
+
+.tab-schliessen:hover {
+  background: var(--hg-gedrueckt);
+  opacity: 1;
+}
+
+.tab-neu {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-2);
+}
+
+.tab-neu:hover {
+  background: var(--hg-hover);
+}
+
+/* ------------------------------------------------------------- Menüband */
+.menueband {
+  background: var(--hg-leiste);
+  border-bottom: 1px solid var(--linie);
+  flex-shrink: 0;
+}
+
+.mb-reiter {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 10px 0;
+}
+
+.mb-reiter > button[role="tab"] {
+  padding: 6px 12px;
+  border-radius: 4px;
+  color: var(--text-2);
+  position: relative;
+}
+
+.mb-reiter > button[role="tab"]:hover {
+  background: var(--hg-hover);
+  color: var(--text);
+}
+
+.mb-reiter > button.gewaehlt {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mb-reiter > button.gewaehlt::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--akzent);
+}
+
+.mb-befehlssuche {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 280px;
+  max-width: 40vw;
+  padding: 4px 8px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  background: var(--hg-flaeche);
+  color: var(--text-3);
+}
+
+.mb-befehlssuche span {
+  flex: 1;
+  text-align: left;
+}
+
+.mb-befehlssuche:hover {
+  border-color: var(--text-3);
+}
+
+.mb-leiste {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px 10px 2px;
+  min-height: 84px;
+  overflow-x: auto;
+}
+
+.mb-gruppe {
+  display: flex;
+  flex-direction: column;
+  padding: 0 6px;
+  border-right: 1px solid var(--linie);
+}
+
+.mb-gruppe-inhalt {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 1;
+}
+
+.mb-gruppe-titel {
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: center;
+  padding: 2px 0 2px;
+}
+
+.mb-gross {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 58px;
+  max-width: 84px;
+  padding: 6px 6px 4px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.mb-gross span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mb-klein {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mb-kleine {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, auto);
+  gap: 0 2px;
+}
+
+.mb-gross:hover:not(:disabled),
+.mb-klein:hover:not(:disabled) {
+  background: var(--hg-hover);
+}
+
+.mb-gross.gewaehlt,
+.mb-klein.gewaehlt {
+  background: var(--akzent-hell);
+  color: var(--akzent);
+}
+
+:root[data-theme="dunkel"] .mb-gross.gewaehlt,
+:root[data-theme="dunkel"] .mb-klein.gewaehlt {
+  color: var(--text);
+}
+
+.mb-mehr {
+  position: relative;
+  padding: 0 4px;
+}
+
+.mb-geplant {
+  align-self: center;
+  max-width: 560px;
+  padding: 8px 14px;
+  color: var(--text-2);
+  background: var(--hg-flaeche);
+  border: 1px dashed var(--linie-stark);
+  border-radius: var(--radius);
+}
+
+/* ---------------------------------------------------------- Menüs (Popup) */
+.menue {
+  position: absolute;
+  z-index: 50;
+  top: 100%;
+  left: 0;
+  min-width: 260px;
+  padding: 4px;
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie);
+  border-radius: 8px;
+  box-shadow: var(--schatten-gross);
+}
+
+.menue button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.menue button span {
+  flex: 1;
+}
+
+.menue button:hover:not(:disabled) {
+  background: var(--hg-hover);
+}
+
+/* ---------------------------------------------------- Eigenschaftsleiste */
+.eigenschaftsleiste {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 14px;
+  background: var(--akzent-hell);
+  border-bottom: 1px solid var(--linie);
+  flex-shrink: 0;
+}
+
+.eigenschaftsleiste label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.umschalter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--linie-stark);
+  background: var(--hg-flaeche);
+}
+
+.umschalter.an {
+  border-color: var(--akzent);
+  color: var(--akzent);
+}
+
+.abstand {
+  flex: 1;
+}
+
+/* --------------------------------------------------------- Hauptbereich */
+.hauptbereich {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.dokumentbereich {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  background: var(--hg-dokument);
+}
+
+.trennlinie {
+  width: 5px;
+  margin: 0 -2px;
+  cursor: col-resize;
+  z-index: 5;
+  position: relative;
+}
+
+.trennlinie:hover,
+.trennlinie:active {
+  background: var(--akzent-mittel);
+}
+
+/* ---------------------------------------------------------- Seitenleiste */
+.seitenleiste {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: var(--hg-leiste);
+  border-right: 1px solid var(--linie);
+  min-width: 140px;
+}
+
+.seitenleiste-reiter {
+  display: flex;
+  padding: 6px 6px 0;
+  gap: 2px;
+  border-bottom: 1px solid var(--linie);
+}
+
+.seitenleiste-reiter button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 4px;
+  border-radius: 4px 4px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+  min-width: 0;
+  position: relative;
+}
+
+.seitenleiste-reiter button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seitenleiste-reiter button:hover {
+  background: var(--hg-hover);
+}
+
+.seitenleiste-reiter button.gewaehlt {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.seitenleiste-reiter button.gewaehlt::after {
+  content: "";
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  bottom: 0;
+  height: 2px;
+  background: var(--akzent);
+  border-radius: 2px;
+}
+
+.seitenleiste-inhalt {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.seitenleiste-fuss {
+  padding: 6px 10px;
+  border-top: 1px solid var(--linie);
+  color: var(--text-2);
+}
+
+.seitenleiste-fuss label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seitenleiste-fuss input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Miniaturen */
+.miniaturen {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.miniatur {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.miniatur:hover {
+  background: var(--hg-hover);
+}
+
+.miniatur.aktiv {
+  background: var(--akzent-hell);
+}
+
+.miniatur-bild {
+  display: block;
+  background: #fff;
+  box-shadow: var(--schatten);
+  overflow: hidden;
+}
+
+.miniatur.aktiv .miniatur-bild {
+  outline: 2px solid var(--akzent);
+  outline-offset: 1px;
+}
+
+.miniatur-bild img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.miniatur-nr {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.miniatur.aktiv .miniatur-nr {
+  color: var(--akzent);
+  font-weight: 600;
+}
+
+/* Lesezeichen */
+.lesezeichen {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.lesezeichen li {
+  display: flex;
+  align-items: center;
+}
+
+.lesezeichen .aufklappen,
+.lesezeichen .aufklappen-platz {
+  width: 20px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.lesezeichen .eintrag {
+  flex: 1;
+  text-align: left;
+  padding: 4px 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesezeichen .eintrag:hover {
+  background: var(--hg-hover);
+}
+
+.lesezeichen .eintrag.aktiv {
+  color: var(--akzent);
+  font-weight: 600;
+}
+
+/* Suche */
+.suche-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.suche-panel form {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suchfeld {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie-stark);
+  border-bottom: 2px solid var(--akzent);
+  border-radius: 4px;
+}
+
+.suchfeld input {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 6px 0;
+  outline: none;
+  min-width: 0;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.checkbox input {
+  accent-color: var(--akzent);
+}
+
+.suche-status {
+  padding: 0 10px 6px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.trefferliste {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.trefferliste button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.trefferliste button:hover {
+  background: var(--hg-hover);
+}
+
+.trefferliste button.aktiv {
+  background: var(--akzent-hell);
+}
+
+.treffer-ort {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.treffer-text {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.treffer-text mark {
+  background: var(--treffer);
+  color: inherit;
+  border-radius: 2px;
+}
+
+/* ------------------------------------------------------ Dokumentansicht */
+.dokumentansicht {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  outline: none;
+}
+
+.dokumentansicht.werkzeug-hand {
+  cursor: grab;
+}
+
+.dokumentansicht.werkzeug-hand.ziehen {
+  cursor: grabbing;
+}
+
+.dokumentansicht.werkzeug-lassozoom {
+  cursor: zoom-in;
+}
+
+.dokumentansicht.werkzeug-lupe {
+  cursor: crosshair;
+}
+
+.flaeche {
+  position: relative;
+}
+
+.seite {
+  position: absolute;
+  background: #fff;
+  box-shadow: var(--schatten);
+}
+
+.seite-inhalt {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.seite-bild {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.kachel {
+  position: absolute;
+}
+
+.seite-laedt {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #fff 0%, #f3f3f3 50%, #fff 100%);
+  background-size: 200% 100%;
+  animation: laden 1.4s ease-in-out infinite;
+}
+
+@keyframes laden {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.treffer {
+  position: absolute;
+  background: var(--treffer);
+  mix-blend-mode: multiply;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.treffer.aktiv {
+  background: var(--treffer-aktiv);
+  outline: 2px solid rgba(255, 110, 0, 0.9);
+}
+
+.lasso {
+  position: absolute;
+  border: 1.5px dashed var(--akzent);
+  background: var(--akzent-hell);
+  pointer-events: none;
+}
+
+.lupe {
+  position: absolute;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--hg-flaeche);
+  box-shadow: 0 0 0 1px var(--linie-stark), var(--schatten-gross);
+  background: #fff;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.lupe img {
+  position: absolute;
+}
+
+/* ---------------------------------------------------------- Statusleiste */
+.statusleiste {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--hg-leiste);
+  border-top: 1px solid var(--linie);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+
+.seitenwahl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.seitenwahl input {
+  width: 48px;
+  text-align: center;
+  padding: 1px 4px;
+}
+
+.modi {
+  display: flex;
+  gap: 2px;
+}
+
+.modi button,
+.zoom > button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.modi button:hover,
+.zoom > button:hover {
+  background: var(--hg-hover);
+}
+
+.modi button.gewaehlt {
+  background: var(--akzent-hell);
+  color: var(--akzent);
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zoom input[type="range"] {
+  width: 140px;
+}
+
+.zoom-wert {
+  width: 64px;
+  text-align: right;
+  padding: 1px 6px !important;
+}
+
+/* --------------------------------------------------------------- Startseite */
+.startseite {
+  flex: 1;
+  overflow: auto;
+  padding: 40px 32px;
+  background: var(--hg);
+}
+
+.start-kopf {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.start-kopf h1 {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.start-kopf p {
+  color: var(--text-2);
+  margin: 0 0 18px;
+}
+
+.start-kopf .hinweis {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.start-spalten {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.karte {
+  background: var(--hg-flaeche);
+  border: 1px solid var(--linie);
+  border-radius: 8px;
+  padding: 14px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.karte h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+
+.dateiliste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: 420px;
+}
+
+.dateiliste li {
+  display: flex;
+  align-items: center;
+}
+
+.dateiliste .datei {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.dateiliste .datei:hover:not(:disabled) {
+  background: var(--hg-hover);
+}
+
+.dateiliste .datei svg {
+  color: var(--akzent);
+}
+
+.datei-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.datei-info {
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.symbol {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.symbol:hover {
+  background: var(--hg-hover);
+  color: var(--text);
+}
+
+.ordner-kopf {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.ordner-pfad {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  color: var(--text-2);
+}
+
+.favorit-neu {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.favorit-neu input {
+  flex: 1;
+  min-width: 0;
+}
+
+.favorit-neu button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 4px;
+}
+
+.favorit-neu button:hover {
+  background: var(--hg-hover);
+}
+
+/* ------------------------------------------------------ Dialoge & Meldungen */
+.dialog-hintergrund {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+}
+
+.dialog-hintergrund.oben {
+  place-items: start center;
+  padding-top: 12vh;
+}
+
+.dialog {
+  width: 380px;
+  padding: 20px;
+  background: var(--hg-flaeche);
+  border-radius: 10px;
+  box-shadow: var(--schatten-gross);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+
+.dialog p {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.dialog-knoepfe {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-knoepfe button:not(.primaer) {
+  padding: 7px 16px;
+  border: 1px solid var(--linie-stark);
+  border-radius: var(--radius);
+}
+
+.befehlssuche {
+  width: 600px;
+  max-width: calc(100vw - 32px);
+  background: var(--hg-flaeche);
+  border-radius: 10px;
+  box-shadow: var(--schatten-gross);
+  overflow: hidden;
+  border: 1px solid var(--linie);
+}
+
+.befehlssuche > input {
+  width: 100%;
+  border: none !important;
+  border-bottom: 1px solid var(--linie) !important;
+  border-radius: 0 !important;
+  padding: 14px 16px !important;
+  font-size: 15px;
+  outline: none;
+}
+
+.befehlssuche ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.befehlssuche li button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.befehlssuche li button.gewaehlt {
+  background: var(--akzent-hell);
+}
+
+.befehlssuche li button.inaktiv {
+  opacity: 0.45;
+}
+
+.bs-titel {
+  flex: 1;
+}
+
+.bs-ort {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.meldung {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 70vw;
+  padding: 10px 12px 10px 16px;
+  border-radius: 8px;
+  background: #2b2b2b;
+  color: #fff;
+  box-shadow: var(--schatten-gross);
+}
+
+.meldung.fehler {
+  background: #a4262c;
+}
+
+.ablage-hinweis {
+  position: fixed;
+  inset: 8px;
+  z-index: 150;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--akzent);
+  border: 3px dashed var(--akzent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--hg-flaeche) 85%, transparent);
+  pointer-events: none;
+}
