@@ -61,7 +61,9 @@ Alles läuft lokal – Hintergründe werden wie beim Avatar-Bild freigestellt (T
 Bei **Fotos** erkennt die App Gesicht und Körper (MediaPipe): Gelenke sitzen genau, beim Blinzeln gleitet das eigene
 Lid über das Auge und beim Sprechen öffnen sich die Lippen (statt aufgemalter Formen). Halbkörperbilder werden als
 Brustbild gebaut, Arme vor dem Körper bleiben am Oberkörper. Rückansichten erkennt die App und legt sie automatisch
-ins Feld „Rückansicht“; ohne erkanntes Gesicht gibt es keine Mimik.
+ins Feld „Rückansicht“; ohne erkanntes Gesicht gibt es keine Mimik. Erstellte Figuren können außerdem den Blick bewegen
+(die Iris folgt dem Betrachter) und zeigen die Stimmung der Antwort über Augenbrauen, Lider und Mundwinkel
+(überrascht, traurig, verärgert, fröhlich).
 
 ### 2D-Figur aus mehreren Bildern
 

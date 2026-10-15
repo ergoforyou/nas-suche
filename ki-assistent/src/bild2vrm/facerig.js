@@ -12,6 +12,13 @@ const EYES = {
   left: { upper: [263, 466, 388, 387, 386, 385, 384, 398, 362], lower: [263, 249, 390, 373, 374, 380, 381, 382, 362] },
 };
 const MOUTH = { right: 61, left: 291, upperInner: 13, lowerInner: 14, chin: 152 };
+// Brauen (Ober- und Unterkante, jeweils von außen nach innen) und Iris (Mitte + 4 Randpunkte)
+const BROWS = {
+  right: { upper: [70, 63, 105, 66, 107], lower: [46, 53, 52, 65, 55] },
+  left: { upper: [300, 293, 334, 296, 336], lower: [276, 283, 282, 295, 285] },
+};
+const IRIS = { right: [468, 469, 470, 471, 472], left: [473, 474, 475, 476, 477] };
+const NOSE_BRIDGE = 168;
 
 // Ausdrücke (VRM-1.0-Namen) -> Parameter
 const SHAPES = {
@@ -24,6 +31,15 @@ const SHAPES = {
   oh: { mouth: { open: 0.75, width: -0.2, round: 0.6 } },
   happy: { mouth: { smile: 1, open: 0.15 }, squint: 1 },
   relaxed: { mouth: { smile: 0.5 }, squint: 0.4 },
+  // Stimmungen über Brauen, Lider und Mundwinkel (Brauen in Anteilen der Gesichtshöhe, + = nach unten)
+  surprised: { brows: { inner: -0.035, outer: -0.03 }, lids: -0.22, mouth: { open: 0.4, round: 0.4 } },
+  sad: { brows: { inner: -0.025, outer: 0.006 }, lids: 0.15, mouth: { smile: -0.8 } },
+  angry: { brows: { inner: 0.03, outer: -0.004, inward: 0.012 }, lids: 0.2, mouth: { smile: -0.35, width: -0.1 } },
+  // Blick (VRM lookAt): die Iris wandert im Auge; "links" = linke Seite der Figur = im Bild rechts
+  lookLeft: { gaze: { x: 1, y: 0 } },
+  lookRight: { gaze: { x: -1, y: 0 } },
+  lookUp: { gaze: { x: 0, y: -0.6 }, lids: -0.08 },
+  lookDown: { gaze: { x: 0, y: 0.45 }, lids: 0.12 },
 };
 export const FACE_EXPRESSIONS = {
   blink: [['blinkLeft', 1], ['blinkRight', 1]],
@@ -32,6 +48,10 @@ export const FACE_EXPRESSIONS = {
   aa: [['aa', 1]], ih: [['ih', 1]], ou: [['ou', 1]], ee: [['ee', 1]], oh: [['oh', 1]],
   happy: [['happy', 1]],
   relaxed: [['relaxed', 1]],
+  surprised: [['surprised', 1]],
+  sad: [['sad', 1]],
+  angry: [['angry', 1]],
+  lookLeft: [['lookLeft', 1]], lookRight: [['lookRight', 1]], lookUp: [['lookUp', 1]], lookDown: [['lookDown', 1]],
 };
 
 /** Lineare Interpolation entlang einer nach x sortierten Punktliste. */
@@ -73,6 +93,51 @@ function eyeDisplacement(e, x, y, closeTop, raiseBottom) {
     s = top * (1 - t) - bottom * t;
   } else s = -bottom * Math.exp(-(((y - yl) / (1.3 * e.hmax)) ** 2));
   return s * Math.max(0, wx);
+}
+
+/** Blick: Iris innerhalb der Lidöffnung verschieben (Lider und Augenwinkel bleiben stehen). */
+function gazeDisplacement(e, ir, x, y, g) {
+  if (x <= e.xmin || x >= e.xmax) return [0, 0];
+  const yu = curveY(e.up, x), yl = curveY(e.lo, x), h = yl - yu;
+  if (h <= 0 || y <= yu || y >= yl) return [0, 0];
+  const clamp01 = (v) => Math.min(1, Math.max(0, v));
+  const lid = clamp01((y - yu) / (0.3 * h)) * clamp01((yl - y) / (0.3 * h));
+  const corner = clamp01((x - e.xmin) / (0.2 * e.w)) * clamp01((e.xmax - x) / (0.2 * e.w));
+  const wgt = Math.exp(-((x - ir.x) ** 2 + (y - ir.y) ** 2) / (1.6 * ir.r) ** 2) * lid * corner;
+  return [g.x * 0.55 * ir.r * wgt, g.y * 0.35 * ir.r * wgt];
+}
+
+/** Weiche Verformung aus Anfassern (Gauß-gewichteter Mittelwert, klingt fern aller Anfasser auf 0 aus). */
+function handleDisplacement(handles, x, y) {
+  let ax = 0, ay = 0, ws = 0;
+  for (const hd of handles) {
+    const w = Math.exp(-(((x - hd.x) / hd.rx) ** 2 + ((y - hd.y) / hd.ry) ** 2));
+    ax += w * hd.dx; ay += w * hd.dy; ws += w;
+  }
+  if (ws < 1e-6) return [0, 0];
+  const f = Math.min(1, ws) / ws;
+  return [ax * f, ay * f];
+}
+
+/** Anfasser für die Brauen: Brauenpunkte bewegen sich, das Oberlid bleibt als Anker stehen. */
+function browHandles(lm, eyes, b, fh) {
+  const cx = lm[NOSE_BRIDGE][0], out = [];
+  for (const side of ['left', 'right']) {
+    const up = BROWS[side].upper.map((i) => lm[i]), lo = BROWS[side].lower.map((i) => lm[i]);
+    const e = eyes[side];
+    const browY = up.reduce((s2, p) => s2 + p[1], 0) / up.length;
+    const lidY = e.up.reduce((s2, p) => s2 + p[1], 0) / e.up.length;
+    const gap = Math.max(4, lidY - browY), bw = Math.max(4, Math.abs(up[0][0] - up[up.length - 1][0]));
+    for (const row of [up, lo])
+      row.forEach((p, k) => {
+        const t = k / (row.length - 1); // 0 = außen, 1 = innen
+        const dy = ((b.outer ?? 0) * (1 - t) + (b.inner ?? 0) * t) * fh;
+        const dx = (b.inward ?? 0) * t * fh * Math.sign(cx - p[0]);
+        out.push({ x: p[0], y: p[1], dx, dy, rx: 0.35 * bw, ry: 0.9 * gap });
+      });
+    for (const p of e.up) out.push({ x: p[0], y: p[1], dx: 0, dy: 0, rx: 0.15 * e.w, ry: 0.35 * gap });
+  }
+  return out;
 }
 
 /** Verschiebung (Pixel) für den Mund. lower: liegt der Punkt unterhalb des Lippenschnitts? */
@@ -223,9 +288,15 @@ export function buildFaceRig({ lm, tex, fm, zFront, frontNormals, toWorld, skel,
 
   // Morph-Targets
   const eyes = { left: eyeGeometry(lm, 'left'), right: eyeGeometry(lm, 'right') };
+  const iris = {};
+  for (const side of ['left', 'right']) {
+    const c = lm[IRIS[side][0]], rim = IRIS[side].slice(1).map((i) => lm[i]);
+    iris[side] = { x: c[0], y: c[1], r: Math.max(1, rim.reduce((s2, p) => s2 + Math.hypot(p[0] - c[0], p[1] - c[1]), 0) / rim.length) };
+  }
   const names = Object.keys(SHAPES), targets = [];
   for (const name of names) {
     const sh = SHAPES[name], t = new Float64Array(3 * n);
+    const brows = sh.brows ? browHandles(lm, eyes, sh.brows, fh) : null;
     for (let i = 0; i < n; i++) {
       const x = px[2 * i], y = px[2 * i + 1];
       let dx = 0, dyp = 0;
@@ -233,6 +304,15 @@ export function buildFaceRig({ lm, tex, fm, zFront, frontNormals, toWorld, skel,
         const amount = sh.blink?.[side] ?? 0;
         if (amount) dyp += eyeDisplacement(eyes[side], x, y, 0.94 * amount, 0);
         if (sh.squint) dyp += eyeDisplacement(eyes[side], x, y, 0.3 * sh.squint, 0.25 * sh.squint);
+        if (sh.lids) dyp += eyeDisplacement(eyes[side], x, y, sh.lids, 0);
+        if (sh.gaze) {
+          const [gx, gy] = gazeDisplacement(eyes[side], iris[side], x, y, sh.gaze);
+          dx += gx; dyp += gy;
+        }
+      }
+      if (brows) {
+        const [bx, by] = handleDisplacement(brows, x, y);
+        dx += bx; dyp += by;
       }
       if (sh.mouth) {
         const [mx, my] = mouthDisplacement(mouth, x, y, lowerSide[i] === 1, sh.mouth);

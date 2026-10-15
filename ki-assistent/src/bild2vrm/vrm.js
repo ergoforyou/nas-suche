@@ -5,7 +5,8 @@ const FLOAT = 5126, USHORT = 5123, UINT = 5125, ARRAY_BUFFER = 34962, ELEMENT_AR
 const VRM0_PRESETS = ['neutral', 'a', 'i', 'u', 'e', 'o', 'blink', 'joy', 'angry', 'sorrow', 'fun',
   'lookup', 'lookdown', 'lookleft', 'lookright', 'blink_l', 'blink_r'];
 const VRM1_TO_VRM0 = { neutral: 'neutral', aa: 'a', ih: 'i', ou: 'u', ee: 'e', oh: 'o', blink: 'blink', blinkLeft: 'blink_l',
-  blinkRight: 'blink_r', happy: 'joy', angry: 'angry', sad: 'sorrow', relaxed: 'fun' };
+  blinkRight: 'blink_r', happy: 'joy', angry: 'angry', sad: 'sorrow', relaxed: 'fun',
+  lookUp: 'lookup', lookDown: 'lookdown', lookLeft: 'lookleft', lookRight: 'lookright' };
 const COMPONENTS = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
 
 class GLBBuilder {
@@ -35,6 +36,32 @@ class GLBBuilder {
       const mn = new Array(nc).fill(Infinity), mx = new Array(nc).fill(-Infinity);
       for (let i = 0; i < a.length; i++) { const k = i % nc; if (a[i] < mn[k]) mn[k] = a[i]; if (a[i] > mx[k]) mx[k] = a[i]; }
       acc.min = mn; acc.max = mx;
+    }
+    this.gltf.accessors.push(acc);
+    return this.gltf.accessors.length - 1;
+  }
+
+  /** Morph-Target (VEC3-Deltas): sparse gespeichert, wenn nur ein Teil der Punkte sich bewegt. */
+  morphAccessor(values) {
+    const count = values.length / 3, idx = [];
+    for (let i = 0; i < count; i++) if (values[3 * i] || values[3 * i + 1] || values[3 * i + 2]) idx.push(i);
+    if (idx.length > count / 3) return this.accessor(values, FLOAT, 'VEC3', undefined, true);
+    const mn = [0, 0, 0], mx = [0, 0, 0], vals = new Float32Array(Math.max(1, idx.length) * 3);
+    idx.forEach((i, k) => {
+      for (let c = 0; c < 3; c++) {
+        const v = values[3 * i + c];
+        vals[3 * k + c] = v;
+        if (v < mn[c]) mn[c] = v;
+        if (v > mx[c]) mx[c] = v;
+      }
+    });
+    const acc = { componentType: FLOAT, count, type: 'VEC3', min: Array.from(Float32Array.from(mn)), max: Array.from(Float32Array.from(mx)) };
+    if (idx.length) {
+      acc.sparse = {
+        count: idx.length,
+        indices: { bufferView: this.view(Uint32Array.from(idx)), componentType: UINT },
+        values: { bufferView: this.view(vals) },
+      };
     }
     this.gltf.accessors.push(acc);
     return this.gltf.accessors.length - 1;
@@ -103,7 +130,7 @@ export function writeVrm({ meshes, materials, bonePositions, thumbnailPng, versi
         material: p.material, mode: 4,
       };
       if (p.targets?.length) {
-        prim.targets = p.targets.map((t) => ({ POSITION: g.accessor(flipArr(t, flip), FLOAT, 'VEC3', undefined, true) }));
+        prim.targets = p.targets.map((t) => ({ POSITION: g.morphAccessor(flipArr(t, flip)) }));
         prim.extras = { targetNames: m.targetNames };
       }
       return prim;
@@ -138,7 +165,9 @@ export function writeVrm({ meshes, materials, bonePositions, thumbnailPng, versi
 }
 
 function vrm0Extension(boneNode, nMeshes, materials, thumbTex, name, author, expressions) {
-  const curve = { curve: [0, 0, 0, 1, 1, 1, 1, 0], xRange: 90, yRange: 10 };
+  // Blick über Ausdrücke: volle Augenbewegung bei 30° (waagerecht) bzw. 25° (senkrecht), Gewicht max. 1
+  const curveH = { curve: [0, 0, 0, 1, 1, 1, 1, 0], xRange: 30, yRange: 1 };
+  const curveV = { curve: [0, 0, 0, 1, 1, 1, 1, 0], xRange: 25, yRange: 1 };
   const byPreset = {};
   for (const [k, v] of Object.entries(expressions)) if (VRM1_TO_VRM0[k]) byPreset[VRM1_TO_VRM0[k]] = v;
   return {
@@ -157,7 +186,7 @@ function vrm0Extension(boneNode, nMeshes, materials, thumbTex, name, author, exp
     firstPerson: {
       firstPersonBone: boneNode.head, firstPersonBoneOffset: { x: 0, y: 0.06, z: 0 },
       meshAnnotations: [...Array(nMeshes).keys()].map((mesh) => ({ mesh, firstPersonFlag: 'Auto' })),
-      lookAtTypeName: 'BlendShape', lookAtHorizontalInner: curve, lookAtHorizontalOuter: curve, lookAtVerticalDown: curve, lookAtVerticalUp: curve,
+      lookAtTypeName: 'BlendShape', lookAtHorizontalInner: curveH, lookAtHorizontalOuter: curveH, lookAtVerticalDown: curveV, lookAtVerticalUp: curveV,
     },
     blendShapeMaster: {
       blendShapeGroups: VRM0_PRESETS.map((p) => ({
@@ -186,13 +215,13 @@ function vrm1Extension(boneNode, meshNodes, thumbTex, name, author, expressions)
     allowRedistribution: false, modification: 'prohibited',
   };
   if (thumbTex != null) meta.thumbnailImage = thumbTex;
-  const rangeMap = { inputMaxValue: 90, outputScale: 1 };
+  const rangeH = { inputMaxValue: 30, outputScale: 1 }, rangeV = { inputMaxValue: 25, outputScale: 1 };
   const ext = {
     specVersion: '1.0', meta,
     humanoid: { humanBones: Object.fromEntries(Object.entries(boneNode).map(([bn, node]) => [bn, { node }])) },
     firstPerson: { meshAnnotations: meshNodes.map((node) => ({ node, type: 'auto' })) },
-    lookAt: { offsetFromHeadBone: [0, 0.06, 0], type: 'expression', rangeMapHorizontalInner: rangeMap, rangeMapHorizontalOuter: rangeMap,
-      rangeMapVerticalDown: rangeMap, rangeMapVerticalUp: rangeMap },
+    lookAt: { offsetFromHeadBone: [0, 0.06, 0], type: 'expression', rangeMapHorizontalInner: rangeH, rangeMapHorizontalOuter: rangeH,
+      rangeMapVerticalDown: rangeV, rangeMapVerticalUp: rangeV },
   };
   if (Object.keys(expressions).length) {
     ext.expressions = { preset: Object.fromEntries(Object.entries(expressions).map(([preset, binds]) => [preset, {
