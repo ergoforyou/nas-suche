@@ -1,6 +1,6 @@
 // Register „Konvertieren“: Zusammenführen, In PDF umwandeln, Als PDF speichern.
 
-import { Camera, FileDown, FileInput, FolderSync, Layers, ScanText, TextSelect, TriangleAlert } from "lucide-react";
+import { Camera, FileDown, FileInput, FolderSync, Layers, Layers3, ScanText, TextSelect, TriangleAlert } from "lucide-react";
 import { api } from "../api";
 import { registrieren } from "../befehle/register";
 import { umwandelnDialog, zusammenfuehrenOeffnen } from "../zustand/konvertieren";
@@ -30,6 +30,18 @@ registrieren(
     stichworte: ["konvertieren", "word in pdf", "excel in pdf", "bild in pdf", "mail in pdf", "msg", "eml"],
     beschreibung: "Word, Excel, Bilder oder E-Mails in PDF umwandeln – die PDF wird neben die Originaldatei gelegt.",
     ausfuehren: () => void umwandelnDialog(),
+  },
+  {
+    id: "konvertieren.stapel",
+    titel: "Stapel\u00ADverarbeitung",
+    register: "konvertieren",
+    gruppe: "PDF erstellen",
+    icon: Layers3,
+    gross: true,
+    farbe: "#6B3FA0",
+    stichworte: ["stapel", "batch", "viele dateien", "ordner", "alle dateien", "massen", "texterkennung ordner", "verkleinern ordner", "umbenennen"],
+    beschreibung: "Viele Dateien oder ganze Ordner auf einmal: Texterkennung, Leerseiten entfernen, Metadaten entfernen, verkleinern.",
+    ausfuehren: () => setzen({ dialog: { art: "stapel", pfade: [] } }),
   },
   {
     id: "konvertieren.als_pdf_speichern",

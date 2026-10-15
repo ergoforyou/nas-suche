@@ -9,6 +9,7 @@ import { api } from "../api";
 import type { Wiederherstellung } from "../typen";
 import { dokumentSchliessen } from "../zustand/aktionen";
 import { ZusammenfuehrenDialog } from "./Zusammenfuehren";
+import { StapelDialog } from "./StapelDialog";
 import { InfoDialog } from "./InfoDialog";
 import { BereichstextDialog, OcrDialog, UeberwachungDialog } from "./OcrDialoge";
 import {
@@ -48,6 +49,7 @@ export function Dialoge() {
   if (dialog.art === "kopffuss") return <KopfFussDialog dokId={dialog.dokId} />;
   if (dialog.art === "frage") return <FrageDialog titel={dialog.titel} text={dialog.text} knoepfe={dialog.knoepfe} antwort={dialog.antwort} />;
   if (dialog.art === "wiederherstellung") return <WiederherstellungDialog eintraege={dialog.eintraege} />;
+  if (dialog.art === "stapel") return <StapelDialog pfade={dialog.pfade} />;
   return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
 }
 

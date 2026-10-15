@@ -1,7 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
-import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort, GemeinsamStatus, UpdateInfo, WindowsStatus } from "./typen";
+import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort, GemeinsamStatus, UpdateInfo, WindowsStatus, StapelOptionen } from "./typen";
 import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 function tokenErmitteln(): string {
@@ -105,6 +105,10 @@ export const api = {
   wiederholen: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/wiederholen`),
   speichern: (id: string, pfad?: string, erzwingen = false) =>
     anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/speichern`, { pfad: pfad ?? null, erzwingen }),
+  stapelVorschau: (pfade: string[], unterordner: boolean) =>
+    anfrage<{ anzahl: number; dateien: { pfad: string; name: string; ordner: string; groesse: number }[] }>("POST", "/api/stapel/vorschau", { pfade, unterordner }),
+  stapelStarten: (pfade: string[], unterordner: boolean, optionen: StapelOptionen) =>
+    anfrage<Auftrag>("POST", "/api/stapel", { pfade, unterordner, optionen }),
   ordnerDialog: (start = "") => anfrage<{ verfuegbar: boolean; pfad: string | null }>("POST", "/api/dialog/ordner", { start }),
   updatePruefen: () => anfrage<UpdateInfo>("GET", "/api/update"),
   updateInstallieren: () => anfrage<{ ok: boolean; version: string }>("POST", "/api/update/installieren"),

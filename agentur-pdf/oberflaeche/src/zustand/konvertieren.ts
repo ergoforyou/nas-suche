@@ -189,7 +189,16 @@ async function ereignisVerarbeiten(e: Ereignis): Promise<void> {
         }
         const dateien = a.ergebnis.dateien ?? [];
         const o = a.ergebnis.ocr;
-        if (o) {
+        if (a.ergebnis.stapel) {
+          const fehler = a.ergebnis.fehler ?? [];
+          const mb = (b: number) => `${(b / 1048576).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
+          melden(
+            `Stapel fertig: ${dateien.length} von ${a.ergebnis.anzahl} Datei(en) gespeichert` +
+              (a.ergebnis.groesse_vorher ? ` (${mb(a.ergebnis.groesse_vorher)} → ${mb(a.ergebnis.groesse ?? 0)})` : "") +
+              (fehler.length ? ` – ${fehler.length} übersprungen: ${fehler.slice(0, 3).map((f) => `${f.datei.split(/[\\/]/).pop()} (${f.fehler})`).join("; ")}` : ""),
+            fehler.length ? "fehler" : "info",
+          );
+        } else if (o) {
           melden(
             o.erkannt
               ? `Texterkennung fertig: ${o.erkannt} Seite(n), ${Math.round(o.sicherheit)} % sicher` +

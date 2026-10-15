@@ -281,7 +281,24 @@ export interface Auftrag {
     oeffnen?: boolean;
     aktualisieren?: boolean;
     ocr?: OcrStatistik;
+    // Stapelverarbeitung
+    stapel?: boolean;
+    anzahl?: number;
+    fehler?: { datei: string; fehler: string }[];
+    groesse_vorher?: number;
+    groesse?: number;
   };
+}
+
+export interface StapelOptionen {
+  texterkennung: boolean;
+  sprachen: string;
+  leerseiten_entfernen: boolean;
+  metadaten_entfernen: boolean;
+  komprimieren: "" | "gering" | "mittel" | "stark" | "maximal";
+  ausgabe: "ordner" | "daneben" | "ersetzen";
+  zielordner: string;
+  namensmuster: string;
 }
 
 export type Ereignis =

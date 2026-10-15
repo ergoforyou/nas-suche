@@ -94,6 +94,7 @@ export type Dialog =
   | { art: "ungespeichert"; dokId: string; weiter: () => void }
   | { art: "frage"; titel: string; text: string; knoepfe: FrageKnopf[]; antwort: (wert: string | null) => void }
   | { art: "wiederherstellung"; eintraege: Wiederherstellung[] }
+  | { art: "stapel"; pfade: string[] }
   | { art: "zusammenfuehren"; eintraege: ZfEintrag[] }
   | { art: "ocr"; dokId: string }
   | { art: "ueberwachung" }

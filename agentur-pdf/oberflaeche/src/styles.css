@@ -3560,3 +3560,61 @@ body {
   background: #163a28;
   color: #9fe0bd;
 }
+
+/* ------------------------------------------------- Stapelverarbeitung */
+.stapel-dialog.dialog.sehr-breit {
+  width: min(860px, 96vw);
+}
+
+.stapel-pfad {
+  flex: 1;
+  min-width: 220px;
+}
+
+.stapel-liste {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  max-height: 140px;
+  overflow-y: auto;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+}
+
+.stapel-liste li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.stapel-liste li + li {
+  border-top: 1px solid var(--linie);
+}
+
+.stapel-liste li span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stapel-liste li button {
+  border: 0;
+  background: none;
+  color: var(--text-leise, #777);
+  cursor: pointer;
+}
+
+.stapel-spalten {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stapel-spalten .gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

@@ -552,6 +552,32 @@ def erstelle_app(
 
     app.state.extern_ausfuehren = extern_ausfuehren
 
+    # ------------------------------------------------- Stapelverarbeitung
+    @app.post("/api/stapel/vorschau")
+    async def stapel_vorschau(pfade: list[str] = Body(...), unterordner: bool = Body(False)):
+        from ..kern.stapel import dateien_sammeln
+
+        dateien = await asyncio.get_running_loop().run_in_executor(None, dateien_sammeln, pfade, unterordner)
+        liste = []
+        for d in dateien[:500]:
+            try:
+                liste.append({"pfad": str(d), "name": d.name, "ordner": str(d.parent), "groesse": d.stat().st_size})
+            except OSError:
+                continue
+        return {"anzahl": len(dateien), "dateien": liste}
+
+    @app.post("/api/stapel")
+    async def stapel_starten(pfade: list[str] = Body(...), unterordner: bool = Body(False), optionen: dict = Body(...)):
+        from ..kern.stapel import StapelOptionen, dateien_sammeln, stapel_ausfuehren
+
+        o = StapelOptionen.aus_dict(optionen)
+        dateien = await asyncio.get_running_loop().run_in_executor(None, dateien_sammeln, pfade, unterordner)
+        if not dateien:
+            raise DokumentFehler("Keine passenden Dateien gefunden.")
+        titel = f"Stapelverarbeitung ({len(dateien)} Datei{'en' if len(dateien) != 1 else ''})"
+        auftrag = auftraege.starten(titel, lambda a: stapel_ausfuehren(dateien, o, im_mupdf_thread_sync, a, dokumente.sperren))
+        return auftrag.als_dict()
+
     @app.post("/api/extern")
     async def extern(aktion: str = Body("oeffnen"), dateien: list[str] = Body(...)):
         """Übergabe von einer zweiten Programminstanz (Explorer-Rechtsklick,
