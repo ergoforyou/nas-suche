@@ -20,6 +20,8 @@ from ..kern.konvertierung import braucht_umwandlung, unterstuetzt
 from ..kern.mupdf_thread import im_mupdf_thread, im_mupdf_thread_sync
 from ..kern import ocr
 from ..kern.ocr_auftrag import OcrOptionen, bereich_erkennen, dokument_erkennen, unsichere_woerter
+from ..kern.sicherung import Sicherung
+from ..kern.sperren import Sperren
 from ..kern.ueberwachung import Ueberwachung
 from ..kern.woerterbuch import woerterbuch
 from ..kern.zusammenfuehren import Eintrag, Uploads, umwandeln, zusammenfuehren
@@ -37,9 +39,27 @@ def erstelle_app(
     speichern_dialog: Callable[[str], str | None] | None = None,
     fenster_vorholen: Callable[[], None] | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="Agentur-PDF", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def lebensdauer(_app: FastAPI):
+        # Hintergrund: Sicherung ungespeicherter Änderungen, Sperren auffrischen
+        aufgabe = asyncio.create_task(_wartungsschleife(_app))
+        try:
+            yield
+        finally:
+            aufgabe.cancel()
+            _app.state.aufraeumen()
+
+    app = FastAPI(
+        title="Agentur-PDF", version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lebensdauer
+    )
     dokumente = dokumente or DokumentSpeicher()
     benutzer = benutzer or BenutzerSpeicher()
+    if dokumente.sperren is None:
+        dokumente.sperren = Sperren(benutzer.einstellungen().get("kuerzel", ""))
+    sicherung = Sicherung(benutzer.ordner / "wiederherstellung")
+    app.state.sicherung = sicherung
     app.state.dokumente = dokumente
     app.state.benutzer = benutzer
     app.state.datei_dialog = datei_dialog
@@ -104,7 +124,80 @@ def erstelle_app(
     @app.delete("/api/dokumente/{dok_id}")
     async def schliessen(dok_id: str):
         await im_mupdf_thread(dokumente.schliessen, dok_id)
+        sicherung.entfernen(dok_id)
         return {"ok": True}
+
+    # ------------------------------------- Sicherung, Sperren (Wartung)
+    async def wartung() -> None:
+        """Einmal „Hausmeister“: geänderte Dokumente sichern, eigene Sperren
+        auffrischen, frei gewordene Dateien übernehmen."""
+        await im_mupdf_thread(lambda: [sicherung.sichern(d) for d in dokumente.alle()])
+        sperren = dokumente.sperren
+        if sperren is None:
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, sperren.auffrischen)
+        for d in dokumente.alle():
+            if d.gesperrt_von and d.pfad:
+                andere = await loop.run_in_executor(None, sperren.holen, d.pfad)
+                if andere is None:
+                    d.gesperrt_von = None
+                    ereignisse.hinzufuegen({"art": "sperre_frei", "dokId": d.id, "titel": d.titel})
+                else:
+                    d.gesperrt_von = andere
+
+    def aufraeumen() -> None:
+        """Beim Beenden: letzte Sicherung schreiben, Sperren freigeben."""
+        try:
+            im_mupdf_thread_sync(lambda: [sicherung.sichern(d) for d in dokumente.alle()])
+        except Exception:  # noqa: BLE001 – Beenden darf nicht scheitern
+            pass
+        if dokumente.sperren is not None:
+            dokumente.sperren.alle_freigeben()
+
+    app.state.wartung = wartung
+    app.state.aufraeumen = aufraeumen
+
+    @app.get("/api/wiederherstellung")
+    async def wiederherstellung_liste():
+        return await asyncio.get_running_loop().run_in_executor(None, sicherung.liste)
+
+    @app.post("/api/wiederherstellung/{schluessel}")
+    async def wiederherstellen(schluessel: str):
+        try:
+            daten, meta = sicherung.lesen(schluessel)
+        except (OSError, ValueError):
+            raise DokumentFehler("Diese Sicherung gibt es nicht mehr.") from None
+
+        def oeffnen():
+            dok = dokumente.oeffnen_bytes(daten, meta.get("titel") or "Wiederhergestellt.pdf")
+            pfad = meta.get("pfad")
+            if pfad:
+                dok.pfad = pfad
+                dok.datei_stand = None  # bewusst überschreiben dürfen
+                if dokumente.sperren is not None and os.path.exists(pfad):
+                    dok.gesperrt_von = dokumente.sperren.holen(pfad)
+            dok.ordner_vorschlag = meta.get("ordner")
+            dok.geaendert = True
+            dok.version += 1
+            return dok
+
+        dok = await im_mupdf_thread(oeffnen)
+        sicherung.verwerfen(schluessel)
+        return await im_mupdf_thread(dokumente.info, dok.id)
+
+    @app.delete("/api/wiederherstellung/{schluessel}")
+    async def wiederherstellung_verwerfen(schluessel: str):
+        try:
+            sicherung.verwerfen(schluessel)
+        except ValueError:
+            raise DokumentFehler("Ungültige Sicherung.") from None
+        return {"ok": True}
+
+    @app.post("/api/dokumente/{dok_id}/sperre_pruefen")
+    async def sperre_pruefen(dok_id: str):
+        await wartung()
+        return await im_mupdf_thread(dokumente.info, dok_id)
 
     @app.get("/api/dokumente/{dok_id}/seiten/{seite}/bild")
     async def seitenbild(
@@ -246,8 +339,9 @@ def erstelle_app(
         return await antwort(await im_mupdf_thread(bearbeitung.wiederholen, dok_id))
 
     @app.post("/api/dokumente/{dok_id}/speichern")
-    async def speichern(dok_id: str, pfad: str | None = Body(None, embed=True)):
-        gespeichert = await im_mupdf_thread(bearbeitung.speichern, dok_id, pfad)
+    async def speichern(dok_id: str, pfad: str | None = Body(None), erzwingen: bool = Body(False)):
+        gespeichert = await im_mupdf_thread(bearbeitung.speichern, dok_id, pfad, erzwingen)
+        sicherung.entfernen(dok_id)
         info = await im_mupdf_thread(dokumente.info, dok_id)
         benutzer.zuletzt_hinzufuegen(gespeichert, info["titel"], info["seitenanzahl"])
         return await antwort([dok_id], pfad=gespeichert)
@@ -505,6 +599,8 @@ def erstelle_app(
             except TastenFehler as fehler:
                 raise DokumentFehler(str(fehler)) from None
         ergebnis = benutzer.einstellungen_setzen(aenderungen)
+        if "kuerzel" in aenderungen and dokumente.sperren is not None:
+            dokumente.sperren.ich["kuerzel"] = ergebnis.get("kuerzel", "")
         if any(k.startswith("screenshot_") for k in aenderungen) and getattr(app.state, "screenshot", None):
             await asyncio.get_running_loop().run_in_executor(None, app.state.screenshot.neu_starten)
         return ergebnis
@@ -587,6 +683,22 @@ def erstelle_app(
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
     return app
+
+
+WARTUNG_S = 60
+
+
+async def _wartungsschleife(app: FastAPI) -> None:
+    import logging
+
+    while True:
+        await asyncio.sleep(WARTUNG_S)
+        try:
+            await app.state.wartung()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 – nie die Schleife verlieren
+            logging.getLogger(__name__).exception("Wartung fehlgeschlagen")
 
 
 def _screenshot_bereit() -> bool:

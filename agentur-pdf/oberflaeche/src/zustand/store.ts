@@ -20,6 +20,7 @@ import type {
   ZoomModus,
   Auftrag,
   BildDaten,
+  Wiederherstellung,
 } from "../typen";
 
 export const ZOOM_MIN = 0.1;
@@ -90,6 +91,8 @@ export type Dialog =
   | { art: "kopffuss"; dokId: string }
   | { art: "leerseiten"; dokId: string; seiten: number[] }
   | { art: "ungespeichert"; dokId: string; weiter: () => void }
+  | { art: "frage"; titel: string; text: string; knoepfe: FrageKnopf[]; antwort: (wert: string | null) => void }
+  | { art: "wiederherstellung"; eintraege: Wiederherstellung[] }
   | { art: "zusammenfuehren"; eintraege: ZfEintrag[] }
   | { art: "ocr"; dokId: string }
   | { art: "ueberwachung" }
@@ -383,6 +386,31 @@ export function springen(dokId: string, seite: number, rechteck?: [number, numbe
 }
 
 // --------------------------------------------------------------- Meldungen
+export interface FrageKnopf {
+  titel: string;
+  wert: string;
+  primaer?: boolean;
+  gefahr?: boolean;
+}
+
+/** Rückfrage mit eigenen Knöpfen; Ergebnis = ``wert`` des Knopfs oder null (abgebrochen). */
+export function fragen(titel: string, text: string, knoepfe: FrageKnopf[]): Promise<string | null> {
+  return new Promise((aufloesen) => {
+    setzen({
+      dialog: {
+        art: "frage",
+        titel,
+        text,
+        knoepfe,
+        antwort: (wert) => {
+          setzen({ dialog: null });
+          aufloesen(wert);
+        },
+      },
+    });
+  });
+}
+
 export function melden(text: string, art: "info" | "fehler" = "info"): void {
   setzen({ meldung: { text, art, nonce: Date.now() } });
 }

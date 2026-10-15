@@ -1,10 +1,13 @@
 // Dialoge: Teilen, Leerseiten entfernen, ungespeicherte Änderungen.
 
-import { AlertTriangle, Scissors, Trash2 } from "lucide-react";
+import { AlertTriangle, History, Scissors, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { speichern } from "../zustand/seitenaktionen";
 import { seitenEntfernen, teilen } from "../zustand/seitenaktionen";
-import { holen, setzen, useZustand } from "../zustand/store";
+import { dokumentHinzufuegen, holen, melden, setzen, useZustand, type FrageKnopf } from "../zustand/store";
+import { api } from "../api";
+import type { Wiederherstellung } from "../typen";
+import { dokumentSchliessen } from "../zustand/aktionen";
 import { ZusammenfuehrenDialog } from "./Zusammenfuehren";
 import { InfoDialog } from "./InfoDialog";
 import { BereichstextDialog, OcrDialog, UeberwachungDialog } from "./OcrDialoge";
@@ -43,6 +46,8 @@ export function Dialoge() {
   if (dialog.art === "bilderexport") return <BilderExportDialog dokId={dialog.dokId} />;
   if (dialog.art === "wasserzeichen") return <WasserzeichenDialog dokId={dialog.dokId} />;
   if (dialog.art === "kopffuss") return <KopfFussDialog dokId={dialog.dokId} />;
+  if (dialog.art === "frage") return <FrageDialog titel={dialog.titel} text={dialog.text} knoepfe={dialog.knoepfe} antwort={dialog.antwort} />;
+  if (dialog.art === "wiederherstellung") return <WiederherstellungDialog eintraege={dialog.eintraege} />;
   return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
 }
 
@@ -173,6 +178,125 @@ function UngespeichertDialog({ dokId, weiter }: { dokId: string; weiter: () => v
             }}
           >
             Speichern
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FrageDialog(p: { titel: string; text: string; knoepfe: FrageKnopf[]; antwort: (wert: string | null) => void }) {
+  const primaer = useRef<HTMLButtonElement>(null);
+  useEffect(() => primaer.current?.focus(), []);
+  return (
+    <div className="dialog-hintergrund" onMouseDown={() => p.antwort(null)}>
+      <div
+        className="dialog"
+        role="alertdialog"
+        aria-label={p.titel}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.key === "Escape" && p.antwort(null)}
+      >
+        <h2>
+          <AlertTriangle size={18} /> {p.titel}
+        </h2>
+        <p>{p.text}</p>
+        <div className="dialog-knoepfe">
+          {p.knoepfe.map((k) => (
+            <button
+              key={k.wert}
+              ref={k.primaer ? primaer : undefined}
+              className={k.primaer ? "primaer" : k.gefahr ? "gefahr" : ""}
+              onClick={() => p.antwort(k.wert)}
+            >
+              {k.titel}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function zeitpunkt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+}
+
+/** Beim Start: ungespeicherte Änderungen aus einem abgestürzten Programmlauf */
+function WiederherstellungDialog({ eintraege }: { eintraege: Wiederherstellung[] }) {
+  const [gewaehlt, setGewaehlt] = useState<Set<string>>(() => new Set(eintraege.map((e) => e.schluessel)));
+  const [laeuft, setLaeuft] = useState(false);
+  const umschalten = (s: string) =>
+    setGewaehlt((alt) => {
+      const neu = new Set(alt);
+      if (neu.has(s)) neu.delete(s);
+      else neu.add(s);
+      return neu;
+    });
+  const wiederherstellen = async () => {
+    setLaeuft(true);
+    let anzahl = 0;
+    for (const e of eintraege) {
+      if (!gewaehlt.has(e.schluessel)) {
+        await api.wiederherstellungVerwerfen(e.schluessel).catch(() => undefined);
+        continue;
+      }
+      try {
+        const info = await api.wiederherstellen(e.schluessel);
+        // gleiche Datei unverändert aus der Sitzung geöffnet → durch die Sicherung ersetzen
+        const alt = holen().dokumente.find((d) => d.id !== info.id && d.pfad && info.pfad && d.pfad.toLowerCase() === info.pfad.toLowerCase());
+        if (alt && !alt.geaendert) await dokumentSchliessen(alt.id, true);
+        dokumentHinzufuegen(info);
+        anzahl++;
+      } catch (err) {
+        melden(`${e.titel}: ${(err as Error).message}`, "fehler");
+      }
+    }
+    setzen({ dialog: null });
+    if (anzahl) melden(`${anzahl} Dokument${anzahl === 1 ? "" : "e"} wiederhergestellt – bitte speichern.`);
+  };
+  return (
+    <div className="dialog-hintergrund">
+      <div className="dialog breit" role="dialog" aria-label="Dokumente wiederherstellen">
+        <h2>
+          <History size={18} /> Ungespeicherte Änderungen wiederherstellen?
+        </h2>
+        <p>Agentur-PDF wurde zuletzt nicht normal beendet. Diese Dokumente hatten ungespeicherte Änderungen:</p>
+        <ul className="wiederherstellung-liste">
+          {eintraege.map((e) => (
+            <li key={e.schluessel}>
+              <label>
+                <input type="checkbox" checked={gewaehlt.has(e.schluessel)} onChange={() => umschalten(e.schluessel)} />
+                <span className="wh-name">
+                  <strong>{e.titel}</strong>
+                  <small className="leise">{e.pfad ?? "noch nie gespeichert"}</small>
+                </span>
+                <span className="leise klein">
+                  {e.seiten} S. · Stand {zeitpunkt(e.zeit)}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <div className="dialog-knoepfe">
+          <button disabled={laeuft} onClick={() => setzen({ dialog: null })} title="Beim nächsten Start erneut fragen">
+            Später
+          </button>
+          <button
+            disabled={laeuft}
+            className="gefahr"
+            onClick={async () => {
+              setLaeuft(true);
+              for (const e of eintraege) await api.wiederherstellungVerwerfen(e.schluessel).catch(() => undefined);
+              setzen({ dialog: null });
+            }}
+          >
+            Alle verwerfen
+          </button>
+          <button disabled={laeuft || !gewaehlt.size} className="primaer" onClick={() => void wiederherstellen()}>
+            Wiederherstellen
           </button>
         </div>
       </div>

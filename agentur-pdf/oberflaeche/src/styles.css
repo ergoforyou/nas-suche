@@ -3439,3 +3439,93 @@ body {
   outline: 2px dashed var(--akzent);
   outline-offset: -3px;
 }
+
+/* -------------------------------------------- Sperre, Wiederherstellung */
+.sperr-hinweis {
+  position: absolute;
+  z-index: 30;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 40px);
+  padding: 7px 10px 7px 12px;
+  border: 1px solid #d9a400;
+  border-radius: 6px;
+  background: #fff8db;
+  color: #4a3b00;
+  box-shadow: var(--schatten);
+  font-size: 12.5px;
+}
+
+.sperr-hinweis button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.8);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+:root[data-theme="dunkel"] .sperr-hinweis {
+  background: #3a3210;
+  border-color: #8a7020;
+  color: #f4e6b0;
+}
+
+:root[data-theme="dunkel"] .sperr-hinweis button {
+  background: rgba(0, 0, 0, 0.25);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.tab .tab-gesperrt {
+  color: #c08a00;
+  flex: none;
+}
+
+.wiederherstellung-liste {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+}
+
+.wiederherstellung-liste li + li {
+  border-top: 1px solid var(--linie);
+}
+
+.wiederherstellung-liste label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.wiederherstellung-liste .wh-name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.wiederherstellung-liste small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialog-knoepfe button.gefahr:not(:disabled) {
+  color: #b3261e;
+  border-color: #e0a19c;
+}

@@ -1,7 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
-import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wort } from "./typen";
+import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort } from "./typen";
 import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 function tokenErmitteln(): string {
@@ -103,7 +103,12 @@ export const api = {
   leerseiten: (id: string) => anfrage<number[]>("GET", `/api/dokumente/${id}/leerseiten`),
   rueckgaengig: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/rueckgaengig`),
   wiederholen: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/wiederholen`),
-  speichern: (id: string, pfad?: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/speichern`, { pfad: pfad ?? null }),
+  speichern: (id: string, pfad?: string, erzwingen = false) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/speichern`, { pfad: pfad ?? null, erzwingen }),
+  wiederherstellungListe: () => anfrage<Wiederherstellung[]>("GET", "/api/wiederherstellung"),
+  wiederherstellen: (schluessel: string) => anfrage<DokumentInfo>("POST", `/api/wiederherstellung/${encodeURIComponent(schluessel)}`),
+  wiederherstellungVerwerfen: (schluessel: string) => anfrage("DELETE", `/api/wiederherstellung/${encodeURIComponent(schluessel)}`),
+  sperrePruefen: (id: string) => anfrage<DokumentInfo>("POST", `/api/dokumente/${id}/sperre_pruefen`),
   // Zusammenführen / Umwandeln (Hintergrundaufträge)
   uploadTemp: (datei: Blob, name: string) => anfrage<{ id: string; name: string }>("POST", `/api/uploads?name=${enc(name)}`, datei),
   zusammenfuehren: (eintraege: { pfad?: string; upload?: string }[], lesezeichen: boolean, anhaenge: boolean) =>

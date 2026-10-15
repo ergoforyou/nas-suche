@@ -10,6 +10,7 @@ import {
   melden,
   setzen,
   springen,
+  fragen,
   zielseiten,
 } from "./store";
 
@@ -247,12 +248,47 @@ export function namensvorschlag(d: Dokument): string {
   return name;
 }
 
+/** Speichern mit Rückfrage, wenn die Datei gerade bei jemand anderem offen
+ * ist (NAS) oder inzwischen von außen geändert wurde. */
+async function speichernGeprueft(d: Dokument, pfad?: string): Promise<Aenderungsantwort | "unter" | undefined> {
+  let erzwingen = false;
+  for (;;) {
+    try {
+      return await api.speichern(d.id, pfad, erzwingen);
+    } catch (e) {
+      const text = e instanceof Error ? e.message : String(e);
+      const name = (pfad ?? d.pfad ?? d.titel).split(/[\\/]/).pop();
+      let frage: string | null = null;
+      if (text.startsWith("GESPERRT|")) {
+        const [, benutzer, rechner, seit] = text.split("|");
+        const uhr = seit ? ` (seit ${new Date(seit).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })})` : "";
+        frage = `„${name}“ ist gerade bei ${benutzer} am PC ${rechner} geöffnet${uhr}. Wenn Sie jetzt speichern, können dort gemachte Änderungen verloren gehen.`;
+      } else if (text === "EXTERN_GEAENDERT") {
+        frage = `„${name}“ wurde geändert, seit Sie sie geöffnet haben (z. B. von einem Kollegen). Beim Speichern wird diese neuere Fassung überschrieben.`;
+      }
+      if (!frage) {
+        melden(text, "fehler");
+        return undefined;
+      }
+      const wahl = await fragen("Datei wird gerade verwendet", frage, [
+        { titel: "Abbrechen", wert: "abbrechen" },
+        { titel: "Trotzdem überschreiben", wert: "ueberschreiben", gefahr: true },
+        { titel: "Unter anderem Namen speichern …", wert: "unter", primaer: true },
+      ]);
+      if (wahl === "unter") return "unter";
+      if (wahl !== "ueberschreiben") return undefined;
+      erzwingen = true;
+    }
+  }
+}
+
 export async function speichernUnter(d = aktiv()): Promise<boolean> {
   if (!d) return false;
   if (holen().desktop) {
     const auswahl = await sicher(() => api.dialogSpeichern(namensvorschlag(d)));
     if (!auswahl?.pfad) return false;
-    const antwort = await sicher(() => api.speichern(d.id, auswahl.pfad!));
+    const antwort = await speichernGeprueft(d, auswahl.pfad);
+    if (antwort === "unter") return speichernUnter(d);
     if (!antwort) return false;
     anwenden(antwort);
     melden(`Gespeichert: ${antwort.pfad}`);
@@ -272,7 +308,8 @@ export async function speichernUnter(d = aktiv()): Promise<boolean> {
 export async function speichern(d = aktiv()): Promise<boolean> {
   if (!d) return false;
   if (!d.pfad) return speichernUnter(d);
-  const antwort = await sicher(() => api.speichern(d.id));
+  const antwort = await speichernGeprueft(d);
+  if (antwort === "unter") return speichernUnter(d);
   if (!antwort) return false;
   anwenden(antwort);
   melden(`Gespeichert: ${d.titel}`);

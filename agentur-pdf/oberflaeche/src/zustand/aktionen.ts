@@ -197,4 +197,7 @@ export async function starten(): Promise<void> {
   for (const info of offen) dokumentHinzufuegen(info);
   if (!offen.length && sitzAktiv) setzen({ aktiv: sitzAktiv });
   if (aktivesDokument()) sitzungMerken();
+  // Abgestürzter letzter Lauf? Ungespeicherte Änderungen anbieten
+  const sicherungen = await api.wiederherstellungListe().catch(() => []);
+  if (sicherungen.length && !holen().dialog) setzen({ dialog: { art: "wiederherstellung", eintraege: sicherungen } });
 }

@@ -19,8 +19,28 @@ export interface DokumentInfo {
   /** Kennwortschutz, der beim Speichern gilt */
   schutz?: "keiner" | "kennwort" | "rechte";
   geaendert: boolean;
+  /** Datei ist gerade bei jemand anderem geöffnet (Sperrdatei auf dem NAS) */
+  gesperrt_von?: Sperrinhaber | null;
   rueckgaengig: string | null; // Name des Schritts, der rückgängig gemacht würde
   wiederholen: string | null;
+}
+
+export interface Sperrinhaber {
+  benutzer: string;
+  rechner: string;
+  kuerzel?: string;
+  seit?: string;
+}
+
+/** Sicherung ungespeicherter Änderungen aus einem früheren Programmlauf */
+export interface Wiederherstellung {
+  schluessel: string;
+  titel: string;
+  pfad: string | null;
+  ordner: string | null;
+  seiten: number;
+  zeit: string;
+  groesse: number;
 }
 
 /** Antwort des Dienstes auf Seitenoperationen */
@@ -244,7 +264,8 @@ export type Ereignis =
   | { art: "oeffnen"; dokumente: string[] }
   | { art: "meldung"; text: string }
   | { art: "info"; text: string }
-  | { art: "screenshot"; png: string; pdf: string | null; text: string };
+  | { art: "screenshot"; png: string; pdf: string | null; text: string }
+  | { art: "sperre_frei"; dokId: string; titel: string };
 
 export interface OcrStatistik {
   erkannt: number;

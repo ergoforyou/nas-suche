@@ -3,6 +3,7 @@ import { Befehlssuche } from "./befehle/Befehlssuche";
 import { ausfuehren } from "./befehle/register";
 import { Bereiche } from "./ansicht/Bereiche";
 import { Auftraege } from "./ansicht/Auftraege";
+import { SperrHinweis } from "./ansicht/SperrHinweis";
 import { Dialoge } from "./ansicht/Dialoge";
 import { OcrHinweis } from "./ansicht/OcrDialoge";
 import { textstatusBeobachten } from "./zustand/ocr";
@@ -218,6 +219,7 @@ export function App() {
           <div className="dokument-flaeche">
             <Dialoge />
             <OcrHinweis />
+            <SperrHinweis />
             {aktiv ? <Bereiche /> : <Startseite />}
           </div>
         </section>

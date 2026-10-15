@@ -120,6 +120,11 @@ export function Tabs() {
         >
           <FileText size={13} className="tab-symbol" />
           {d.verschluesselt && <Lock size={12} />}
+          {d.gesperrt_von && (
+            <Lock size={12} className="tab-gesperrt" aria-label={`bei ${d.gesperrt_von.benutzer} geöffnet`}>
+              <title>{`Bei ${d.gesperrt_von.benutzer} (PC ${d.gesperrt_von.rechner}) geöffnet`}</title>
+            </Lock>
+          )}
           <span className="tab-titel">{d.titel}</span>
           {d.geaendert && <span className="geaendert-punkt" title="Ungespeicherte Änderungen" />}
           <button

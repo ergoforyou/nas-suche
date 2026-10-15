@@ -20,7 +20,7 @@ from typing import Iterator, Sequence
 
 import pymupdf
 
-from .dokumente import DokumentFehler, DokumentSpeicher, OffenesDokument, Schnappschuss, neue_seiten_id
+from .dokumente import DokumentFehler, DokumentSpeicher, OffenesDokument, Schnappschuss, datei_stand, neue_seiten_id
 
 MAX_VERLAUF_BYTES = 600 * 1024 * 1024  # Gesamtspeicher für Rückgängig (alle Dokumente)
 MAX_VERLAUF_SCHRITTE = 50  # je Dokument
@@ -337,7 +337,10 @@ class Bearbeitung:
         return leerseiten_im_dokument(self.speicher.get(dok_id).doc)
 
     # -------------------------------------------------------------- Speichern
-    def speichern(self, dok_id: str, pfad: str | None = None) -> str:
+    def speichern(self, dok_id: str, pfad: str | None = None, erzwingen: bool = False) -> str:
+        """Speichert ``dok_id``. Ohne ``erzwingen`` wird abgelehnt, wenn die
+        Zieldatei gerade bei jemand anderem geöffnet ist („GESPERRT|…“) oder
+        inzwischen von außen geändert wurde („EXTERN_GEAENDERT“)."""
         dok = self.speicher.get(dok_id)
         ziel = pfad or dok.pfad
         if not ziel:
@@ -345,8 +348,22 @@ class Bearbeitung:
         ziel = os.path.abspath(ziel)
         if not ziel.lower().endswith(".pdf"):
             ziel += ".pdf"
+        alter_pfad = dok.pfad
+        gleich = bool(alter_pfad) and os.path.normcase(alter_pfad) == os.path.normcase(ziel)
+        sperren = self.speicher.sperren
+        if not erzwingen:
+            andere = sperren.fremd(ziel) if sperren is not None else None
+            if andere:
+                raise DokumentFehler(f"GESPERRT|{andere.get('benutzer', '')}|{andere.get('rechner', '')}|{andere.get('seit', '')}")
+            if gleich and dok.datei_stand and os.path.exists(ziel) and datei_stand(ziel) != dok.datei_stand:
+                raise DokumentFehler("EXTERN_GEAENDERT")
         daten = dok.doc.tobytes(**speicher_optionen(dok))
         _atomar_schreiben(Path(ziel), daten)
+        dok.datei_stand = datei_stand(ziel)
+        if sperren is not None and not gleich:
+            if alter_pfad and not dok.gesperrt_von:
+                sperren.freigeben(alter_pfad)
+            dok.gesperrt_von = sperren.holen(ziel)
         if dok.schutz is not None:
             # Ab jetzt gilt der neue Schutz als „wie geöffnet“
             dok.war_verschluesselt = bool(not dok.schutz.get("aus") and (dok.schutz.get("benutzer") or dok.schutz.get("besitzer")))

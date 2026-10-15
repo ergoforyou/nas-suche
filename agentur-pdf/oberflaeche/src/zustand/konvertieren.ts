@@ -3,7 +3,7 @@
 
 import { api } from "../api";
 import type { Auftrag, Ereignis, ZfEintrag } from "../typen";
-import { dokumentHinzufuegen, holen, melden, setzen } from "./store";
+import { dokumentAktualisieren, dokumentHinzufuegen, holen, melden, setzen } from "./store";
 
 // Spiegel der Dateitypen aus dem Dienst (agentur_pdf/kern/konvertierung.py)
 const DIREKT = ["pdf", "png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"];
@@ -224,6 +224,14 @@ async function ereignisVerarbeiten(e: Ereignis): Promise<void> {
       break;
     case "screenshot":
       setzen({ screenshot: { png: e.png, pdf: e.pdf, text: e.text, nonce: Date.now() } });
+      break;
+    case "sperre_frei":
+      try {
+        dokumentAktualisieren(await api.info(e.dokId));
+        melden(`„${e.titel}“ ist jetzt frei – Sie können wieder normal speichern.`);
+      } catch {
+        /* Dokument inzwischen geschlossen */
+      }
       break;
   }
 }

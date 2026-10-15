@@ -17,11 +17,20 @@ from pathlib import Path
 import pymupdf
 
 from .render_cache import RenderCache
+from .sperren import Sperren
 
 # Feste Render-Stufen (Skalierungsfaktoren inkl. Bildschirm-DPI). Die Oberfläche
 # fordert die nächsthöhere Stufe an; so treffen viele Zoomwerte denselben Cache.
 RENDER_STUFEN = (0.125, 0.25, 0.375, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 16.0)
 MAX_KACHEL_PIXEL = 4096
+
+
+def datei_stand(pfad: str) -> tuple[int, int] | None:
+    try:
+        st = os.stat(pfad)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
 
 
 class DokumentFehler(Exception):
@@ -81,6 +90,11 @@ class OffenesDokument:
     schutz: dict | None = None
     # zuletzt gespeicherter Schutz (gilt für weitere Speichervorgänge)
     schutz_gespeichert: dict | None = None
+    # Datei ist bei jemand anderem geöffnet (Sperrdatei auf dem NAS)
+    gesperrt_von: dict | None = None
+    # Änderungszeit/Größe der Datei beim Öffnen bzw. letzten Speichern –
+    # erkennt, wenn ein anderer sie inzwischen überschrieben hat
+    datei_stand: tuple[int, int] | None = None
 
     def kennung(self, seite: int) -> str:
         sid = self.seiten_ids[seite]
@@ -95,6 +109,8 @@ class DokumentSpeicher:
     def __init__(self, cache: RenderCache | None = None) -> None:
         self.cache = cache or RenderCache()
         self._dokumente: dict[str, OffenesDokument] = {}
+        # Sperrdateien für gemeinsam genutzte Dateien (vom Dienst gesetzt)
+        self.sperren: Sperren | None = None
 
     # ------------------------------------------------------------------ Öffnen
     def oeffnen_pfad(self, pfad: str, passwort: str | None = None) -> OffenesDokument:
@@ -115,7 +131,11 @@ class DokumentSpeicher:
             doc = pymupdf.open(stream=daten, filetype=Path(pfad).suffix.lstrip(".").lower() or "pdf")
         except Exception as fehler:  # noqa: BLE001 – MuPDF wirft diverse Typen
             raise DokumentFehler(f"Datei kann nicht geöffnet werden: {fehler}") from fehler
-        return self._registrieren(doc, Path(pfad).name, pfad, passwort)
+        dok = self._registrieren(doc, Path(pfad).name, pfad, passwort)
+        dok.datei_stand = datei_stand(pfad)
+        if self.sperren is not None:
+            dok.gesperrt_von = self.sperren.holen(pfad)
+        return dok
 
     def oeffnen_bytes(self, daten: bytes, dateiname: str, passwort: str | None = None) -> OffenesDokument:
         try:
@@ -152,6 +172,8 @@ class DokumentSpeicher:
         dok = self._dokumente.pop(dok_id, None)
         if dok:
             self.cache.entferne_dokument(dok_id)
+            if self.sperren is not None and dok.pfad and not dok.gesperrt_von:
+                self.sperren.freigeben(dok.pfad)
             dok.doc.close()
 
     def get(self, dok_id: str) -> OffenesDokument:
@@ -183,6 +205,7 @@ class DokumentSpeicher:
             "verschluesselt": dok.war_verschluesselt,
             "schutz": _schutz_info(dok),
             "geaendert": dok.geaendert,
+            "gesperrt_von": dok.gesperrt_von,
             "rueckgaengig": dok.zurueck[-1].titel if dok.zurueck else None,
             "wiederholen": dok.vor[-1].titel if dok.vor else None,
             "meta": {"titel": meta.get("title", ""), "autor": meta.get("author", "")},
