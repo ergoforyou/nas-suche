@@ -1,10 +1,11 @@
 // „Über Agentur-PDF & Einrichtung“: Version, Bausteine, Protokoll, Explorer-Menü.
 
-import { Camera, CheckCircle2, Info, MousePointerClick, Settings, Users, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Download, Info, MonitorCog, MousePointerClick, RefreshCw, Settings, Users, XCircle } from "lucide-react";
+import { updateInstallieren, updatePruefen } from "../zustand/aktionen";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { holen, melden, setzen, useZustand } from "../zustand/store";
-import type { GemeinsamStatus } from "../typen";
+import type { GemeinsamStatus, UpdateInfo, WindowsStatus } from "../typen";
 
 type System = Awaited<ReturnType<typeof api.system>>;
 
@@ -104,6 +105,7 @@ function EinstellungenBereich() {
           <p className="leise">Stempel, Favoriten und eigene Wörter gelten nur an diesem PC.</p>
         )}
       </fieldset>
+      <WindowsUndUpdates />
       <fieldset className="gruppe">
         <legend>
           <Camera size={13} /> Screenshot-Werkzeug
@@ -203,5 +205,75 @@ export function InfoDialog() {
         </div>
       </div>
     </div>
+  );
+}
+
+function WindowsUndUpdates() {
+  const [win, setWin] = useState<WindowsStatus | null>(null);
+  const [upd, setUpd] = useState<UpdateInfo | null>(null);
+  const [prueft, setPrueft] = useState(false);
+  const laden = async () => {
+    setPrueft(true);
+    const [w, u] = await Promise.all([api.windowsStatus().catch(() => null), updatePruefen()]);
+    setWin(w);
+    setUpd(u);
+    setPrueft(false);
+  };
+  useEffect(() => {
+    void laden();
+  }, []);
+  const updateText = !upd
+    ? "…"
+    : upd.verfuegbar
+      ? `Version ${upd.version} liegt bereit.`
+      : upd.grund === "kein_ordner"
+        ? "Updates kommen über den gemeinsamen Ordner: neue Setup-Datei in dessen Unterordner „Updates“ legen."
+        : upd.grund === "nicht_erreichbar"
+          ? `Update-Ordner nicht erreichbar: ${upd.ordner}`
+          : `Aktuell – keine neuere Version in ${upd.ordner}.`;
+  return (
+    <fieldset className="gruppe">
+      <legend>
+        <MonitorCog size={13} /> Windows & Updates
+      </legend>
+      <p className="leise">
+        Installierte Version: <strong>{upd?.aktuelle_version ?? "…"}</strong> · {updateText}
+      </p>
+      <div className="auswahl-zeile">
+        <button type="button" className="umschalter" disabled={prueft} onClick={() => void laden()}>
+          <RefreshCw size={13} /> Nach Updates suchen
+        </button>
+        {upd?.verfuegbar && (
+          <button type="button" className="umschalter primaer" onClick={() => void updateInstallieren()}>
+            <Download size={13} /> Jetzt auf {upd.version} aktualisieren
+          </button>
+        )}
+      </div>
+      {win?.windows && (
+        <>
+          <p className={win.standard ? "leise" : "warnung"}>
+            {win.standard
+              ? "Agentur-PDF ist das Standard-Programm für PDF-Dateien."
+              : "Ein anderes Programm öffnet PDFs per Doppelklick. In den Windows-Einstellungen bei „.pdf“ Agentur-PDF auswählen."}
+          </p>
+          <div className="auswahl-zeile">
+            {!win.standard && (
+              <button
+                type="button"
+                className="umschalter"
+                onClick={() =>
+                  void api
+                    .standardprogramm()
+                    .then(() => melden("Windows-Einstellungen geöffnet – dort bei „.pdf“ Agentur-PDF wählen."))
+                    .catch((e: Error) => melden(e.message, "fehler"))
+                }
+              >
+                Als Standard-PDF-Programm festlegen …
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </fieldset>
   );
 }

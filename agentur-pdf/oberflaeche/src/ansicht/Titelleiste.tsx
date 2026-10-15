@@ -1,7 +1,8 @@
 // Titelleiste: Programmsymbol, Schnellzugriff (Öffnen, Speichern, Drucken,
 // Rückgängig, Wiederholen), Dokumenttitel, Funktionssuche.
 
-import { FileText, FolderOpen, Printer, Redo2, Save, Search, Undo2 } from "lucide-react";
+import { Download, FileText, FolderOpen, Printer, Redo2, Save, Search, Undo2 } from "lucide-react";
+import { updateInstallieren } from "../zustand/aktionen";
 import { ausfuehren } from "../befehle/register";
 import { aktivesDokument, setzen, useZustand } from "../zustand/store";
 
@@ -17,6 +18,7 @@ export function Titelleiste() {
   const dok = useZustand((z) => aktivesDokument(z));
   const rueckgaengig = dok?.rueckgaengig;
   const wiederholen = dok?.wiederholen;
+  const update = useZustand((z) => z.update);
   return (
     <header className="titelleiste">
       <div className="titel-logo" aria-hidden>
@@ -53,6 +55,11 @@ export function Titelleiste() {
         <span>Funktion suchen …</span>
         <kbd>Strg+K</kbd>
       </button>
+      {update?.version && (
+        <button className="update-hinweis" title={`Neue Version ${update.version} im Update-Ordner`} onClick={() => void updateInstallieren()}>
+          <Download size={13} /> Update {update.version}
+        </button>
+      )}
       <button className="testversion" title="Einstellungen, Einrichtung und Version" onClick={() => setzen({ dialog: { art: "info" } })}>
         Testversion
       </button>

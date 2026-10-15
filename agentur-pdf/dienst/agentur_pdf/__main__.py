@@ -71,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--explorer-einrichten", action="store_true", help="Rechtsklick-Einträge im Explorer anlegen")
     parser.add_argument("--explorer-entfernen", action="store_true", help="Rechtsklick-Einträge entfernen")
     parser.add_argument("--explorer-reg", metavar="DATEI", help="Rechtsklick-Einträge als .reg-Datei exportieren")
+    parser.add_argument("--nach-update", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     if args.explorer_einrichten or args.explorer_entfernen or args.explorer_reg:
@@ -180,6 +181,11 @@ def main(argv: list[str] | None = None) -> int:
         # Auch beim Beenden von außen (Abmelden, Taskmanager) sauber abmelden
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
+    if args.nach_update:
+        app.state.ereignisse.hinzufuegen(
+            {"art": "info", "text": f"Agentur-PDF wurde auf Version {__import__('agentur_pdf').__version__} aktualisiert."}
+        )
+    app.state.programm_beenden = lambda: os.kill(os.getpid(), signal.SIGTERM)
     try:
         # Dateien vom Aufruf wie eine Übergabe von außen behandeln
         if args.dateien:
@@ -193,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Agentur-PDF", url, width=1400, height=900, min_size=(900, 600), text_select=True
             )
             app.state.fenster_minimieren = lambda: fenster_ref["fenster"].minimize()
+            app.state.programm_beenden = lambda: fenster_ref["fenster"].destroy()
             _screenshot_starten(app)
             webview.start()
         else:

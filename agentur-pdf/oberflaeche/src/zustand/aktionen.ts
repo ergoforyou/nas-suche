@@ -1,9 +1,9 @@
 // Aktionen mit Dienst-Anbindung (Öffnen, Schließen, Suchen, Sitzung).
 
 import { api, ApiFehler } from "../api";
-import type { Ansicht, DokumentInfo, Sitzung } from "../typen";
+import type { Ansicht, DokumentInfo, Sitzung, UpdateInfo } from "../typen";
 import { brauchtUmwandlung, DATEIAUSWAHL, ereignisschleifeStarten, umwandelnStarten, umwandelnUndOeffnen } from "./konvertieren";
-import { aktivesDokument, dokumentEntfernen, dokumentHinzufuegen, holen, melden, setzen, springen } from "./store";
+import { aktivesDokument, dokumentEntfernen, dokumentHinzufuegen, fragen, holen, melden, setzen, springen } from "./store";
 
 function fehlerText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -197,7 +197,47 @@ export async function starten(): Promise<void> {
   for (const info of offen) dokumentHinzufuegen(info);
   if (!offen.length && sitzAktiv) setzen({ aktiv: sitzAktiv });
   if (aktivesDokument()) sitzungMerken();
+  void updatePruefen();
+  window.setInterval(() => void updatePruefen(), 2 * 60 * 60 * 1000);
   // Abgestürzter letzter Lauf? Ungespeicherte Änderungen anbieten
   const sicherungen = await api.wiederherstellungListe().catch(() => []);
   if (sicherungen.length && !holen().dialog) setzen({ dialog: { art: "wiederherstellung", eintraege: sicherungen } });
+}
+
+// ---------------------------------------------------------------- Updates
+export async function updatePruefen(): Promise<UpdateInfo | null> {
+  try {
+    const info = await api.updatePruefen();
+    setzen({ update: info.verfuegbar ? info : null });
+    return info;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateInstallieren(): Promise<void> {
+  const u = holen().update;
+  if (!u?.version) return;
+  if (!u.installierbar) {
+    melden(`Version ${u.version} liegt bereit – sie lässt sich nur im installierten Windows-Programm einspielen.`, "fehler");
+    return;
+  }
+  const ungespeichert = holen().dokumente.filter((d) => d.geaendert).length;
+  const wahl = await fragen(
+    `Update auf Version ${u.version}`,
+    `Agentur-PDF wird kurz geschlossen, aktualisiert und startet von selbst wieder.${
+      ungespeichert ? ` ${ungespeichert} Dokument(e) mit ungespeicherten Änderungen werden gesichert und danach zum Wiederherstellen angeboten.` : ""
+    }`,
+    [
+      { titel: "Später", wert: "spaeter" },
+      { titel: "Jetzt aktualisieren", wert: "los", primaer: true },
+    ],
+  );
+  if (wahl !== "los") return;
+  try {
+    await api.updateInstallieren();
+    melden(`Update auf ${u.version} wird installiert – Agentur-PDF startet gleich neu …`);
+  } catch (e) {
+    melden(fehlerText(e), "fehler");
+  }
 }

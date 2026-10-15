@@ -1,27 +1,57 @@
 Agentur-PDF – Testversion
 =========================
 
-STARTEN
-  ZIP-Datei vollständig entpacken (z. B. nach C:\Agentur-PDF) und
-  „Agentur-PDF.exe“ doppelklicken. Keine Installation, keine Adminrechte.
+INSTALLIEREN (EMPFOHLEN)
+  „Agentur-PDF-Setup-….exe“ ausführen. Keine Administratorrechte nötig –
+  das Programm landet in %LOCALAPPDATA%\Programs\Agentur-PDF, dazu
+  Startmenü, auf Wunsch Desktop-Verknüpfung und Explorer-Rechtsklick.
 
-  Windows zeigt beim ersten Start evtl. „Der Computer wurde durch Windows
-  geschützt“ (das Programm ist noch nicht signiert): „Weitere Informationen“
-  → „Trotzdem ausführen“.
+  Windows zeigt evtl. „Der Computer wurde durch Windows geschützt“ (noch
+  nicht signiert): „Weitere Informationen“ → „Trotzdem ausführen“.
 
   Benötigt wird Microsoft Edge WebView2 – auf Windows 10/11 normalerweise
   vorhanden. Falls das Fenster leer bleibt: „WebView2 Runtime“ bei Microsoft
   herunterladen und installieren.
 
-RECHTSKLICK IM EXPLORER EINRICHTEN
-  Im Programm oben links auf „Testversion“ klicken → „Rechtsklick-Einträge
-  einrichten“. Danach gibt es beim Rechtsklick auf PDFs, Bilder, Word-,
-  Excel- und Maildateien:
+  Ohne Installation geht es weiterhin: ZIP entpacken, „Agentur-PDF.exe“
+  starten.
+
+STANDARD-PDF-PROGRAMM
+  „Testversion“ (oben rechts) → „Windows & Updates“ → „Als Standard-PDF-
+  Programm festlegen …“. Windows öffnet „Standard-Apps“: dort bei „.pdf“
+  Agentur-PDF auswählen (Windows erlaubt das nur von Hand).
+
+RECHTSKLICK IM EXPLORER
+  Richtet das Setup ein (sonst: „Testversion“ → „Rechtsklick-Einträge
+  einrichten“). Beim Rechtsklick auf PDFs, Bilder, Word-, Excel- und
+  Maildateien:
     • Mit Agentur-PDF öffnen
     • Zu einer PDF zusammenführen   (auch mehrere Dateien markiert)
     • In PDF umwandeln
   Unter Windows 11 unter „Weitere Optionen anzeigen“.
-  Wichtig: Den Ordner danach nicht mehr verschieben (sonst neu einrichten).
+
+ALLE ARBEITSPLÄTZE: GEMEINSAMER ORDNER AUF DEM NAS
+  Einmal an jedem PC: „Testversion“ → „Alle Arbeitsplätze (NAS)“ →
+  denselben Ordner eintragen, z. B. \\NAS\Agentur\Agentur-PDF.
+  Dort liegen dann für alle gleich: Stempel, Texterkennungssprachen,
+  Favoriten-Ordner und das eigene Wörterbuch der Rechtschreibprüfung.
+  Kürzel, Unterschriften und Ansicht bleiben persönlich.
+
+UPDATES FÜR ALLE PCs
+  Neue Setup-Datei (Agentur-PDF-Setup-x.y.z.exe) in den Unterordner
+  „Updates“ des gemeinsamen Ordners legen. Jeder PC zeigt oben rechts
+  „Update x.y.z“ – ein Klick, Agentur-PDF schließt sich, aktualisiert
+  und startet neu. Ungespeicherte Änderungen werden vorher gesichert.
+
+GEMEINSAM GENUTZTE DATEIEN, ABSTURZ
+  • Hat ein Kollege eine Datei geöffnet, erscheint ein gelber Hinweis
+    („Bei martina (PC-02) geöffnet“) und ein Schloss im Tab. Speichern
+    fragt dann nach – am besten „Unter anderem Namen speichern“. Wird die
+    Datei frei, meldet Agentur-PDF das von selbst.
+  • Die Sperre ist eine versteckte Datei „~$Name.pdf.sperre“ neben der PDF;
+    sie verschwindet beim Schließen.
+  • Ungespeicherte Änderungen werden jede Minute gesichert. Nach einem
+    Absturz oder Stromausfall bietet der nächste Start sie an.
 
 ERSTE SCHRITTE
   Oben links auf „Testversion“ klicken → „Ihr Kürzel“ eintragen (z. B. JK).

@@ -1,7 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
-import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort, GemeinsamStatus } from "./typen";
+import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort, GemeinsamStatus, UpdateInfo, WindowsStatus } from "./typen";
 import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 function tokenErmitteln(): string {
@@ -106,6 +106,10 @@ export const api = {
   speichern: (id: string, pfad?: string, erzwingen = false) =>
     anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/speichern`, { pfad: pfad ?? null, erzwingen }),
   ordnerDialog: (start = "") => anfrage<{ verfuegbar: boolean; pfad: string | null }>("POST", "/api/dialog/ordner", { start }),
+  updatePruefen: () => anfrage<UpdateInfo>("GET", "/api/update"),
+  updateInstallieren: () => anfrage<{ ok: boolean; version: string }>("POST", "/api/update/installieren"),
+  windowsStatus: () => anfrage<WindowsStatus>("GET", "/api/system/windows"),
+  standardprogramm: () => anfrage("POST", "/api/system/standardprogramm"),
   gemeinsamStatus: () => anfrage<GemeinsamStatus>("GET", "/api/gemeinsam"),
   wiederherstellungListe: () => anfrage<Wiederherstellung[]>("GET", "/api/wiederherstellung"),
   wiederherstellen: (schluessel: string) => anfrage<DokumentInfo>("POST", `/api/wiederherstellung/${encodeURIComponent(schluessel)}`),

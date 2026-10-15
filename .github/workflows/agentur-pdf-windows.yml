@@ -78,6 +78,35 @@ jobs:
         working-directory: agentur-pdf/installer
         run: python probelauf.py "dist\Agentur-PDF\Agentur-PDF.exe" 2>&1 | Tee-Object -FilePath ..\..\probelauf.txt; exit $LASTEXITCODE
 
+      - name: Setup bauen (Inno Setup)
+        working-directory: agentur-pdf/installer
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install -y --no-progress innosetup }
+          if (-not (Test-Path $iscc)) { $iscc = (Get-Command iscc).Source }
+          $v = python -c "import agentur_pdf; print(agentur_pdf.__version__)"
+          $n = ($v -split '-')[0]
+          & $iscc "/DAppVersion=$v" "/DNumVersion=$n" agentur_pdf.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist\*.exe | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB)}}
+
+      - name: Setup zur Probe installieren und entfernen
+        working-directory: agentur-pdf/installer
+        run: |
+          $setup = (Get-ChildItem dist\Agentur-PDF-Setup-*.exe | Select-Object -First 1).FullName
+          $ziel = "$env:RUNNER_TEMP\AgenturPDF-Probe"
+          Start-Process -Wait -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$ziel", "/TASKS=explorer"
+          if (-not (Test-Path "$ziel\Agentur-PDF.exe")) { Write-Error "Agentur-PDF.exe wurde nicht installiert"; exit 1 }
+          $befehl = (Get-ItemProperty "HKCU:\Software\Classes\AgenturPDF.Dokument\shell\open\command").'(default)'
+          "Öffnen-Befehl: $befehl"
+          if ($befehl -notlike "*$ziel*") { Write-Error "Dateizuordnung fehlt"; exit 1 }
+          Start-Process -Wait -FilePath "$ziel\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES"
+          # das Deinstallationsprogramm läuft als Kopie im Temp-Ordner weiter → warten
+          for ($i = 0; $i -lt 60 -and ((Test-Path "HKCU:\Software\Classes\AgenturPDF.Dokument") -or (Test-Path "$ziel\Agentur-PDF.exe")); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path "HKCU:\Software\Classes\AgenturPDF.Dokument") { Write-Error "Zuordnung nach Deinstallation noch vorhanden"; exit 1 }
+          if (Test-Path "$ziel\Agentur-PDF.exe") { Write-Error "Programm nach Deinstallation noch vorhanden"; exit 1 }
+          "Installation und Deinstallation in Ordnung."
+
       - name: ZIP erstellen
         working-directory: agentur-pdf/installer/dist
         run: |
@@ -95,7 +124,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Agentur-PDF-Testversion
-          path: Agentur-PDF-Testversion.zip
+          path: |
+            Agentur-PDF-Testversion.zip
+            agentur-pdf/installer/dist/Agentur-PDF-Setup-*.exe
           retention-days: 30
 
       - uses: actions/upload-artifact@v4
@@ -113,8 +144,12 @@ jobs:
           name: Agentur-PDF Testversion ${{ github.run_number }}
           prerelease: true
           target_commitish: ${{ github.sha }}
-          files: Agentur-PDF-Testversion.zip
+          files: |
+            Agentur-PDF-Testversion.zip
+            agentur-pdf/installer/dist/Agentur-PDF-Setup-*.exe
           body: |
             Windows-Testversion von Agentur-PDF (Stand ${{ github.sha }}).
-            ZIP entpacken, `Agentur-PDF.exe` starten – Details in `LIESMICH.txt`.
+            Empfohlen: `Agentur-PDF-Setup-….exe` ausführen (keine Administratorrechte nötig).
+            Für Updates an allen PCs die Setup-Datei in den Ordner „Updates“ im gemeinsamen NAS-Ordner legen.
+            Alternativ ZIP entpacken und `Agentur-PDF.exe` starten – Details in `LIESMICH.txt`.
             Tests unter Windows: ${{ steps.tests.outcome }}

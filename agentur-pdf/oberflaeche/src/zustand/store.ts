@@ -21,6 +21,7 @@ import type {
   Auftrag,
   BildDaten,
   Wiederherstellung,
+  UpdateInfo,
 } from "../typen";
 
 export const ZOOM_MIN = 0.1;
@@ -151,6 +152,8 @@ export interface Zustand {
   sprung: Sprungziel | null;
   einstellungen: Einstellungen | null;
   desktop: boolean;
+  /** neuere Version im Update-Ordner (NAS) */
+  update: UpdateInfo | null;
   meldung: Meldung | null;
   passwortAnfrage: { titel: string; wiederholen: (pw: string) => void } | null;
 }
@@ -189,6 +192,7 @@ let zustand: Zustand = {
   sprung: null,
   einstellungen: null,
   desktop: false,
+  update: null,
   meldung: null,
   passwortAnfrage: null,
 };

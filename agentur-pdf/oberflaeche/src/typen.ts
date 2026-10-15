@@ -222,6 +222,22 @@ export interface Einstellungen {
   gemeinsamer_ordner: string;
 }
 
+export interface UpdateInfo {
+  verfuegbar: boolean;
+  grund?: "kein_ordner" | "nicht_erreichbar" | "aktuell";
+  version?: string;
+  pfad?: string;
+  ordner?: string;
+  aktuelle_version: string;
+  installierbar: boolean;
+}
+
+export interface WindowsStatus {
+  windows: boolean;
+  registriert: boolean;
+  standard: boolean;
+}
+
 export interface GemeinsamStatus {
   aktiv: boolean;
   ordner: string;

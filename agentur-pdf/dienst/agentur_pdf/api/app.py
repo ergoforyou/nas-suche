@@ -614,6 +614,56 @@ def erstelle_app(
             await asyncio.get_running_loop().run_in_executor(None, app.state.screenshot.neu_starten)
         return ergebnis
 
+    # ------------------------------------------- Updates, Windows-Einbindung
+    @app.get("/api/update")
+    async def update_pruefen():
+        from ..kern import update
+
+        ordner = update.update_ordner(benutzer.gemeinsamer_ordner())
+        ergebnis = await asyncio.get_running_loop().run_in_executor(None, update.suchen, ordner, __version__)
+        import sys as _sys
+
+        return {**ergebnis, "aktuelle_version": __version__, "installierbar": os.name == "nt" and bool(getattr(_sys, "frozen", False))}
+
+    @app.post("/api/update/installieren")
+    async def update_installieren():
+        import sys as _sys
+
+        from ..kern import update
+
+        if not (os.name == "nt" and getattr(_sys, "frozen", False)):
+            raise DokumentFehler("Updates lassen sich nur im installierten Windows-Programm einspielen.")
+        ordner = update.update_ordner(benutzer.gemeinsamer_ordner())
+        gefunden = await asyncio.get_running_loop().run_in_executor(None, update.suchen, ordner, __version__)
+        if not gefunden.get("verfuegbar"):
+            raise DokumentFehler("Keine neuere Version gefunden.")
+        try:
+            await asyncio.get_running_loop().run_in_executor(None, update.installieren, gefunden["pfad"])
+        except OSError as fehler:
+            raise DokumentFehler(f"Update konnte nicht gestartet werden: {fehler}") from None
+        beenden = getattr(app.state, "programm_beenden", None)
+        if beenden:
+            # kurz warten, damit die Antwort noch ankommt; das Setup wartet auf uns
+            threading.Timer(1.5, beenden).start()
+        return {"ok": True, "version": gefunden["version"]}
+
+    @app.get("/api/system/windows")
+    async def windows_status():
+        from ..windows import standard
+
+        return standard.status()
+
+    @app.post("/api/system/standardprogramm")
+    async def standardprogramm():
+        from ..windows import explorer, standard
+
+        if os.name != "nt":
+            raise DokumentFehler("Nur unter Windows.")
+        if not standard.status()["registriert"]:
+            await asyncio.get_running_loop().run_in_executor(None, explorer.einrichten)
+        standard.einstellungen_oeffnen()
+        return {"ok": True}
+
     @app.get("/api/gemeinsam")
     async def gemeinsam_status():
         return await asyncio.get_running_loop().run_in_executor(None, benutzer.gemeinsam_status)
