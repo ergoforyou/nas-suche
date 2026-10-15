@@ -3529,3 +3529,13 @@ body {
   color: #b3261e;
   border-color: #e0a19c;
 }
+
+.feld-mit-knopf {
+  display: flex;
+  gap: 6px;
+}
+
+.feld-mit-knopf input {
+  flex: 1;
+  min-width: 0;
+}

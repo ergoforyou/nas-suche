@@ -218,6 +218,16 @@ export interface Einstellungen {
   screenshot_text_kopieren: boolean;
   screenshot_bild_kopieren: boolean;
   werkzeug_stile: Record<string, Partial<Stil>>;
+  /** Ordner für gemeinsame Einstellungen aller Arbeitsplätze (NAS) */
+  gemeinsamer_ordner: string;
+}
+
+export interface GemeinsamStatus {
+  aktiv: boolean;
+  ordner: string;
+  erreichbar: boolean;
+  fehler: string | null;
+  schluessel: string[];
 }
 
 export interface ZuletztEintrag {

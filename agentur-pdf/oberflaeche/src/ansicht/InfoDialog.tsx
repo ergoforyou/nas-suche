@@ -1,9 +1,10 @@
 // „Über Agentur-PDF & Einrichtung“: Version, Bausteine, Protokoll, Explorer-Menü.
 
-import { Camera, CheckCircle2, Info, MousePointerClick, Settings, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Info, MousePointerClick, Settings, Users, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { holen, melden, setzen } from "../zustand/store";
+import { holen, melden, setzen, useZustand } from "../zustand/store";
+import type { GemeinsamStatus } from "../typen";
 
 type System = Awaited<ReturnType<typeof api.system>>;
 
@@ -31,7 +32,13 @@ function EinstellungenBereich() {
   const [bild, setBild] = useState(e?.screenshot_bild_kopieren ?? true);
   const [text, setText] = useState(e?.screenshot_text_kopieren ?? false);
   const [status, setStatus] = useState<ScreenshotStatus | null>(null);
-  const statusLaden = () => api.screenshotStatus().then(setStatus).catch(() => undefined);
+  const [gemeinsam, setGemeinsam] = useState(e?.gemeinsamer_ordner ?? "");
+  const [gStatus, setGStatus] = useState<GemeinsamStatus | null>(null);
+  const desktop = useZustand((z) => z.desktop);
+  const statusLaden = () => {
+    void api.screenshotStatus().then(setStatus).catch(() => undefined);
+    return api.gemeinsamStatus().then(setGStatus).catch(() => undefined);
+  };
   useEffect(() => {
     void statusLaden();
   }, []);
@@ -45,6 +52,7 @@ function EinstellungenBereich() {
         screenshot_ocr: ocr,
         screenshot_bild_kopieren: bild,
         screenshot_text_kopieren: text,
+        gemeinsamer_ordner: gemeinsam.trim(),
       });
       setzen({ einstellungen: neu });
       await statusLaden();
@@ -63,6 +71,38 @@ function EinstellungenBereich() {
           Ihr Kürzel (für Stempel, Kommentare und Screenshot-Namen)
           <input value={kuerzel} onChange={(ev) => setKuerzel(ev.target.value)} placeholder="z. B. JK" maxLength={20} />
         </label>
+      </fieldset>
+      <fieldset className="gruppe">
+        <legend>
+          <Users size={13} /> Alle Arbeitsplätze (NAS)
+        </legend>
+        <label className="feld">
+          Gemeinsamer Ordner – an allen PCs denselben eintragen, z. B. {"\\\\NAS\\Agentur\\Agentur-PDF"}
+          <span className="feld-mit-knopf">
+            <input value={gemeinsam} onChange={(ev) => setGemeinsam(ev.target.value)} placeholder="leer = nur dieser PC" aria-label="Gemeinsamer Ordner" />
+            {desktop && (
+              <button
+                type="button"
+                className="umschalter"
+                onClick={async () => {
+                  const r = await api.ordnerDialog(gemeinsam).catch(() => null);
+                  if (r?.pfad) setGemeinsam(r.pfad);
+                }}
+              >
+                Wählen …
+              </button>
+            )}
+          </span>
+        </label>
+        {gStatus?.aktiv ? (
+          <p className={gStatus.erreichbar ? "leise" : "warnung"}>
+            {gStatus.erreichbar
+              ? "Verbunden – für alle gleich: Stempel, Texterkennungssprachen, Favoriten-Ordner und eigenes Wörterbuch. Kürzel, Unterschriften und Ansicht bleiben persönlich."
+              : gStatus.fehler}
+          </p>
+        ) : (
+          <p className="leise">Stempel, Favoriten und eigene Wörter gelten nur an diesem PC.</p>
+        )}
       </fieldset>
       <fieldset className="gruppe">
         <legend>

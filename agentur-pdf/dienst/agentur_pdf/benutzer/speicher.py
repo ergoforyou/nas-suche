@@ -3,6 +3,12 @@
 Ablage pro Windows-Benutzer unter %APPDATA%\\AgenturPDF (sonst ~/.agentur-pdf).
 Mit der Umgebungsvariablen AGENTUR_PDF_DATEN lässt sich der Ort überschreiben
 (z. B. für Tests).
+
+Gemeinsame Einstellungen: Ist ein „gemeinsamer Ordner“ (z. B. auf dem NAS)
+eingetragen, liegen Stempel, Texterkennungssprachen, Favoriten-Ordner und
+das eigene Wörterbuch dort – für alle Arbeitsplätze gleich. Persönliches
+(Kürzel, Unterschriften, Ansicht, Screenshot-Ordner) bleibt am PC. Ist das NAS
+nicht erreichbar, wird mit der zuletzt gelesenen Fassung weitergearbeitet.
 """
 
 from __future__ import annotations
@@ -10,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +51,14 @@ STANDARD_EINSTELLUNGEN: dict[str, Any] = {
     "screenshot_bild_kopieren": True,
     # zuletzt benutzte Stile je Werkzeug (Farbe, Linienbreite …)
     "werkzeug_stile": {},
+    # Ordner für gemeinsame Einstellungen aller Arbeitsplätze (NAS), leer = aus
+    "gemeinsamer_ordner": "",
 }
+
+# Diese Einstellungen gelten – bei eingetragenem gemeinsamem Ordner – für alle
+GEMEINSAME_SCHLUESSEL = ("stempel", "ocr_sprachen")
+GEMEINSAM_DATEI = "einstellungen.json"
+GEMEINSAM_NEU_LESEN_S = 20
 
 
 def datenordner() -> Path:
@@ -63,6 +77,67 @@ class BenutzerSpeicher:
         self.ordner = ordner or datenordner()
         self.ordner.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        # gemeinsame Einstellungen: zuletzt gelesene Fassung + Zeitpunkt
+        self._gemeinsam: dict | None = None
+        self._gemeinsam_gelesen = 0.0
+        self.gemeinsam_fehler: str | None = None
+
+    # ------------------------------------------------- gemeinsamer Ordner
+    def gemeinsamer_ordner(self) -> Path | None:
+        ordner = str(self._lesen("einstellungen", {}).get("gemeinsamer_ordner") or "").strip()
+        return Path(ordner) if ordner else None
+
+    def _gemeinsam_holen(self, neu: bool = False) -> dict | None:
+        """Gemeinsame Einstellungen (zwischengespeichert, Rückfall: lokale Kopie)."""
+        ordner = self.gemeinsamer_ordner()
+        if ordner is None:
+            self.gemeinsam_fehler = None
+            return None
+        if not neu and self._gemeinsam is not None and time.time() - self._gemeinsam_gelesen < GEMEINSAM_NEU_LESEN_S:
+            return self._gemeinsam
+        try:
+            daten = json.loads((ordner / GEMEINSAM_DATEI).read_text(encoding="utf-8"))
+            self.gemeinsam_fehler = None
+            self._schreiben("gemeinsam_kopie", daten)
+        except FileNotFoundError:
+            daten = {}
+            self.gemeinsam_fehler = None if ordner.is_dir() else "Ordner nicht erreichbar"
+        except (OSError, ValueError) as fehler:
+            daten = self._lesen("gemeinsam_kopie", {})
+            self.gemeinsam_fehler = f"Nicht erreichbar – letzte bekannte Fassung wird benutzt ({fehler.__class__.__name__})"
+        self._gemeinsam = daten
+        self._gemeinsam_gelesen = time.time()
+        return daten
+
+    def _gemeinsam_schreiben(self, aenderungen: dict) -> None:
+        ordner = self.gemeinsamer_ordner()
+        if ordner is None:
+            return
+        datei = ordner / GEMEINSAM_DATEI
+        try:
+            aktuell = json.loads(datei.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            aktuell = {}
+        aktuell.update(aenderungen)
+        ordner.mkdir(parents=True, exist_ok=True)
+        temp = datei.with_name(f".{datei.name}.{os.getpid()}.tmp")
+        temp.write_text(json.dumps(aktuell, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp, datei)
+        self._gemeinsam = aktuell
+        self._gemeinsam_gelesen = time.time()
+        self._schreiben("gemeinsam_kopie", aktuell)
+
+    def gemeinsam_status(self) -> dict:
+        ordner = self.gemeinsamer_ordner()
+        with self._lock:
+            self._gemeinsam_holen(neu=True)
+        return {
+            "aktiv": ordner is not None,
+            "ordner": str(ordner) if ordner else "",
+            "erreichbar": ordner is not None and self.gemeinsam_fehler is None,
+            "fehler": self.gemeinsam_fehler,
+            "schluessel": list(GEMEINSAME_SCHLUESSEL) + ["favoriten", "woerterbuch"],
+        }
 
     def _lesen(self, name: str, standard: Any) -> Any:
         datei = self.ordner / f"{name}.json"
@@ -80,14 +155,39 @@ class BenutzerSpeicher:
     # ---------------------------------------------------------- Einstellungen
     def einstellungen(self) -> dict:
         with self._lock:
-            return {**STANDARD_EINSTELLUNGEN, **self._lesen("einstellungen", {})}
+            werte = {**STANDARD_EINSTELLUNGEN, **self._lesen("einstellungen", {})}
+            gemeinsam = self._gemeinsam_holen()
+            if gemeinsam:
+                werte.update({k: gemeinsam[k] for k in GEMEINSAME_SCHLUESSEL if k in gemeinsam})
+            return werte
 
     def einstellungen_setzen(self, aenderungen: dict) -> dict:
+        aenderungen = {k: v for k, v in aenderungen.items() if k in STANDARD_EINSTELLUNGEN}
         with self._lock:
-            aktuell = {**STANDARD_EINSTELLUNGEN, **self._lesen("einstellungen", {})}
-            aktuell.update({k: v for k, v in aenderungen.items() if k in STANDARD_EINSTELLUNGEN})
-            self._schreiben("einstellungen", aktuell)
-            return aktuell
+            lokal = {**STANDARD_EINSTELLUNGEN, **self._lesen("einstellungen", {})}
+            alter_ordner = lokal.get("gemeinsamer_ordner") or ""
+            if "gemeinsamer_ordner" in aenderungen:
+                aenderungen["gemeinsamer_ordner"] = str(aenderungen["gemeinsamer_ordner"] or "").strip()
+            gemeinsam_aktiv = bool(aenderungen.get("gemeinsamer_ordner", alter_ordner))
+            fuer_alle = {k: v for k, v in aenderungen.items() if k in GEMEINSAME_SCHLUESSEL} if gemeinsam_aktiv else {}
+            lokal.update({k: v for k, v in aenderungen.items() if k not in fuer_alle})
+            self._schreiben("einstellungen", lokal)
+            if aenderungen.get("gemeinsamer_ordner") and aenderungen["gemeinsamer_ordner"] != alter_ordner:
+                # Neu eingerichtet: fehlt dort noch etwas, gilt erst einmal das von diesem PC
+                vorhanden = self._gemeinsam_holen(neu=True) or {}
+                fehlend = {k: lokal[k] for k in GEMEINSAME_SCHLUESSEL if k not in vorhanden}
+                if fehlend:
+                    self._gemeinsam_schreiben(fehlend)
+                favoriten = self._lesen("favoriten", [])
+                if favoriten and not (self.gemeinsamer_ordner() / "favoriten.json").exists():
+                    self._favoriten_gemeinsam_schreiben(favoriten)
+            if fuer_alle:
+                self._gemeinsam_schreiben(fuer_alle)
+            werte = dict(lokal)
+            gemeinsam = self._gemeinsam_holen()
+            if gemeinsam:
+                werte.update({k: gemeinsam[k] for k in GEMEINSAME_SCHLUESSEL if k in gemeinsam})
+            return werte
 
     # --------------------------------------------------------- Zuletzt offen
     def zuletzt(self) -> list[dict]:
@@ -111,13 +211,31 @@ class BenutzerSpeicher:
     # -------------------------------------------------------------- Favoriten
     def favoriten(self) -> list[str]:
         with self._lock:
+            gemeinsam = self.gemeinsamer_ordner()
+            if gemeinsam is not None:
+                try:
+                    return json.loads((gemeinsam / "favoriten.json").read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    pass
             return self._lesen("favoriten", [])
 
     def favoriten_setzen(self, ordner: list[str]) -> list[str]:
         bereinigt = list(dict.fromkeys(os.path.abspath(o) for o in ordner if o))
         with self._lock:
             self._schreiben("favoriten", bereinigt)
+            if self.gemeinsamer_ordner() is not None:
+                try:
+                    self._favoriten_gemeinsam_schreiben(bereinigt)
+                except OSError:
+                    pass
         return bereinigt
+
+    def _favoriten_gemeinsam_schreiben(self, liste: list[str]) -> None:
+        ordner = self.gemeinsamer_ordner()
+        datei = ordner / "favoriten.json"
+        temp = datei.with_name(f".favoriten.{os.getpid()}.tmp")
+        temp.write_text(json.dumps(liste, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp, datei)
 
     # ---------------------------------------------------------------- Sitzung
     def sitzung(self) -> dict:

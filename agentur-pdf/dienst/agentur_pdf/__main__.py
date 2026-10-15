@@ -133,6 +133,15 @@ def main(argv: list[str] | None = None) -> int:
             return None
         return ergebnis if isinstance(ergebnis, str) else ergebnis[0]
 
+    def ordner_dialog(start: str) -> str | None:
+        fenster = fenster_ref.get("fenster")
+        if fenster is None:
+            return None
+        ergebnis = fenster.create_file_dialog(webview.FOLDER_DIALOG, directory=start if os.path.isdir(start) else "")
+        if not ergebnis:
+            return None
+        return ergebnis if isinstance(ergebnis, str) else ergebnis[0]
+
     def fenster_vorholen() -> None:
         """Fenster nach vorne holen, wenn Dateien von außen kommen."""
         fenster = fenster_ref.get("fenster")
@@ -153,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         oberflaeche_ordner=oberflaeche_ordner(),
         datei_dialog=datei_dialog if webview else None,
         speichern_dialog=speichern_dialog if webview else None,
+        ordner_dialog=ordner_dialog if webview else None,
         fenster_vorholen=fenster_vorholen if webview else None,
     )
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))

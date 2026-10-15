@@ -38,6 +38,7 @@ def erstelle_app(
     datei_dialog: Callable[[], list[str]] | None = None,
     speichern_dialog: Callable[[str], str | None] | None = None,
     fenster_vorholen: Callable[[], None] | None = None,
+    ordner_dialog: Callable[[str], str | None] | None = None,
 ) -> FastAPI:
     from contextlib import asynccontextmanager
 
@@ -59,11 +60,14 @@ def erstelle_app(
     if dokumente.sperren is None:
         dokumente.sperren = Sperren(benutzer.einstellungen().get("kuerzel", ""))
     sicherung = Sicherung(benutzer.ordner / "wiederherstellung")
+    if benutzer.gemeinsamer_ordner() is not None:
+        woerterbuch().gemeinsam_setzen(benutzer.gemeinsamer_ordner())
     app.state.sicherung = sicherung
     app.state.dokumente = dokumente
     app.state.benutzer = benutzer
     app.state.datei_dialog = datei_dialog
     app.state.speichern_dialog = speichern_dialog
+    app.state.ordner_dialog = ordner_dialog
     bearbeitung = Bearbeitung(dokumente)
     auftraege = AuftragsVerwaltung()
     uploads = Uploads()
@@ -598,12 +602,21 @@ def erstelle_app(
                 taste_parsen(str(aenderungen["screenshot_taste"]))
             except TastenFehler as fehler:
                 raise DokumentFehler(str(fehler)) from None
-        ergebnis = benutzer.einstellungen_setzen(aenderungen)
+        try:
+            ergebnis = benutzer.einstellungen_setzen(aenderungen)
+        except OSError as fehler:
+            raise DokumentFehler(f"Gemeinsamer Ordner nicht erreichbar: {fehler}") from None
+        if "gemeinsamer_ordner" in aenderungen:
+            woerterbuch().gemeinsam_setzen(benutzer.gemeinsamer_ordner())
         if "kuerzel" in aenderungen and dokumente.sperren is not None:
             dokumente.sperren.ich["kuerzel"] = ergebnis.get("kuerzel", "")
         if any(k.startswith("screenshot_") for k in aenderungen) and getattr(app.state, "screenshot", None):
             await asyncio.get_running_loop().run_in_executor(None, app.state.screenshot.neu_starten)
         return ergebnis
+
+    @app.get("/api/gemeinsam")
+    async def gemeinsam_status():
+        return await asyncio.get_running_loop().run_in_executor(None, benutzer.gemeinsam_status)
 
     @app.get("/api/zuletzt")
     async def zuletzt():
@@ -655,6 +668,13 @@ def erstelle_app(
     async def sitzung_setzen(sitzung: dict = Body(...)):
         benutzer.sitzung_setzen(sitzung)
         return {"ok": True}
+
+    @app.post("/api/dialog/ordner")
+    async def dialog_ordner(start: str = Body("", embed=True)):
+        if app.state.ordner_dialog is None:
+            return {"verfuegbar": False, "pfad": None}
+        pfad = await asyncio.get_running_loop().run_in_executor(None, app.state.ordner_dialog, start)
+        return {"verfuegbar": True, "pfad": pfad}
 
     @app.post("/api/dialog/oeffnen")
     async def dialog_oeffnen():

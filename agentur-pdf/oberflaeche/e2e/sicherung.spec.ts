@@ -63,3 +63,18 @@ test("Datei ist bei einer Kollegin geöffnet: Hinweis, Rückfrage beim Speichern
   await expect(page.locator(".meldung")).toContainText("Gespeichert");
   await expect(frage).toHaveCount(0);
 });
+
+test("Gemeinsamer NAS-Ordner: Stempel gelten für alle Arbeitsplätze", async ({ page }) => {
+  const nas = join(DATEN, "nas-gemeinsam");
+  rmSync(nas, { recursive: true, force: true });
+  await start(page);
+  await page.locator(".testversion").click();
+  const dialog = page.getByRole("dialog", { name: "Über Agentur-PDF" });
+  await dialog.getByLabel("Gemeinsamer Ordner").fill(nas);
+  await dialog.getByRole("button", { name: "Einstellungen speichern" }).click();
+  await expect(page.locator(".meldung")).toContainText("Einstellungen gespeichert");
+  await expect(dialog).toContainText("Verbunden – für alle gleich: Stempel");
+  // Stempel liegen jetzt im gemeinsamen Ordner
+  expect(existsSync(join(nas, "einstellungen.json"))).toBe(true);
+  await page.request.put("/api/einstellungen", { headers: H, data: { gemeinsamer_ordner: "" } });
+});

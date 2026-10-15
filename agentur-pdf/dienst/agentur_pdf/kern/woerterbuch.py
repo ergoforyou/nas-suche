@@ -54,13 +54,23 @@ class Woerterbuch:
         self._eigene: set[str] = set(FACHBEGRIFFE)
         self._vorschlag_cache: dict[str, list[str]] = {}
         self._benutzer_datei = datenordner() / "woerterbuch.txt"
+        self._gemeinsam_datei: Path | None = None
         self._benutzer_laden()
 
     def _benutzer_laden(self) -> None:
-        try:
-            self._eigene |= {z.strip() for z in self._benutzer_datei.read_text(encoding="utf-8").splitlines() if z.strip()}
-        except OSError:
-            pass
+        for datei in (self._benutzer_datei, self._gemeinsam_datei):
+            if datei is None:
+                continue
+            try:
+                self._eigene |= {z.strip() for z in datei.read_text(encoding="utf-8").splitlines() if z.strip()}
+            except OSError:
+                pass
+
+    def gemeinsam_setzen(self, ordner: Path | None) -> None:
+        """Eigene Wörter zusätzlich im gemeinsamen Ordner (NAS) führen –
+        was einer ergänzt, kennen alle."""
+        self._gemeinsam_datei = ordner / "woerterbuch.txt" if ordner else None
+        self._benutzer_laden()
 
     def _laden(self) -> None:
         if self._geladen:
@@ -137,6 +147,12 @@ class Woerterbuch:
         self._eigene.add(wort)
         with open(self._benutzer_datei, "a", encoding="utf-8") as f:
             f.write(wort + "\n")
+        if self._gemeinsam_datei is not None:
+            try:
+                with open(self._gemeinsam_datei, "a", encoding="utf-8") as f:
+                    f.write(wort + "\n")
+            except OSError:
+                pass  # NAS gerade weg – lokal ist es trotzdem gemerkt
 
 
 HAEUFIGE_BUCHSTABEN = "enirstadhulgcomwbfkzpvüäößjyxq"
