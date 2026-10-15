@@ -508,3 +508,30 @@ test("Formular gestalten: Felder anlegen, einstellen, verschieben, löschen und 
     .toBe("4711-0815");
   await foto(page, "formular-gestalten");
 });
+
+test("Text bearbeiten: Betrag im PDF ändern, Rückgängig", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "brief.pdf");
+  const dokId = await aktivesDok(page);
+  const seitentext = async () =>
+    ((await (await page.request.get(`/api/dokumente/${dokId}/seiten/0/textzeilen`, { headers: H })).json()) as { text: string }[])
+      .map((z) => z.text)
+      .join("\n");
+  await register(page, "Bearbeiten");
+  await page.locator('[data-befehl="werkzeug.textbearbeiten"]').click();
+  const zeile = page.locator('.anm-ebene[data-seite="0"] .tb-zeile[data-text*="312,40"]');
+  await expect(zeile).toHaveCount(1);
+  await zeile.click();
+  const eingabe = page.getByLabel("Text der Zeile");
+  await expect(eingabe).toBeFocused();
+  const alt = await eingabe.inputValue();
+  await eingabe.fill(alt.replace("312,40 EUR", "298,00 €"));
+  await eingabe.press("Enter");
+  await expect.poll(seitentext).toContain("298,00 €");
+  expect(await seitentext()).not.toContain("312,40");
+  await expect(page.locator('.anm-ebene[data-seite="0"] .tb-zeile[data-text*="298,00"]')).toHaveCount(1);
+  await foto(page, "text-bearbeiten");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+z");
+  await expect.poll(seitentext).toContain("312,40");
+});

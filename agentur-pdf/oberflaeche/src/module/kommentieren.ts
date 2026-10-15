@@ -10,6 +10,7 @@ import {
   ChevronDownSquare,
   Circle,
   EyeOff,
+  FilePenLine,
   Highlighter,
   ImagePlus,
   Info,
@@ -129,6 +130,12 @@ registrieren(
     gewaehlt: (z) => z.ausblenden.includes("kommentar"),
   },
   // -------------------------------------------------------------- Bearbeiten
+  werkzeug("textbearbeiten", "Text bearbeiten", "bearbeiten", "Text", FilePenLine, {
+    gross: true,
+    farbe: "#1F5BAA",
+    stichworte: ["text ändern", "korrigieren", "tippfehler", "betrag ändern", "pdf text bearbeiten", "edit", "überschreiben"],
+    beschreibung: "Vorhandenen Text im PDF ändern: Zeile anklicken, tippen, Enter. Schrift, Größe und Farbe bleiben erhalten.",
+  }),
   werkzeug("schreibmaschine", "Text eintragen", "bearbeiten", "Text", Type, {
     gross: true,
     kuerzel: "S",

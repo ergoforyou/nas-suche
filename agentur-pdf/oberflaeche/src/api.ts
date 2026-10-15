@@ -1,7 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
-import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort, GemeinsamStatus, UpdateInfo, WindowsStatus, StapelOptionen, VergleichErgebnis } from "./typen";
+import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort, GemeinsamStatus, UpdateInfo, WindowsStatus, StapelOptionen, VergleichErgebnis, Textzeile } from "./typen";
 import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 function tokenErmitteln(): string {
@@ -112,6 +112,9 @@ export const api = {
   druckerStatus: () => anfrage<{ windows: boolean; eingerichtet: boolean; ordner: string; name: string }>("GET", "/api/system/drucker"),
   druckerEinrichten: (einrichten: boolean) =>
     anfrage<{ windows: boolean; eingerichtet: boolean; ordner: string; name: string }>("POST", "/api/system/drucker", { einrichten }),
+  textzeilen: (id: string, seite: number) => anfrage<Textzeile[]>("GET", `/api/dokumente/${id}/seiten/${seite}/textzeilen`),
+  textErsetzen: (id: string, seite: number, bbox: number[], neu: string, groesse?: number, farbe?: string) =>
+    anfrage<Aenderungsantwort & { zeile: Partial<Textzeile> }>("POST", `/api/dokumente/${id}/seiten/${seite}/text_ersetzen`, { bbox, neu, groesse, farbe }),
   vergleichen: (a: string, b: string) => anfrage<VergleichErgebnis>("POST", "/api/vergleich", { a, b }),
   ordnerDialog: (start = "") => anfrage<{ verfuegbar: boolean; pfad: string | null }>("POST", "/api/dialog/ordner", { start }),
   updatePruefen: () => anfrage<UpdateInfo>("GET", "/api/update"),

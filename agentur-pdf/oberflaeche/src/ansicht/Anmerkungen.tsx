@@ -34,6 +34,7 @@ import { api } from "../api";
 import { anwenden } from "../zustand/seitenaktionen";
 import { Kontextmenue } from "./Kontextmenue";
 import { FormularGestaltung } from "./FormularGestaltung";
+import { TextBearbeitung } from "./TextBearbeitung";
 import { RsTextarea } from "./RsTextarea";
 
 const KEINE_STEMPEL: { text: string; farbe: string }[] = [];
@@ -425,7 +426,7 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
   return (
     <div
       ref={aussen}
-      className={`anm-ebene${zeichnen || textwerkzeug || werkzeug === "formular" ? " aktiv" : ""}`}
+      className={`anm-ebene${zeichnen || textwerkzeug || werkzeug === "formular" || werkzeug === "textbearbeiten" ? " aktiv" : ""}`}
       style={{ cursor }}
       onMouseDown={druecken}
       onMouseMove={(e) => (werkzeug === "platzieren" || werkzeug === "stempel") && setMaus(normPunkt(e, aussen.current!, p.drehung))}
@@ -436,6 +437,7 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
         className="anm-innen"
         style={{ width: iw, height: ih, left: (p.b - iw) / 2, top: (p.h - ih) / 2, transform: p.drehung ? `rotate(${p.drehung}deg)` : undefined }}
       >
+        {werkzeug === "textbearbeiten" && <TextBearbeitung dokId={p.dokId} seite={p.seite} kennung={p.kennung} pxProPt={pxProPt} />}
         {/* Formularfelder: ausfüllen – oder im Modus „Formular gestalten“ bearbeiten */}
         {werkzeug === "formular" ? (
           <FormularGestaltung

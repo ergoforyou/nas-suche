@@ -72,6 +72,9 @@ ERSTE SCHRITTE
 
 WAS IN DIESER TESTVERSION GEHT
   Anzeigen & Seiten
+  • Vergleichen (Register „Ansicht“): alte und neue Fassung nebeneinander,
+    Unterschiede Wort für Wort markiert (rot entfernt, grün neu, orange
+    geändert), Liste links, Pfeile springen von Unterschied zu Unterschied
   • Anzeigen, Zoom, Suche, Tabs, Nebeneinander, Miniaturen
   • Seiten verschieben/kopieren (auch zwischen Dokumenten), drehen, löschen,
     einfügen, extrahieren, teilen, Leerseiten entfernen, Rückgängig (Strg+Z)
@@ -97,6 +100,12 @@ WAS IN DIESER TESTVERSION GEHT
   • Stempel mit Datum und Kürzel (eigene Stempel: „Stempel verwalten“)
   • Kommentarliste in der Seitenleiste
   Bearbeiten
+  • Text bearbeiten: vorhandenen Text im PDF ändern – Zeile anklicken,
+    tippen, Enter. Schrift, Größe und Farbe bleiben (änderbar in der
+    kleinen Leiste darüber). Strg+Z macht es rückgängig.
+  • Formular gestalten: Textfeld, Kontrollkästchen, Auswahlliste,
+    Listenfeld aufziehen; verschieben, Größe ändern, rechts Name,
+    Pflichtfeld usw. einstellen; Entf löscht, Esc beendet
   • Text eintragen (S) mit Rechtschreibprüfung: rote Wellenlinie,
     Rechtsklick zeigt Vorschläge
   • Bild/Unterschrift einfügen – weißer Hintergrund wird entfernt,

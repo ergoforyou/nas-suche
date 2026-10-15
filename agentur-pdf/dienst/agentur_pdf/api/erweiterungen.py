@@ -665,6 +665,34 @@ def einrichten(
         anzahl = await im_mupdf_thread(setzen)
         return await antwort([dok_id], anzahl=anzahl)
 
+    # ======================================================= Text bearbeiten
+    @app.get("/api/dokumente/{dok_id}/seiten/{seite}/textzeilen")
+    async def textzeilen(dok_id: str, seite: int):
+        from ..kern import textbearbeitung
+
+        return await im_mupdf_thread(lambda: textbearbeitung.zeilen(dokumente.get(dok_id).doc, seite))
+
+    @app.post("/api/dokumente/{dok_id}/seiten/{seite}/text_ersetzen")
+    async def text_ersetzen(
+        dok_id: str,
+        seite: int,
+        bbox: list[float] = Body(...),
+        neu: str = Body(...),
+        groesse: float | None = Body(None),
+        farbe: str | None = Body(None),
+    ):
+        from ..kern import textbearbeitung
+
+        def ersetzen():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Text bearbeiten", dok):
+                zeile = textbearbeitung.text_ersetzen(dok.doc, seite, bbox, neu, groesse, farbe)
+                dok.seite_geaendert(seite)
+            return zeile
+
+        zeile = await im_mupdf_thread(ersetzen)
+        return await antwort([dok_id], zeile=zeile)
+
     # ============================================================ Vergleichen
     @app.post("/api/vergleich")
     async def vergleich(a: str = Body(...), b: str = Body(...)):

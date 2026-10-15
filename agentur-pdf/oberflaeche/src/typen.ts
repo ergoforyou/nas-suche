@@ -83,7 +83,22 @@ export type Werkzeug =
   | "platzieren"
   | "abdecken"
   | "schwaerzen"
-  | "formular";
+  | "formular"
+  | "textbearbeiten";
+
+/** Textzeile im PDF (für „Text bearbeiten“) */
+export interface Textzeile {
+  bbox: [number, number, number, number];
+  rechteck: Rechteck;
+  text: string;
+  schrift: string;
+  css_schrift: string;
+  groesse: number;
+  farbe: string;
+  fett: boolean;
+  kursiv: boolean;
+  bearbeitbar: boolean;
+}
 
 /** Feldtypen, die sich anlegen lassen */
 export type FormularTyp = "text" | "ankreuzen" | "auswahlliste" | "liste";

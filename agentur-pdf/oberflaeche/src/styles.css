@@ -3777,3 +3777,76 @@ body {
   gap: 8px;
   align-items: flex-start;
 }
+
+/* ---------------------------------------------------- Text bearbeiten */
+.tb-ebene {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tb-zeile {
+  position: absolute;
+  pointer-events: auto;
+  cursor: text;
+  border-radius: 1px;
+}
+
+.tb-zeile:hover {
+  outline: 1px dashed #1e6fd9;
+  background: rgba(30, 111, 217, 0.08);
+}
+
+.tb-vorschau,
+.tb-eingabe {
+  white-space: pre;
+  background: #fff;
+}
+
+.tb-vorschau {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  min-width: fit-content;
+  pointer-events: none;
+}
+
+.tb-editor {
+  position: absolute;
+  pointer-events: auto;
+  z-index: 3;
+}
+
+.tb-eingabe {
+  box-sizing: border-box;
+  height: 100%;
+  min-width: 100%;
+  width: max-content;
+  field-sizing: content;
+  padding: 0;
+  margin: 0;
+  border: none;
+  outline: 1.5px solid #1e6fd9;
+  outline-offset: 1px;
+}
+
+.tb-leiste {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  background: var(--hg);
+  box-shadow: var(--schatten);
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.tb-leiste .farbe {
+  width: 16px;
+  height: 16px;
+}
