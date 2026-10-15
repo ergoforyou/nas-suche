@@ -1,7 +1,7 @@
 import { Avatar, avatarState, detectFace, loadImage } from './avatar.js';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
-import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor } from './cutout.js';
+import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
 import { computeVideoMask } from './videomask.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
@@ -2032,7 +2032,8 @@ async function prepareFigureImage(file) {
   };
   try {
     const canvas = await imageToCanvas(url, 2048);
-    if (hasTransparency(canvas)) return canvas;
+    // schon freigestellt (PNG mit Transparenz): nichts entfernen, nur auf die Figur zuschneiden
+    if (hasTransparency(canvas)) return cropToContent(canvas).canvas;
     if (hasUniformBorder(canvas, +$('avTol').value)) {
       const res = removeBackground(canvas, { tolerance: +$('avTol').value });
       if (res.removed >= 0.02) return withOriginal(res, canvas);
