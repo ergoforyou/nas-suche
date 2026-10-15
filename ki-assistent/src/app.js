@@ -234,6 +234,12 @@ new RubberBand($('stage'), avatar, {
   onActivate: () => toggleMic(),
   onChange: (layout) => {
     persona().avatar.stage = { ...layout };
+    persona().avatar.stageFit = null;
+    save();
+  },
+  onFit: (fit) => {
+    persona().avatar.stageFit = fit;
+    persona().avatar.stage = null;
     save();
   },
   onRotating: (yaw, key) => (key === 'turnYaw' ? setTurnYaw(yaw, false) : setVrmYaw(yaw, false)),
@@ -1918,6 +1924,8 @@ $('avFlip').onchange = (e) => {
 };
 $('avResetPos').onclick = () => {
   persona().avatar.stage = null;
+  persona().avatar.stageFit = null;
+  avatar.fitMode = null;
   avatar.layout = { x: 0, y: 0, scale: 1 };
   save();
 };

@@ -121,6 +121,32 @@ check((await page.evaluate(() => window.desktop.keyStatus())).openai, 'OpenAI-Sc
 await page.evaluate(() => document.querySelector('[data-tab=voice]').click());
 check(!(await page.isVisible('#vSystemWrap')) && !(await page.evaluate(() => [...document.querySelectorAll('#vEngine option')].some((o) => o.value === 'server' && o.offsetParent !== null && getComputedStyle(o).display !== 'none'))), 'Chatterbox und Systemstimme ausgeblendet');
 await page.evaluate(() => document.getElementById('btnCloseDrawer').click());
+// Figur antippen -> Rahmen mit Schnellwahl; „Füllen“ füllt die Bühne
+await page.click('#closeSettings').catch(() => {});
+await page.keyboard.press('Escape').catch(() => {});
+const stageBox = await page.locator('#stage').boundingBox();
+await page.evaluate(() => {
+  const a = window.__app.avatar;
+  const r = a.rect;
+  const c = a.canvas.getBoundingClientRect();
+  const o = { clientX: c.left + r.x + r.w / 2, clientY: c.top + r.y + r.h / 2, button: 0, pointerId: 7, bubbles: true, pointerType: 'mouse' };
+  a.canvas.dispatchEvent(new PointerEvent('pointerdown', o));
+  a.canvas.dispatchEvent(new PointerEvent('pointerup', o));
+});
+const fillBtn = page.locator('.rb .fitbar button', { hasText: 'Füllen' });
+check(await fillBtn.isVisible(), 'Schnellwahl im Rahmen sichtbar');
+await fillBtn.click();
+await page.waitForTimeout(300);
+const fill = await page.evaluate(() => ({ r: window.__app.avatar.rect, fit: window.__app.state.personas[0].avatar.stageFit }));
+check(
+  fill.fit?.mode === 'fuellen' && (fill.r.w >= stageBox.width - 2 || fill.r.h >= stageBox.height - 2) && fill.r.y <= 1,
+  'Füllen: Figur füllt die Bühne, Kopf oben',
+  JSON.stringify(fill.r),
+);
+await page.locator('.rb .fitbar button', { hasText: 'Ganz' }).click();
+await page.waitForTimeout(300);
+const whole = await page.evaluate(() => window.__app.avatar.rect);
+check(whole.w <= stageBox.width + 2 && whole.h <= stageBox.height + 2 && (whole.w >= stageBox.width - 2 || whole.h >= stageBox.height - 2), 'Ganz: ganze Figur, so groß wie möglich', JSON.stringify(whole));
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

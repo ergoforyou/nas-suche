@@ -144,6 +144,8 @@ export class Avatar {
     this.flip = !!config.flip;
     // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
     this.layout = { x: 0, y: 0, scale: 1, ...(this.useLayout ? config.stage ?? {} : {}) };
+    // feste Einpassung (passt sich an, wenn sich die Bühne ändert, z. B. Drehen des Handys)
+    this.fitMode = this.useLayout && !config.stage ? config.stageFit ?? null : null;
     // Ebene 0 = Grundbild, danach die Posen. Jede Ebene hat eigene Mund-/Augen-/Kopfdaten.
     const cfgs = config.vrm ? [] : [config, ...(config.poses ?? []).filter((p) => p?.image || p?.video)];
     const layers = config.vrm ? [await this.createVrmLayer(config)] : [];
@@ -1162,7 +1164,7 @@ export class Avatar {
 
     // freischwebend etwas Rand lassen, damit beim Wiegen nichts abgeschnitten wird
     const fit = Math.min(W / this.w, H / this.h) * (this.transparent ? 0.94 : 1);
-    const L = this.layout;
+    const L = this.fitMode ? this.fitLayout(this.fitMode, W, H) : this.layout;
     this.fitPx = this.h * fit; // Figurhöhe in Gerätepixeln bei Maßstab 1
     const dw = this.w * fit * L.scale;
     const dh = this.h * fit * L.scale;
@@ -1185,6 +1187,26 @@ export class Avatar {
     }
     ctx.globalAlpha = 1;
     ctx.restore();
+  }
+
+  /**
+   * Einpassung in die Bühne berechnen.
+   * mode: 'ganz' = ganze Figur so groß wie möglich, 'fuellen' = Bühne ganz ausfüllen (Ränder werden abgeschnitten)
+   * align: 'unten' | 'mitte' | 'oben'
+   */
+  fitLayout({ mode = 'ganz', align = 'mitte' } = {}, W = this.canvas.width, H = this.canvas.height) {
+    const base = Math.min(W / this.w, H / this.h) * (this.transparent ? 0.94 : 1);
+    const f = mode === 'fuellen' ? Math.max(W / this.w, H / this.h) : Math.min(W / this.w, H / this.h);
+    const dh = this.h * f;
+    const by = align === 'unten' ? H : align === 'oben' ? dh : (H + dh) / 2;
+    return { x: 0, y: (by - (H + this.h * base) / 2) / H, scale: f / base };
+  }
+
+  /** Feste Einpassung lösen (vor dem Verschieben/Skalieren von Hand). */
+  freeLayout() {
+    if (!this.fitMode) return;
+    this.layout = this.fitLayout(this.fitMode);
+    this.fitMode = null;
   }
 
   /** Figur so platzieren, dass sie das angegebene Rechteck (CSS-Pixel) ausfüllt. */

@@ -14,6 +14,21 @@ const STYLE = `
 .rb .ne { right: -2px; top: -2px; cursor: nesw-resize; }
 .rb .sw { left: -2px; bottom: -2px; cursor: nesw-resize; }
 .rb .se { right: -2px; bottom: -2px; cursor: nwse-resize; }
+/* Touch: größere Anfasser (Finger statt Maus) */
+.mobile .rb i { width: 34px; height: 34px; border-radius: 8px; }
+.mobile .rb .nw, .mobile .rb .ne { top: -10px; }
+.mobile .rb .sw, .mobile .rb .se { bottom: -10px; }
+.mobile .rb .nw, .mobile .rb .sw { left: -10px; }
+.mobile .rb .ne, .mobile .rb .se { right: -10px; }
+.rb i, .rb .fitbar, .rb-touch { touch-action: none; }
+/* Schnellwahl: Größe und Ausrichtung mit einem Tipp */
+.rb .fitbar { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); display: flex; gap: 4px;
+              pointer-events: auto; background: rgba(20,24,32,.88); border: 1px solid rgba(91,156,245,.8);
+              border-radius: 10px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.rb .fitbar button { all: unset; cursor: pointer; color: #fff; font: 600 12px "Segoe UI", sans-serif;
+                     padding: 6px 9px; border-radius: 7px; background: rgba(91,156,245,.25); white-space: nowrap; }
+.rb .fitbar button:hover, .rb .fitbar button.on { background: #5b9cf5; }
+.mobile .rb .fitbar button { padding: 9px 11px; font-size: 13px; }
 /* Verschiebe-Griff der freien Figur: zieht das Fenster mit der Fensterverwaltung von Windows selbst
    (zuverlässig, auch über mehrere Bildschirme mit unterschiedlicher Skalierung) */
 .rb .move { position: absolute; left: 50%; top: 68%; transform: translate(-50%, -50%); pointer-events: auto;
@@ -51,6 +66,31 @@ export class RubberBand {
       h.addEventListener('pointerdown', (e) => this.resizeStart(e, c));
       this.el.appendChild(h);
     }
+    if (opts.kind === 'layout') {
+      // Schnellwahl im Rahmen: ausfüllen, ganz zeigen, Ausrichtung, Standard
+      const bar = this.doc.createElement('div');
+      bar.className = 'fitbar';
+      const items = [
+        ['⛶ Füllen', 'Bühne ganz ausfüllen (Kopf bleibt oben sichtbar)', { mode: 'fuellen', align: 'oben' }],
+        ['▣ Ganz', 'Ganze Figur so groß wie möglich', { mode: 'ganz', align: 'mitte' }],
+        ['⤓ Unten', 'Ganze Figur, unten ausgerichtet', { mode: 'ganz', align: 'unten' }],
+        ['⤒ Oben', 'Ganze Figur, oben ausgerichtet', { mode: 'ganz', align: 'oben' }],
+        ['↺', 'Standard (wie beim ersten Start)', null],
+      ];
+      for (const [label, title, fit] of items) {
+        const b = this.doc.createElement('button');
+        b.textContent = label;
+        b.title = title;
+        b.addEventListener('pointerdown', (e) => e.stopPropagation());
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.applyFit(fit);
+        });
+        bar.appendChild(b);
+      }
+      this.el.appendChild(bar);
+      this.fitbar = bar;
+    }
     if (opts.kind === 'window') {
       const grip = this.doc.createElement('b');
       grip.className = 'move';
@@ -61,7 +101,10 @@ export class RubberBand {
     container.appendChild(this.el);
 
     const canvas = avatar.canvas;
+    if (opts.kind === 'layout') canvas.classList.add('rb-touch'); // Wischgesten nicht als Scrollen deuten
     canvas.addEventListener('pointerdown', (e) => this.down(e));
+    // Zwei Finger: zoomen (wie bei Fotos)
+    this.touches = new Map();
     canvas.addEventListener('dblclick', (e) => {
       const p = this.local(e);
       if (this.avatar.hitTest(p.x, p.y)) opts.onActivate?.();
@@ -76,6 +119,7 @@ export class RubberBand {
       const f = grow ? 1.08 : 1 / 1.08;
       if (this.opts.kind === 'window') this.opts.desktop.avatarResize(f, this.avatar.w / this.avatar.h);
       else {
+        this.avatar.freeLayout?.();
         const L = this.avatar.layout;
         this.avatar.layout = { ...L, scale: Math.max(0.2, Math.min(4, L.scale * f)) };
         this.opts.onChange?.(this.avatar.layout);
@@ -108,17 +152,45 @@ export class RubberBand {
     Object.assign(this.el.style, { left: `${x + c.offsetLeft}px`, top: `${y + c.offsetTop}px`, width: `${w}px`, height: `${h}px` });
   }
 
+  /** Einpassung setzen (null = Standard) und merken. */
+  applyFit(fit) {
+    this.avatar.fitMode = fit;
+    if (!fit) this.avatar.layout = { x: 0, y: 0, scale: 1 };
+    this.markFit();
+    this.opts.onFit?.(fit);
+  }
+
+  markFit() {
+    const f = this.avatar.fitMode;
+    this.fitbar?.querySelectorAll('button').forEach((b, i) => {
+      const want = [['fuellen', 'oben'], ['ganz', 'mitte'], ['ganz', 'unten'], ['ganz', 'oben']][i];
+      b.classList.toggle('on', !!f && !!want && f.mode === want[0] && f.align === want[1]);
+    });
+  }
+
   select(on) {
     if (this.selected === on) return;
     this.selected = on;
     this.el.hidden = !on;
-    if (on) this.place();
+    if (on) {
+      this.place();
+      this.markFit();
+    }
     this.opts.onSelect?.(on);
   }
 
   down(e) {
     if (e.button !== 0) return;
     const p = this.local(e);
+    // zweiter Finger (darf neben der Figur liegen): Zoomen
+    if (this.opts.kind === 'layout' && this.touches.size === 1 && e.pointerType === 'touch') {
+      e.preventDefault();
+      try {
+        this.avatar.canvas.setPointerCapture(e.pointerId);
+      } catch {}
+      this.touches.set(e.pointerId, p);
+      return this.pinchStart();
+    }
     if (!this.avatar.hitTest(p.x, p.y)) return this.select(false);
     // 3D-Figur: Umschalttaste + Ziehen dreht die Figur
     if (e.shiftKey && (this.avatar.layers?.[0]?.isVrm || this.avatar.parallax)) return this.rotateStart(e);
@@ -144,10 +216,17 @@ export class RubberBand {
     }
     // innerhalb der Bühne verschieben
     const canvas = this.avatar.canvas;
-    canvas.setPointerCapture(e.pointerId);
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {}
+    this.avatar.freeLayout?.();
+    this.markFit();
+    this.touches.set(e.pointerId, p);
+    if (this.touches.size >= 2) return this.pinchStart();
     const start = { ...p, layout: { ...this.avatar.layout } };
     const dpr = this.avatar.dpr ?? (this.win.devicePixelRatio || 1);
     const move = (ev) => {
+      if (this.pinching || ev.pointerId !== e.pointerId) return;
       const q = this.local(ev);
       this.avatar.layout = {
         ...start.layout,
@@ -155,13 +234,54 @@ export class RubberBand {
         y: start.layout.y + ((q.y - start.y) * dpr) / canvas.height,
       };
     };
-    const up = () => {
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
+      canvas.removeEventListener('pointercancel', up);
+      this.touches.delete(e.pointerId);
+      if (!this.pinching) this.opts.onChange?.(this.avatar.layout);
+    };
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+  }
+
+  /** Zwei-Finger-Zoom: Abstand der Finger ändert die Größe, die Mitte zwischen ihnen verschiebt. */
+  pinchStart() {
+    const canvas = this.avatar.canvas;
+    const pts = () => [...this.touches.values()].slice(0, 2);
+    const dist = ([a, b]) => Math.max(10, Math.hypot(a.x - b.x, a.y - b.y));
+    const mid = ([a, b]) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const d0 = dist(pts());
+    const m0 = mid(pts());
+    const L0 = { ...this.avatar.layout };
+    const dpr = this.avatar.dpr ?? 1;
+    this.pinching = true;
+    const move = (ev) => {
+      if (!this.touches.has(ev.pointerId)) return;
+      this.touches.set(ev.pointerId, this.local(ev));
+      if (this.touches.size < 2) return;
+      const k = dist(pts()) / d0;
+      const m = mid(pts());
+      this.avatar.layout = {
+        scale: Math.max(0.2, Math.min(5, L0.scale * k)),
+        x: L0.x + ((m.x - m0.x) * dpr) / canvas.width,
+        y: L0.y + ((m.y - m0.y) * dpr) / canvas.height,
+      };
+    };
+    const up = (ev) => {
+      this.touches.delete(ev.pointerId);
+      if (this.touches.size) return;
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup', up);
+      canvas.removeEventListener('pointercancel', up);
+      this.pinching = false;
       this.opts.onChange?.(this.avatar.layout);
     };
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
   }
 
   rotateStart(e) {
@@ -202,6 +322,8 @@ export class RubberBand {
     }
     const handle = e.target;
     handle.setPointerCapture(e.pointerId);
+    this.avatar.freeLayout?.();
+    this.markFit();
     const r = { ...this.avatar.rect };
     // gegenüberliegende Ecke bleibt fest
     const ax = corner.includes('w') ? r.x + r.w : r.x;
