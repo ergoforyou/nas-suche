@@ -1,6 +1,6 @@
 // Spracherkennung mit Whisper, läuft komplett lokal in einem Web-Worker.
 // Das Modell wird beim ersten Mal von Hugging Face geladen und danach im Cache gehalten.
-import { pipeline, env, RawImage } from '@huggingface/transformers';
+import { pipeline, env, RawImage, AutoModel, AutoProcessor } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
 // Modelle kommen über den Hauptprozess (app://local/models/hf/…), der sie auf der Festplatte speichert.
@@ -62,6 +62,34 @@ async function removeBackground({ rgba, width, height }, progress) {
   return new Uint8ClampedArray(resized.data);
 }
 
+// Freistellen ganzer Figuren (BiRefNet lite, MIT-Lizenz): trennt auch Lücken zwischen Armen und Beinen sauber,
+// wo das Porträt-Modell nur Kopf und Schultern gut kann. Größer (~110 MB) und langsamer – darum nur für Bilder.
+let birefnet = null;
+async function removeBackgroundFigure({ rgba, width, height }, progress) {
+  birefnet ??= (async () => {
+    const id = 'onnx-community/BiRefNet_lite';
+    const adapter = await navigator.gpu?.requestAdapter().catch(() => null);
+    const opts = (device, dtype) => ({ device, dtype, progress_callback: progress });
+    let model = null;
+    if (adapter) model = await AutoModel.from_pretrained(id, opts('webgpu', 'fp16')).catch(() => null);
+    model ??= await AutoModel.from_pretrained(id, opts('wasm', 'fp16')).catch(() => AutoModel.from_pretrained(id, opts('wasm', 'fp32')));
+    const processor = await AutoProcessor.from_pretrained(id);
+    return { model, processor };
+  })().catch((e) => {
+    birefnet = null;
+    throw e;
+  });
+  const { model, processor } = await birefnet;
+  const img = new RawImage(new Uint8ClampedArray(rgba), width, height, 4).rgb();
+  const { pixel_values } = await processor(img);
+  const out = await model({ input_image: pixel_values });
+  const logits = out.output_image ?? Object.values(out)[0];
+  const mask = await RawImage.fromTensor(logits[0].sigmoid().mul(255).to('uint8')).resize(width, height);
+  const res = new Uint8ClampedArray(rgba);
+  for (let i = 0; i < width * height; i++) res[i * 4 + 3] = mask.data[i];
+  return res;
+}
+
 // Tiefenschätzung (Depth Anything V2 Small, Apache-2.0): Wie weit ist jeder Bildpunkt entfernt?
 // Wird einmal pro Avatar-Bild gebraucht, damit sich das Bild leicht "drehen" lässt.
 let depthPipe = null;
@@ -101,8 +129,19 @@ self.onmessage = async ({ data }) => {
       const depth = await estimateDepth(data, (p) => self.postMessage({ id, type: 'progress', progress: p }));
       self.postMessage({ id, type: 'result', depth }, [depth.buffer]);
     } else if (type === 'cutout') {
-      const rgba = await removeBackground(data, (p) => self.postMessage({ id, type: 'progress', progress: p }));
-      self.postMessage({ id, type: 'result', rgba }, [rgba.buffer]);
+      const progress = (p) => self.postMessage({ id, type: 'progress', progress: p });
+      let rgba = null;
+      let model = 'MODNet';
+      if (data.quality === 'figur') {
+        try {
+          rgba = await removeBackgroundFigure(data, progress);
+          model = 'BiRefNet';
+        } catch (e) {
+          console.warn('BiRefNet nicht verfügbar, nutze MODNet:', e);
+        }
+      }
+      rgba ??= await removeBackground(data, progress);
+      self.postMessage({ id, type: 'result', rgba, model }, [rgba.buffer]);
     }
   } catch (err) {
     self.postMessage({ id, type: 'error', error: String(err?.message || err) });

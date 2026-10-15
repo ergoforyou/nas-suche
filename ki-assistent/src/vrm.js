@@ -88,11 +88,14 @@ export async function createVrmFigure(doc, url, { width = 820, height = 900 } = 
   // Drehung um die eigene Achse (VRM-0-Figuren sind bereits um 180° gedreht)
   const baseYaw = vrm.scene.rotation.y;
 
-  // Blick folgt leicht der Kamera
+  // Blick: meist zur Kamera (Blickkontakt), im Leerlauf ab und zu kurz woanders hin – nur die Augen bewegen sich
+  const gaze = new THREE.Object3D();
+  scene.add(gaze);
   if (vrm.lookAt) {
-    vrm.lookAt.target = camera;
+    vrm.lookAt.target = gaze;
     vrm.lookAt.autoUpdate = true;
   }
+  const G = { x: 0, y: 0, tx: 0, ty: 0, next: performance.now() + 2500 };
 
   const S = { t: 0, look: 0, nod: 0, tilt: 0, lookT: 0, nodT: 0, tiltT: 0, next: 0, aa: 0, oh: 0, ee: 0, smile: 0, happy: 0, sad: 0, surprised: 0, angry: 0, brow: 0 };
   let last = performance.now();
@@ -127,7 +130,7 @@ export async function createVrmFigure(doc, url, { width = 820, height = 900 } = 
       S.nodT = 0.06;
       S.tiltT = -0.08 * mood.side;
     } else if (now > S.next) {
-      const g = st.speaking ? mood.energy : idle;
+      const g = st.speaking ? mood.energy : Math.max(0.35, idle);
       S.lookT = (Math.random() - 0.5) * 0.35 * g;
       S.nodT = (Math.random() - 0.5) * 0.12 * g;
       S.tiltT = (Math.random() - 0.5) * 0.12 * g;
@@ -149,17 +152,40 @@ export async function createVrmFigure(doc, url, { width = 820, height = 900 } = 
       B.neck.rotation.x = sx * (S.nod * 0.4 * m);
       B.neck.rotation.z = sx * (S.tilt * 0.4 * m);
     }
-    // Atmen und leichtes Wiegen
-    const breathe = Math.sin(S.t * 1.6) * 0.018 * m;
-    if (B.chest) B.chest.rotation.x = sx * (breathe);
-    if (B.spine) {
-      B.spine.rotation.x = sx * ((st.listening ? 0.05 : 0) * m);
-      B.spine.rotation.z = sx * (Math.sin(S.t * 0.5) * 0.015 * m);
+    // Blickwechsel: im Leerlauf gelegentlich kurz zur Seite/nach unten, beim Nachdenken nach oben, sonst Blickkontakt
+    if (now > G.next) {
+      const away = !st.speaking && !st.listening && Math.random() < 0.55;
+      G.tx = st.thinking ? 0.35 * (Math.random() < 0.5 ? -1 : 1) : away ? (Math.random() - 0.5) * 0.9 : 0;
+      G.ty = st.thinking ? 0.3 : away ? (Math.random() - 0.65) * 0.35 : 0;
+      G.next = now + (away ? 700 + Math.random() * 1300 : 1800 + Math.random() * 3500);
     }
-    if (B.hips) B.hips.rotation.y = Math.sin(S.t * 0.35) * 0.02 * m;
+    G.x = smooth(G.x, G.tx, 0.25);
+    G.y = smooth(G.y, G.ty, 0.25);
+    gaze.position.set(camera.position.x + G.x, camera.position.y + G.y, camera.position.z);
+
+    // Atmen (Brust und Schultern), Oberkörper wiegt sich langsam, Gewicht verlagert sich – damit die Figur auch
+    // im Leerlauf lebendig wirkt (zwei überlagerte langsame Wellen, damit es nicht mechanisch aussieht)
+    const breathe = (Math.sin(S.t * 1.6) * 0.03 + Math.sin(S.t * 0.8) * 0.008) * m;
+    const sway = (Math.sin(S.t * 0.45) * 0.03 + Math.sin(S.t * 0.21 + 1.3) * 0.02) * m;
+    if (B.chest) {
+      B.chest.rotation.x = sx * breathe;
+      B.chest.rotation.y = Math.sin(S.t * 0.33 + 0.7) * 0.025 * m;
+    }
+    if (B.spine) {
+      B.spine.rotation.x = sx * ((st.listening ? 0.06 : 0.01) * m + mood.nod * 0.4);
+      B.spine.rotation.z = sx * sway;
+    }
+    if (B.hips) {
+      B.hips.rotation.y = Math.sin(S.t * 0.27) * 0.04 * m;
+      B.hips.rotation.z = sx * (-sway * 0.5);
+    }
     restArms();
-    if (B.lUpper) B.lUpper.rotation.z += sx * (Math.sin(S.t * 1.6) * 0.012 * m);
-    if (B.rUpper) B.rUpper.rotation.z -= sx * (Math.sin(S.t * 1.6 + 0.4) * 0.012 * m);
+    // Schultern heben sich beim Einatmen, Arme pendeln leicht
+    const lift = Math.max(0, Math.sin(S.t * 1.6)) * 0.03 * m;
+    if (B.lUpper) B.lUpper.rotation.z += sx * (lift + Math.sin(S.t * 0.6) * 0.02 * m);
+    if (B.rUpper) B.rUpper.rotation.z -= sx * (lift + Math.sin(S.t * 0.6 + 0.9) * 0.02 * m);
+    if (B.lLower) B.lLower.rotation.z += sx * (Math.sin(S.t * 0.6 + 0.4) * 0.03 * m);
+    if (B.rLower) B.rLower.rotation.z -= sx * (Math.sin(S.t * 0.6 + 1.3) * 0.03 * m);
 
     // Mund: Öffnung folgt Lautstärke und Laut; Form: rund (o/u) oder breit (e/i)
     const open = st.speaking ? st.open : 0;
@@ -194,6 +220,7 @@ export async function createVrmFigure(doc, url, { width = 820, height = 900 } = 
 
   function dispose() {
     scene.remove(vrm.scene);
+    scene.remove(gaze);
     VRMUtils.deepDispose(vrm.scene);
     renderer.dispose();
     renderer.forceContextLoss?.();

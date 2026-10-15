@@ -9,7 +9,7 @@ import Anthropic, { toFile } from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import cloud from '../../cloud.js';
 
-const { chatAnthropic, chatOpenAI, friendlyCloudError } = cloud;
+const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI } = cloud;
 
 // ---------------------------------------------------------------- Dateien im App-Speicher
 async function readJson(path) {
@@ -98,25 +98,6 @@ async function saveCreatedFile(name, bytes) {
 }
 
 /** WAV (16 kHz, mono, 16 bit) für die Cloud-Spracherkennung. */
-function toWav(samples, rate = 16000) {
-  const buf = new ArrayBuffer(44 + samples.length * 2);
-  const v = new DataView(buf);
-  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
-  str(0, 'RIFF');
-  v.setUint32(4, 36 + samples.length * 2, true);
-  str(8, 'WAVEfmt ');
-  v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true);
-  v.setUint16(22, 1, true);
-  v.setUint32(24, rate, true);
-  v.setUint32(28, rate * 2, true);
-  v.setUint16(32, 2, true);
-  v.setUint16(34, 16, true);
-  str(36, 'data');
-  v.setUint32(40, samples.length * 2, true);
-  for (let i = 0; i < samples.length; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
-  return new Uint8Array(buf);
-}
 
 const notHere = (what) => async () => {
   throw new Error(`${what} gibt es nur in der PC-Version.`);
@@ -251,14 +232,12 @@ const api = {
     }
   },
   // ---- Spracherkennung in der Cloud (schneller als Whisper auf dem Handy)
-  transcribeCloud: async (audio, language) => {
-    const c = await openaiClient();
-    const res = await c.audio.transcriptions.create({
-      file: await toFile(toWav(audio), 'sprache.wav', { type: 'audio/wav' }),
-      model: 'gpt-4o-mini-transcribe',
-      ...(language ? { language: language === 'english' ? 'en' : 'de' } : {}),
-    });
-    return (res.text ?? '').trim();
+  transcribeCloud: async (audio, language, model) => {
+    try {
+      return await transcribeOpenAI(await openaiClient(), toFile, audio, { language, model });
+    } catch (err) {
+      throw new Error(friendlyCloudError(err, 'Cloud-Spracherkennung', OpenAI));
+    }
   },
 
   // ---- Medien (Videos, VRM-Figuren) im App-Speicher

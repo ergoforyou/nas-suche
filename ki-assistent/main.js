@@ -17,7 +17,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
-const { friendlyCloudError, chatAnthropic, chatOpenAI } = require('./cloud.js');
+const { friendlyCloudError, chatAnthropic, chatOpenAI, transcribeOpenAI } = require('./cloud.js');
 
 const DIST = path.join(__dirname, 'dist');
 const SMOKE = process.argv.includes('--smoke-test');
@@ -953,6 +953,19 @@ ipcMain.handle('tts:cloud:speak', async (_e, { text, voice, model, instructions,
     return new Uint8Array(await res.arrayBuffer());
   } catch (err) {
     throw new Error(friendlyCloudError(err, 'OpenAI-Stimme', require('openai').default));
+  }
+});
+
+// Spracherkennung in der Cloud (OpenAI): schnell auch auf schwächeren PCs; nur in der Cloud-Ausgabe
+ipcMain.handle('stt:cloud', async (_e, { audio, language, model }) => {
+  const blocked = cloudBlocked('openai');
+  if (blocked) throw new Error(blocked);
+  try {
+    const { client } = openaiClient();
+    const { toFile } = require('openai');
+    return await transcribeOpenAI(client, toFile, audio instanceof Float32Array ? audio : Float32Array.from(audio), { language, model });
+  } catch (err) {
+    throw new Error(friendlyCloudError(err, 'Cloud-Spracherkennung', require('openai').default));
   }
 });
 

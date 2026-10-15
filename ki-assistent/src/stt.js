@@ -33,14 +33,18 @@ export class SpeechInput {
     });
   }
 
-  /** Hintergrund per KI entfernen (läuft im Worker, damit die Oberfläche flüssig bleibt). */
-  async removeBackground(imageData, onProgress) {
+  /**
+   * Hintergrund per KI entfernen (läuft im Worker, damit die Oberfläche flüssig bleibt).
+   * quality 'figur' = genaues Modell für ganze Figuren (BiRefNet), sonst das schnelle Porträt-Modell (MODNet).
+   */
+  async removeBackground(imageData, onProgress, { quality = 'schnell' } = {}) {
     const rgba = new Uint8ClampedArray(imageData.data);
     const res = await this.call(
-      { type: 'cutout', rgba, width: imageData.width, height: imageData.height },
+      { type: 'cutout', rgba, width: imageData.width, height: imageData.height, quality },
       onProgress,
       [rgba.buffer],
     );
+    this.cutoutModel = res.model;
     return res.rgba;
   }
 

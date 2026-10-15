@@ -350,15 +350,22 @@
       <h3>Spracherkennung</h3>
       <label id="sEngineWrap" hidden>Spracherkennung läuft
         <select id="sEngine">
-          <option value="cloud">in der Cloud (OpenAI) – schnell, braucht OpenAI-Schlüssel</option>
-          <option value="local">auf dem Gerät (Whisper) – privat, auf dem Handy langsamer</option>
+          <option value="cloud">in der Cloud (OpenAI) – schnell und genau auf jedem Gerät, braucht OpenAI-Schlüssel</option>
+          <option value="local">auf dem Gerät (Whisper) – privat, auf schwächeren Geräten langsamer</option>
         </select>
       </label>
-      <label>Whisper-Modell
+      <label id="sCloudModelWrap" hidden>Cloud-Modell
+        <select id="sCloudModel">
+          <option value="gpt-4o-transcribe">gpt-4o-transcribe – am genauesten (ca. 0,6 Cent/Minute)</option>
+          <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe – günstiger (ca. 0,3 Cent/Minute)</option>
+        </select>
+        <span class="hint">Nur die Aufnahme deiner Frage geht an OpenAI. Ohne Verbindung oder Schlüssel wird automatisch Whisper auf dem Gerät genutzt.</span>
+      </label>
+      <label id="sModelWrap">Whisper-Modell (auf dem Gerät)
         <select id="sModel">
           <option value="onnx-community/whisper-tiny">Tiny – sehr schnell, ungenauer (~40 MB)</option>
           <option value="onnx-community/whisper-base">Base – ausgewogen (~80 MB)</option>
-          <option value="onnx-community/whisper-small">Small – genau, langsamer (~250 MB)</option>
+          <option value="onnx-community/whisper-small">Small – genau, empfohlen (~250 MB)</option>
         </select>
       </label>
       <label>Sprache beim Zuhören

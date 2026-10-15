@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('desktop', {
   openaiTtsModels: () => ipcRenderer.invoke('openai:ttsModels'),
   anthropicModels: () => ipcRenderer.invoke('anthropic:models'),
   ttsCloudSpeak: (opts) => ipcRenderer.invoke('tts:cloud:speak', opts),
+  transcribeCloud: (audio, language, model) => ipcRenderer.invoke('stt:cloud', { audio, language, model }),
 
   // LM Studio
   lmStudioPrompts: () => ipcRenderer.invoke('lmstudio:prompts'),

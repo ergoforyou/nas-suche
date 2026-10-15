@@ -86,8 +86,11 @@ const DEFAULT_SETTINGS = {
   historyLimit: 20,
   speak: true,
   maxSentences: 0,
-  sttModel: 'onnx-community/whisper-base',
-  sttEngine: desktop.transcribeCloud ? 'cloud' : 'local', // Android: Cloud-Erkennung ist dort deutlich schneller
+  sttModel: 'onnx-community/whisper-small', // auf dem Gerät: genauer als „base“, besonders auf Deutsch
+  // Cloud-Ausgabe: Spracherkennung über OpenAI – schnell und genau auf jedem Gerät (Handy, schwächere PCs)
+  sttEngine: desktop.transcribeCloud && EDITION !== 'lokal' ? 'cloud' : 'local',
+  sttCloudModel: 'gpt-4o-transcribe',
+  sttDefaults: 2, // Stand der Voreinstellungen (für einmalige Umstellung älterer Installationen)
   sttLang: 'persona',
   handsFree: false,
   sensitivity: 0.015,
@@ -929,7 +932,7 @@ const STT_FALLBACKS = ['onnx-community/whisper-base', 'onnx-community/whisper-ti
 async function transcribeWithFallback(audio) {
   if (state.settings.sttEngine === 'cloud' && desktop.transcribeCloud) {
     try {
-      return await desktop.transcribeCloud(audio, stt.language);
+      return await desktop.transcribeCloud(audio, stt.language, state.settings.sttCloudModel);
     } catch (e) {
       status(`Cloud-Spracherkennung: ${e.message} – nutze Whisper auf dem Gerät.`);
     }
@@ -1307,8 +1310,11 @@ function fillSettings() {
   $('sHandsFree').checked = s.handsFree;
   $('avPip').checked = s.pipOnLeave;
   $('appVersion').textContent = `KI-Assistent ${APP_VERSION}${MOBILE ? ' (Android)' : ''}`;
-  $('sEngineWrap').hidden = !desktop.transcribeCloud;
+  $('sEngineWrap').hidden = !desktop.transcribeCloud || LOCAL_ONLY;
   $('sEngine').value = s.sttEngine;
+  $('sCloudModel').value = s.sttCloudModel;
+  $('sCloudModelWrap').hidden = $('sEngineWrap').hidden || s.sttEngine !== 'cloud';
+  $('sModelWrap').hidden = !$('sEngineWrap').hidden && s.sttEngine === 'cloud';
   $('sBargeIn').checked = s.bargeIn;
   $('sMood').checked = s.moodTags !== false;
   $('sLivePause').value = String(s.livePauseMs);
@@ -2032,7 +2038,7 @@ async function prepareFigureImage(file) {
       if (res.removed >= 0.02) return withOriginal(res, canvas);
     }
     const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-    const rgba = await stt.removeBackground(imageData, progressStatus('Freistellen'));
+    const rgba = await stt.removeBackground(imageData, progressStatus('Freistellen'), { quality: MOBILE ? 'schnell' : 'figur' });
     return withOriginal(applyAlpha(canvas, rgba), canvas);
   } finally {
     URL.revokeObjectURL(url);
@@ -2243,7 +2249,7 @@ async function cutoutAvatar(mode = 'auto') {
     } else {
       status('Figur wird per KI freigestellt …');
       const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-      const rgba = await stt.removeBackground(imageData, progressStatus('Freistellen'));
+      const rgba = await stt.removeBackground(imageData, progressStatus('Freistellen'), { quality: MOBILE ? 'schnell' : 'figur' });
       result = applyAlpha(canvas, rgba);
     }
     const { canvas: out, crop, removed } = result;
@@ -2741,6 +2747,12 @@ $('sLang').onchange = (e) => {
 $('sHandsFree').onchange = (e) => setHandsFree(e.target.checked);
 $('sEngine').onchange = (e) => {
   state.settings.sttEngine = e.target.value;
+  $('sCloudModelWrap').hidden = e.target.value !== 'cloud';
+  $('sModelWrap').hidden = e.target.value === 'cloud';
+  save();
+};
+$('sCloudModel').onchange = (e) => {
+  state.settings.sttCloudModel = e.target.value;
   save();
 };
 $('btnLive').onclick = () => setHandsFree(!state.settings.handsFree);
@@ -2942,6 +2954,12 @@ async function init() {
   const data = (await desktop.loadData()) ?? {};
   state.settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
   if (!['german', 'english'].includes(state.settings.sttLang)) state.settings.sttLang = 'persona';
+  // Ältere Installationen einmalig umstellen: Cloud-Erkennung (Cloud-Ausgabe) und genaueres lokales Modell
+  if ((data.settings?.sttDefaults ?? 0) < 2) {
+    if (!LOCAL_ONLY && desktop.transcribeCloud) state.settings.sttEngine = 'cloud';
+    if (state.settings.sttModel === 'onnx-community/whisper-base') state.settings.sttModel = 'onnx-community/whisper-small';
+    state.settings.sttDefaults = 2;
+  }
   state.personas = data.personas?.length ? data.personas.map(migratePersona) : [defaultPersona()];
   state.activeId = data.activeId ?? state.personas[0].id;
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;

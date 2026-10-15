@@ -192,6 +192,32 @@ const depthOk = depth.n === 300 * 400 && depth.face > depth.wall + 20;
 ok &&= depthOk;
 console.log(depthOk ? '✔' : '✘', 'KI-Tiefe', JSON.stringify(depth));
 
+// Freistellen ganzer Figuren (BiRefNet): Figur bleibt, Lücken zwischen Armen/Beinen und Hintergrund verschwinden
+const figB64 = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-front.png')).toString('base64');
+const fig = await page.evaluate(async (b64) => {
+  const img = new Image();
+  img.src = 'data:image/png;base64,' + b64;
+  await img.decode();
+  // Hintergrund leicht verrauscht und nicht ganz einfarbig, damit nicht das Farbverfahren gewinnt
+  const c = document.createElement('canvas');
+  c.width = 300;
+  c.height = 500;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 300, 500);
+  grad.addColorStop(0, '#d8dde6');
+  grad.addColorStop(1, '#b9c2cf');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 300, 500);
+  g.drawImage(img, 0, 0, 300, 500);
+  const t0 = performance.now();
+  const rgba = await window.__app.stt.removeBackground(g.getImageData(0, 0, 300, 500), null, { quality: 'figur' });
+  const a = (fx, fy) => rgba[(Math.round(fy * 500) * 300 + Math.round(fx * 300)) * 4 + 3];
+  return { ms: Math.round(performance.now() - t0), model: window.__app.stt.cutoutModel, torso: a(0.5, 0.35), head: a(0.5, 0.12), wall: a(0.05, 0.05), legGap: a(0.5, 0.8) };
+}, figB64);
+const figOk = fig.model === 'BiRefNet' && fig.torso > 200 && fig.head > 200 && fig.wall < 40 && fig.legGap < 80;
+ok &&= figOk;
+console.log(figOk ? '✔' : '✘', 'KI-Freistellen ganzer Figuren', JSON.stringify(fig));
+
 await browser.close();
 server.close();
 if (!ok) {
