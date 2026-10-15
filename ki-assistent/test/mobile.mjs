@@ -158,6 +158,28 @@ const body = await page.evaluate(async (img) => {
   return { found: !!av.bodyRig?.lShoulder && !!av.bodyRig?.rShoulder, warp: !!window.__app.avatar.layers?.[0]?.bodyWarp };
 }, figur);
 check(body.found && body.warp, 'Körper aus dem Grundbild erkannt und bewegt', JSON.stringify(body));
+// 3D-Figur aus Bildern auf dem Handy: Das Auswahlfenster muss über dem Dialog liegen, das Bild ankommen
+await page.evaluate(() => document.querySelector('.rb')?.setAttribute('hidden', ''));
+await page.click('#btnSettings');
+await page.click('#tabs [data-tab=avatar]');
+await page.click('#avVrmCreate');
+await page.waitForSelector('.b2v');
+await page.click('.b2v [data-pick=front]');
+await page.waitForSelector('#pickSheet');
+const onTop = await page.evaluate(() => {
+  const el = document.querySelector('#pickSheet .ps-main');
+  const r = el.getBoundingClientRect();
+  return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+});
+check(onTop, 'Auswahlfenster liegt über dem 3D-Figur-Dialog');
+await page.setInputFiles('#pickSheet input[type=file]', path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-front.png'));
+await page.waitForFunction(() => /Punkte prüfen|Figuren erkannt|Fehler|Rückansicht/.test(document.querySelector('.b2v-status')?.textContent ?? ''), null, { timeout: 60000 }).catch(() => {});
+const b2v = await page.textContent('.b2v-status');
+check(/Punkte prüfen|Figuren erkannt/.test(b2v) && !(await page.isDisabled('.b2v [data-act=create]')), 'Bild für die 3D-Figur übernommen', b2v.slice(0, 120));
+await page.click('.b2v [data-act=create]');
+await page.waitForFunction(() => /^Fertig|Fehler/.test(document.querySelector('.b2v-status').textContent), null, { timeout: 120000 }).catch(() => {});
+const made = await page.textContent('.b2v-status');
+check(/^Fertig/.test(made) && (await page.evaluate(() => !!window.__app.persona().avatar.vrm)), '3D-Figur auf dem Handy erstellt', made.slice(0, 100));
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

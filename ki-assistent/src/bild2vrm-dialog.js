@@ -19,6 +19,8 @@ const CSS = `
 .b2v-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .b2v { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: min(920px, 96vw); max-height: 94vh;
   overflow: auto; padding: 16px; display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
+/* Handy: Einstellungen und Vorschau untereinander statt nebeneinander */
+@media (max-width: 700px) { .b2v { grid-template-columns: 1fr; padding: 12px; max-height: 100vh; width: 100vw; border-radius: 0; } }
 .b2v h2 { grid-column: 1 / -1; margin: 0; font-size: 17px; }
 .b2v h4 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
 .b2v .b2v-slot { display: grid; grid-template-columns: 46px 1fr; gap: 8px; align-items: center; margin-top: 6px;

@@ -265,6 +265,8 @@ const api = {
   saveMedia: async (bytes, ext) => {
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${String(ext).replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin'}`;
     const uri = await writeBytes(`medien/${name}`, bytes);
+    // ohne Android-Hülle (Browser-Test) gibt es keinen Dateiserver – dann direkt aus dem Speicher
+    if (!Capacitor.isNativePlatform()) return URL.createObjectURL(new Blob([bytes]));
     return Capacitor.convertFileSrc(uri);
   },
   deleteMedia: async (url) => {

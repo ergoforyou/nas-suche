@@ -81,6 +81,11 @@ export function removeBackground(canvas, { tolerance = 30, feather = 1.5 } = {})
     if (y < h - 1) seed(x, y + 1);
   }
 
+  // Eingeschlossener Hintergrund (zwischen Arm und Körper, zwischen den Beinen): Flächen in Hintergrundfarbe,
+  // die nicht mit dem Rand verbunden sind. Damit ein weißes Hemd vor weißer Wand bleibt, zählen nur Flächen,
+  // die sehr nah an der Hintergrundfarbe liegen und gleichmäßig sind (Wand) – Stoff hat Falten und Schatten.
+  removeHoles(d, w, h, bgMask, dist, tol);
+
   // Alpha-Maske: Hintergrund 0, Übergangszone weich, Rest 255
   const alpha = new Float32Array(w * h);
   let removed = 0;
@@ -137,6 +142,52 @@ export function removeBackground(canvas, { tolerance = 30, feather = 1.5 } = {})
   full.height = h;
   full.getContext('2d').putImageData(img, 0, 0);
   return { ...cropToContent(full), removed: removed / (w * h) };
+}
+
+/** Eingeschlossene Hintergrundflächen in bgMask eintragen. Liefert die Zahl der entfernten Flächen. */
+export function removeHoles(d, w, h, bgMask, dist, tol) {
+  const minSize = Math.max(150, Math.round(w * h * 0.0015)); // kleine helle Flecken (Knöpfe, Lichtreflexe) bleiben
+  const seen = new Uint8Array(w * h);
+  const cand = (p) => !bgMask[p] && d[p * 4 + 3] >= 20 && dist(p * 4) <= tol * 0.85;
+  const lum = (p) => d[p * 4] * 0.3 + d[p * 4 + 1] * 0.59 + d[p * 4 + 2] * 0.11;
+  let holes = 0;
+  const stack = [];
+  const comp = [];
+  for (let start = 0; start < w * h; start++) {
+    if (seen[start] || !cand(start)) continue;
+    comp.length = 0;
+    seen[start] = 1;
+    stack.push(start);
+    let sumD = 0;
+    let sumL = 0;
+    let sumL2 = 0;
+    while (stack.length) {
+      const p = stack.pop();
+      comp.push(p);
+      const di = dist(p * 4);
+      const l = lum(p);
+      sumD += di;
+      sumL += l;
+      sumL2 += l * l;
+      const x = p % w;
+      const y = (p / w) | 0;
+      for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1]) {
+        if (q >= 0 && !seen[q] && cand(q)) {
+          seen[q] = 1;
+          stack.push(q);
+        }
+      }
+    }
+    const n = comp.length;
+    if (n < minSize) continue;
+    const meanD = sumD / n;
+    const std = Math.sqrt(Math.max(0, sumL2 / n - (sumL / n) ** 2));
+    if (meanD <= tol * 0.6 && std <= 14) {
+      for (const p of comp) bgMask[p] = 1;
+      holes++;
+    }
+  }
+  return holes;
 }
 
 /** Auf die sichtbare Figur zuschneiden (mit etwas Rand). */
@@ -200,6 +251,18 @@ export function applyAlpha(canvas, rgba) {
   const g = canvas.getContext('2d', { willReadFrequently: true });
   const img = g.getImageData(0, 0, canvas.width, canvas.height);
   for (let i = 3; i < img.data.length; i += 4) img.data[i] = Math.min(img.data[i], rgba[i]);
+  // Bei einfarbigem Hintergrund auch eingeschlossene Flächen entfernen, die die KI übersehen hat
+  if (hasUniformBorder(canvas)) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const d = img.data;
+    const [br, bgc, bb] = borderColor(d, w, h);
+    const dist = (i) => Math.sqrt((d[i] - br) ** 2 * 0.3 + (d[i + 1] - bgc) ** 2 * 0.59 + (d[i + 2] - bb) ** 2 * 0.11) * 1.7;
+    const mask = new Uint8Array(w * h);
+    for (let p = 0; p < w * h; p++) mask[p] = d[p * 4 + 3] < 40 ? 1 : 0;
+    const before = mask.slice();
+    if (removeHoles(d, w, h, mask, dist, 48)) for (let p = 0; p < w * h; p++) if (mask[p] && !before[p]) d[p * 4 + 3] = 0;
+  }
   const full = canvas.ownerDocument.createElement('canvas');
   full.width = canvas.width;
   full.height = canvas.height;
