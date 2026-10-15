@@ -86,6 +86,17 @@ await page.evaluate(() => document.getElementById('btnCloseDrawer').click());
 await page.evaluate(() => document.getElementById('btnAttach').click());
 await page.waitForFunction(() => document.querySelectorAll('#attachments .chip').length === 1, null, { timeout: 10000 }).catch(() => {});
 check((await page.$$('#attachments .chip')).length === 1, 'Anhang über Android-Dateiauswahl übernommen');
+// Schlüssel eingeben: beide Felder sichtbar (auch der OpenAI-Schlüssel, wenn Claude der Anbieter ist)
+await page.click('#btnSettings');
+await page.evaluate(() => document.querySelector('[data-tab=conn]').click());
+check((await page.isVisible('#cClaudeKey')) && (await page.isVisible('#cOpenaiKey')), 'Claude- und OpenAI-Schlüsselfeld sichtbar');
+await page.fill('#cOpenaiKey', 'sk-test-openai');
+await page.click('#cOpenaiKeySave');
+await page.waitForTimeout(300);
+check((await page.evaluate(() => window.desktop.keyStatus())).openai, 'OpenAI-Schlüssel gespeichert');
+await page.evaluate(() => document.querySelector('[data-tab=voice]').click());
+check(!(await page.isVisible('#vSystemWrap')) && !(await page.evaluate(() => [...document.querySelectorAll('#vEngine option')].some((o) => o.value === 'server' && o.offsetParent !== null && getComputedStyle(o).display !== 'none'))), 'Chatterbox und Systemstimme ausgeblendet');
+await page.evaluate(() => document.getElementById('btnCloseDrawer').click());
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

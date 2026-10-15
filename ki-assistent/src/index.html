@@ -262,9 +262,9 @@
       <label>Engine
         <select id="vEngine">
           <option value="cloud">OpenAI-Stimme – ausdrucksstark, ohne Grafikkarte (Cloud, API-Schlüssel)</option>
-          <option value="server">Chatterbox – ausdrucksstark, eigene Stimme (lokaler Server, Grafikkarte)</option>
+          <option value="server" class="desktop-only">Chatterbox – ausdrucksstark, eigene Stimme (lokaler Server, Grafikkarte)</option>
           <option value="piper">Piper – schnell, einfach (direkt in der App)</option>
-          <option value="system">Systemstimme (Windows/macOS)</option>
+          <option value="system" class="desktop-only">Systemstimme (Windows/macOS)</option>
         </select>
       </label>
       <div id="vCloudWrap" hidden>
@@ -331,7 +331,7 @@
         <label>Englische Stimme <select id="vPiperEn"></select></label>
         <p class="hint">Englische Sätze werden automatisch mit der englischen Stimme gelesen.</p>
       </div>
-      <label id="vSystemWrap">Systemstimme <select id="vSystem"></select></label>
+      <label id="vSystemWrap" class="desktop-only">Systemstimme <select id="vSystem"></select></label>
       <label>Tempo <input id="vRate" type="range" min="0.7" max="1.5" step="0.05" /></label>
       <label>Höchstens vorlesen (Sätze, 0 = alles)
         <input id="vMax" type="number" min="0" max="50" />
@@ -401,8 +401,11 @@
         <div id="cInfo" class="hint"></div>
       </div>
 
-      <div id="cClaudeWrap" hidden>
-        <label>API-Schlüssel (console.anthropic.com) – gilt für alle Personas
+      <div id="cKeysWrap">
+        <h3>API-Schlüssel</h3>
+        <p class="hint">Claude-Schlüssel fürs Denken mit Claude; OpenAI-Schlüssel für ChatGPT, die OpenAI-Stimme und die
+          Cloud-Spracherkennung. Beide gelten für alle Personas.</p>
+        <label>Claude (console.anthropic.com)
           <div class="row">
             <input id="cClaudeKey" type="password" placeholder="sk-ant-…" autocomplete="off" style="flex:1" />
             <button id="cClaudeKeySave">Speichern</button>
@@ -410,6 +413,17 @@
           </div>
         </label>
         <div id="cClaudeKeyInfo" class="hint"></div>
+        <label>OpenAI (platform.openai.com)
+          <div class="row">
+            <input id="cOpenaiKey" type="password" placeholder="sk-…" autocomplete="off" style="flex:1" />
+            <button id="cOpenaiKeySave">Speichern</button>
+            <button id="cOpenaiKeyDel" title="Schlüssel entfernen" hidden>Entfernen</button>
+          </div>
+        </label>
+        <div id="cOpenaiKeyInfo" class="hint"></div>
+      </div>
+
+      <div id="cClaudeWrap" hidden>
         <label>Modell
           <div class="row">
             <select id="cClaudeModel" style="flex:1"></select>
@@ -434,14 +448,6 @@
       </div>
 
       <div id="cOpenaiWrap" hidden>
-        <label>API-Schlüssel (platform.openai.com) – gilt für alle Personas
-          <div class="row">
-            <input id="cOpenaiKey" type="password" placeholder="sk-…" autocomplete="off" style="flex:1" />
-            <button id="cOpenaiKeySave">Speichern</button>
-            <button id="cOpenaiKeyDel" title="Schlüssel entfernen" hidden>Entfernen</button>
-          </div>
-        </label>
-        <div id="cOpenaiKeyInfo" class="hint"></div>
         <label>Modell
           <div class="row">
             <select id="cOpenaiModel"></select>

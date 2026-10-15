@@ -12,6 +12,7 @@ import { debugVoice, synthesize, piperState } from './piper.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
+const MOBILE = desktop.platform === 'android';
 // "lokal" = Ausgabe ganz ohne Cloud-Funktionen, "cloud" = mit Claude/ChatGPT/OpenAI-Stimme
 const EDITION = desktop.edition ?? 'cloud';
 const LOCAL_ONLY = EDITION === 'lokal';
@@ -254,7 +255,8 @@ const output = new OutputWindow();
 function applyVoice() {
   const p = persona();
   tts.configure({
-    engine: p.voice.engine,
+    // Android: kein Chatterbox-Server und keine Systemstimmen – dann Piper
+    engine: MOBILE && ['server', 'system'].includes(p.voice.engine) ? 'piper' : p.voice.engine,
     voices: { de: p.voice.de, en: p.voice.en },
     language: p.language,
     systemVoice: p.voice.systemVoice,
@@ -2892,7 +2894,7 @@ function applyEdition() {
   for (const sel of ['#cProvider option:not([value="lmstudio"])', '#vEngine option[value="cloud"]']) {
     document.querySelectorAll(sel).forEach((o) => o.remove());
   }
-  for (const id of ['cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap', 'btnAttach', 'fileAttach']) $(id)?.remove();
+  for (const id of ['cKeysWrap', 'cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap', 'btnAttach', 'fileAttach']) $(id)?.remove();
   const prov = $('cProvider').closest('label');
   if (prov) prov.hidden = true;
   if (state.settings.provider !== 'lmstudio') state.settings.provider = 'lmstudio';

@@ -294,3 +294,7 @@ HTMLInputElement.prototype.click = function () {
 // Alles Übrige (Fensterfunktionen, freie Figur …) gibt es auf dem Handy nicht: still ignorieren
 window.desktop = new Proxy(api, { get: (t, k) => (k in t ? t[k] : () => {}) });
 document.documentElement.classList.add('mobile');
+// Eingabefeld beim Antippen über die Tastatur schieben (sonst verdeckt sie z. B. die Schlüsselfelder)
+document.addEventListener('focusin', (e) => {
+  if (e.target.matches?.('input, textarea, select')) setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350);
+});
