@@ -195,7 +195,19 @@ def text_ersetzen(
         return {}
     ursprung = pymupdf.Point(erster["origin"])
     schreiber = pymupdf.TextWriter(seite.rect)
-    schreiber.append(ursprung, neu, font=font, fontsize=groesse)
+    # Wort für Wort setzen, Leerzeichen nur als Abstand: Manche Schriften
+    # (z. B. Arial) führen „ “ und das geschützte Leerzeichen als dieselbe
+    # Glyphe – sonst landete beim Kopieren/Suchen U+00A0 statt Leerzeichen.
+    leer = font.text_length(" ", fontsize=groesse)
+    x = ursprung.x
+    for teil in re.split(r"( +)", neu):
+        if not teil:
+            continue
+        if teil.startswith(" "):
+            x += leer * len(teil)
+            continue
+        _, ende = schreiber.append(pymupdf.Point(x, ursprung.y), teil, font=font, fontsize=groesse)
+        x = ende.x
     schreiber.write_text(seite, color=rgb)
 
     for z in zeilen(doc, seite_nr):

@@ -44,6 +44,7 @@ def test_betrag_aendern_mit_euro(drehung):
     neu = tb.text_ersetzen(doc, 0, z["bbox"], "Die Jahresprämie beträgt 1.250,00 €.")
     text = doc[0].get_text()
     assert "1.250,00 €" in text and "1.200,00" not in text
+    assert "\xa0" not in text  # normale Leerzeichen (Suchen/Kopieren), auch mit Arial unter Windows
     assert "Zweite Zeile bleibt" in text  # Nachbarzeile unberührt
     assert abs(neu["bbox"][0] - z["bbox"][0]) < 1 and abs(neu["bbox"][1] - z["bbox"][1]) < 2  # gleiche Stelle
     assert neu["groesse"] == 11
