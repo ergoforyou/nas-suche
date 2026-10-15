@@ -33,6 +33,7 @@ import { renderStufe } from "../render/layout";
 import { api } from "../api";
 import { anwenden } from "../zustand/seitenaktionen";
 import { Kontextmenue } from "./Kontextmenue";
+import { FormularGestaltung } from "./FormularGestaltung";
 import { RsTextarea } from "./RsTextarea";
 
 const KEINE_STEMPEL: { text: string; farbe: string }[] = [];
@@ -60,12 +61,13 @@ type Operation =
   | { art: "verschieben"; anm: Anmerkung; p0: Punkt; p1: Punkt }
   | { art: "groesse"; anm: Anmerkung; griff: string; p0: Punkt; p1: Punkt };
 
+const KEINE_FELDER: Formularfeld[] = [];
 const VERSCHIEBBAR_IN_GROESSE = new Set(["rechteck", "ellipse", "abdecken", "bild", "unterschrift", "textfeld", "freihand", "schwaerzung"]);
 const NICHT_VERSCHIEBBAR = new Set(["hervorheben", "unterstreichen", "durchstreichen", "wellenlinie"]);
-const GRIFFE = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+export const GRIFFE = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 /** Bildschirmpunkt → normierter Punkt auf der ungedrehten Seite */
-function normPunkt(e: { clientX: number; clientY: number }, el: HTMLElement, drehung: number): Punkt {
+export function normPunkt(e: { clientX: number; clientY: number }, el: HTMLElement, drehung: number): Punkt {
   const r = el.getBoundingClientRect();
   const dx = (e.clientX - r.left) / r.width;
   const dy = (e.clientY - r.top) / r.height;
@@ -82,15 +84,15 @@ function normPunkt(e: { clientX: number; clientY: number }, el: HTMLElement, dre
 }
 
 const klemmen = (v: number) => Math.max(0, Math.min(1, v));
-const norm = (a: Punkt, b: Punkt): Rechteck => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
-const stilAus = (r: Rechteck): CSSProperties => ({
+export const norm = (a: Punkt, b: Punkt): Rechteck => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
+export const stilAus = (r: Rechteck): CSSProperties => ({
   left: `${r[0] * 100}%`,
   top: `${r[1] * 100}%`,
   width: `${(r[2] - r[0]) * 100}%`,
   height: `${(r[3] - r[1]) * 100}%`,
 });
 
-function groesseAendern(r: Rechteck, griff: string, dx: number, dy: number, seitenverhaeltnis: number | null): Rechteck {
+export function groesseAendern(r: Rechteck, griff: string, dx: number, dy: number, seitenverhaeltnis: number | null): Rechteck {
   let [x0, y0, x1, y1] = r;
   if (griff.includes("w")) x0 += dx;
   if (griff.includes("e")) x1 += dx;
@@ -423,7 +425,7 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
   return (
     <div
       ref={aussen}
-      className={`anm-ebene${zeichnen || textwerkzeug ? " aktiv" : ""}`}
+      className={`anm-ebene${zeichnen || textwerkzeug || werkzeug === "formular" ? " aktiv" : ""}`}
       style={{ cursor }}
       onMouseDown={druecken}
       onMouseMove={(e) => (werkzeug === "platzieren" || werkzeug === "stempel") && setMaus(normPunkt(e, aussen.current!, p.drehung))}
@@ -434,10 +436,20 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
         className="anm-innen"
         style={{ width: iw, height: ih, left: (p.b - iw) / 2, top: (p.h - ih) / 2, transform: p.drehung ? `rotate(${p.drehung}deg)` : undefined }}
       >
-        {/* Formularfelder */}
-        {felder?.map((f) => (
-          <Feld key={f.id} feld={f} dokId={p.dokId} seite={p.seite} pxProPt={pxProPt} hoehePt={p.hoehePt} ih={ih} />
-        ))}
+        {/* Formularfelder: ausfüllen – oder im Modus „Formular gestalten“ bearbeiten */}
+        {werkzeug === "formular" ? (
+          <FormularGestaltung
+            dokId={p.dokId}
+            seite={p.seite}
+            felder={felder ?? KEINE_FELDER}
+            aussen={aussen}
+            drehung={p.drehung}
+            breitePt={p.breitePt}
+            hoehePt={p.hoehePt}
+          />
+        ) : (
+          felder?.map((f) => <Feld key={f.id} feld={f} dokId={p.dokId} seite={p.seite} pxProPt={pxProPt} hoehePt={p.hoehePt} ih={ih} />)
+        )}
 
         {/* Anmerkungen als eigene Bilder (die Seite selbst wird ohne sie gezeichnet) */}
         {sichtbar.map((a) => {

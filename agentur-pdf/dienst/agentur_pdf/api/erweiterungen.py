@@ -368,6 +368,44 @@ def einrichten(
         await im_mupdf_thread(setzen)
         return await antwort([dok_id])
 
+    @app.post("/api/dokumente/{dok_id}/formular")
+    async def formularfeld_neu(dok_id: str, daten: dict = Body(...)):
+        seite = int(daten.get("seite", 0))
+
+        def anlegen():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Formularfeld anlegen", dok):
+                xref = formulare.feld_anlegen(dok.doc, seite, daten)
+                dok.seite_geaendert(seite)
+            return xref
+
+        xref = await im_mupdf_thread(anlegen)
+        return await antwort([dok_id], id=xref)
+
+    @app.patch("/api/dokumente/{dok_id}/formular/{xref}")
+    async def formularfeld_aendern(dok_id: str, xref: int, daten: dict = Body(...)):
+        seite = int(daten.get("seite", 0))
+
+        def aendern():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Formularfeld ändern", dok):
+                formulare.feld_aendern(dok.doc, seite, xref, daten)
+                dok.seite_geaendert(seite)
+
+        await im_mupdf_thread(aendern)
+        return await antwort([dok_id], id=xref)
+
+    @app.delete("/api/dokumente/{dok_id}/formular/{xref}")
+    async def formularfeld_loeschen(dok_id: str, xref: int, seite: int = Query(...)):
+        def loeschen():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Formularfeld löschen", dok):
+                formulare.feld_loeschen(dok.doc, seite, xref)
+                dok.seite_geaendert(seite)
+
+        await im_mupdf_thread(loeschen)
+        return await antwort([dok_id])
+
     @app.get("/api/dokumente/{dok_id}/eigenschaften")
     async def eigenschaften(dok_id: str):
         def holen():

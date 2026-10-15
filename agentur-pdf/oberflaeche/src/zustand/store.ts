@@ -22,6 +22,7 @@ import type {
   BildDaten,
   Wiederherstellung,
   UpdateInfo,
+  FormularTyp,
 } from "../typen";
 
 export const ZOOM_MIN = 0.1;
@@ -122,6 +123,9 @@ export interface Zustand {
   formulare: Record<string, { version: number; seiten: Record<string, Formularfeld[]> }>;
   /** ausgewählte Anmerkung */
   anmAuswahl: { dokId: string; seite: number; id: number } | null;
+  /** Formular gestalten: Typ neuer Felder und ausgewähltes Feld */
+  formularTyp: FormularTyp;
+  formularAuswahl: { dokId: string; seite: number; id: number } | null;
   editor: Editor | null;
   /** in der Ansicht ausgeblendete Anmerkungsgruppen */
   ausblenden: Gruppe[];
@@ -173,6 +177,8 @@ let zustand: Zustand = {
   anmerkungen: {},
   formulare: {},
   anmAuswahl: null,
+  formularTyp: "text",
+  formularAuswahl: null,
   editor: null,
   ausblenden: [],
   stile: {},
@@ -425,6 +431,7 @@ export function werkzeugWaehlen(werkzeug: Werkzeug): void {
   setzen((z) => ({
     werkzeug: z.werkzeug === werkzeug && werkzeug !== "hand" ? "hand" : werkzeug,
     anmAuswahl: null,
+    formularAuswahl: werkzeug === "formular" ? z.formularAuswahl : null,
     textAuswahl: werkzeug === "textauswahl" ? z.textAuswahl : null,
     platzieren: werkzeug === "platzieren" ? z.platzieren : null,
   }));

@@ -18,7 +18,7 @@ import { ScreenshotKarte } from "./ansicht/ScreenshotKarte";
 import { api } from "./api";
 import { dateienOeffnen, naechsterTreffer, sitzungMerken, starten } from "./zustand/aktionen";
 import { dateienEinfuegen } from "./zustand/seitenaktionen";
-import { auswahlLoeschen, textAuswahlKopieren } from "./zustand/anmerkungen";
+import { auswahlLoeschen, formularfeldLoeschen, textAuswahlKopieren } from "./zustand/anmerkungen";
 import { abonnieren, holen, setzen, useZustand } from "./zustand/store";
 
 // Tastenkürzel nach Acrobat-Konvention → Befehls-IDs
@@ -139,6 +139,20 @@ export function App() {
         if ((e.key === "Delete" || e.key === "Backspace") && holen().anmAuswahl) {
           e.preventDefault();
           auswahlLoeschen();
+          return;
+        }
+        const fa = holen().formularAuswahl;
+        if ((e.key === "Delete" || e.key === "Backspace") && fa && holen().werkzeug === "formular") {
+          e.preventDefault();
+          void formularfeldLoeschen(fa.dokId, fa.seite, fa.id);
+          return;
+        }
+        if (e.key === "Escape" && fa) {
+          setzen({ formularAuswahl: null });
+          return;
+        }
+        if (e.key === "Escape" && holen().werkzeug === "formular") {
+          setzen({ werkzeug: "hand" });
           return;
         }
         if ((e.ctrlKey || e.metaKey) && e.code === "KeyC" && holen().textAuswahl) {

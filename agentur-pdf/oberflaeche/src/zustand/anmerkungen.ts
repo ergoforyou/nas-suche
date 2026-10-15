@@ -2,7 +2,7 @@
 // ändern, löschen; Werkzeugstile; Textauswahl; Formularfelder.
 
 import { api } from "../api";
-import type { Anmerkung, Gruppe, Stil, Werkzeug, Wort } from "../typen";
+import type { Anmerkung, FormularTyp, Formularfeld, Gruppe, Rechteck, Stil, Werkzeug, Wort } from "../typen";
 import { anwenden } from "./seitenaktionen";
 import { holen, melden, setzen, werkzeugBenutzt, type AnmVorschau } from "./store";
 
@@ -370,4 +370,56 @@ export async function formularfeldSetzen(dokId: string, seite: number, feld: num
   } catch (e) {
     fehler(e);
   }
+}
+
+// ------------------------------------------------------ Formular gestalten
+/** Feld in der lokalen Liste sofort ändern (kein Zurückspringen beim Verschieben) */
+function feldLokal(dokId: string, seite: number, id: number, teil: Partial<Formularfeld> | null): void {
+  setzen((z) => {
+    const f = z.formulare[dokId];
+    if (!f) return {};
+    const liste = f.seiten[String(seite)] ?? [];
+    const neu = teil === null ? liste.filter((x) => x.id !== id) : liste.map((x) => (x.id === id ? { ...x, ...teil } : x));
+    return { formulare: { ...z.formulare, [dokId]: { ...f, seiten: { ...f.seiten, [String(seite)]: neu } } } };
+  });
+}
+
+export async function formularfeldAnlegen(dokId: string, seite: number, typ: FormularTyp, rechteck: Rechteck): Promise<number | null> {
+  try {
+    const r = await api.formularfeldNeu(dokId, { seite, typ, rechteck });
+    anwenden(r);
+    setzen({ formularAuswahl: { dokId, seite, id: r.id } });
+    return r.id;
+  } catch (e) {
+    fehler(e);
+    return null;
+  }
+}
+
+export async function formularfeldAendern(dokId: string, seite: number, id: number, daten: Record<string, unknown>): Promise<boolean> {
+  // sofort anzeigen (Häkchen, Lage, Name …) – der Dienst bestätigt gleich
+  feldLokal(dokId, seite, id, daten as Partial<Formularfeld>);
+  try {
+    anwenden(await api.formularfeldAendern(dokId, id, { seite, ...daten }));
+    return true;
+  } catch (e) {
+    fehler(e);
+    void anmerkungenLaden(dokId, -Date.now()); // lokalen Stand verwerfen
+    return false;
+  }
+}
+
+export async function formularfeldLoeschen(dokId: string, seite: number, id: number): Promise<void> {
+  feldLokal(dokId, seite, id, null);
+  setzen((z) => ({ formularAuswahl: z.formularAuswahl?.id === id ? null : z.formularAuswahl }));
+  try {
+    anwenden(await api.formularfeldLoeschen(dokId, id, seite));
+    melden("Formularfeld gelöscht – Strg+Z macht es rückgängig.");
+  } catch (e) {
+    fehler(e);
+  }
+}
+
+export function formularfeldFinden(dokId: string, seite: number, id: number): Formularfeld | undefined {
+  return holen().formulare[dokId]?.seiten[String(seite)]?.find((f) => f.id === id);
 }

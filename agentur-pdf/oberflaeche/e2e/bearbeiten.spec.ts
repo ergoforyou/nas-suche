@@ -450,3 +450,61 @@ test("Seite zuschneiden & aufhellen: A4-Rahmen, frei transformieren, ersetzen", 
   expect(Math.abs(info.seiten[1].breite - 595.3)).toBeLessThan(1);
   expect(Math.abs(info.seiten[1].hoehe - 841.9)).toBeLessThan(6); // DIN A4
 });
+
+test("Formular gestalten: Felder anlegen, einstellen, verschieben, löschen und ausfüllen", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "brief.pdf");
+  const dokId = await aktivesDok(page);
+  const felder = async () =>
+    Object.values((await (await page.request.get(`/api/dokumente/${dokId}/formular`, { headers: H })).json()) as Record<string, { id: number; name: string; typ: string; rechteck: number[]; pflicht: boolean }[]>).flat();
+
+  await register(page, "Bearbeiten");
+  await page.locator('[data-befehl="formular.feld_text"]').click();
+  // Textfeld aufziehen
+  const a = await aufSeite(page, 0.3, 0.45);
+  const b = await aufSeite(page, 0.7, 0.48);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await felder()).length).toBe(1);
+  // Eigenschaften rechts: Name + Pflichtfeld
+  const eig = page.getByRole("complementary", { name: "Eigenschaften" });
+  await eig.getByLabel("Feldname").fill("Kundennummer");
+  await eig.getByLabel("Feldname").press("Enter");
+  await eig.getByLabel("Pflichtfeld").check();
+  await expect.poll(async () => (await felder())[0]?.name).toBe("Kundennummer");
+  await expect.poll(async () => (await felder())[0]?.pflicht).toBe(true);
+
+  // Kontrollkästchen per Klick
+  await page.locator('[data-befehl="formular.feld_ankreuzen"]').click();
+  const k = await aufSeite(page, 0.3, 0.55);
+  await page.mouse.click(k.x, k.y);
+  await expect.poll(async () => (await felder()).length).toBe(2);
+
+  // Textfeld verschieben
+  const vorher = (await felder()).find((f) => f.name === "Kundennummer")!.rechteck;
+  const feld = page.locator('.fg-feld[data-feld="Kundennummer"]');
+  const box = (await feld.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 60, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await felder()).find((f) => f.name === "Kundennummer")!.rechteck[1]).toBeGreaterThan(vorher[1] + 0.02);
+
+  // Kontrollkästchen auswählen und mit Entf löschen
+  await page.locator('.fg-feld.fg-ankreuzen').click();
+  await page.keyboard.press("Delete");
+  await expect.poll(async () => (await felder()).length).toBe(1);
+
+  // Esc → zurück, Feld lässt sich ausfüllen
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  const eingabe = page.getByRole("textbox", { name: "Kundennummer" });
+  await eingabe.fill("4711-0815");
+  await eingabe.press("Enter");
+  await expect
+    .poll(async () => ((await (await page.request.get(`/api/dokumente/${dokId}/formular`, { headers: H })).json()) as Record<string, { wert: string }[]>)["0"][0].wert)
+    .toBe("4711-0815");
+  await foto(page, "formular-gestalten");
+});

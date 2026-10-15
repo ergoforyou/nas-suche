@@ -82,7 +82,11 @@ export type Werkzeug =
   | "stempel"
   | "platzieren"
   | "abdecken"
-  | "schwaerzen";
+  | "schwaerzen"
+  | "formular";
+
+/** Feldtypen, die sich anlegen lassen */
+export type FormularTyp = "text" | "ankreuzen" | "auswahlliste" | "liste";
 
 export type Gruppe = "kommentar" | "eintragung" | "stempel" | "schwaerzung";
 export type Rechteck = [number, number, number, number];
@@ -142,6 +146,8 @@ export interface Formularfeld {
   schriftgroesse: number;
   max_laenge: number;
   optionen?: string[];
+  pflicht?: boolean;
+  hinweis?: string;
 }
 
 export interface Ebene {

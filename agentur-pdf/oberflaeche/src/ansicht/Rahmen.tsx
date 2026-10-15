@@ -198,6 +198,7 @@ const HINWEISE: Partial<Record<string, string>> = {
   stempel: "Vorlage wählen und auf die Seite klicken.",
   platzieren: "Auf die Seite klicken oder Rechteck aufziehen.",
   abdecken: "Bereich aufziehen, der weiß überdeckt wird.",
+  formular: "Formular gestalten: Feld aufziehen oder klicken · Feld ziehen = verschieben · Griffe = Größe · Entf = löschen · Esc = fertig",
   schwaerzen: "Bereich aufziehen – wird zum Schwärzen vorgemerkt (rot). Endgültig erst mit „Schwärzungen anwenden“.",
 };
 

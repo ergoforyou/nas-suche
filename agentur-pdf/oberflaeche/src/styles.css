@@ -3618,3 +3618,64 @@ body {
   flex-direction: column;
   gap: 6px;
 }
+
+/* ------------------------------------------------- Formular gestalten */
+.fg-ebene {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  pointer-events: auto;
+}
+
+.fg-feld {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px dashed #1e6fd9;
+  background: rgba(30, 111, 217, 0.12);
+  cursor: move;
+}
+
+.fg-feld.gewaehlt {
+  border-style: solid;
+  background: rgba(30, 111, 217, 0.2);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.fg-name {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 4px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #154e9a;
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.fg-liste .fg-name {
+  top: 3px;
+  transform: none;
+}
+
+.fg-neu {
+  position: absolute;
+  border: 1.5px dashed #1e6fd9;
+  background: rgba(30, 111, 217, 0.08);
+  pointer-events: none;
+}
+
+.fg-feld .griff {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border: 1px solid #1e6fd9;
+  background: #fff;
+}

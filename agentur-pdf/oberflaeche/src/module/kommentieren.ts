@@ -6,11 +6,14 @@ import {
   Droplet,
   PanelTop,
   Camera,
+  CheckSquare,
+  ChevronDownSquare,
   Circle,
   EyeOff,
   Highlighter,
   ImagePlus,
   Info,
+  List,
   ListTodo,
   Minus,
   MousePointer2,
@@ -136,7 +139,7 @@ registrieren(
     id: "formular.hinweis",
     titel: "Formular ausfüllen",
     register: "bearbeiten",
-    gruppe: "Text",
+    gruppe: "Formular",
     icon: TextCursorInput,
     gross: true,
     stichworte: ["formularfelder", "felder", "ankreuzen", "antrag"],
@@ -151,6 +154,34 @@ registrieren(
     },
     aktiv: mitDokument,
   },
+  ...(
+    [
+      ["text", "Textfeld", TextCursorInput, ["eingabefeld", "formularfeld", "feld anlegen", "formular erstellen"]],
+      ["ankreuzen", "Kontrollkästchen", CheckSquare, ["checkbox", "ankreuzfeld", "häkchen", "ja nein"]],
+      ["auswahlliste", "Auswahlliste", ChevronDownSquare, ["dropdown", "combobox", "auswahl"]],
+      ["liste", "Listenfeld", List, ["listbox", "liste"]],
+    ] as const
+  ).map(
+    ([typ, titel, icon, stichworte]): Befehl => ({
+      id: `formular.feld_${typ}`,
+      titel,
+      register: "bearbeiten",
+      gruppe: "Formular",
+      icon,
+      stichworte: [...stichworte, "formular gestalten"],
+      beschreibung: `${titel} aufziehen (oder klicken). Felder lassen sich danach verschieben, in der Größe ändern und rechts einstellen.`,
+      ausfuehren: () => {
+        const z = holen();
+        if (z.werkzeug === "formular" && z.formularTyp === typ) {
+          setzen({ werkzeug: "hand", formularAuswahl: null });
+          return;
+        }
+        setzen({ werkzeug: "formular", formularTyp: typ, anmAuswahl: null, rechtsOffen: true });
+      },
+      aktiv: mitDokument,
+      gewaehlt: (z) => z.werkzeug === "formular" && z.formularTyp === typ,
+    }),
+  ),
   {
     id: "bild.einfuegen",
     titel: "Bild einfügen",

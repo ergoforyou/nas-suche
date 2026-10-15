@@ -4,10 +4,12 @@
 
 import { Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Anmerkung, Stil } from "../typen";
+import type { Anmerkung, Formularfeld, Stil } from "../typen";
 import {
   anmerkungAendern,
   anmerkungenLoeschen,
+  formularfeldAendern,
+  formularfeldLoeschen,
   anmerkungFinden,
   ART_NAMEN,
   FARBEN,
@@ -201,6 +203,129 @@ function AnmerkungsEigenschaften({ dokId, anm }: { dokId: string; anm: Anmerkung
   );
 }
 
+const TYP_NAMEN: Record<string, string> = {
+  text: "Textfeld",
+  ankreuzen: "Kontrollkästchen",
+  auswahlknopf: "Optionsfeld",
+  auswahlliste: "Auswahlliste",
+  liste: "Listenfeld",
+};
+
+function FormularfeldEigenschaften({ dokId, feld, seite }: { dokId: string; feld: Formularfeld; seite: number }) {
+  const [name, setName] = useState(feld.name);
+  const [hinweis, setHinweis] = useState(feld.hinweis ?? "");
+  const [optionen, setOptionen] = useState((feld.optionen ?? []).join("\n"));
+  useEffect(() => {
+    setName(feld.name);
+    setHinweis(feld.hinweis ?? "");
+    setOptionen((feld.optionen ?? []).join("\n"));
+  }, [feld.id, feld.name, feld.hinweis, feld.optionen]);
+  const d = useZustand((z) => z.dokumente.find((x) => x.id === dokId));
+  const s = d?.seiten[seite];
+  const mm = (anteil: number, pt: number) => `${Math.round(((anteil * pt) / 72) * 254) / 10} mm`;
+  const speichern = (daten: Record<string, unknown>) => void formularfeldAendern(dokId, seite, feld.id, daten);
+  const liste = feld.typ === "auswahlliste" || feld.typ === "liste";
+  return (
+    <>
+      <section className="eig-abschnitt">
+        <h4>Formularfeld: {TYP_NAMEN[feld.typ] ?? feld.typ}</h4>
+        <Zeile titel="Name">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name.trim() && name !== feld.name && speichern({ name: name.trim() })}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            aria-label="Feldname"
+          />
+        </Zeile>
+        <Zeile titel="Hinweis">
+          <input
+            value={hinweis}
+            placeholder="Erscheint beim Darüberfahren"
+            onChange={(e) => setHinweis(e.target.value)}
+            onBlur={() => hinweis !== (feld.hinweis ?? "") && speichern({ hinweis })}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            aria-label="Hinweis"
+          />
+        </Zeile>
+        <Zeile titel="Pflichtfeld">
+          <input type="checkbox" checked={Boolean(feld.pflicht)} onChange={(e) => speichern({ pflicht: e.target.checked })} aria-label="Pflichtfeld" />
+        </Zeile>
+        <Zeile titel="Schreibgeschützt">
+          <input type="checkbox" checked={feld.nur_lesen} onChange={(e) => speichern({ nur_lesen: e.target.checked })} aria-label="Schreibgeschützt" />
+        </Zeile>
+      </section>
+      {feld.typ === "text" && (
+        <section className="eig-abschnitt">
+          <h4>Text</h4>
+          <Zeile titel="Mehrzeilig">
+            <input type="checkbox" checked={feld.mehrzeilig} onChange={(e) => speichern({ mehrzeilig: e.target.checked })} aria-label="Mehrzeilig" />
+          </Zeile>
+          <Zeile titel="Max. Zeichen">
+            <input
+              type="number"
+              min={0}
+              className="zahl"
+              defaultValue={feld.max_laenge || ""}
+              placeholder="beliebig"
+              onBlur={(e) => Number(e.target.value || 0) !== feld.max_laenge && speichern({ max_laenge: Number(e.target.value || 0) })}
+              aria-label="Maximale Zeichenzahl"
+            />
+          </Zeile>
+        </section>
+      )}
+      {liste && (
+        <section className="eig-abschnitt">
+          <h4>Auswahlmöglichkeiten</h4>
+          <textarea
+            className="eig-inhalt"
+            rows={5}
+            value={optionen}
+            placeholder="Eine Möglichkeit je Zeile"
+            onChange={(e) => setOptionen(e.target.value)}
+            onBlur={() => {
+              const neu = optionen.split("\n").map((o) => o.trim()).filter(Boolean);
+              if (neu.join("\n") !== (feld.optionen ?? []).join("\n")) speichern({ optionen: neu });
+            }}
+            aria-label="Auswahlmöglichkeiten"
+          />
+        </section>
+      )}
+      {feld.typ !== "ankreuzen" && (
+        <section className="eig-abschnitt">
+          <h4>Darstellung</h4>
+          <Zeile titel="Schriftgröße">
+            <select value={feld.schriftgroesse || 0} onChange={(e) => speichern({ schriftgroesse: Number(e.target.value) })} aria-label="Schriftgröße">
+              <option value={0}>automatisch</option>
+              {[8, 9, 10, 11, 12, 14, 16].map((g) => (
+                <option key={g} value={g}>
+                  {g} pt
+                </option>
+              ))}
+            </select>
+          </Zeile>
+        </section>
+      )}
+      {s && (
+        <section className="eig-abschnitt">
+          <h4>Lage</h4>
+          <Zeile titel="Links / Oben">
+            {mm(feld.rechteck[0], s.breite)} / {mm(feld.rechteck[1], s.hoehe)}
+          </Zeile>
+          <Zeile titel="Breite × Höhe">
+            {mm(feld.rechteck[2] - feld.rechteck[0], s.breite)} × {mm(feld.rechteck[3] - feld.rechteck[1], s.hoehe)}
+          </Zeile>
+        </section>
+      )}
+      <div className="eig-knoepfe">
+        <button className="umschalter" onClick={() => void formularfeldLoeschen(dokId, seite, feld.id)}>
+          <Trash2 size={14} /> Feld löschen
+        </button>
+      </div>
+    </>
+  );
+}
+
 export function EigenschaftenBereich() {
   const auswahl = useZustand((z) => z.anmAuswahl);
   useZustand((z) => (z.anmAuswahl ? z.anmerkungen[z.anmAuswahl.dokId] : null)); // neu zeichnen nach Änderungen
@@ -209,6 +334,8 @@ export function EigenschaftenBereich() {
   const werkzeug = useZustand((z) => z.werkzeug);
   const dok = useZustand((z) => aktivesDokument(z));
   const anm = auswahl ? anmerkungFinden(auswahl.dokId, auswahl.seite, auswahl.id) : undefined;
+  const fAuswahl = useZustand((z) => z.formularAuswahl);
+  const feld = useZustand((z) => (z.formularAuswahl ? z.formulare[z.formularAuswahl.dokId]?.seiten[String(z.formularAuswahl.seite)]?.find((f) => f.id === z.formularAuswahl!.id) : undefined));
   const werkzeugArt = editor?.art ?? werkzeug;
 
   return (
@@ -220,7 +347,17 @@ export function EigenschaftenBereich() {
         </button>
       </div>
       <div className="eig-inhalt-bereich">
-        {anm && auswahl ? (
+        {feld && fAuswahl && werkzeug === "formular" ? (
+          <FormularfeldEigenschaften key={feld.id} dokId={fAuswahl.dokId} seite={fAuswahl.seite} feld={feld} />
+        ) : werkzeug === "formular" ? (
+          <section className="eig-abschnitt">
+            <h4>Formular gestalten</h4>
+            <p className="leise klein">
+              Feld auf der Seite aufziehen oder einfach klicken. Vorhandene Felder anklicken, um sie zu verschieben, in der Größe zu ändern und hier einzustellen.
+              Esc beendet den Modus.
+            </p>
+          </section>
+        ) : anm && auswahl ? (
           <AnmerkungsEigenschaften key={anm.id} dokId={auswahl.dokId} anm={anm} />
         ) : FELDER[werkzeugArt] ? (
           <>

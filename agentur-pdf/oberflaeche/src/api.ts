@@ -208,6 +208,10 @@ export const api = {
   wasserzeichen: (id: string, daten: Record<string, unknown>) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/wasserzeichen`, daten),
   kopfFuss: (id: string, daten: Record<string, unknown>) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/kopf_fuss`, daten),
   formular: (id: string) => anfrage<Record<string, Formularfeld[]>>("GET", `/api/dokumente/${id}/formular`),
+  formularfeldNeu: (id: string, daten: Record<string, unknown>) => anfrage<Aenderungsantwort & { id: number }>("POST", `/api/dokumente/${id}/formular`, daten),
+  formularfeldAendern: (id: string, xref: number, daten: Record<string, unknown>) =>
+    anfrage<Aenderungsantwort>("PATCH", `/api/dokumente/${id}/formular/${xref}`, daten),
+  formularfeldLoeschen: (id: string, xref: number, seite: number) => anfrage<Aenderungsantwort>("DELETE", `/api/dokumente/${id}/formular/${xref}?seite=${seite}`),
   formularSetzen: (id: string, feld: number, seite: number, wert: string | boolean) =>
     anfrage<Aenderungsantwort>("PUT", `/api/dokumente/${id}/formular/${feld}`, { seite, wert }),
   dateiLaden: async (id: string): Promise<Blob> => {
