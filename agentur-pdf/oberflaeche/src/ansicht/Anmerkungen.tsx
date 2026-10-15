@@ -14,6 +14,10 @@ import {
   anmerkungAnlegen,
   anmerkungenLoeschen,
   ART_NAMEN,
+  auswahlSchubsen,
+  einzelbildGeladen,
+  vorschauSchluessel,
+  vorschauSetzen,
   formularfeldSetzen,
   stilFuer,
   TEXTWERKZEUGE,
@@ -23,7 +27,9 @@ import {
   zeilenRechtecke,
   ZEICHENWERKZEUGE,
 } from "../zustand/anmerkungen";
-import { holen, melden, setzen, useZustand, werkzeugBenutzt, type Editor } from "../zustand/store";
+import { holen, melden, setzen, useZustand, werkzeugBenutzt, type AnmVorschau, type Editor } from "../zustand/store";
+import { anfordern, ausCache } from "../render/bildlader";
+import { renderStufe } from "../render/layout";
 import { api } from "../api";
 import { anwenden } from "../zustand/seitenaktionen";
 import { Kontextmenue } from "./Kontextmenue";
@@ -42,6 +48,8 @@ export interface AnmerkungsEbeneProps {
   /** Seitengröße in pt ohne Ansichtsdrehung */
   breitePt: number;
   hoehePt: number;
+  /** Bildschirm-Pixeldichte (für scharfe Einzelbilder) */
+  dpr: number;
 }
 
 type Operation =
@@ -109,6 +117,7 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
   const platzieren = useZustand((z) => z.platzieren);
   const stempelIndex = useZustand((z) => z.stempelVorlage);
   const vorlagen = useZustand((z) => z.einstellungen?.stempel ?? KEINE_STEMPEL);
+  const vorschauAlle = useZustand((z) => z.anmVorschau);
 
   const aussen = useRef<HTMLDivElement>(null);
   const [op, setOp] = useState<Operation | null>(null);
@@ -126,7 +135,31 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
   const zeichnen = ZEICHENWERKZEUGE.includes(werkzeug);
   const textwerkzeug = TEXTWERKZEUGE.includes(werkzeug);
   const sichtbar = useMemo(() => (anmerkungen ?? []).filter((a) => !ausblenden.includes(a.gruppe) && !a.ausgeblendet), [anmerkungen, ausblenden]);
-  const gewaehlt = auswahl !== null ? sichtbar.find((a) => a.id === auswahl) ?? null : null;
+  const vorschauVon = (id: number | string): AnmVorschau | undefined => vorschauAlle[vorschauSchluessel(p.dokId, id)];
+  const gewaehltRoh = auswahl !== null ? sichtbar.find((a) => a.id === auswahl) ?? null : null;
+  // Auswahlrahmen folgt sofort der Vorschau (Pfeiltasten, nach dem Loslassen)
+  const gewaehlt = gewaehltRoh && vorschauVon(gewaehltRoh.id)?.rechteck ? { ...gewaehltRoh, rechteck: vorschauVon(gewaehltRoh.id)!.rechteck! } : gewaehltRoh;
+  const spriteStufe = renderStufe(pxProPt * p.dpr);
+
+  // Pfeiltasten: ausgewählte Anmerkung um 1 pt (Umschalt: 10 pt) verschieben
+  useEffect(() => {
+    if (auswahl === null) return;
+    const taste = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable]") || holen().dialog || holen().editor) return;
+      const schritt = e.shiftKey ? 10 : 1;
+      const r = { ArrowLeft: [-schritt, 0], ArrowRight: [schritt, 0], ArrowUp: [0, -schritt], ArrowDown: [0, schritt] }[e.key];
+      if (!r) return;
+      // Ansichtsdrehung berücksichtigen: Pfeil nach rechts = auf dem Bildschirm nach rechts
+      const d = ((p.drehung % 360) + 360) % 360;
+      const [dx, dy] = d === 90 ? [r[1], -r[0]] : d === 180 ? [-r[0], -r[1]] : d === 270 ? [-r[1], r[0]] : r;
+      if (auswahlSchubsen(dx, dy)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener("keydown", taste, true);
+    return () => window.removeEventListener("keydown", taste, true);
+  }, [auswahl, p.drehung]);
 
   // Wörter für Textauswahl laden, sobald ein Textwerkzeug aktiv ist
   useEffect(() => {
@@ -242,11 +275,8 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
       if (Math.abs(dx * p.breitePt) < 1.5 && Math.abs(dy * p.hoehePt) < 1.5) return;
       const a = o.anm;
       const r = a.rechteck;
-      if (a.pdf_art === "bild" || a.pdf_art === "notiz" || a.pdf_art === "schwaerzung") {
-        await anmerkungAendern(p.dokId, p.seite, a.id, { rechteck: [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy] });
-      } else {
-        await anmerkungAendern(p.dokId, p.seite, a.id, { verschieben: [dx, dy] });
-      }
+      const ziel: Rechteck = [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy];
+      await anmerkungAendern(p.dokId, p.seite, a.id, { verschieben: [dx, dy] }, { rechteck: ziel });
       return;
     }
     if (o.art === "groesse") {
@@ -254,7 +284,7 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
       const verhaeltnis = a.pdf_art === "bild" && !umschalt ? ((a.rechteck[2] - a.rechteck[0]) * p.breitePt) / ((a.rechteck[3] - a.rechteck[1]) * p.hoehePt) * (p.hoehePt / p.breitePt) : null;
       const neu = groesseAendern(a.rechteck, o.griff, o.p1[0] - o.p0[0], o.p1[1] - o.p0[1], verhaeltnis);
       if ((neu[2] - neu[0]) * p.breitePt < 4 || (neu[3] - neu[1]) * p.hoehePt < 4) return;
-      await anmerkungAendern(p.dokId, p.seite, a.id, { rechteck: neu });
+      await anmerkungAendern(p.dokId, p.seite, a.id, { rechteck: neu }, { rechteck: neu });
     }
   }
 
@@ -310,6 +340,13 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
         setOp({ art: "text", woerter: liste, von: i, bis: i });
       });
     } else if (w === "schreibmaschine") {
+      const treffer = sichtbar.find(
+        (a) => (a.art === "schreibmaschine" || a.art === "textfeld") && pt[0] >= a.rechteck[0] && pt[0] <= a.rechteck[2] && pt[1] >= a.rechteck[1] && pt[1] <= a.rechteck[3],
+      );
+      if (treffer) {
+        bearbeiten(treffer);
+        return;
+      }
       setzen({ editor: { dokId: p.dokId, seite: p.seite, id: null, art: "schreibmaschine", punkt: pt, text: "", stil: stilFuer("schreibmaschine") } });
     } else if (w === "notiz") {
       setzen({ editor: { dokId: p.dokId, seite: p.seite, id: null, art: "notiz", punkt: pt, text: "", stil: stilFuer("notiz") } });
@@ -336,6 +373,8 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
 
   const bearbeiten = (a: Anmerkung) => {
     if (a.art === "schreibmaschine" || a.art === "textfeld") {
+      // Bild der Anmerkung ausblenden – der Editor steht genau an ihrer Stelle
+      vorschauSetzen(vorschauSchluessel(p.dokId, a.id), { seite: p.seite, versteckt: true, alteV: "__bearbeitung__" });
       setzen({
         anmAuswahl: null,
         editor: {
@@ -375,6 +414,12 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
 
   const stempelVorschau = werkzeug === "stempel" && maus ? vorlagen[stempelIndex] ?? vorlagen[0] : null;
 
+  /** Wo eine Anmerkung gerade zu sehen ist: live beim Ziehen, sonst Vorschau, sonst gespeichert */
+  const lage = (a: Anmerkung): Rechteck => {
+    if (verschiebung && verschiebung.anm.id === a.id && vorschauRechteck) return vorschauRechteck;
+    return vorschauVon(a.id)?.rechteck ?? a.rechteck;
+  };
+
   return (
     <div
       ref={aussen}
@@ -394,13 +439,39 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
           <Feld key={f.id} feld={f} dokId={p.dokId} seite={p.seite} pxProPt={pxProPt} hoehePt={p.hoehePt} ih={ih} />
         ))}
 
+        {/* Anmerkungen als eigene Bilder (die Seite selbst wird ohne sie gezeichnet) */}
+        {sichtbar.map((a) => {
+          const v = vorschauVon(a.id);
+          return (
+            <Einzelbild
+              key={a.id}
+              dokId={p.dokId}
+              anm={a}
+              rechteck={lage(a)}
+              stufe={spriteStufe}
+              versteckt={Boolean(v?.versteckt || v?.text)}
+            />
+          );
+        })}
+        {sichtbar.map((a) => {
+          const t = vorschauVon(a.id)?.text;
+          return t ? <TextVorschau key={`t${a.id}`} t={t} pxProPt={pxProPt} iw={iw} ih={ih} /> : null;
+        })}
+        {Object.entries(vorschauAlle).map(([schluessel, v]) => {
+          // neue Anmerkungen, die noch nicht in der Liste stehen
+          if (!v.text || v.seite !== p.seite || !schluessel.startsWith(`${p.dokId}:`)) return null;
+          const id = schluessel.slice(p.dokId.length + 1);
+          if (sichtbar.some((a) => String(a.id) === id)) return null;
+          return <TextVorschau key={schluessel} t={v.text} pxProPt={pxProPt} iw={iw} ih={ih} />;
+        })}
+
         {/* Trefferflächen der Anmerkungen (nur Hand-Werkzeug) */}
         {werkzeug === "hand" &&
           sichtbar.map((a) => (
             <div
               key={a.id}
               className={`anm-treffer art-${a.art}${a.id === auswahl ? " gewaehlt" : ""}`}
-              style={stilAus(a.rechteck)}
+              style={stilAus(lage(a))}
               title={`${ART_NAMEN[a.art] ?? a.art}${a.autor ? ` · ${a.autor}` : ""}${a.inhalt && a.art !== "stempel" ? `\n${a.inhalt}` : ""}`}
               onMouseDown={(e) => anmDruecken(e, a)}
               onDoubleClick={() => (["schreibmaschine", "textfeld", "notiz"].includes(a.art) ? bearbeiten(a) : undefined)}
@@ -448,7 +519,7 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
             </div>
           </div>
         )}
-        {vorschauRechteck && <div className="anm-vorschau" style={stilAus(vorschauRechteck)} />}
+        {vorschauRechteck && <div className="anm-auswahl live" style={stilAus(vorschauRechteck)} />}
 
         {/* Zeichnen: Vorschau */}
         {op?.art === "rechteck" && (
@@ -575,6 +646,61 @@ function TextLeiste({ r, drehung }: { r: Rechteck; drehung: number }) {
   );
 }
 
+// --------------------------------------------------------- Einzelbild
+/** Eine Anmerkung als eigenes Bild. Bei neuer Fassung bleibt das alte Bild
+ * stehen, bis das neue geladen ist – nichts flackert. */
+function Einzelbild(p: { dokId: string; anm: Anmerkung; rechteck: Rechteck; stufe: number; versteckt: boolean }) {
+  const url = `/api/dokumente/${p.dokId}/anmerkungen/${p.anm.id}/bild?seite=${p.anm.seite}&skala=${p.stufe}&v=${p.anm.v}`;
+  const [bild, setBild] = useState<string | null>(() => ausCache(url));
+  useEffect(() => {
+    const v = p.anm.v;
+    return anfordern(url, 0, (objektUrl) => {
+      if (!objektUrl) return;
+      setBild(objektUrl);
+      einzelbildGeladen(p.dokId, p.anm.id, v);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
+  if (!bild) return null;
+  return (
+    <img
+      className={`anm-bild art-${p.anm.pdf_art}`}
+      src={bild}
+      alt=""
+      draggable={false}
+      style={{ ...stilAus(p.rechteck), visibility: p.versteckt ? "hidden" : undefined }}
+      data-anmerkung-bild={p.anm.id}
+    />
+  );
+}
+
+/** Gerade eingegebener Text, bis der Dienst das fertige Bild liefert */
+function TextVorschau({ t, pxProPt, iw, ih }: { t: NonNullable<AnmVorschau["text"]>; pxProPt: number; iw: number; ih: number }) {
+  const fs = t.stil.schriftgroesse * pxProPt;
+  const schrift: CSSProperties = {
+    fontFamily: "Helvetica, Arial, 'Liberation Sans', sans-serif",
+    fontSize: fs,
+    lineHeight: 1.2,
+    color: t.stil.farbe,
+    whiteSpace: t.art === "schreibmaschine" ? "pre" : "pre-wrap",
+  };
+  if (t.art === "textfeld" && t.rechteck) {
+    return (
+      <div
+        className="text-vorschau textfeld"
+        style={{ ...stilAus(t.rechteck), ...schrift, borderColor: t.stil.farbe, background: t.stil.fuellung ?? "transparent", padding: `${fs * 0.1}px ${fs * 0.15}px` }}
+      >
+        {t.inhalt}
+      </div>
+    );
+  }
+  return (
+    <div className="text-vorschau" style={{ left: t.punkt[0] * iw, top: t.punkt[1] * ih - GRUNDLINIEN_VERSATZ * fs, ...schrift }}>
+      {t.inhalt}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------- Texteditor
 // MuPDF setzt die erste Grundlinie bei 0,794 × Schriftgröße unter die
 // Oberkante, der Browser (Zeilenhöhe 1,2, Arial) bei 0,947 × – Versatz:
@@ -586,7 +712,8 @@ function TextEditor({ editor, pxProPt, iw, ih, drehung }: { editor: Editor; pxPr
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     window.setTimeout(() => {
-      ref.current?.focus();
+      // preventScroll: sonst springt die Ansicht zum Eingabefeld
+      ref.current?.focus({ preventScroll: true });
       const n = ref.current?.value.length ?? 0;
       ref.current?.setSelectionRange(n, n);
     });
@@ -599,32 +726,56 @@ function TextEditor({ editor, pxProPt, iw, ih, drehung }: { editor: Editor; pxPr
     setzen({ editor: null });
     const stil = e.stil;
     const leer = !text.trim();
+    const schluessel = e.id !== null ? vorschauSchluessel(e.dokId, e.id) : "";
+    const textVorschau =
+      e.art === "notiz" ? undefined : { inhalt: text, art: e.art as "schreibmaschine" | "textfeld", punkt: e.punkt, rechteck: e.rechteck, stil };
     if (e.id === null) {
       if (leer) return;
       if (e.art === "schreibmaschine")
-        await anmerkungAnlegen(e.dokId, e.seite, { art: "schreibmaschine", punkt: e.punkt, text, farbe: stil.farbe, schriftgroesse: stil.schriftgroesse });
+        await anmerkungAnlegen(
+          e.dokId,
+          e.seite,
+          { art: "schreibmaschine", punkt: e.punkt, text, farbe: stil.farbe, schriftgroesse: stil.schriftgroesse },
+          false,
+          { werkzeugBleibt: true, vorschau: { seite: e.seite, text: textVorschau, alteV: "" } },
+        );
       else if (e.art === "textfeld")
-        await anmerkungAnlegen(e.dokId, e.seite, {
-          art: "textfeld",
-          rechteck: e.rechteck,
-          text,
-          farbe: stil.farbe,
-          fuellung: stil.fuellung,
-          schriftgroesse: stil.schriftgroesse,
-          breite: stil.breite,
-        });
+        await anmerkungAnlegen(
+          e.dokId,
+          e.seite,
+          { art: "textfeld", rechteck: e.rechteck, text, farbe: stil.farbe, fuellung: stil.fuellung, schriftgroesse: stil.schriftgroesse, breite: stil.breite },
+          true,
+          { vorschau: { seite: e.seite, text: textVorschau, alteV: "" } },
+        );
       else await anmerkungAnlegen(e.dokId, e.seite, { art: "notiz", punkt: e.punkt, inhalt: text, farbe: stil.farbe }, false);
       return;
     }
     if (leer && e.art !== "notiz") {
+      vorschauSetzen(schluessel, null);
       await anmerkungenLoeschen(e.dokId, [{ seite: e.seite, id: e.id }]);
       return;
     }
-    if (e.art === "notiz") await anmerkungAendern(e.dokId, e.seite, e.id, { inhalt: text });
-    else await anmerkungAendern(e.dokId, e.seite, e.id, { text, farbe: stil.farbe, schriftgroesse: stil.schriftgroesse, fuellung: stil.fuellung });
+    const unveraendert =
+      text === editor.text && stil.farbe === editor.stil.farbe && stil.schriftgroesse === editor.stil.schriftgroesse && stil.fuellung === editor.stil.fuellung;
+    if (unveraendert) {
+      vorschauSetzen(schluessel, null);
+      return;
+    }
+    if (e.art === "notiz") {
+      vorschauSetzen(schluessel, null);
+      await anmerkungAendern(e.dokId, e.seite, e.id, { inhalt: text });
+    } else
+      await anmerkungAendern(
+        e.dokId,
+        e.seite,
+        e.id,
+        { text, farbe: stil.farbe, schriftgroesse: stil.schriftgroesse, fuellung: stil.fuellung },
+        { text: textVorschau, versteckt: true },
+      );
   };
   const abbrechen = () => {
     fertigRef.current = true;
+    if (editor.id !== null) vorschauSetzen(vorschauSchluessel(editor.dokId, editor.id), null);
     setzen({ editor: null });
   };
 

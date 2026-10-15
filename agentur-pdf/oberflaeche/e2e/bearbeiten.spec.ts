@@ -73,8 +73,11 @@ test("T5: Text eintragen mit Rechtschreibprüfung und Vorschlag", async ({ page 
   await expect(feld).toBeHidden();
   await expect.poll(async () => (await anmerkungen(page, dokId))["0"]?.[0]?.text).toBe("Der Versicherungsnehmer zahlt.");
   await foto(page, "t5-fertig");
-  // Doppelklick öffnet den Text wieder zum Bearbeiten
-  await page.locator(".anm-treffer.art-schreibmaschine").dblclick();
+  // Werkzeug bleibt aktiv (wie PDF-XChange): Klick in den Text öffnet ihn wieder
+  await expect(page.locator(".eigenschaftsleiste")).toContainText("lostippen");
+  const bild = page.locator(".anm-bild.art-textfeld").first();
+  await expect(bild).toBeVisible();
+  await bild.click({ force: true });
   await expect(page.getByRole("textbox", { name: "Schreibmaschinentext" })).toHaveValue("Der Versicherungsnehmer zahlt.");
   await page.keyboard.press("End");
   await page.keyboard.type(" Danke");
@@ -297,4 +300,93 @@ test("Einstellungen: Kürzel und Screenshot-Ordner speichern", async ({ page }) 
   const e = (await (await page.request.get("/api/einstellungen", { headers: H })).json()) as { kuerzel: string };
   expect(e.kuerzel).toBe("JK");
   await page.request.put("/api/einstellungen", { headers: H, data: { kuerzel: "" } });
+});
+
+/** Umriss der dunklen Pixel (Text) in einem Bildschirmausschnitt */
+async function textUmriss(page: Page, clip: { x: number; y: number; width: number; height: number }) {
+  const png = (await page.screenshot({ clip })).toString("base64");
+  return page.evaluate(async (daten) => {
+    const bild = new Image();
+    bild.src = `data:image/png;base64,${daten}`;
+    await bild.decode();
+    const c = document.createElement("canvas");
+    c.width = bild.width;
+    c.height = bild.height;
+    const g = c.getContext("2d")!;
+    g.drawImage(bild, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+    for (let y = 0; y < c.height; y++)
+      for (let x = 0; x < c.width; x++) {
+        const i = (y * c.width + x) * 4;
+        if (d[i] < 130 && d[i + 1] < 130 && d[i + 2] < 130) {
+          x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+        }
+      }
+    return { x0, y0, x1, y1 };
+  }, png);
+}
+
+test("Text springt beim Bearbeiten und Verschieben nicht", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "brief.pdf");
+  const dokId = await aktivesDok(page);
+  // Text in einem leeren Bereich anlegen (unten auf der Seite)
+  await page.keyboard.press("s");
+  const p0 = await aufSeite(page, 0.15, 0.88);
+  await page.mouse.click(p0.x, p0.y);
+  await page.keyboard.type("Versicherungsnehmer Müller");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("h");
+  const bild = page.locator(".anm-bild.art-textfeld").first();
+  await expect(bild).toBeVisible();
+  // bei 200 % messen (genauer)
+  await page.getByLabel("Zoom in Prozent").fill("200");
+  await page.getByLabel("Zoom in Prozent").press("Enter");
+  await page.waitForTimeout(500);
+  await bild.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  const box = (await bild.boundingBox())!;
+  const clip = { x: box.x - 30, y: box.y - 30, width: box.width + 60, height: box.height + 60 };
+  const vorher = await textUmriss(page, clip);
+  // Bearbeiten öffnen: Text muss exakt stehen bleiben (höchstens 2 px)
+  await page.keyboard.press("s");
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByRole("textbox", { name: "Schreibmaschinentext" })).toBeFocused();
+  await page.waitForTimeout(400);
+  const beimBearbeiten = await textUmriss(page, clip);
+  await foto(page, "text-beim-bearbeiten");
+  for (const k of ["x0", "y0", "x1", "y1"] as const) expect(Math.abs(beimBearbeiten[k] - vorher[k])).toBeLessThanOrEqual(2);
+  // Ansicht darf beim Öffnen nicht scrollen
+  const scroll = await page.getByTestId("dokumentansicht").first().evaluate((el) => el.scrollTop);
+  // Fertig ohne Änderung: wieder identisch
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
+  const nachher = await textUmriss(page, clip);
+  for (const k of ["x0", "y0", "x1", "y1"] as const) expect(Math.abs(nachher[k] - vorher[k])).toBeLessThanOrEqual(2);
+  expect(await page.getByTestId("dokumentansicht").first().evaluate((el) => el.scrollTop)).toBe(scroll);
+  await foto(page, "text-ohne-springen");
+
+  // Verschieben mit der Maus: Text folgt live, bleibt nach dem Loslassen liegen
+  await page.keyboard.press("h");
+  await page.mouse.move(box.x + 10, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 60, box.y + box.height / 2 - 50, { steps: 8 });
+  const unterwegs = (await bild.boundingBox())!;
+  expect(unterwegs.x).toBeGreaterThan(box.x + 40); // bewegt sich schon während des Ziehens
+  await page.mouse.up();
+  const losgelassen = (await bild.boundingBox())!;
+  expect(Math.abs(losgelassen.x - unterwegs.x)).toBeLessThan(2);
+  await page.waitForTimeout(800); // Dienst speichert, neues Bild kommt
+  const gespeichert = (await bild.boundingBox())!;
+  expect(Math.abs(gespeichert.x - unterwegs.x)).toBeLessThan(2);
+  expect(Math.abs(gespeichert.y - unterwegs.y)).toBeLessThan(2);
+  // Pfeiltasten schieben fein (1 pt)
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(900);
+  const geschubst = (await bild.boundingBox())!;
+  expect(geschubst.x).toBeGreaterThan(gespeichert.x + 1);
+  const liste = await anmerkungen(page, dokId);
+  expect(liste["0"].length).toBe(1);
 });

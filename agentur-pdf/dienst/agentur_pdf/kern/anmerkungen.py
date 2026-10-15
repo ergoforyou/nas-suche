@@ -19,6 +19,7 @@ Nur im MuPDF-Thread aufrufen.
 from __future__ import annotations
 
 import getpass
+import hashlib
 import os
 import re
 from datetime import datetime
@@ -218,6 +219,11 @@ def anmerkung_lesen(doc: pymupdf.Document, seite: pymupdf.Page, annot: pymupdf.A
         "datum": _datum(info.get("modDate") or info.get("creationDate", "")),
         "ausgeblendet": bool(annot.flags & pymupdf.PDF_ANNOT_IS_HIDDEN),
     }
+    # Kennung der Darstellung: ändert sich bei jeder Änderung (für Bild-Cache)
+    ap = doc.xref_get_key(annot.xref, "AP/N")[1]
+    eintrag["v"] = hashlib.md5(
+        f"{annot.rect}|{info.get('modDate')}|{ap}|{annot.flags}|{annot.opacity}|{annot.colors}".encode()
+    ).hexdigest()[:10]
     if eintrag["breite"] is None or eintrag["breite"] < 0:
         eintrag["breite"] = 1
     if art == "textfeld":
@@ -483,78 +489,156 @@ def _freitext(doc: pymupdf.Document, seite: pymupdf.Page, d: dict, autor: str) -
 
 
 # ------------------------------------------------------------------ Ändern
-def aendern(doc: pymupdf.Document, seite_nr: int, xref: int, aenderung: dict, autor: str) -> int:
-    """Ändert eine Anmerkung. Gibt die (ggf. neue) ID zurück.
+def _verschiebung_pdf(seite: pymupdf.Page, dx: float, dy: float) -> pymupdf.Point:
+    """Normierte Verschiebung (Anzeige) → Verschiebung im ungedrehten PDF-System."""
+    b, h = _breite_hoehe(seite)
+    m = seite.derotation_matrix
+    return pymupdf.Point(dx * b, dy * h) * m - pymupdf.Point(0, 0) * m
 
-    Geometrie- und Textänderungen an gezeichneten Anmerkungen werden durch
-    Neuanlegen umgesetzt (MuPDF kann Linien, Freihand und Textfelder nicht
-    zuverlässig „verschieben“); Bilder werden direkt verschoben, damit das
-    Bild selbst erhalten bleibt.
+
+def _zahlen(text: str) -> list[float]:
+    return [float(z) for z in re.findall(r"-?\d+(?:\.\d+)?", text or "")]
+
+
+def _pdf_zahl(z: float) -> str:
+    return f"{z:.3f}".rstrip("0").rstrip(".")
+
+
+def _punkte_abbilden(doc: pymupdf.Document, annot: pymupdf.Annot, seite: pymupdf.Page, abb) -> None:
+    """Geometrie (Linie, Freihand, Linienzug) über ``abb(Point) -> Point`` im
+    PDF-Seitensystem neu setzen. Die Schlüssel stehen im PDF mit
+    Ursprung unten links – daher Umrechnung über die Seitenhöhe (MediaBox)."""
+    hoehe = seite.mediabox.height
+    zu_pdf = lambda p: (p.x, hoehe - p.y)  # noqa: E731
+    von_pdf = lambda x, y: pymupdf.Point(x, hoehe - y)  # noqa: E731
+    xref = annot.xref
+    typ = annot.type[0]
+    if typ == pymupdf.PDF_ANNOT_LINE:
+        z = _zahlen(doc.xref_get_key(xref, "L")[1])
+        punkte = [abb(von_pdf(z[i], z[i + 1])) for i in range(0, 4, 2)]
+        doc.xref_set_key(xref, "L", "[" + " ".join(_pdf_zahl(v) for p in punkte for v in zu_pdf(p)) + "]")
+    elif typ == pymupdf.PDF_ANNOT_INK:
+        striche = annot.vertices or []
+        teile = []
+        for strich in striche:
+            pts = [abb(pymupdf.Point(p)) for p in strich]
+            teile.append("[" + " ".join(_pdf_zahl(v) for p in pts for v in zu_pdf(p)) + "]")
+        doc.xref_set_key(xref, "InkList", "[" + " ".join(teile) + "]")
+    elif typ in (pymupdf.PDF_ANNOT_POLY_LINE, pymupdf.PDF_ANNOT_POLYGON):
+        pts = [abb(pymupdf.Point(p)) for p in (annot.vertices or [])]
+        doc.xref_set_key(xref, "Vertices", "[" + " ".join(_pdf_zahl(v) for p in pts for v in zu_pdf(p)) + "]")
+
+
+def aendern(doc: pymupdf.Document, seite_nr: int, xref: int, aenderung: dict, autor: str) -> int:
+    """Ändert eine Anmerkung an Ort und Stelle (die ID bleibt gleich).
+
+    ``aenderung`` kann enthalten: verschieben [dx, dy] (normiert), rechteck
+    (neue Lage/Größe), text, inhalt, farbe, fuellung, breite, deckkraft,
+    schriftgroesse.
     """
     seite = doc[seite_nr]
     annot = finden(seite, xref)
     alt = anmerkung_lesen(doc, seite, annot)
     if alt is None:
         raise DokumentFehler("Diese Anmerkung kann hier nicht bearbeitet werden.")
-    art = alt["art"]
+    art, pdf_art = alt["art"], alt["pdf_art"]
+    typ = annot.type[0]
+    punkt_art = typ in (pymupdf.PDF_ANNOT_LINE, pymupdf.PDF_ANNOT_INK, pymupdf.PDF_ANNOT_POLY_LINE, pymupdf.PDF_ANNOT_POLYGON)
 
-    if alt["pdf_art"] in ("bild", "notiz") or alt["pdf_art"] in TEXTMARKIERUNG or alt["pdf_art"] == "schwaerzung":
-        if "rechteck" in aenderung and alt["pdf_art"] not in TEXTMARKIERUNG:
-            r = pdf_rechteck(seite, aenderung["rechteck"])
-            if alt["pdf_art"] == "notiz":
-                # Notizsymbole behalten ihre Größe, nur die Lage ändert sich
-                r = pymupdf.Rect(r.x0, r.y0, r.x0 + annot.rect.width, r.y0 + annot.rect.height)
-            annot.set_rect(r)
-        if aenderung.get("farbe") and alt["pdf_art"] != "bild":
-            annot.set_colors(stroke=hex_zu_rgb(aenderung["farbe"]))
+    # ------------------------------------------------------------ Geometrie
+    if "verschieben" in aenderung and pdf_art not in TEXTMARKIERUNG:
+        d = _verschiebung_pdf(seite, *aenderung["verschieben"])
+        if punkt_art:
+            _punkte_abbilden(doc, annot, seite, lambda p: p + d)
+        annot.set_rect(annot.rect + (d.x, d.y, d.x, d.y))
+    elif "rechteck" in aenderung and pdf_art not in TEXTMARKIERUNG:
+        ziel = pdf_rechteck(seite, aenderung["rechteck"])
+        if ziel.width < 1 or ziel.height < 1:
+            raise DokumentFehler("Bereich ist zu klein.")
+        if punkt_art:
+            # Punkte vom alten in den neuen Rahmen abbilden; der Abstand
+            # zwischen Punkten und Rahmen (Linienbreite, Pfeilspitzen) bleibt
+            v = annot.vertices or []
+            pts = [pymupdf.Point(q) for q in (v if typ != pymupdf.PDF_ANNOT_INK else [q for strich in v for q in strich])]
+            if pts:
+                innen = pymupdf.Rect(min(q.x for q in pts), min(q.y for q in pts), max(q.x for q in pts), max(q.y for q in pts))
+                r = annot.rect
+                ziel_innen = pymupdf.Rect(
+                    ziel.x0 + (innen.x0 - r.x0), ziel.y0 + (innen.y0 - r.y0), ziel.x1 - (r.x1 - innen.x1), ziel.y1 - (r.y1 - innen.y1)
+                )
+                sx = ziel_innen.width / innen.width if innen.width > 1e-6 else 1.0
+                sy = ziel_innen.height / innen.height if innen.height > 1e-6 else 1.0
+                _punkte_abbilden(
+                    doc, annot, seite,
+                    lambda q: pymupdf.Point(ziel_innen.x0 + (q.x - innen.x0) * sx, ziel_innen.y0 + (q.y - innen.y0) * sy),
+                )
+            annot.set_rect(ziel)
+        elif pdf_art == "notiz":
+            # Notizsymbole behalten ihre Größe, nur die Lage ändert sich
+            annot.set_rect(pymupdf.Rect(ziel.x0, ziel.y0, ziel.x0 + annot.rect.width, ziel.y0 + annot.rect.height))
+        elif art not in ("schreibmaschine", "stempel"):
+            annot.set_rect(ziel)
+        else:
+            # Größe ergibt sich aus dem Text – nur die Lage übernehmen
+            annot.set_rect(pymupdf.Rect(ziel.x0, ziel.y0, ziel.x0 + annot.rect.width, ziel.y0 + annot.rect.height))
+
+    # ------------------------------------------------------------ Darstellung
+    farben: dict = {}
+    if pdf_art == "textfeld":
+        groesse, textfarbe = _da_lesen(doc, xref)
+        groesse = float(aenderung.get("schriftgroesse") or groesse)
+        if art in ("schreibmaschine", "stempel"):
+            textfarbe = aenderung.get("farbe") or aenderung.get("textfarbe") or textfarbe
+        else:
+            textfarbe = aenderung.get("textfarbe") or (aenderung.get("farbe") if art == "textfeld" else None) or textfarbe
+        text = aenderung.get("text", aenderung.get("inhalt", annot.info.get("content", "")))
+        text = (text or "").replace("\r\n", "\n")
+        if "text" in aenderung or "inhalt" in aenderung or "schriftgroesse" in aenderung:
+            r = annot.rect
+            breite, hoehe = textmasse(text, groesse)
+            if art == "stempel":
+                breite, hoehe = breite + groesse * 1.2, hoehe + groesse * 0.6
+            # Maße gelten in Anzeige-Ausrichtung (Text steht aufrecht)
+            anzeige = (r * seite.rotation_matrix).normalize()
+            if art in ("schreibmaschine", "stempel"):
+                # linke obere Ecke bleibt fest, Größe folgt dem Text
+                anzeige = pymupdf.Rect(anzeige.x0, anzeige.y0, anzeige.x0 + breite, anzeige.y0 + hoehe)
+            elif anzeige.height < hoehe + 4:
+                anzeige = pymupdf.Rect(anzeige.x0, anzeige.y0, anzeige.x1, anzeige.y0 + hoehe + 4)
+            annot.set_rect((anzeige * seite.derotation_matrix).normalize())
+        annot.set_info(content=text)
+        optionen: dict = {"fontsize": groesse, "text_color": hex_zu_rgb(textfarbe) or (0, 0, 0)}
+        if "fuellung" in aenderung and art == "textfeld":
+            optionen["fill_color"] = hex_zu_rgb(aenderung["fuellung"])
+        if aenderung.get("breite") is not None and art == "textfeld":
+            annot.set_border(width=max(0.0, float(aenderung["breite"])))
         if aenderung.get("deckkraft") is not None:
-            annot.set_opacity(max(0.05, min(1.0, float(aenderung["deckkraft"]))))
-        info = annot.info
-        annot.set_info(
-            content=aenderung.get("inhalt", info.get("content", "")),
-            title=info.get("title") or autor,
-            modDate=pymupdf.get_pdf_now(),
-        )
-        annot.update()
+            optionen["opacity"] = max(0.05, min(1.0, float(aenderung["deckkraft"])))
+        annot.set_info(title=annot.info.get("title") or autor, modDate=pymupdf.get_pdf_now())
+        annot.update(**optionen)
+        doc.xref_set_key(xref, "CL", "null")
         return xref
 
-    neu = {**alt, **aenderung, "art": art, "erstellt": None}
-    if "verschieben" in aenderung:
-        dx, dy = aenderung["verschieben"]
-        neu["rechteck"] = [alt["rechteck"][0] + dx, alt["rechteck"][1] + dy, alt["rechteck"][2] + dx, alt["rechteck"][3] + dy]
-        if alt.get("punkte"):
-            neu["punkte"] = [[p[0] + dx, p[1] + dy] for p in alt["punkte"]]
-        if alt.get("striche"):
-            neu["striche"] = [[[p[0] + dx, p[1] + dy] for p in s] for s in alt["striche"]]
-    elif "rechteck" in aenderung and (alt.get("punkte") or alt.get("striche")):
-        # Größe ändern: Punkte vom alten ins neue Rechteck abbilden
-        a, z = alt["rechteck"], aenderung["rechteck"]
-        sx = (z[2] - z[0]) / max(1e-6, a[2] - a[0])
-        sy = (z[3] - z[1]) / max(1e-6, a[3] - a[1])
-        abb = lambda p: [z[0] + (p[0] - a[0]) * sx, z[1] + (p[1] - a[1]) * sy]  # noqa: E731
-        if alt.get("punkte"):
-            neu["punkte"] = [abb(p) for p in alt["punkte"]]
-        if alt.get("striche"):
-            neu["striche"] = [[abb(p) for p in s] for s in alt["striche"]]
-    if art == "schreibmaschine" or art == "stempel":
-        neu["punkt"] = neu["rechteck"][:2]
-        if art == "schreibmaschine":
-            neu["farbe"] = aenderung.get("farbe", alt.get("textfarbe"))
-            neu["textfarbe"] = neu["farbe"]
-        else:
-            neu["textfarbe"] = aenderung.get("farbe", alt.get("textfarbe"))
-    if "text" in aenderung:
-        neu["inhalt"] = aenderung["text"]
-    # Rechteck in Anzeige-Normierung – für Linien aus den Punkten neu bestimmt
-    erstellt_am = annot.info.get("creationDate")
-    gruppe = alt["gruppe"]
-    seite.delete_annot(annot)
-    neu["erstellt"] = erstellt_am
-    neu["gruppe"] = gruppe
-    neue_id = erstellen(doc, seite_nr, neu, alt.get("autor") or autor)
-    if gruppe != _schluessel(doc, neue_id, "AgenturGruppe"):
-        _markieren(doc, neue_id, gruppe)
-    return neue_id
+    if aenderung.get("farbe") and pdf_art != "bild":
+        farben["stroke"] = hex_zu_rgb(aenderung["farbe"])
+        if art == "pfeil":
+            farben["fill"] = farben["stroke"]
+    if "fuellung" in aenderung and pdf_art in ("rechteck", "ellipse", "polygon"):
+        farben["fill"] = hex_zu_rgb(aenderung["fuellung"]) if aenderung["fuellung"] else []
+    if farben:
+        annot.set_colors(**farben)
+    if aenderung.get("breite") is not None and pdf_art not in TEXTMARKIERUNG and pdf_art not in ("bild", "notiz"):
+        annot.set_border(width=max(0.0, float(aenderung["breite"])))
+    if aenderung.get("deckkraft") is not None:
+        annot.set_opacity(max(0.05, min(1.0, float(aenderung["deckkraft"]))))
+    info = annot.info
+    annot.set_info(
+        content=aenderung.get("inhalt", info.get("content", "")),
+        title=info.get("title") or autor,
+        modDate=pymupdf.get_pdf_now(),
+    )
+    annot.update()
+    return xref
 
 
 def loeschen(doc: pymupdf.Document, seite_nr: int, xref: int) -> None:
@@ -685,3 +769,21 @@ def stempel_text(vorlage: str, kuerzel: str) -> str:
         .replace("{zeit}", jetzt.strftime("%H:%M"))
         .replace("{kuerzel}", kuerzel or autor_name())
     )
+
+
+def einzelbild(doc: pymupdf.Document, seite_nr: int, xref: int, skala: float) -> bytes:
+    """Eine Anmerkung allein als PNG mit Transparenz – so groß wie ihr
+    Rechteck, in der Ausrichtung der angezeigten Seite."""
+    seite = doc[seite_nr]
+    annot = finden(seite, xref)
+    skala = max(0.1, min(float(skala), 8.0))
+    flags = annot.flags
+    if flags & pymupdf.PDF_ANNOT_IS_HIDDEN:
+        annot.set_flags(flags & ~pymupdf.PDF_ANNOT_IS_HIDDEN)
+    try:
+        pix = annot.get_pixmap(matrix=pymupdf.Matrix(skala, skala), alpha=True)
+    finally:
+        if flags & pymupdf.PDF_ANNOT_IS_HIDDEN:
+            annot.set_flags(flags)
+    # MuPDF liefert das Bild bereits in Anzeige-Ausrichtung (Seitendrehung)
+    return pix.tobytes("png")

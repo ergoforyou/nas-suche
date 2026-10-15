@@ -166,7 +166,7 @@ test("Lasso-Zoom vergrößert den aufgezogenen Bereich", async ({ page }) => {
   await expect
     .poll(async () => parseInt(await page.getByLabel("Zoom in Prozent").inputValue()))
     .toBeGreaterThan(vorher * 3);
-  await expect(page.locator(".eigenschaftsleiste")).toBeHidden(); // nicht fixiert → zurück zur Hand
+  await expect(page.locator(".eigenschaftsleiste")).toHaveClass(/leer/); // nicht fixiert → zurück zur Hand
 });
 
 test("Lupe zeigt vergrößerten Ausschnitt", async ({ page }) => {

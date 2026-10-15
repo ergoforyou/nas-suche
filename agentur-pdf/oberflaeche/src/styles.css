@@ -445,7 +445,11 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 5px 14px;
+  height: 36px;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 14px;
   background: var(--akzent-hell);
   border-bottom: 1px solid var(--linie);
   flex-shrink: 0;
@@ -1787,7 +1791,7 @@ input[type="range"] {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 2;
+  /* bewusst ohne z-index: Hervorhebungen sollen mit der Seite „multiplizieren“ */
 }
 
 .anm-ebene.aktiv {
@@ -2466,4 +2470,38 @@ input[type="range"] {
 
 .screenshot-knoepfe button:hover {
   background: var(--hg-hover);
+}
+
+/* Anmerkungen als eigene Bilder */
+.anm-bild {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+}
+
+.anm-bild.art-hervorheben {
+  mix-blend-mode: multiply;
+}
+
+.anm-innen[style*="rotate"] .anm-bild.art-hervorheben {
+  opacity: 0.45; /* gedrehte Ansicht: kein Multiplizieren möglich */
+}
+
+.text-vorschau {
+  position: absolute;
+  pointer-events: none;
+}
+
+.text-vorschau.textfeld {
+  border: 1px solid;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.anm-auswahl.live {
+  outline-style: dashed;
+}
+
+.eigenschaftsleiste.leer {
+  background: var(--hg-leiste);
 }

@@ -90,7 +90,7 @@ export const RsTextarea = forwardRef<HTMLTextAreaElement, RsTextareaProps>(funct
   const ersetzen = (f: RsFehler, neu: string) => {
     p.aendern(p.wert.slice(0, f.start) + neu + p.wert.slice(f.ende));
     window.setTimeout(() => {
-      feld.current?.focus();
+      feld.current?.focus({ preventScroll: true });
       const c = f.start + neu.length;
       feld.current?.setSelectionRange(c, c);
     });
@@ -178,7 +178,7 @@ export const RsTextarea = forwardRef<HTMLTextAreaElement, RsTextareaProps>(funct
           punkte={punkte}
           schliessen={() => {
             setMenue(null);
-            window.setTimeout(() => feld.current?.focus());
+            window.setTimeout(() => feld.current?.focus({ preventScroll: true }));
           }}
         />
       )}

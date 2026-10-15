@@ -71,6 +71,8 @@ export type Punkt = [number, number];
 /** Anmerkung (Kommentar, Eintragung, Stempel, Schwärzung) – Koordinaten normiert */
 export interface Anmerkung {
   id: number;
+  /** Kennung der Darstellung (ändert sich bei jeder Änderung) */
+  v: string;
   seite: number;
   art: string;
   pdf_art: string;

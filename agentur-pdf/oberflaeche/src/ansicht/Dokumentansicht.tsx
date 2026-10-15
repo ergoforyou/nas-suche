@@ -32,6 +32,9 @@ interface Anker {
 }
 
 const LUPE = 240; // Durchmesser der Lupe in CSS-px
+// Die Seite wird ohne Anmerkungen gezeichnet – die zeigt die Anmerkungs-Ebene
+// als eigene Bilder (live verschiebbar, kein Neuzeichnen der Seite).
+const OHNE_ANMERKUNGEN = "kommentar,eintragung,stempel,schwaerzung";
 
 export function Dokumentansicht({ dokId }: { dokId: string }) {
   const dok = useZustand((z) => z.dokumente.find((d) => d.id === dokId) ?? null);
@@ -40,8 +43,6 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
   const sprung = useZustand((z) => z.sprung);
   const suche = useZustand((z) => z.suche);
   const unsicher = useZustand((z) => z.unsicher[dokId]);
-  const ausblenden = useZustand((z) => z.ausblenden.join(","));
-  const bearbeitet = useZustand((z) => (z.editor?.dokId === dokId && z.editor.id !== null ? z.editor : null));
   const version = useZustand((z) => z.dokumente.find((d) => d.id === dokId)?.version ?? -1);
 
   // Anmerkungen und Formularfelder zur aktuellen Dokumentfassung laden
@@ -390,6 +391,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
       const ziel = e.target as HTMLElement;
       if (!el || ziel.closest("input, textarea, select, [contenteditable], .miniaturen")) return;
       if (holen().aktiv !== dokId || holen().dialog?.art === "ungespeichert") return;
+      if (holen().anmAuswahl && e.key.startsWith("Arrow")) return; // Pfeile schieben die Anmerkung
       if (e.key === "Escape" && holen().werkzeug !== "hand") {
         setLasso(null);
         setzen({ werkzeug: "hand" });
@@ -503,8 +505,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
                 sichtbar={bereich}
                 markierungen={markierungen}
                 unsicher={unsichereWoerter}
-                ausblenden={ausblenden || undefined}
-                ohne={bearbeitet?.seite === box.seite ? String(bearbeitet.id) : undefined}
+                ausblenden={OHNE_ANMERKUNGEN}
               />
               <AnmerkungsEbene
                 dokId={dokId}
@@ -515,6 +516,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
                 drehung={ansicht.drehung}
                 breitePt={seiten[box.seite].breite}
                 hoehePt={seiten[box.seite].hoehe}
+                dpr={dpr}
               />
             </div>
           );

@@ -4,7 +4,7 @@
 import { api } from "../api";
 import type { Anmerkung, Gruppe, Stil, Werkzeug, Wort } from "../typen";
 import { anwenden } from "./seitenaktionen";
-import { holen, melden, setzen, werkzeugBenutzt } from "./store";
+import { holen, melden, setzen, werkzeugBenutzt, type AnmVorschau } from "./store";
 
 export const STANDARD_STILE: Record<string, Stil> = {
   hervorheben: { farbe: "#FFE14D", fuellung: null, breite: 1, deckkraft: 1, schriftgroesse: 11 },
@@ -125,31 +125,117 @@ export function stilSetzen(werkzeug: string, teil: Partial<Stil>): void {
 }
 
 // --------------------------------------------------- Anlegen/Ändern/Löschen
-export async function anmerkungAnlegen(dokId: string, seite: number, daten: Record<string, unknown>, auswaehlen = true): Promise<number | null> {
+// ------------------------------------------------------------- Vorschau
+export function vorschauSchluessel(dokId: string, id: number | string): string {
+  return `${dokId}:${id}`;
+}
+
+export function vorschauSetzen(schluessel: string, v: AnmVorschau | null): void {
+  setzen((z) => {
+    const neu = { ...z.anmVorschau };
+    if (v) neu[schluessel] = v;
+    else delete neu[schluessel];
+    return { anmVorschau: neu };
+  });
+}
+
+/** Ein neues Einzelbild wurde geladen: Vorschau entfällt, wenn es die neue Fassung zeigt. */
+export function einzelbildGeladen(dokId: string, id: number, v: string): void {
+  const s = vorschauSchluessel(dokId, id);
+  const vorschau = holen().anmVorschau[s];
+  // während der Bearbeitung bleibt die Anmerkung ausgeblendet
+  if (vorschau && vorschau.alteV !== v && vorschau.alteV !== "__bearbeitung__") vorschauSetzen(s, null);
+}
+
+export async function anmerkungAnlegen(
+  dokId: string,
+  seite: number,
+  daten: Record<string, unknown>,
+  auswaehlen = true,
+  optionen: { werkzeugBleibt?: boolean; vorschau?: AnmVorschau } = {},
+): Promise<number | null> {
+  const neuSchluessel = vorschauSchluessel(dokId, `neu:${seite}`);
+  if (optionen.vorschau) vorschauSetzen(neuSchluessel, optionen.vorschau);
   try {
     const antwort = await api.anmerkungNeu(dokId, { seite, ...daten });
+    if (optionen.vorschau && antwort.id) {
+      // Vorschau bleibt sichtbar, bis das Bild der neuen Anmerkung geladen ist
+      setzen((z) => {
+        const neu = { ...z.anmVorschau, [vorschauSchluessel(dokId, antwort.id!)]: { ...optionen.vorschau!, alteV: "" } };
+        delete neu[neuSchluessel];
+        return { anmVorschau: neu };
+      });
+    }
     anwenden(antwort);
     if (auswaehlen && antwort.id && daten.art !== "schwaerzung") setzen({ anmAuswahl: { dokId, seite, id: antwort.id } });
-    werkzeugBenutzt();
+    if (!optionen.werkzeugBleibt) werkzeugBenutzt();
     return antwort.id ?? null;
   } catch (e) {
+    vorschauSetzen(neuSchluessel, null);
     fehler(e);
     return null;
   }
 }
 
-export async function anmerkungAendern(dokId: string, seite: number, id: number, daten: Record<string, unknown>): Promise<number | null> {
+export async function anmerkungAendern(
+  dokId: string,
+  seite: number,
+  id: number,
+  daten: Record<string, unknown>,
+  vorschau?: Omit<AnmVorschau, "alteV" | "seite">,
+): Promise<number | null> {
+  const s = vorschauSchluessel(dokId, id);
+  if (vorschau) {
+    const alt = anmerkungFinden(dokId, seite, id);
+    vorschauSetzen(s, { ...vorschau, seite, alteV: alt?.v ?? "" });
+  }
   try {
     const antwort = await api.anmerkungAendern(dokId, id, { seite, ...daten });
     anwenden(antwort);
-    const auswahl = holen().anmAuswahl;
-    if (antwort.id && auswahl?.dokId === dokId && auswahl.id === id) setzen({ anmAuswahl: { dokId, seite, id: antwort.id } });
     return antwort.id ?? null;
   } catch (e) {
+    vorschauSetzen(s, null);
     fehler(e);
     return null;
   }
 }
+
+/** Ausgewählte Anmerkung mit den Pfeiltasten verschieben (gesammelt, verzögert gespeichert) */
+let schubser: { dokId: string; seite: number; id: number; dx: number; dy: number; timer: number } | null = null;
+
+export function auswahlSchubsen(dxPt: number, dyPt: number): boolean {
+  const z = holen();
+  const a = z.anmAuswahl;
+  if (!a) return false;
+  const anm = anmerkungFinden(a.dokId, a.seite, a.id);
+  const d = z.dokumente.find((x) => x.id === a.dokId);
+  if (!anm || !d || TEXTMARKIERUNG.has(anm.art)) return false;
+  const s = d.seiten[a.seite];
+  const dx = dxPt / s.breite;
+  const dy = dyPt / s.hoehe;
+  if (!schubser || schubser.id !== a.id || schubser.dokId !== a.dokId) {
+    if (schubser) window.clearTimeout(schubser.timer);
+    schubser = { dokId: a.dokId, seite: a.seite, id: a.id, dx: 0, dy: 0, timer: 0 };
+  }
+  schubser.dx += dx;
+  schubser.dy += dy;
+  const vorschau = holen().anmVorschau[vorschauSchluessel(a.dokId, a.id)];
+  const basis = vorschau?.rechteck ?? anm.rechteck;
+  vorschauSetzen(vorschauSchluessel(a.dokId, a.id), {
+    seite: a.seite,
+    rechteck: [basis[0] + dx, basis[1] + dy, basis[2] + dx, basis[3] + dy],
+    alteV: vorschau?.alteV ?? anm.v,
+  });
+  window.clearTimeout(schubser.timer);
+  schubser.timer = window.setTimeout(() => {
+    const sch = schubser;
+    schubser = null;
+    if (sch) void anmerkungAendern(sch.dokId, sch.seite, sch.id, { verschieben: [sch.dx, sch.dy] });
+  }, 450);
+  return true;
+}
+
+const TEXTMARKIERUNG = new Set(["hervorheben", "unterstreichen", "durchstreichen", "wellenlinie"]);
 
 export async function anmerkungenLoeschen(dokId: string, eintraege: { seite: number; id: number }[]): Promise<void> {
   if (!eintraege.length) return;

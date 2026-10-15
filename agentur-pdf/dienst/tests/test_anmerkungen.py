@@ -215,3 +215,108 @@ def test_rechtschreibung_ueber_api_und_woerterbuch(client, tmp_path, monkeypatch
 def test_stempeltext_platzhalter():
     text = anmerkungen.stempel_text("EINGEGANGEN\n{datum} · {kuerzel}", "JK")
     assert text.startswith("EINGEGANGEN\n") and text.endswith("· JK") and text.count(".") == 2
+
+
+# ------------------------------------------------- an Ort und Stelle ändern
+@pytest.mark.parametrize(
+    "daten",
+    [
+        {"art": "rechteck", "rechteck": [0.1, 0.1, 0.3, 0.2]},
+        {"art": "ellipse", "rechteck": [0.1, 0.1, 0.3, 0.2]},
+        {"art": "pfeil", "punkte": [[0.1, 0.1], [0.3, 0.2]]},
+        {"art": "linie", "punkte": [[0.1, 0.1], [0.3, 0.2]]},
+        {"art": "freihand", "striche": [[[0.1, 0.1], [0.2, 0.15], [0.3, 0.2]]]},
+        {"art": "schreibmaschine", "punkt": [0.1, 0.1], "text": "Hallo"},
+        {"art": "textfeld", "rechteck": [0.1, 0.1, 0.4, 0.16], "text": "Kasten"},
+        {"art": "stempel", "punkt": [0.1, 0.1], "text": "ERLEDIGT"},
+        {"art": "notiz", "punkt": [0.1, 0.1], "inhalt": "Notiz"},
+    ],
+)
+def test_verschieben_behaelt_id_und_form(client, brief, daten):
+    dok_id = oeffnen(client, brief)
+    xref = anlegen(client, dok_id, seite=0, **daten)
+    vorher = liste(client, dok_id)["0"][0]
+    r = client.patch(f"/api/dokumente/{dok_id}/anmerkungen/{xref}", json={"seite": 0, "verschieben": [0.2, 0.3]})
+    assert r.json()["id"] == xref
+    nachher = liste(client, dok_id)["0"][0]
+    assert nachher["id"] == xref and nachher["v"] != vorher["v"]
+    for i, d in ((0, 0.2), (1, 0.3), (2, 0.2), (3, 0.3)):
+        assert nachher["rechteck"][i] == pytest.approx(vorher["rechteck"][i] + d, abs=0.004)
+    if vorher.get("punkte"):
+        assert nachher["punkte"][0] == pytest.approx([vorher["punkte"][0][0] + 0.2, vorher["punkte"][0][1] + 0.3], abs=0.002)
+    if vorher.get("striche"):
+        assert nachher["striche"][0][1] == pytest.approx([vorher["striche"][0][1][0] + 0.2, vorher["striche"][0][1][1] + 0.3], abs=0.002)
+    for schluessel in ("text", "inhalt", "farbe", "gruppe", "art"):
+        assert nachher.get(schluessel) == vorher.get(schluessel)
+
+
+def test_groesse_aendern_freihand_und_rechteck(client, brief):
+    dok_id = oeffnen(client, brief)
+    ink = anlegen(client, dok_id, seite=0, art="freihand", striche=[[[0.1, 0.1], [0.2, 0.2]]])
+    rect = anlegen(client, dok_id, seite=0, art="rechteck", rechteck=[0.5, 0.5, 0.6, 0.6])
+    client.patch(f"/api/dokumente/{dok_id}/anmerkungen/{ink}", json={"seite": 0, "rechteck": [0.1, 0.1, 0.4, 0.4]})
+    client.patch(f"/api/dokumente/{dok_id}/anmerkungen/{rect}", json={"seite": 0, "rechteck": [0.5, 0.5, 0.8, 0.7]})
+    eintraege = {e["id"]: e for e in liste(client, dok_id)["0"]}
+    assert eintraege[ink]["rechteck"][2] == pytest.approx(0.4, abs=0.01)
+    assert eintraege[rect]["rechteck"] == pytest.approx([0.5, 0.5, 0.8, 0.7], abs=0.005)
+
+
+def test_text_aendern_behaelt_id_und_linke_obere_ecke(client, brief):
+    dok_id = oeffnen(client, brief)
+    xref = anlegen(client, dok_id, seite=0, art="schreibmaschine", punkt=[0.2, 0.3], text="Kurz", schriftgroesse=11)
+    vorher = liste(client, dok_id)["0"][0]
+    r = client.patch(
+        f"/api/dokumente/{dok_id}/anmerkungen/{xref}",
+        json={"seite": 0, "text": "Ein deutlich längerer Text\nmit zweiter Zeile", "schriftgroesse": 14, "farbe": "#1E6FD9"},
+    )
+    assert r.json()["id"] == xref
+    e = liste(client, dok_id)["0"][0]
+    assert e["text"] == "Ein deutlich längerer Text\nmit zweiter Zeile"
+    assert e["schriftgroesse"] == 14 and e["textfarbe"] == "#1E6FD9"
+    assert e["rechteck"][:2] == pytest.approx(vorher["rechteck"][:2], abs=0.002)
+    assert e["rechteck"][2] > vorher["rechteck"][2] and e["rechteck"][3] > vorher["rechteck"][3]
+    assert e["art"] == "schreibmaschine" and e["gruppe"] == "eintragung"
+
+
+def test_einzelbild_ist_durchsichtig(client, brief):
+    dok_id = oeffnen(client, brief)
+    xref = anlegen(client, dok_id, seite=0, art="rechteck", rechteck=[0.1, 0.1, 0.3, 0.2], farbe="#ff0000", breite=2)
+    e = liste(client, dok_id)["0"][0]
+    antwort = client.get(f"/api/dokumente/{dok_id}/anmerkungen/{xref}/bild", params={"seite": 0, "skala": 2, "v": e["v"]})
+    assert antwort.headers["content-type"] == "image/png"
+    im = Image.open(io.BytesIO(antwort.content))
+    assert im.mode == "RGBA"
+    breite_pt = (e["rechteck"][2] - e["rechteck"][0]) * 595
+    assert im.width == pytest.approx(breite_pt * 2, abs=4)
+    assert im.getpixel((im.width // 2, im.height // 2))[3] == 0  # innen durchsichtig
+    assert im.getpixel((2, im.height // 2))[0] > 200  # roter Rand
+
+
+def test_seite_ohne_anmerkungen_rendern(client, brief):
+    dok_id = oeffnen(client, brief)
+    original = pymupdf.Pixmap(client.get(f"/api/dokumente/{dok_id}/seiten/0/bild", params={"skala": 0.5}).content)
+    anlegen(client, dok_id, seite=0, art="schreibmaschine", punkt=[0.1, 0.9], text="Eintrag")
+    anlegen(client, dok_id, seite=0, art="stempel", punkt=[0.5, 0.5], text="ERLEDIGT")
+    info = client.get(f"/api/dokumente/{dok_id}").json()
+    alle = "kommentar,eintragung,stempel,schwaerzung"
+    ohne = pymupdf.Pixmap(client.get(f"/api/dokumente/{dok_id}/seiten/0/bild", params={"skala": 0.5, "v": info["kennungen"][0], "a": alle}).content)
+    assert ohne.samples == original.samples
+
+
+def test_gedrehte_seite_verschieben_und_einzelbild(client, tmp_path):
+    import testdaten
+
+    dok_id = oeffnen(client, testdaten.gedrehtes_dokument(tmp_path / "gedreht.pdf"))
+    info = client.get(f"/api/dokumente/{dok_id}").json()
+    seite = next(i for i, s in enumerate(info["seiten"]) if s["drehung"])
+    for daten in ({"art": "freihand", "striche": [[[0.1, 0.1], [0.3, 0.2]]]}, {"art": "schreibmaschine", "punkt": [0.1, 0.1], "text": "Quer"}):
+        xref = anlegen(client, dok_id, seite=seite, **daten)
+        vorher = next(e for e in liste(client, dok_id)[str(seite)] if e["id"] == xref)
+        client.patch(f"/api/dokumente/{dok_id}/anmerkungen/{xref}", json={"seite": seite, "verschieben": [0.1, 0.05]})
+        nachher = next(e for e in liste(client, dok_id)[str(seite)] if e["id"] == xref)
+        assert nachher["rechteck"][0] == pytest.approx(vorher["rechteck"][0] + 0.1, abs=0.005)
+        assert nachher["rechteck"][1] == pytest.approx(vorher["rechteck"][1] + 0.05, abs=0.005)
+        bild = Image.open(io.BytesIO(client.get(f"/api/dokumente/{dok_id}/anmerkungen/{xref}/bild", params={"seite": seite, "skala": 1}).content))
+        b = (nachher["rechteck"][2] - nachher["rechteck"][0]) * info["seiten"][seite]["breite"]
+        h = (nachher["rechteck"][3] - nachher["rechteck"][1]) * info["seiten"][seite]["hoehe"]
+        assert bild.width == pytest.approx(b, abs=3) and bild.height == pytest.approx(h, abs=3)

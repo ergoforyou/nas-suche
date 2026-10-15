@@ -75,6 +75,12 @@ def einrichten(
     async def anmerkungen_liste(dok_id: str):
         return await im_mupdf_thread(lambda: anmerkungen.liste(dokumente.get(dok_id).doc))
 
+    @app.get("/api/dokumente/{dok_id}/anmerkungen/{xref}/bild")
+    async def anmerkung_bild(dok_id: str, xref: int, seite: int = Query(...), skala: float = Query(1.0), v: str | None = None):
+        png = await im_mupdf_thread(lambda: anmerkungen.einzelbild(dokumente.get(dok_id).doc, seite, xref, skala))
+        # URL enthält die Darstellungskennung (v) → darf gecacht werden
+        return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+
     def _bild_fuer(d: dict) -> bytes | None:
         if d.get("bild_id"):
             return ablage.holen(d["bild_id"])

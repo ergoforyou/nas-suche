@@ -51,6 +51,19 @@ export interface Editor {
   stil: Stil;
 }
 
+/** Sofort sichtbare Änderung an einer Anmerkung, bis der Dienst die neue
+ * Darstellung geliefert hat (kein Springen, kein Flackern). */
+export interface AnmVorschau {
+  seite: number;
+  rechteck?: Rechteck;
+  /** Bild verstecken (z. B. während der Text bearbeitet wird) */
+  versteckt?: boolean;
+  /** Text so anzeigen, wie er gerade eingegeben wurde */
+  text?: { inhalt: string; art: "schreibmaschine" | "textfeld"; punkt: Punkt; rechteck?: Rechteck; stil: Stil };
+  /** Darstellungskennung vor der Änderung – sobald eine andere geladen ist, entfällt die Vorschau */
+  alteV: string;
+}
+
 /** Bild, Unterschrift oder Stempel, der gerade platziert wird */
 export interface Platzierung {
   art: "bild" | "unterschrift";
@@ -108,6 +121,8 @@ export interface Zustand {
   platzieren: Platzierung | null;
   /** gewählte Stempelvorlage (Index in den Einstellungen) */
   stempelVorlage: number;
+  /** Vorschau geänderter Anmerkungen, Schlüssel „dokId:id“ (neu: „dokId:neu:seite“) */
+  anmVorschau: Record<string, AnmVorschau>;
   /** zuletzt aufgenommener Screenshot (Hinweiskarte) */
   screenshot: { png: string; pdf: string | null; text: string; nonce: number } | null;
   /** markierter Text (Wortindizes) für Kopieren/Hervorheben */
@@ -148,6 +163,7 @@ let zustand: Zustand = {
   stempelVorlage: 0,
   textAuswahl: null,
   screenshot: null,
+  anmVorschau: {},
   register: "start",
   werkzeug: "hand",
   werkzeugFixiert: false,

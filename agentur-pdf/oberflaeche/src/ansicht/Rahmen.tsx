@@ -158,7 +158,14 @@ export function Eigenschaftsleiste() {
   const vorlage = useZustand((z) => z.stempelVorlage);
 
   const art = editor?.art ?? (auswahl && anm ? anm.art : werkzeug);
-  if (werkzeug === "hand" && !anm && !editor) return null;
+  if (werkzeug === "hand" && !anm && !editor) {
+    // Leiste bleibt immer stehen – sonst springt das Dokument bei jedem Werkzeugwechsel
+    return (
+      <div className="eigenschaftsleiste leer" role="toolbar" aria-label="Werkzeugeinstellungen">
+        <span className="leise">Hand: Seite verschieben · Anmerkung anklicken zum Auswählen · Doppelklick auf Text zum Bearbeiten</span>
+      </div>
+    );
+  }
   const steuerung = STEUERUNG[art] ?? {};
   const stil = editor
     ? editor.stil
