@@ -19,20 +19,29 @@ export interface Befehl {
   stichworte?: string[];
   beschreibung?: string;
   ausfuehren: () => void;
+  /** zusätzlich im Register „Start“ in dieser Gruppe zeigen (meistgenutzte Werkzeuge) */
+  start?: string;
+  startGross?: boolean;
+  /** Symbolfarbe (sonst nach Bereich) */
+  farbe?: string;
   aktiv?: (z: Zustand) => boolean; // ausgegraut, wenn false (z. B. kein Dokument)
   gewaehlt?: (z: Zustand) => boolean; // als „eingedrückt“ darstellen
 }
 
-export type RegisterId = "start" | "seiten" | "kommentieren" | "bearbeiten" | "konvertieren" | "schuetzen";
+export type RegisterId = "start" | "ansicht" | "seiten" | "kommentieren" | "bearbeiten" | "konvertieren" | "schuetzen";
 
 export const REGISTER: { id: RegisterId; titel: string; geplant?: string }[] = [
   { id: "start", titel: "Start" },
-  { id: "seiten", titel: "Seiten" },
+  { id: "ansicht", titel: "Ansicht" },
   { id: "kommentieren", titel: "Kommentieren" },
   { id: "bearbeiten", titel: "Bearbeiten" },
+  { id: "seiten", titel: "Seiten" },
   { id: "konvertieren", titel: "Konvertieren" },
   { id: "schuetzen", titel: "Schützen" },
 ];
+
+/** Reihenfolge der Gruppen im Register „Start“ */
+export const START_GRUPPEN = ["Werkzeuge", "Zoom", "Kommentieren", "Bearbeiten", "Seiten", "PDF erstellen", "Schützen", "Suchen"];
 
 const befehle = new Map<string, Befehl>();
 
@@ -59,7 +68,8 @@ export function befehleSuchen(eingabe: string): Befehl[] {
       .toLowerCase()
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "")
-      .replace(/ß/g, "ss");
+      .replace(/ß/g, "ss")
+      .replace(/\u00AD/g, ""); // weiche Trennstriche in Beschriftungen
   const woerter = norm(eingabe).split(/\s+/).filter(Boolean);
   const liste = alleBefehle();
   if (!woerter.length) return liste;

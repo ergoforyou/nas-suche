@@ -8,7 +8,10 @@ import { OcrHinweis } from "./ansicht/OcrDialoge";
 import { textstatusBeobachten } from "./zustand/ocr";
 import { Menueband } from "./ansicht/Menueband";
 import { Eigenschaftsleiste, Meldungen, Passwortdialog, Statusleiste, Tabs } from "./ansicht/Rahmen";
-import { Seitenleiste } from "./ansicht/Seitenleiste";
+import { Panelleiste, Seitenleiste } from "./ansicht/Seitenleiste";
+import { Titelleiste } from "./ansicht/Titelleiste";
+import { EigenschaftenBereich } from "./ansicht/Eigenschaften";
+import { DateiMenue } from "./ansicht/DateiMenue";
 import { Startseite } from "./ansicht/Startseite";
 import { ScreenshotKarte } from "./ansicht/ScreenshotKarte";
 import { api } from "./api";
@@ -62,6 +65,7 @@ function kuerzelBefehl(e: KeyboardEvent, imFeld: boolean): string | undefined {
     return MIT_STRG[e.key.toLowerCase()];
   }
   if (e.key === "F4") return "oberflaeche.seitenleiste";
+  if (e.key === "F11") return "oberflaeche.eigenschaften";
   if (!imFeld && !e.altKey) return EINZELTASTEN[e.key.toLowerCase()];
   return undefined;
 }
@@ -72,6 +76,8 @@ export function App() {
   const seitenleisteBreite = useZustand((z) => z.seitenleiste.breite);
   const design = useZustand((z) => z.einstellungen?.design ?? "hell");
   const akzent = useZustand((z) => z.einstellungen?.akzentfarbe);
+  const rechtsOffen = useZustand((z) => z.rechtsOffen);
+  const hatDokumente = useZustand((z) => z.dokumente.length > 0);
   const [ablage, setAblage] = useState(false);
   const ablageZaehler = useRef(0);
 
@@ -200,19 +206,25 @@ export function App() {
         void dateienOeffnen([...e.dataTransfer.files]);
       }}
     >
-      <Tabs />
+      <Titelleiste />
       <Menueband />
       <Eigenschaftsleiste />
       <main className="hauptbereich">
+        <Panelleiste />
         {seitenleisteOffen && <Seitenleiste />}
         {seitenleisteOffen && <Trennlinie breite={seitenleisteBreite} />}
         <section className="dokumentbereich">
-          <Dialoge />
-          <OcrHinweis />
-          {aktiv ? <Bereiche /> : <Startseite />}
+          {hatDokumente && <Tabs />}
+          <div className="dokument-flaeche">
+            <Dialoge />
+            <OcrHinweis />
+            {aktiv ? <Bereiche /> : <Startseite />}
+          </div>
         </section>
+        {rechtsOffen && aktiv && <EigenschaftenBereich />}
       </main>
       <Statusleiste />
+      <DateiMenue />
       <Befehlssuche />
       <Passwortdialog />
       <Auftraege />

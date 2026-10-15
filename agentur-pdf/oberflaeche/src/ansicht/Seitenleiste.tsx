@@ -11,37 +11,56 @@ import { ART_NAMEN, GRUPPEN_NAMEN, alleAnmerkungen, anmerkungenLoeschen, gruppeU
 import { anwenden } from "../zustand/seitenaktionen";
 
 const PANELS: { id: Seitenleistenpanel; titel: string; icon: typeof Files }[] = [
-  { id: "miniaturen", titel: "Seiten", icon: Files },
+  { id: "miniaturen", titel: "Seitenminiaturen", icon: Files },
   { id: "lesezeichen", titel: "Lesezeichen", icon: Bookmark },
   { id: "suche", titel: "Suche", icon: Search },
   { id: "kommentare", titel: "Kommentare", icon: MessageSquare },
   { id: "ebenen", titel: "Ebenen", icon: Layers3 },
 ];
 
+/** Senkrechte Leiste ganz links: Bereiche ein-/ausblenden */
+export function Panelleiste() {
+  const leiste = useZustand((z) => z.seitenleiste);
+  const geteilt = useZustand((z) => z.bereiche.length > 1);
+  const anzahlKommentare = useZustand((z) => (z.aktiv ? Object.values(z.anmerkungen[z.aktiv]?.seiten ?? {}).reduce((n, l) => n + l.length, 0) : 0));
+  const panels = geteilt ? PANELS.filter((p) => p.id !== "miniaturen") : PANELS;
+  return (
+    <nav className="panelleiste" aria-label="Bereiche">
+      {panels.map((p) => {
+        const an = leiste.offen && leiste.panel === p.id;
+        return (
+          <button
+            key={p.id}
+            className={an ? "gewaehlt" : ""}
+            aria-pressed={an}
+            title={p.titel}
+            aria-label={p.titel}
+            onClick={() => setzen((z) => ({ seitenleiste: { ...z.seitenleiste, offen: !an, panel: p.id } }))}
+          >
+            <p.icon size={18} strokeWidth={1.7} />
+            {p.id === "kommentare" && anzahlKommentare > 0 && <span className="panel-zahl">{anzahlKommentare}</span>}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function Seitenleiste() {
   const leiste = useZustand((z) => z.seitenleiste);
   const dok = useZustand((z) => aktivesDokument(z));
   // Nebeneinander: jeder Bereich hat seine eigene Miniaturleiste
   const geteilt = useZustand((z) => z.bereiche.length > 1);
-  const panels = geteilt ? PANELS.filter((p) => p.id !== "miniaturen") : PANELS;
   if (geteilt && leiste.panel === "miniaturen") return null;
+  const titel = PANELS.find((p) => p.id === leiste.panel)?.titel ?? "";
 
   return (
     <aside className="seitenleiste" style={{ width: leiste.breite }} aria-label="Seitenleiste">
-      <div className="seitenleiste-reiter" role="tablist">
-        {panels.map((p) => (
-          <button
-            key={p.id}
-            role="tab"
-            aria-selected={leiste.panel === p.id}
-            className={leiste.panel === p.id ? "gewaehlt" : ""}
-            onClick={() => setzen((z) => ({ seitenleiste: { ...z.seitenleiste, panel: p.id } }))}
-            title={p.titel}
-          >
-            <p.icon size={16} />
-            <span>{p.titel}</span>
-          </button>
-        ))}
+      <div className="bereich-kopf">
+        <span>{titel}</span>
+        <button aria-label="Bereich schließen" title="Bereich schließen" onClick={() => setzen((z) => ({ seitenleiste: { ...z.seitenleiste, offen: false } }))}>
+          <X size={14} />
+        </button>
       </div>
       <div className="seitenleiste-inhalt">
         {leiste.panel === "miniaturen" && dok && <Miniaturen dok={dok} groesse={leiste.miniGroesse} />}

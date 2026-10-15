@@ -186,6 +186,8 @@ export const api = {
   screenshotAusBild: (bild: Blob) => anfrage<{ png: string; pdf: string | null; text: string }>("POST", "/api/screenshot/verarbeiten", bild),
   ordnerZeigen: (pfad: string) => anfrage("POST", "/api/system/ordner_zeigen", { pfad }),
   textSpeichern: (id: string, pfad: string) => anfrage<{ pfad: string }>("POST", `/api/dokumente/${id}/text`, { pfad }),
+  wasserzeichen: (id: string, daten: Record<string, unknown>) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/wasserzeichen`, daten),
+  kopfFuss: (id: string, daten: Record<string, unknown>) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/kopf_fuss`, daten),
   formular: (id: string) => anfrage<Record<string, Formularfeld[]>>("GET", `/api/dokumente/${id}/formular`),
   formularSetzen: (id: string, feld: number, seite: number, wert: string | boolean) =>
     anfrage<Aenderungsantwort>("PUT", `/api/dokumente/${id}/formular/${feld}`, { seite, wert }),

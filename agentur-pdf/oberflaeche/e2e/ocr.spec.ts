@@ -7,7 +7,7 @@ const H = { "X-Agentur-Token": "e2e" };
 
 async function oeffnen(page: Page, name: string) {
   const auswahl = page.waitForEvent("filechooser");
-  await page.locator('[data-befehl="datei.oeffnen"]').click();
+  await page.locator('[data-befehl="schnell.datei.oeffnen"]').click();
   await (await auswahl).setFiles(join(DATEN, name));
   await expect(page.locator(".tab.aktiv")).toContainText(name);
 }
@@ -31,7 +31,7 @@ test("Scan ohne Text: Hinweis → Texterkennung → durchsuchbar", async ({ page
   await expect(page.locator(".suche-status")).toContainText("2 Treffer");
   await expect(page.locator(".treffer.aktiv")).toBeVisible();
   // Rückgängig entfernt die Textebene wieder
-  await expect(page.locator('[data-befehl="bearbeiten.rueckgaengig"]')).toBeEnabled();
+  await expect(page.locator('[data-befehl="schnell.bearbeiten.rueckgaengig"]')).toBeEnabled();
 });
 
 test("Text aus Bereich wird erkannt und angezeigt", async ({ page }) => {

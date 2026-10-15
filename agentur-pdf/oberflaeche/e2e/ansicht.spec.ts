@@ -48,7 +48,7 @@ async function sichtbarGeladenMs(page: Page): Promise<number> {
 test("Startet mit 150-seitigem Dokument ohne Fehler", async ({ page }) => {
   const fehler = await bereit(page);
   await expect(page.locator(".tab.aktiv")).toContainText("150_seiten.pdf");
-  await expect(page.locator(".seitenwahl")).toContainText("von 150");
+  await expect(page.locator(".seitenwahl")).toContainText("/ 150");
   await expect(page.locator(".miniatur").first()).toBeVisible();
   expect(fehler).toEqual([]);
 });
@@ -144,6 +144,7 @@ test("Seitenzahl eingeben und Ansicht drehen", async ({ page }) => {
   await feld.press("Enter");
   await expect(page.locator('.seite-inhalt[data-seite="119"]')).toBeVisible();
   await page.getByTestId("dokumentansicht").click();
+  await page.locator(".mb-reiter").getByRole("tab", { name: "Ansicht" }).click();
   await page.locator('[data-befehl="ansicht.rechts_drehen"]').click();
   const seite = page.locator(".seite").first();
   const b = (await seite.boundingBox())!;

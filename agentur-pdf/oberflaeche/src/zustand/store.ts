@@ -85,6 +85,8 @@ export type Dialog =
   | { art: "foto"; dokId: string | null; seite: number | null }
   | { art: "stempel" }
   | { art: "bilderexport"; dokId: string }
+  | { art: "wasserzeichen"; dokId: string }
+  | { art: "kopffuss"; dokId: string }
   | { art: "leerseiten"; dokId: string; seiten: number[] }
   | { art: "ungespeichert"; dokId: string; weiter: () => void }
   | { art: "zusammenfuehren"; eintraege: ZfEintrag[] }
@@ -121,6 +123,12 @@ export interface Zustand {
   platzieren: Platzierung | null;
   /** gewählte Stempelvorlage (Index in den Einstellungen) */
   stempelVorlage: number;
+  /** rechter Bereich „Eigenschaften“ offen */
+  rechtsOffen: boolean;
+  /** Datei-Menü (Backstage) offen */
+  dateiMenue: boolean;
+  /** Menüband eingeklappt (nur Register sichtbar) */
+  menuebandKlein: boolean;
   /** Vorschau geänderter Anmerkungen, Schlüssel „dokId:id“ (neu: „dokId:neu:seite“) */
   anmVorschau: Record<string, AnmVorschau>;
   /** zuletzt aufgenommener Screenshot (Hinweiskarte) */
@@ -164,6 +172,9 @@ let zustand: Zustand = {
   textAuswahl: null,
   screenshot: null,
   anmVorschau: {},
+  rechtsOffen: true,
+  dateiMenue: false,
+  menuebandKlein: false,
   register: "start",
   werkzeug: "hand",
   werkzeugFixiert: false,

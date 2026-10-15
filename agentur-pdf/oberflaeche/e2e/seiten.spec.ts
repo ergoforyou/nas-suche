@@ -5,7 +5,7 @@ import { DATEN, start } from "./hilfen";
 /** Datei über „Öffnen“ (Browser-Dateiauswahl → Upload) öffnen. */
 async function oeffnen(page: Page, name: string) {
   const auswahl = page.waitForEvent("filechooser");
-  await page.locator('[data-befehl="datei.oeffnen"]').click();
+  await page.locator('[data-befehl="schnell.datei.oeffnen"]').click();
   await (await auswahl).setFiles(join(DATEN, name));
   await expect(page.locator(".tab.aktiv")).toContainText(name);
 }
@@ -100,7 +100,7 @@ test("Umsortieren per Drag & Drop, Löschen mit Entf, Drehen per Rechtsklick", a
   // Seite 2 markieren und mit Entf löschen
   await mini.locator('.miniatur[data-seite="1"]').click();
   await page.keyboard.press("Delete");
-  await expect(page.locator(".seitenwahl")).toContainText("von 4");
+  await expect(page.locator(".seitenwahl")).toContainText("/ 4");
   await expect(page.locator(".meldung")).toContainText("gelöscht");
 
   // Rechtsklick → Rechts drehen
@@ -112,7 +112,7 @@ test("Umsortieren per Drag & Drop, Löschen mit Entf, Drehen per Rechtsklick", a
   // zweimal rückgängig: Drehung und Löschen
   await page.keyboard.press("Control+z");
   await page.keyboard.press("Control+z");
-  await expect(page.locator(".seitenwahl")).toContainText("von 5");
+  await expect(page.locator(".seitenwahl")).toContainText("/ 5");
 });
 
 test("Leerseiten aus Duplex-Scan finden und entfernen", async ({ page }) => {
@@ -123,7 +123,7 @@ test("Leerseiten aus Duplex-Scan finden und entfernen", async ({ page }) => {
   await expect(page.locator(".hinweisleiste")).toContainText("3 Leerseiten gefunden");
   await expect(page.getByTestId("miniaturen").locator(".miniatur.markiert").first()).toBeVisible();
   await page.getByRole("button", { name: "3 Seiten entfernen" }).click();
-  await expect(page.locator(".seitenwahl")).toContainText("von 3");
+  await expect(page.locator(".seitenwahl")).toContainText("/ 3");
 });
 
 test("Teilen-Dialog öffnet Teile als neue Dokumente", async ({ page }) => {

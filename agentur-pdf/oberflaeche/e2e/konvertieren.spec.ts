@@ -40,18 +40,18 @@ test("T1: PDF, JPG und DOCX über den Dialog zusammenführen (≤ 10 s, richtige
   console.log(`T1: Zusammenführen bis Anzeige ${dauer} ms`);
   expect(dauer).toBeLessThan(10_000);
   await expect(dialog).toBeHidden();
-  await expect(page.locator(".seitenwahl")).toContainText("von 5");
+  await expect(page.locator(".seitenwahl")).toContainText("/ 5");
   expect(await seiteMit(page, "brief (zusammengeführt).pdf", "Versicherungsschein")).toEqual([0, 1, 2]);
   expect(await seiteMit(page, "brief (zusammengeführt).pdf", "Familie Weiß")).toEqual([4]);
   // Lesezeichen je Datei
-  await page.getByRole("tab", { name: "Lesezeichen" }).click();
+  await page.getByRole("button", { name: "Lesezeichen", exact: true }).click();
   await expect(page.locator(".lesezeichen .eintrag")).toContainText(["brief", "foto", "anschreiben"]);
   await expect(page.locator(".tab.aktiv .geaendert-punkt")).toBeVisible();
 });
 
 test("Reihenfolge per Drag & Drop im Dialog", async ({ page }) => {
   await start(page);
-  await page.locator('[data-befehl="datei.oeffnen"]').waitFor();
+  await page.locator('[data-befehl="schnell.datei.oeffnen"]').waitFor();
   // Explorer-Übergabe simulieren (wie Rechtsklick → „Zu einer PDF zusammenführen“)
   await page.request.post("/api/extern", {
     headers: H,
@@ -68,13 +68,13 @@ test("Reihenfolge per Drag & Drop im Dialog", async ({ page }) => {
   await expect(namen).toHaveText(["foto.jpg", "brief.pdf", "a.pdf"], { timeout: 5000 });
   await dialog.getByRole("button", { name: "Zusammenführen" }).click();
   await expect(page.locator(".tab.aktiv")).toContainText("foto (zusammengeführt).pdf", { timeout: 10_000 });
-  await expect(page.locator(".seitenwahl")).toContainText("von 9");
+  await expect(page.locator(".seitenwahl")).toContainText("/ 9");
 });
 
 test("Word-Datei direkt öffnen wird im Hintergrund umgewandelt", async ({ page }) => {
   await start(page);
   const auswahl = page.waitForEvent("filechooser");
-  await page.locator('[data-befehl="datei.oeffnen"]').click();
+  await page.locator('[data-befehl="schnell.datei.oeffnen"]').click();
   await (await auswahl).setFiles(join(DATEN, "anschreiben.docx"));
   await expect(page.locator(".tab.aktiv")).toContainText("anschreiben.pdf", { timeout: 10_000 });
   expect(await seiteMit(page, "anschreiben.pdf", "Familie Weiß")).toEqual([0]);

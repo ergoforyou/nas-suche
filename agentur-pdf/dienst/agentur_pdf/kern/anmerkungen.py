@@ -614,7 +614,7 @@ def aendern(doc: pymupdf.Document, seite_nr: int, xref: int, aenderung: dict, au
             annot.set_border(width=max(0.0, float(aenderung["breite"])))
         if aenderung.get("deckkraft") is not None:
             optionen["opacity"] = max(0.05, min(1.0, float(aenderung["deckkraft"])))
-        annot.set_info(title=annot.info.get("title") or autor, modDate=pymupdf.get_pdf_now())
+        annot.set_info(title=aenderung.get("autor", annot.info.get("title") or autor), modDate=pymupdf.get_pdf_now())
         annot.update(**optionen)
         doc.xref_set_key(xref, "CL", "null")
         return xref
@@ -634,7 +634,7 @@ def aendern(doc: pymupdf.Document, seite_nr: int, xref: int, aenderung: dict, au
     info = annot.info
     annot.set_info(
         content=aenderung.get("inhalt", info.get("content", "")),
-        title=info.get("title") or autor,
+        title=aenderung.get("autor", info.get("title") or autor),
         modDate=pymupdf.get_pdf_now(),
     )
     annot.update()

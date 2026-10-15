@@ -11,7 +11,7 @@ import { melden, setzen, werkzeugWaehlen } from "../zustand/store";
 registrieren(
   {
     id: "konvertieren.zusammenfuehren",
-    titel: "Zusammenführen",
+    titel: "Zusammen\u00ADführen",
     register: "konvertieren",
     gruppe: "PDF erstellen",
     icon: Layers,
@@ -46,7 +46,7 @@ registrieren(
   // -------------------------------------------------------- Texterkennung
   {
     id: "ocr.dokument",
-    titel: "Texterkennung",
+    titel: "Text\u00ADerkennung",
     register: "konvertieren",
     gruppe: "Texterkennung (OCR)",
     icon: ScanText,

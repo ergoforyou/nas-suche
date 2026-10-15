@@ -557,6 +557,56 @@ def einrichten(
         subprocess.Popen(["explorer", "/select,", ziel] if os.path.isfile(ziel) else ["explorer", ziel])  # noqa: S603,S607
         return {"ok": True}
 
+    # ======================================================= Seitengestaltung
+    @app.post("/api/dokumente/{dok_id}/wasserzeichen")
+    async def wasserzeichen(dok_id: str, daten: dict = Body(...)):
+        from ..kern import seitentext
+
+        def setzen():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Wasserzeichen einfügen", dok):
+                seiten = seitentext.wasserzeichen(
+                    dok.doc,
+                    str(daten.get("text", "")),
+                    daten.get("seiten"),
+                    daten.get("farbe") or "#C0262D",
+                    float(daten.get("deckkraft", 0.2)),
+                    float(daten.get("schriftgroesse") or 0),
+                    float(daten.get("winkel", 45)),
+                    daten.get("schrift") or "helvetica-fett",
+                )
+                for nr in seiten:
+                    dok.seite_geaendert(nr)
+            return len(seiten)
+
+        anzahl = await im_mupdf_thread(setzen)
+        return await antwort([dok_id], anzahl=anzahl)
+
+    @app.post("/api/dokumente/{dok_id}/kopf_fuss")
+    async def kopf_fuss(dok_id: str, daten: dict = Body(...)):
+        from ..kern import seitentext
+
+        def setzen():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Kopf-/Fußzeile einfügen", dok):
+                seiten = seitentext.kopf_fuss(
+                    dok.doc,
+                    dict(daten.get("felder") or {}),
+                    dok.titel,
+                    daten.get("seiten"),
+                    float(daten.get("schriftgroesse", 9)),
+                    daten.get("farbe") or "#333333",
+                    float(daten.get("rand_mm", 10)),
+                    daten.get("schrift") or "helvetica",
+                    int(daten.get("erste_nummer", 1)),
+                )
+                for nr in seiten:
+                    dok.seite_geaendert(nr)
+            return len(seiten)
+
+        anzahl = await im_mupdf_thread(setzen)
+        return await antwort([dok_id], anzahl=anzahl)
+
     # ============================================================= Formulare
     @app.get("/api/dokumente/{dok_id}/formular")
     async def formular(dok_id: str):

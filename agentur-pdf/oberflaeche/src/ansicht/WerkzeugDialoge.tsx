@@ -3,6 +3,8 @@
 // Foto aufbereiten, Stempel verwalten, Seiten als Bilder.
 
 import {
+  Droplet,
+  PanelTop,
   Camera,
   Eraser,
   FileArchive,
@@ -1065,6 +1067,146 @@ export function BilderExportDialog({ dokId }: { dokId: string }) {
         </button>
         <button type="submit" className="primaer">
           Speichern …
+        </button>
+      </div>
+    </Rahmen>
+  );
+}
+
+// ============================================================ Wasserzeichen
+export function WasserzeichenDialog({ dokId }: { dokId: string }) {
+  const [text, setText] = useState("KOPIE");
+  const [farbe, setFarbe] = useState("#C0262D");
+  const [deckkraft, setDeckkraft] = useState(20);
+  const [winkel, setWinkel] = useState(45);
+  const [bereich, setBereich] = useState<Bereich>("alle");
+  const [eigene, setEigene] = useState("");
+  return (
+    <Rahmen
+      titel="Wasserzeichen"
+      icon={<Droplet size={18} />}
+      breit="breit"
+      label="Wasserzeichen"
+      onSubmit={async () => {
+        const seiten = seitenErmitteln(dokId, bereich, eigene);
+        if (seiten === undefined) return;
+        const r = await aenderungAnwenden(api.wasserzeichen(dokId, { text, farbe, deckkraft: deckkraft / 100, winkel, seiten }));
+        if (r) {
+          schliessen();
+          melden(`Wasserzeichen auf ${r.anzahl} Seite(n) – Ebene „Wasserzeichen“ (ausblendbar). Strg+Z macht es rückgängig.`);
+        }
+      }}
+    >
+      <label className="feld">
+        Text
+        <input value={text} onChange={(e) => setText(e.target.value)} list="wz-vorschlaege" />
+        <datalist id="wz-vorschlaege">
+          {["KOPIE", "ENTWURF", "VERTRAULICH", "MUSTER", "ORIGINAL", "STORNIERT"].map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+      </label>
+      <div className="auswahl-zeile">
+        Farbe <input type="color" value={farbe} onChange={(e) => setFarbe(e.target.value)} aria-label="Farbe" />
+        Deckkraft
+        <input type="range" min={5} max={100} value={deckkraft} onChange={(e) => setDeckkraft(Number(e.target.value))} aria-label="Deckkraft" />
+        <span className="leise">{deckkraft} %</span>
+      </div>
+      <div className="auswahl-zeile">
+        Ausrichtung
+        <select value={winkel} onChange={(e) => setWinkel(Number(e.target.value))} aria-label="Ausrichtung">
+          <option value={45}>Diagonal</option>
+          <option value={0}>Waagerecht</option>
+          <option value={90}>Senkrecht</option>
+        </select>
+      </div>
+      <div className="wz-vorschau" aria-hidden>
+        <span style={{ color: farbe, opacity: deckkraft / 100, transform: `rotate(${-winkel}deg)` }}>{text}</span>
+      </div>
+      <SeitenWahl dokId={dokId} bereich={bereich} setBereich={setBereich} eigene={eigene} setEigene={setEigene} />
+      <div className="dialog-knoepfe">
+        <button type="button" onClick={schliessen}>
+          Abbrechen
+        </button>
+        <button type="submit" className="primaer" disabled={!text.trim()}>
+          Einfügen
+        </button>
+      </div>
+    </Rahmen>
+  );
+}
+
+// ========================================================= Kopf-/Fußzeile
+const POSITIONEN = [
+  ["oben_links", "Oben links"],
+  ["oben_mitte", "Oben Mitte"],
+  ["oben_rechts", "Oben rechts"],
+  ["unten_links", "Unten links"],
+  ["unten_mitte", "Unten Mitte"],
+  ["unten_rechts", "Unten rechts"],
+] as const;
+
+export function KopfFussDialog({ dokId }: { dokId: string }) {
+  const [felder, setFelder] = useState<Record<string, string>>({ unten_mitte: "Seite {seite} von {seiten}" });
+  const [schriftgroesse, setSchriftgroesse] = useState(9);
+  const [rand, setRand] = useState(10);
+  const [ersteNummer, setErsteNummer] = useState(1);
+  const [bereich, setBereich] = useState<Bereich>("alle");
+  const [eigene, setEigene] = useState("");
+  return (
+    <Rahmen
+      titel="Kopf- und Fußzeile, Seitenzahlen"
+      icon={<PanelTop size={18} />}
+      breit="sehr-breit"
+      label="Kopf- und Fußzeile"
+      onSubmit={async () => {
+        const seiten = seitenErmitteln(dokId, bereich, eigene);
+        if (seiten === undefined) return;
+        const r = await aenderungAnwenden(api.kopfFuss(dokId, { felder, schriftgroesse, rand_mm: rand, erste_nummer: ersteNummer, seiten }));
+        if (r) {
+          schliessen();
+          melden(`Kopf-/Fußzeile auf ${r.anzahl} Seite(n) – Ebene „Kopf- und Fußzeilen“. Strg+Z macht es rückgängig.`);
+        }
+      }}
+    >
+      <p className="leise">
+        Platzhalter: {"{seite}"}, {"{seiten}"}, {"{datum}"}, {"{zeit}"}, {"{datei}"}
+      </p>
+      <div className="kf-raster">
+        {POSITIONEN.map(([id, titel]) => (
+          <label key={id} className="feld">
+            {titel}
+            <input value={felder[id] ?? ""} onChange={(e) => setFelder({ ...felder, [id]: e.target.value })} placeholder="–" />
+          </label>
+        ))}
+      </div>
+      <div className="auswahl-zeile">
+        Schrift
+        <select value={schriftgroesse} onChange={(e) => setSchriftgroesse(Number(e.target.value))} aria-label="Schriftgröße">
+          {[7, 8, 9, 10, 11, 12, 14].map((g) => (
+            <option key={g} value={g}>
+              {g} pt
+            </option>
+          ))}
+        </select>
+        Abstand zum Rand
+        <select value={rand} onChange={(e) => setRand(Number(e.target.value))} aria-label="Randabstand">
+          {[5, 8, 10, 12, 15, 20].map((m) => (
+            <option key={m} value={m}>
+              {m} mm
+            </option>
+          ))}
+        </select>
+        Erste Seitenzahl
+        <input className="zahl" type="number" min={0} value={ersteNummer} onChange={(e) => setErsteNummer(Number(e.target.value))} aria-label="Erste Seitenzahl" />
+      </div>
+      <SeitenWahl dokId={dokId} bereich={bereich} setBereich={setBereich} eigene={eigene} setEigene={setEigene} />
+      <div className="dialog-knoepfe">
+        <button type="button" onClick={schliessen}>
+          Abbrechen
+        </button>
+        <button type="submit" className="primaer">
+          Einfügen
         </button>
       </div>
     </Rahmen>

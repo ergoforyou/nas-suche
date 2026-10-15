@@ -2505,3 +2505,758 @@ input[type="range"] {
 .eigenschaftsleiste.leer {
   background: var(--hg-leiste);
 }
+
+/* ===================================================================
+   Professionelles Erscheinungsbild (an PDF-XChange Editor angelehnt):
+   Titelleiste mit Schnellzugriff, Datei-Menü, dichtes Menüband mit
+   farbigen Symbolen, Dokument-Tabs über dem Dokument, Bereichsleiste
+   links, Eigenschaften rechts, Statusleiste mit Seitennavigation.
+   =================================================================== */
+:root {
+  --hg: #eef0f3;
+  --hg-leiste: #f7f8fa;
+  --hg-flaeche: #ffffff;
+  --hg-hover: #e4e8ee;
+  --hg-gedrueckt: #d7dde6;
+  --hg-dokument: #d9dde3;
+  --linie: #d9dde3;
+  --linie-stark: #bfc6d0;
+  --text: #1d232b;
+  --text-2: #4a5563;
+  --text-3: #7d8794;
+  --mb-auswahl: #dbe6f6;
+  --mb-auswahl-rand: #9ab6e0;
+  --titel-hg: #ffffff;
+  --radius: 3px;
+}
+
+:root[data-theme="dunkel"] {
+  --hg: #1f2227;
+  --hg-leiste: #262a30;
+  --hg-flaeche: #2d3239;
+  --hg-hover: #343a42;
+  --hg-gedrueckt: #3c434c;
+  --hg-dokument: #17191d;
+  --linie: #3a4048;
+  --linie-stark: #4a525c;
+  --text: #eef1f5;
+  --text-2: #b8c0ca;
+  --text-3: #87909b;
+  --mb-auswahl: #2f4560;
+  --mb-auswahl-rand: #4b6f9e;
+  --titel-hg: #22262b;
+}
+
+body {
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------ Titelleiste */
+.titelleiste {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px;
+  background: var(--titel-hg);
+  border-bottom: 1px solid var(--linie);
+  flex-shrink: 0;
+}
+
+.titel-logo {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--akzent);
+  color: #fff;
+}
+
+.schnellzugriff {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding-right: 8px;
+  border-right: 1px solid var(--linie);
+}
+
+.schnellzugriff button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border-radius: 3px;
+}
+
+.schnellzugriff button:hover:not(:disabled) {
+  background: var(--hg-hover);
+}
+
+.titel-text {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.titel-text strong {
+  font-weight: 600;
+}
+
+.titel-geaendert {
+  color: var(--akzent);
+}
+
+.titel-suche {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 260px;
+  max-width: 30vw;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 3px;
+  background: var(--hg-leiste);
+  color: var(--text-3);
+}
+
+.titel-suche span {
+  flex: 1;
+  text-align: left;
+}
+
+.titel-suche:hover {
+  border-color: var(--text-3);
+  background: var(--hg-flaeche);
+}
+
+.titelleiste .testversion {
+  margin-left: 0;
+}
+
+/* -------------------------------------------------------------- Menüband */
+.menueband {
+  background: var(--hg-flaeche);
+  border-bottom: 1px solid var(--linie);
+}
+
+.mb-reiter {
+  gap: 0;
+  padding: 0 6px;
+  height: 28px;
+  align-items: stretch;
+  background: var(--hg-leiste);
+  border-bottom: 1px solid var(--linie);
+}
+
+.mb-reiter > button[role="tab"] {
+  padding: 0 14px;
+  border-radius: 0;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-bottom: -1px;
+}
+
+.mb-reiter > button[role="tab"]:hover {
+  background: var(--hg-hover);
+}
+
+.mb-reiter > button.gewaehlt {
+  background: var(--hg-flaeche);
+  border-color: var(--linie);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mb-reiter > button.gewaehlt::after {
+  left: -1px;
+  right: -1px;
+  top: -1px;
+  bottom: auto;
+  height: 2px;
+  border-radius: 0;
+}
+
+.mb-datei {
+  padding: 0 18px;
+  margin: 3px 6px 3px 0;
+  border-radius: 3px;
+  background: var(--akzent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.mb-datei:hover,
+.mb-datei.offen {
+  filter: brightness(1.12);
+}
+
+.mb-einklappen {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  color: var(--text-3);
+}
+
+.mb-einklappen:hover {
+  color: var(--text);
+  background: var(--hg-hover);
+}
+
+.mb-leiste {
+  gap: 0;
+  padding: 3px 4px 0;
+  min-height: 0;
+  height: 92px;
+  background: var(--hg-flaeche);
+}
+
+.mb-gruppe {
+  padding: 0 4px;
+  position: relative;
+}
+
+.mb-gruppe::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--linie);
+}
+
+.mb-gruppe {
+  border-right: none;
+}
+
+.mb-gruppe-inhalt {
+  gap: 1px;
+  align-items: stretch;
+}
+
+.mb-gruppe-titel {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 1px 0 3px;
+  white-space: nowrap;
+}
+
+.mb-gross {
+  justify-content: flex-start;
+  gap: 3px;
+  min-width: 52px;
+  max-width: 96px;
+  padding: 4px 4px 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 11.5px;
+  line-height: 1.12;
+}
+
+.mb-gross svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.mb-klein {
+  gap: 5px;
+  padding: 2px 6px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+
+.mb-kleine {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 1px;
+}
+
+.mb-gross:hover:not(:disabled),
+.mb-klein:hover:not(:disabled) {
+  background: var(--hg-hover);
+  border-color: var(--linie-stark);
+}
+
+.mb-gross.gewaehlt,
+.mb-klein.gewaehlt {
+  background: var(--mb-auswahl);
+  border-color: var(--mb-auswahl-rand);
+  color: var(--text);
+}
+
+.mb-mehr .mb-gruppe-inhalt {
+  align-items: flex-start;
+}
+
+.menueband.klein .mb-reiter {
+  border-bottom: none;
+}
+
+/* --------------------------------------------------- Eigenschaftsleiste */
+.eigenschaftsleiste {
+  height: 32px;
+  background: var(--hg-leiste);
+  border-bottom: 1px solid var(--linie);
+  font-size: 12px;
+}
+
+.eigenschaftsleiste:not(.leer) {
+  background: color-mix(in srgb, var(--mb-auswahl) 55%, var(--hg-leiste));
+}
+
+/* ------------------------------------------------------- Hauptbereich */
+.dokumentbereich {
+  flex-direction: column;
+}
+
+.dokument-flaeche {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+
+/* Bereichsleiste links (senkrechte Symbole) */
+.panelleiste {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 36px;
+  padding: 4px 3px;
+  background: var(--hg-leiste);
+  border-right: 1px solid var(--linie);
+  flex-shrink: 0;
+}
+
+.panelleiste button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 32px;
+  border-radius: 3px;
+  color: var(--text-2);
+  border: 1px solid transparent;
+}
+
+.panelleiste button:hover {
+  background: var(--hg-hover);
+}
+
+.panelleiste button.gewaehlt {
+  background: var(--mb-auswahl);
+  border-color: var(--mb-auswahl-rand);
+  color: var(--text);
+}
+
+.panel-zahl {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--akzent);
+  color: #fff;
+  font-size: 9px;
+  line-height: 14px;
+  font-weight: 700;
+}
+
+.bereich-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  font-weight: 600;
+  font-size: 12px;
+  background: var(--hg-leiste);
+  border-bottom: 1px solid var(--linie);
+  flex-shrink: 0;
+}
+
+.bereich-kopf button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  color: var(--text-3);
+}
+
+.bereich-kopf button:hover {
+  background: var(--hg-hover);
+  color: var(--text);
+}
+
+.seitenleiste {
+  background: var(--hg-flaeche);
+}
+
+/* Dokument-Tabs über dem Dokument */
+.tabs {
+  height: 30px;
+  padding: 0 4px;
+  gap: 0;
+  align-items: stretch;
+  background: var(--hg);
+  border-bottom: 1px solid var(--linie);
+}
+
+.tab {
+  height: auto;
+  min-width: 110px;
+  max-width: 220px;
+  gap: 5px;
+  padding: 0 4px 0 10px;
+  border-radius: 0;
+  border-right: 1px solid var(--linie);
+  font-size: 12px;
+}
+
+.tab.aktiv {
+  background: var(--hg-flaeche);
+  box-shadow: none;
+  margin-bottom: -1px;
+}
+
+.tab.aktiv::before {
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 0;
+}
+
+.tab-symbol {
+  color: #c0262d;
+  flex-shrink: 0;
+}
+
+.tab-neu {
+  width: 30px;
+  height: auto;
+  border-radius: 0;
+}
+
+/* Eigenschaften rechts */
+.eigenschaften-bereich {
+  display: flex;
+  flex-direction: column;
+  width: 270px;
+  flex-shrink: 0;
+  background: var(--hg-flaeche);
+  border-left: 1px solid var(--linie);
+}
+
+.eig-inhalt-bereich {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.eig-abschnitt {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--linie);
+}
+
+.eig-abschnitt h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.eig-zeile {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.eig-titel {
+  color: var(--text-3);
+}
+
+.eig-wert {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.eig-wert input:not([type="range"]):not([type="color"]),
+.eig-wert select {
+  width: 100%;
+  padding: 2px 6px;
+}
+
+.eig-wert input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.eig-zahl {
+  width: 38px;
+  text-align: right;
+  color: var(--text-2);
+}
+
+.eig-farben {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.eig-farben .farbe {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+
+.eig-farben input[type="color"] {
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.eig-inhalt {
+  width: 100%;
+  font: 12px/1.4 var(--schrift);
+  padding: 6px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 3px;
+  background: var(--hg-flaeche);
+  color: var(--text);
+  resize: vertical;
+  user-select: text;
+}
+
+.eig-pfad {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.eig-knoepfe {
+  padding: 10px;
+}
+
+/* Statusleiste */
+.statusleiste {
+  height: 26px;
+  gap: 10px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.status-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+}
+
+.statusleiste .trenner {
+  width: 1px;
+  height: 16px;
+  background: var(--linie-stark);
+}
+
+.seitenwahl {
+  gap: 2px;
+}
+
+.seitenwahl button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  border-radius: 3px;
+}
+
+.seitenwahl button:hover:not(:disabled) {
+  background: var(--hg-hover);
+}
+
+.seitenwahl form {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 4px;
+}
+
+.seitenwahl input {
+  width: 42px;
+  height: 20px;
+  padding: 0 4px;
+}
+
+.modi button,
+.zoom > button {
+  width: 24px;
+  height: 20px;
+  border-radius: 3px;
+}
+
+.modi button.gewaehlt {
+  background: var(--mb-auswahl);
+  color: var(--text);
+  outline: 1px solid var(--mb-auswahl-rand);
+}
+
+.zoom input[type="range"] {
+  width: 110px;
+}
+
+.zoom-wert {
+  height: 20px;
+  width: 70px;
+}
+
+/* Datei-Menü (Backstage) */
+.datei-menue {
+  position: fixed;
+  inset: 34px 0 0 0;
+  z-index: 95;
+  display: flex;
+  background: var(--hg-flaeche);
+}
+
+.datei-links {
+  display: flex;
+  flex-direction: column;
+  width: 230px;
+  padding: 8px 0;
+  background: var(--akzent);
+  color: #fff;
+}
+
+.datei-links button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 22px;
+  font-size: 13px;
+  color: #fff;
+  text-align: left;
+}
+
+.datei-links button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.datei-links button:disabled {
+  opacity: 0.45;
+}
+
+.datei-links hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  margin: 6px 18px;
+}
+
+.datei-zurueck {
+  width: 44px;
+  height: 36px;
+  margin: 0 0 8px 10px;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  justify-content: center;
+}
+
+.datei-rechts {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 40px;
+}
+
+.datei-rechts h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.datei-zuletzt {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 900px;
+}
+
+.datei-zuletzt button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 3px;
+  text-align: left;
+}
+
+.datei-zuletzt button:hover:not(:disabled) {
+  background: var(--hg-hover);
+}
+
+.datei-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.datei-name strong {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.datei-name small {
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mb-gross span {
+  hyphens: manual;
+}
+
+.wz-vorschau {
+  height: 110px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--linie);
+  border-radius: 3px;
+  background: #fff;
+}
+
+.wz-vorschau span {
+  font: 700 34px Helvetica, Arial, sans-serif;
+  white-space: nowrap;
+}
+
+.kf-raster {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}

@@ -1,6 +1,22 @@
 // Tabs, Eigenschaftsleiste, Statusleiste, Meldungen, Passwortdialog.
 
-import { BookOpen, ChevronsDown, Columns2, FileText, Lock, Minus, Pin, Plus, RectangleVertical, Trash2, X } from "lucide-react";
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsDown,
+  ChevronsLeft,
+  ChevronsRight,
+  Columns2,
+  FileText,
+  Lock,
+  Minus,
+  Pin,
+  Plus,
+  RectangleVertical,
+  Trash2,
+  X,
+} from "lucide-react";
 import { ART_NAMEN, auswahlLoeschen, FARBEN, stilAendern, stilFuer } from "../zustand/anmerkungen";
 import { useEffect, useRef, useState } from "react";
 import { dokumentSchliessen, oeffnenDialog } from "../zustand/aktionen";
@@ -31,13 +47,6 @@ export function Tabs() {
 
   return (
     <div className="tabs" role="tablist" aria-label="Geöffnete Dokumente">
-      <div className="tabs-logo" aria-hidden>
-        <FileText size={16} />
-        <span>Agentur-PDF</span>
-        <button className="testversion" title="Testversion – Einrichtung und Version anzeigen" onClick={() => setzen({ dialog: { art: "info" } })}>
-          Testversion
-        </button>
-      </div>
       {dokumente.map((d, i) => (
         <div
           key={d.id}
@@ -66,6 +75,7 @@ export function Tabs() {
             setTabMenue({ x: e.clientX, y: e.clientY, id: d.id });
           }}
         >
+          <FileText size={13} className="tab-symbol" />
           {d.verschluesselt && <Lock size={12} />}
           <span className="tab-titel">{d.titel}</span>
           {d.geaendert && <span className="geaendert-punkt" title="Ungespeicherte Änderungen" />}
@@ -327,30 +337,48 @@ export function Statusleiste() {
   useEffect(() => setSeitenEingabe(String(seite)), [seite]);
   useEffect(() => setZoomEingabe(`${zoomProzent} %`), [zoomProzent]);
 
-  if (!dok) return <footer className="statusleiste" />;
+  if (!dok) return <footer className="statusleiste"><span className="leise">Bereit</span></footer>;
+  const s = dok.seiten[dok.ansicht.seite];
+  const mm = (pt: number) => Math.round((pt / 72) * 25.4);
+  const gehe = (n: number) => springen(dok.id, Math.max(0, Math.min(dok.seitenanzahl - 1, n)));
 
   return (
     <footer className="statusleiste">
-      <form
-        className="seitenwahl"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const n = parseInt(seitenEingabe, 10);
-          if (n >= 1 && n <= dok.seitenanzahl) springen(dok.id, n - 1);
-          else setSeitenEingabe(String(seite));
-        }}
-      >
-        Seite
-        <input
-          aria-label="Seitenzahl"
-          value={seitenEingabe}
-          onChange={(e) => setSeitenEingabe(e.target.value)}
-          onFocus={(e) => e.target.select()}
-          size={4}
-        />
-        von {dok.seitenanzahl}
-      </form>
+      <span className="status-info" title="Seitenformat">
+        {s ? `${mm(s.breite)} × ${mm(s.hoehe)} mm` : ""}
+      </span>
+      {dok.schutz && dok.schutz !== "keiner" && (
+        <span className="status-info" title="Kennwortschutz beim Speichern">
+          <Lock size={12} /> geschützt
+        </span>
+      )}
       <span className="abstand" />
+      <div className="seitenwahl" role="group" aria-label="Seite">
+        <button aria-label="Erste Seite" title="Erste Seite (Pos1)" disabled={seite <= 1} onClick={() => gehe(0)}>
+          <ChevronsLeft size={14} />
+        </button>
+        <button aria-label="Vorige Seite" title="Vorige Seite (Bild auf)" disabled={seite <= 1} onClick={() => gehe(seite - 2)}>
+          <ChevronLeft size={14} />
+        </button>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const n = parseInt(seitenEingabe, 10);
+            if (n >= 1 && n <= dok.seitenanzahl) springen(dok.id, n - 1);
+            else setSeitenEingabe(String(seite));
+          }}
+        >
+          <input aria-label="Seitenzahl" value={seitenEingabe} onChange={(e) => setSeitenEingabe(e.target.value)} onFocus={(e) => e.target.select()} size={3} />
+          <span> / {dok.seitenanzahl}</span>
+        </form>
+        <button aria-label="Nächste Seite" title="Nächste Seite (Bild ab)" disabled={seite >= dok.seitenanzahl} onClick={() => gehe(seite)}>
+          <ChevronRight size={14} />
+        </button>
+        <button aria-label="Letzte Seite" title="Letzte Seite (Ende)" disabled={seite >= dok.seitenanzahl} onClick={() => gehe(dok.seitenanzahl - 1)}>
+          <ChevronsRight size={14} />
+        </button>
+      </div>
+      <span className="trenner" />
       <div className="modi" role="radiogroup" aria-label="Seitenanzeige">
         {MODI.map((m) => (
           <button
@@ -365,6 +393,7 @@ export function Statusleiste() {
           </button>
         ))}
       </div>
+      <span className="trenner" />
       <div className="zoom">
         <button aria-label="Verkleinern" title="Verkleinern (Strg+-)" onClick={() => zoomSchritt(-1)}>
           <Minus size={14} />
@@ -391,12 +420,18 @@ export function Statusleiste() {
           <input
             className="zoom-wert"
             aria-label="Zoom in Prozent"
+            list="zoom-stufen"
             value={zoomEingabe}
             onChange={(e) => setZoomEingabe(e.target.value)}
             onFocus={(e) => e.target.select()}
             onBlur={() => setZoomEingabe(`${zoomProzent} %`)}
             size={6}
           />
+          <datalist id="zoom-stufen">
+            {[25, 50, 75, 100, 125, 150, 200, 300, 400, 800].map((z) => (
+              <option key={z} value={`${z} %`} />
+            ))}
+          </datalist>
         </form>
       </div>
     </footer>

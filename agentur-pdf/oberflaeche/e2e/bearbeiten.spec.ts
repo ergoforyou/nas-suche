@@ -10,7 +10,7 @@ const BILDER = process.env.E2E_BILDER; // optional: Ordner für Bildschirmfotos
 
 async function oeffnen(page: Page, name: string) {
   const auswahl = page.waitForEvent("filechooser");
-  await page.locator('[data-befehl="datei.oeffnen"]').click();
+  await page.locator('[data-befehl="schnell.datei.oeffnen"]').click();
   await (await auswahl).setFiles(join(DATEN, name));
   await expect(page.locator(".tab.aktiv")).toContainText(name);
   await expect(page.locator(".seite-bild").first()).toBeVisible();
@@ -389,4 +389,25 @@ test("Text springt beim Bearbeiten und Verschieben nicht", async ({ page }) => {
   expect(geschubst.x).toBeGreaterThan(gespeichert.x + 1);
   const liste = await anmerkungen(page, dokId);
   expect(liste["0"].length).toBe(1);
+});
+
+test("Wasserzeichen und Seitenzahlen einfügen", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "brief.pdf");
+  const dokId = await aktivesDok(page);
+  await register(page, "Bearbeiten");
+  await page.locator('[data-befehl="seitengestaltung.wasserzeichen"]').click();
+  let dialog = page.getByRole("dialog", { name: "Wasserzeichen" });
+  await dialog.getByLabel("Text").fill("KOPIE");
+  await dialog.getByRole("button", { name: "Einfügen" }).click();
+  await expect(page.locator(".meldung")).toContainText("Wasserzeichen auf");
+  await page.locator('[data-befehl="seitengestaltung.kopffuss"]').click();
+  dialog = page.getByRole("dialog", { name: "Kopf- und Fußzeile" });
+  await expect(dialog.getByLabel("Unten Mitte")).toHaveValue("Seite {seite} von {seiten}");
+  await dialog.getByRole("button", { name: "Einfügen" }).click();
+  await expect(page.locator(".meldung")).toContainText("Kopf-/Fußzeile auf");
+  await foto(page, "wasserzeichen");
+  const text = await (await page.request.get(`/api/dokumente/${dokId}/text`, { headers: H })).text();
+  expect(text).toContain("KOPIE");
+  expect(text).toMatch(/Seite 1 von \d/);
 });

@@ -18,6 +18,8 @@ import {
   KomprimierenDialog,
   SchwaerzenDialog,
   StempelDialog,
+  WasserzeichenDialog,
+  KopfFussDialog,
 } from "./WerkzeugDialoge";
 
 export function Dialoge() {
@@ -39,6 +41,8 @@ export function Dialoge() {
   if (dialog.art === "foto") return <FotoDialog dokId={dialog.dokId} seite={dialog.seite} />;
   if (dialog.art === "stempel") return <StempelDialog />;
   if (dialog.art === "bilderexport") return <BilderExportDialog dokId={dialog.dokId} />;
+  if (dialog.art === "wasserzeichen") return <WasserzeichenDialog dokId={dialog.dokId} />;
+  if (dialog.art === "kopffuss") return <KopfFussDialog dokId={dialog.dokId} />;
   return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
 }
 

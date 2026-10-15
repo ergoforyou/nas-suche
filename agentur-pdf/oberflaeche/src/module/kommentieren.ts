@@ -3,6 +3,8 @@
 
 import {
   ArrowUpRight,
+  Droplet,
+  PanelTop,
   Camera,
   Circle,
   EyeOff,
@@ -192,6 +194,38 @@ registrieren(
     stichworte: ["weißen", "überdecken", "korrektur", "tipp-ex", "whiteout"],
     beschreibung: "Bereich weiß überdecken (z. B. um danach neu zu beschriften). Zum sicheren Entfernen: Schwärzen.",
   }),
+  {
+    id: "seitengestaltung.wasserzeichen",
+    titel: "Wasserzeichen",
+    register: "bearbeiten",
+    gruppe: "Seitengestaltung",
+    icon: Droplet,
+    gross: true,
+    farbe: "#C0262D",
+    stichworte: ["kopie", "entwurf", "vertraulich", "muster", "hintergrundtext"],
+    beschreibung: "Großen, halbtransparenten Text (z. B. KOPIE) über die Seiten legen – auf eigener Ebene.",
+    ausfuehren: () => {
+      const d = holen().aktiv;
+      if (d) setzen({ dialog: { art: "wasserzeichen", dokId: d } });
+    },
+    aktiv: mitDokument,
+  },
+  {
+    id: "seitengestaltung.kopffuss",
+    titel: "Kopf-/Fußzeile",
+    register: "bearbeiten",
+    gruppe: "Seitengestaltung",
+    icon: PanelTop,
+    gross: true,
+    farbe: "#1F5BAA",
+    stichworte: ["seitenzahlen", "nummerieren", "paginieren", "seite von", "fußzeile", "kopfzeile", "datum"],
+    beschreibung: "Seitenzahlen, Datum oder Dateiname oben/unten auf die Seiten setzen.",
+    ausfuehren: () => {
+      const d = holen().aktiv;
+      if (d) setzen({ dialog: { art: "kopffuss", dokId: d } });
+    },
+    aktiv: mitDokument,
+  },
   {
     id: "dokument.eigenschaften",
     titel: "Eigenschaften",

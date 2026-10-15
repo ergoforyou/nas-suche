@@ -7,6 +7,9 @@ import "./module/seiten";
 import "./module/konvertieren";
 import "./module/kommentieren";
 import "./module/schuetzen";
+import { startEinrichten } from "./befehle/darstellung";
+
+startEinrichten();
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
