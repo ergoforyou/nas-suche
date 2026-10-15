@@ -284,10 +284,12 @@ HTMLInputElement.prototype.click = function () {
   const picker = window.__testPicker ?? (Capacitor.isNativePlatform() ? FilePicker : null);
   if (this.type !== 'file' || !picker) return nativeClick.call(this);
   pickInto(this, picker).catch((e) => {
-    if (!/cancel/i.test(String(e?.message ?? e))) {
-      console.warn('Dateiauswahl:', e);
-      nativeClick.call(this);
-    }
+    const msg = String(e?.message ?? e);
+    if (/cancel/i.test(msg)) return;
+    console.warn('Dateiauswahl:', e);
+    // sichtbar machen, damit Probleme auf dem Handy erkennbar sind
+    const st = document.getElementById('status');
+    if (st) st.textContent = `Dateiauswahl nicht möglich: ${msg}`;
   });
 };
 

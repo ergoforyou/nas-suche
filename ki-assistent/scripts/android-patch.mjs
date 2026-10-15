@@ -16,6 +16,22 @@ const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 
 const gradle = path.join(root, 'android/app/build.gradle');
 let g = fs.readFileSync(gradle, 'utf8');
 const [maj, min, pat] = version.split('.').map(Number);
+// Fester Test-Signierschlüssel: Sonst signiert jeder Build mit einem neuen Zufallsschlüssel, und Android
+// verweigert das Update über die vorherige Version.
+if (!g.includes('android-test.keystore')) {
+  g = g.replace(
+    /android \{/,
+    `android {
+    signingConfigs {
+        debug {
+            storeFile file('../../scripts/android-test.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }`,
+  );
+}
 g = g.replace(/versionCode \d+/, `versionCode ${maj * 10000 + min * 100 + pat}`).replace(/versionName "[^"]*"/, `versionName "${version}"`);
 fs.writeFileSync(gradle, g);
 console.log('Android-Manifest und Version angepasst:', version);

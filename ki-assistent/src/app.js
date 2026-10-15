@@ -13,6 +13,7 @@ import { debugVoice, synthesize, piperState } from './piper.js';
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
 const MOBILE = desktop.platform === 'android';
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
 // "lokal" = Ausgabe ganz ohne Cloud-Funktionen, "cloud" = mit Claude/ChatGPT/OpenAI-Stimme
 const EDITION = desktop.edition ?? 'cloud';
 const LOCAL_ONLY = EDITION === 'lokal';
@@ -1262,6 +1263,7 @@ function fillSettings() {
   $('sModel').value = s.sttModel;
   $('sLang').value = ['german', 'english'].includes(s.sttLang) ? s.sttLang : 'persona';
   $('sHandsFree').checked = s.handsFree;
+  $('appVersion').textContent = `KI-Assistent ${APP_VERSION}${MOBILE ? ' (Android)' : ''}`;
   $('sEngineWrap').hidden = !desktop.transcribeCloud;
   $('sEngine').value = s.sttEngine;
   $('sBargeIn').checked = s.bargeIn;

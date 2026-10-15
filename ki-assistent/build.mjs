@@ -17,7 +17,10 @@ fs.mkdirSync(dist, { recursive: true });
 await build({
   entryPoints: { app: MOBILE ? 'src/mobile/main.js' : 'src/app.js', 'stt-worker': 'src/stt-worker.js' },
   // Android: Modelle direkt von Hugging Face (auf dem PC über den Hauptprozess)
-  define: MOBILE ? { __HF_BASE__: '"https://huggingface.co/"' } : {},
+  define: {
+    __APP_VERSION__: JSON.stringify(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version),
+    ...(MOBILE ? { __HF_BASE__: '"https://huggingface.co/"' } : {}),
+  },
   outdir: dist,
   bundle: true,
   format: 'esm',
