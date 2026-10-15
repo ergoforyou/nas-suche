@@ -32,9 +32,9 @@ import {
 import { auswahlSetzen, holen, springen } from "../zustand/store";
 import type { Dokument } from "../typen";
 import { Kontextmenue, type MenuePunkt } from "./Kontextmenue";
+import { istSeitenDrag, laufenderSeitenDrag, seitenDragDaten, seitenDragStarten } from "../zustand/seitenDrag";
 
 const MINI_ABSTAND = 34; // Platz für Seitenzahl + Rand
-const DND_TYP = "application/x-agentur-pdf-seiten";
 
 interface Position {
   x: number;
@@ -43,9 +43,6 @@ interface Position {
   h: number;
 }
 
-/** Zieldaten, solange ein Drag aus einer Miniaturleiste läuft (dataTransfer ist
- * während dragover nicht lesbar). */
-let laufenderDrag: { dokId: string; seiten: number[] } | null = null;
 
 export function Miniaturen({ dok, groesse }: { dok: Dokument; groesse: number }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -163,13 +160,13 @@ export function Miniaturen({ dok, groesse }: { dok: Dokument; groesse: number })
   };
 
   const istDateiDrag = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
-  const istSeitenDrag = (e: React.DragEvent) => [...e.dataTransfer.types].includes(DND_TYP);
 
   const dragOver = (e: React.DragEvent) => {
     if (!istSeitenDrag(e) && !istDateiDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
-    const fremd = laufenderDrag !== null && laufenderDrag.dokId !== dok.id;
+    const laufend = laufenderSeitenDrag();
+    const fremd = laufend !== null && laufend.dokId !== dok.id;
     const kopieren = istDateiDrag(e) || (fremd && (e.ctrlKey || e.metaKey));
     e.dataTransfer.dropEffect = kopieren ? "copy" : "move";
     const index = ablageIndex(e);
@@ -188,8 +185,8 @@ export function Miniaturen({ dok, groesse }: { dok: Dokument; groesse: number })
     const index = ablageIndex(e);
     setAblage(null);
     if (istSeitenDrag(e)) {
-      const daten = JSON.parse(e.dataTransfer.getData(DND_TYP)) as { dokId: string; seiten: number[] };
-      laufenderDrag = null;
+      const daten = seitenDragDaten(e);
+      if (!daten) return;
       if (daten.dokId === dok.id) void seitenVerschieben(dok.id, daten.seiten, index);
       else void seitenUebertragen(daten.dokId, daten.seiten, dok.id, index, !(e.ctrlKey || e.metaKey));
     } else if (e.dataTransfer.files.length) {
@@ -200,9 +197,7 @@ export function Miniaturen({ dok, groesse }: { dok: Dokument; groesse: number })
   const dragStart = (i: number, e: React.DragEvent) => {
     const seiten = dok.auswahl.includes(i) ? dok.auswahl : [i];
     if (!dok.auswahl.includes(i)) auswahlSetzen(dok.id, [i]);
-    laufenderDrag = { dokId: dok.id, seiten };
-    e.dataTransfer.setData(DND_TYP, JSON.stringify(laufenderDrag));
-    e.dataTransfer.effectAllowed = "copyMove";
+    seitenDragStarten({ dokId: dok.id, seiten }, e);
     if (seiten.length > 1) {
       const zettel = document.createElement("div");
       zettel.className = "drag-zettel";
@@ -344,7 +339,6 @@ const Miniatur = memo(function Miniatur(props: {
       onContextMenu={(e) => props.onKontext(seite, e)}
       draggable
       onDragStart={(e) => props.onDragStart(seite, e)}
-      onDragEnd={() => (laufenderDrag = null)}
       title={`Seite ${seite + 1}`}
       aria-pressed={props.markiert}
       data-seite={seite}

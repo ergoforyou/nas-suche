@@ -21,6 +21,8 @@ import { ART_NAMEN, auswahlLoeschen, FARBEN, stilAendern, stilFuer } from "../zu
 import { useEffect, useRef, useState } from "react";
 import { dokumentSchliessen, oeffnenDialog } from "../zustand/aktionen";
 import { Kontextmenue } from "./Kontextmenue";
+import { istSeitenDrag, laufenderSeitenDrag, seitenDragDaten, zeigerInnerhalb } from "../zustand/seitenDrag";
+import { seitenUebertragen } from "../zustand/seitenaktionen";
 import {
   aktivesDokument,
   modusSetzen,
@@ -44,6 +46,29 @@ export function Tabs() {
   const aktiv = useZustand((z) => z.aktiv);
   const [ziehe, setZiehe] = useState<number | null>(null);
   const [tabMenue, setTabMenue] = useState<{ x: number; y: number; id: string } | null>(null);
+  // Seiten aus der Miniaturleiste auf einen Tab ziehen: kurz verweilen
+  // wechselt zum Dokument (dann an beliebiger Stelle ablegen), Loslassen auf
+  // dem Tab hängt die Seiten hinten an.
+  const [seitenZiel, setSeitenZiel] = useState<string | null>(null);
+  const wechselTimer = useRef<number>(0);
+  const ueberTab = (e: React.DragEvent, id: string) => {
+    if (!istSeitenDrag(e)) return;
+    const quelle = laufenderSeitenDrag()?.dokId;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = quelle !== id && (e.ctrlKey || e.metaKey) ? "copy" : "move";
+    if (seitenZiel !== id) setSeitenZiel(id);
+    if (id !== aktiv && !wechselTimer.current) {
+      wechselTimer.current = window.setTimeout(() => {
+        wechselTimer.current = 0;
+        setzen((z) => ({ aktiv: id, seitenleiste: { ...z.seitenleiste, offen: true, panel: "miniaturen" } }));
+      }, 600);
+    }
+  };
+  const zielVerlassen = () => {
+    window.clearTimeout(wechselTimer.current);
+    wechselTimer.current = 0;
+    setSeitenZiel(null);
+  };
 
   return (
     <div className="tabs" role="tablist" aria-label="Geöffnete Dokumente">
@@ -52,16 +77,34 @@ export function Tabs() {
           key={d.id}
           role="tab"
           aria-selected={d.id === aktiv}
-          className={d.id === aktiv ? "tab aktiv" : "tab"}
+          className={`tab${d.id === aktiv ? " aktiv" : ""}${seitenZiel === d.id ? " seiten-ziel" : ""}`}
           title={d.pfad ?? d.titel}
           draggable
           onDragStart={() => setZiehe(i)}
+          onDragEnd={() => setZiehe(null)}
+          onDragEnter={(e) => ueberTab(e, d.id)}
           onDragOver={(e) => {
-            if (ziehe !== null) e.preventDefault();
+            if (ziehe !== null) {
+              e.preventDefault();
+              return;
+            }
+            ueberTab(e, d.id);
           }}
-          onDrop={() => {
-            if (ziehe !== null && ziehe !== i) tabVerschieben(ziehe, i);
-            setZiehe(null);
+          onDragLeave={(e) => {
+            if (!zeigerInnerhalb(e)) zielVerlassen();
+          }}
+          onDrop={(e) => {
+            if (ziehe !== null) {
+              if (ziehe !== i) tabVerschieben(ziehe, i);
+              setZiehe(null);
+              return;
+            }
+            if (!istSeitenDrag(e)) return;
+            e.preventDefault();
+            zielVerlassen();
+            const daten = seitenDragDaten(e);
+            if (!daten || daten.dokId === d.id) return;
+            void seitenUebertragen(daten.dokId, daten.seiten, d.id, d.seitenanzahl, !(e.ctrlKey || e.metaKey));
           }}
           onMouseDown={(e) => {
             if (e.button === 1) {

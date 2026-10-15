@@ -22,6 +22,8 @@ import { bereichstextErkennen } from "../zustand/ocr";
 import { Seite } from "./Seite";
 import { AnmerkungsEbene } from "./Anmerkungen";
 import { anmerkungenLaden } from "../zustand/anmerkungen";
+import { istSeitenDrag, laufenderSeitenDrag, seitenDragDaten, zeigerInnerhalb } from "../zustand/seitenDrag";
+import { seitenUebertragen, seitenVerschieben } from "../zustand/seitenaktionen";
 
 interface Anker {
   seite: number;
@@ -249,6 +251,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
   // -------------------------------------------- Maus: Hand, Lasso, Lupe
   const [lasso, setLasso] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [lupe, setLupe] = useState<{ mx: number; my: number; bild: string | null; versatzX: number; versatzY: number } | null>(null);
+  const [seitenAblage, setSeitenAblage] = useState<{ index: number; linie: { x: number; y: number; b: number; h: number } } | null>(null);
   const ziehen = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
 
   const onMouseDown = (e: React.MouseEvent) => {
@@ -449,6 +452,52 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
 
   if (!dok || !ansicht || !layout) return null;
 
+  // ------------------------------------- Seiten hierher ziehen (Drag & Drop)
+  /** Einfügeposition unter dem Mauszeiger samt Markierungslinie */
+  const ablageBei = (e: React.DragEvent): { index: number; linie: { x: number; y: number; b: number; h: number } } | null => {
+    const el = scrollRef.current;
+    if (!el || !layout.boxen.length) return null;
+    const r = el.getBoundingClientRect();
+    const mx = e.clientX - r.left + el.scrollLeft;
+    const my = e.clientY - r.top + el.scrollTop;
+    let box = layout.boxen.find((b) => mx >= b.x && mx <= b.x + b.b && my >= b.y && my <= b.y + b.h);
+    if (!box) {
+      let bester = Infinity;
+      for (const b of layout.boxen) {
+        const d = Math.hypot(b.x + b.b / 2 - mx, b.y + b.h / 2 - my);
+        if (d < bester) {
+          bester = d;
+          box = b;
+        }
+      }
+    }
+    if (!box) return null;
+    const nebeneinander = layout.boxen.some((b) => b !== box && Math.abs(b.y - box!.y) < 2);
+    const danach = nebeneinander ? mx > box.x + box.b / 2 : my > box.y + box.h / 2;
+    const linie = nebeneinander
+      ? { x: danach ? box.x + box.b + 4 : box.x - 8, y: box.y, b: 4, h: box.h }
+      : { x: box.x, y: danach ? box.y + box.h + 4 : box.y - 8, b: box.b, h: 4 };
+    return { index: box.seite + (danach ? 1 : 0), linie };
+  };
+  const seitenDragOver = (e: React.DragEvent) => {
+    if (!istSeitenDrag(e)) return;
+    e.preventDefault();
+    const fremd = laufenderSeitenDrag()?.dokId !== dokId;
+    e.dataTransfer.dropEffect = fremd && (e.ctrlKey || e.metaKey) ? "copy" : "move";
+    const a = ablageBei(e);
+    setSeitenAblage((alt) => (a && alt && alt.index === a.index ? alt : a));
+  };
+  const seitenDrop = (e: React.DragEvent) => {
+    if (!istSeitenDrag(e)) return;
+    e.preventDefault();
+    const a = ablageBei(e);
+    setSeitenAblage(null);
+    const daten = seitenDragDaten(e);
+    if (!daten || !a) return;
+    if (daten.dokId === dokId) void seitenVerschieben(dokId, daten.seiten, a.index);
+    else void seitenUebertragen(daten.dokId, daten.seiten, dokId, a.index, !(e.ctrlKey || e.metaKey));
+  };
+
   // ------------------------------------------------ sichtbare Seiten
   const vorlauf = vp.h; // eine Bildschirmhöhe vor/nach dem sichtbaren Bereich vorladen
   const sichtbar: { box: SeitenBox; prio: number; bereich: { x0: number; y0: number; x1: number; y1: number } | null }[] = [];
@@ -479,6 +528,11 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseLeave={() => setLupe(null)}
+      onDragOver={seitenDragOver}
+      onDragLeave={(e) => {
+        if (!zeigerInnerhalb(e)) setSeitenAblage(null);
+      }}
+      onDrop={seitenDrop}
       tabIndex={0}
       data-testid="dokumentansicht"
     >
@@ -521,6 +575,12 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
             </div>
           );
         })}
+        {seitenAblage && (
+          <div
+            className="seiten-ablage-linie"
+            style={{ left: seitenAblage.linie.x, top: seitenAblage.linie.y, width: seitenAblage.linie.b, height: seitenAblage.linie.h }}
+          />
+        )}
         {lasso && (
           <div
             className="lasso"

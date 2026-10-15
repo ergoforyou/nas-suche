@@ -32,6 +32,10 @@ WAS IN DIESER TESTVERSION GEHT
   • Anzeigen, Zoom, Suche, Tabs, Nebeneinander, Miniaturen
   • Seiten verschieben/kopieren (auch zwischen Dokumenten), drehen, löschen,
     einfügen, extrahieren, teilen, Leerseiten entfernen, Rückgängig (Strg+Z)
+  • Seiten in ein anderes Dokument ziehen: Miniatur(en) greifen, auf den Tab
+    des anderen Dokuments ziehen und kurz warten – es öffnet sich; dann in
+    die Miniaturen oder direkt in die Seitenansicht ablegen. Loslassen auf dem
+    Tab hängt hinten an. Strg beim Loslassen = kopieren statt verschieben.
   Konvertieren
   • Zusammenführen (PDF, Bilder, Word, Excel, E-Mails) – ohne MS Office
   • Texterkennung (OCR), „Text aus Bereich“ (Taste T), Überwachungsordner

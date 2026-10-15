@@ -154,3 +154,82 @@ test("Speichern mit Strg+S und Nachfrage beim Schließen", async ({ page }) => {
   await page.keyboard.press("Control+w");
   await expect(page.locator(".startseite")).toBeVisible();
 });
+
+/** Mitte eines Elements */
+async function mitte(page: Page, selektor: string, versatz = { x: 0.5, y: 0.5 }) {
+  const b = (await page.locator(selektor).first().boundingBox())!;
+  return { x: b.x + b.width * versatz.x, y: b.y + b.height * versatz.y };
+}
+
+test("Seiten über den Tab ins andere Dokument ziehen (Tabs, ohne Nebeneinander)", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "a.pdf");
+  await oeffnen(page, "b.pdf");
+  await page.locator('.tab:has-text("a.pdf")').click();
+  const mini = page.getByTestId("miniaturen");
+  await mini.locator('.miniatur[data-seite="1"]').click();
+  await mini.locator('.miniatur[data-seite="2"]').click({ modifiers: ["Shift"] });
+
+  // A2+A3 greifen, auf den Tab „b.pdf“ ziehen und kurz verweilen → b wird angezeigt
+  const start_ = await mitte(page, '[data-testid="miniaturen"] .miniatur[data-seite="1"]');
+  await page.mouse.move(start_.x, start_.y);
+  await page.mouse.down();
+  const tab = await mitte(page, '.tab:has-text("b.pdf")');
+  await page.mouse.move(tab.x, tab.y, { steps: 8 });
+  await expect(page.locator('.tab:has-text("b.pdf")')).toHaveClass(/seiten-ziel/);
+  await expect(page.locator(".tab.aktiv")).toContainText("b.pdf", { timeout: 3000 });
+  // in b's Miniaturleiste zwischen B1 und B2 ablegen
+  const ziel = await mitte(page, '[data-testid="miniaturen"] .miniatur[data-seite="1"]', { x: 0.5, y: 0.1 });
+  await page.mouse.move(ziel.x, ziel.y, { steps: 8 });
+  await page.mouse.up();
+
+  const infoB = await dokumentInfo(page, "b.pdf");
+  await expect.poll(async () => (await dokumentInfo(page, "b.pdf")).seitenanzahl).toBe(5);
+  expect(await seiteMit(page, infoB.id, "A2")).toEqual([1]);
+  expect(await seiteMit(page, infoB.id, "A3")).toEqual([2]);
+  expect(await seiteMit(page, infoB.id, "B2")).toEqual([3]);
+  expect((await dokumentInfo(page, "a.pdf")).seitenanzahl).toBe(3); // verschoben
+});
+
+test("Seite direkt auf einen Tab fallen lassen (hinten anhängen, Strg = kopieren) und in die Seitenansicht ziehen", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "a.pdf");
+  await oeffnen(page, "b.pdf");
+  await page.locator('.tab:has-text("a.pdf")').click();
+  const mini = page.getByTestId("miniaturen");
+  await mini.locator('.miniatur[data-seite="0"]').click();
+
+  // schnell auf den Tab b fallen lassen, mit Strg → kopieren, hinten anhängen
+  const s = await mitte(page, '[data-testid="miniaturen"] .miniatur[data-seite="0"]');
+  await page.mouse.move(s.x, s.y);
+  await page.mouse.down();
+  await page.keyboard.down("Control");
+  const tab = await mitte(page, '.tab:has-text("b.pdf")');
+  await page.mouse.move(tab.x, tab.y, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up("Control");
+  await expect.poll(async () => (await dokumentInfo(page, "b.pdf")).seitenanzahl).toBe(4);
+  const infoB = await dokumentInfo(page, "b.pdf");
+  expect(await seiteMit(page, infoB.id, "A1")).toEqual([3]);
+  expect((await dokumentInfo(page, "a.pdf")).seitenanzahl).toBe(5);
+
+  // jetzt aus b (aktiv) eine Seite über den Tab a in die große Seitenansicht von a ziehen
+  await expect(page.locator(".tab.aktiv")).toContainText("b.pdf");
+  await page.keyboard.press("Control+0");
+  const quelle = await mitte(page, '[data-testid="miniaturen"] .miniatur[data-seite="0"]');
+  await page.mouse.move(quelle.x, quelle.y);
+  await page.mouse.down();
+  const tabA = await mitte(page, '.tab:has-text("a.pdf")');
+  await page.mouse.move(tabA.x, tabA.y, { steps: 6 });
+  await expect(page.locator(".tab.aktiv")).toContainText("a.pdf", { timeout: 3000 });
+  // obere Hälfte der ersten sichtbaren Seite → vor Seite 1
+  const seite = await mitte(page, '[data-testid="dokumentansicht"] .seite', { x: 0.5, y: 0.2 });
+  await page.mouse.move(seite.x, seite.y, { steps: 6 });
+  await expect(page.locator(".seiten-ablage-linie")).toBeVisible();
+  await page.mouse.up();
+  const infoA = await dokumentInfo(page, "a.pdf");
+  await expect.poll(async () => (await dokumentInfo(page, "a.pdf")).seitenanzahl).toBe(6);
+  expect(await seiteMit(page, infoA.id, "B1")).toEqual([0]);
+  expect((await dokumentInfo(page, "b.pdf")).seitenanzahl).toBe(3); // verschoben
+  await expect(page.locator(".seiten-ablage-linie")).toHaveCount(0);
+});

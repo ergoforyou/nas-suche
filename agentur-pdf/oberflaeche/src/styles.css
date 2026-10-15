@@ -3423,3 +3423,19 @@ body {
   width: min(1120px, 96vw);
   max-width: none;
 }
+
+/* ------------------------------------------ Seiten zwischen Dokumenten ziehen */
+.seiten-ablage-linie {
+  position: absolute;
+  z-index: 5;
+  background: var(--akzent);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+}
+
+.tab.seiten-ziel {
+  background: var(--akzent-hell);
+  outline: 2px dashed var(--akzent);
+  outline-offset: -3px;
+}
