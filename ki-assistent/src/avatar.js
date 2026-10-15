@@ -13,6 +13,7 @@ import { createMorpher } from './morph.js';
 import { createParallax, figureCenterX, imageKey } from './parallax.js';
 import { createFaceWarp, faceHandles } from './facerig.js';
 import { MOODS } from './mood.js';
+import { bodyHandles } from './bodyrig.js';
 
 const MAX_SIDE = 1024;
 const MAX_VIDEO_SIDE = 640; // Videos werden pro Bild verarbeitet – kleiner halten
@@ -81,6 +82,7 @@ export class Avatar {
     this.layers?.forEach((L) => {
       L.morpher?.dispose();
       L.faceWarp?.dispose();
+      L.bodyWarp?.dispose();
     });
     this.parallax?.dispose();
     this.layers?.forEach((L) => L.isVideo && L.video.pause());
@@ -394,6 +396,11 @@ export class Avatar {
       L.faceRig = cfg.faceRig;
       L.faceWarp = createFaceWarp(this.doc);
     }
+    // Körper-Rig (Schultern, Arme): Atmen, Haltung, kleine Gesten – ebenfalls nur für genau dieses Bild
+    if (cfg.bodyRig && cfg.bodyRigFor === imageKey(cfg.image) && cfg.bodyRigOn !== false) {
+      L.bodyRig = cfg.bodyRig;
+      L.bodyWarp = createFaceWarp(this.doc);
+    }
     // Bewegungsbilder: fließender Übergang zwischen Grundbild und Zusatzbildern im Leerlauf
     L.morpher = null;
     const morphs = (cfg.morphs ?? []).filter(Boolean).slice(0, 4);
@@ -501,17 +508,53 @@ export class Avatar {
       }
       this.renderMouth(this.open);
     }
-    if (this.faceWarp) {
-      // Gesichts-Rig: Blinzeln, Blick, Brauen und Mundform per Verformung (statt aufgemalter Lider)
-      const out = this.faceWarp.render(this.frame, faceHandles(this.faceRig, this.w, this.h, this.faceState()));
+    if (!this.faceWarp) this.renderEyes(this.frameCtx, this.blink);
+    let out = this.frame;
+    // Körper-Rig: Schultern, Brust und Arme per Verformung
+    if (this.bodyWarp) out = this.bodyWarp.render(out, bodyHandles(this.bodyRig, this.w, this.h, this.bodyState()));
+    // Gesichts-Rig: Blinzeln, Blick, Brauen und Mundform per Verformung (statt aufgemalter Lider)
+    if (this.faceWarp) out = this.faceWarp.render(out, faceHandles(this.faceRig, this.w, this.h, this.faceState()));
+    if (out !== this.frame) {
       this.frameCtx.clearRect(0, 0, this.w, this.h);
       this.frameCtx.drawImage(out, 0, 0);
       this.blinkWasDrawn = true; // nächstes Bild wieder vom Grundbild aufbauen
       this.lastOpenPx = -1;
       return;
     }
-    this.renderEyes(this.frameCtx, this.blink);
     this.blinkWasDrawn = this.blink > 0.02 || !!this.mouthImg;
+  }
+
+  /** Körperhaltung für das Körper-Rig: Atmen, Haltung je nach Stimmung, Schulterzucken, Gesten beim Sprechen. */
+  bodyState() {
+    const now = performance.now();
+    const t = now / 1000;
+    const S = (this.body ??= { posture: 0, shrug: 0, shrugAt: 0, gesture: 0, side: 1, nextSide: 0, lvl: 0 });
+    const mc = this.moodCur ?? MOODS.ruhig;
+    const m = Math.min(1.5, this.motion ?? 1);
+    // Haltung: freudig aufrecht, traurig eingesunken; beim Zuhören aufmerksam
+    const postureT = Math.max(-1, Math.min(1, (mc.energy - 1) * 1.5 + (this.listening ? 0.25 : 0)));
+    S.posture += (postureT - S.posture) * 0.03;
+    // Schulterzucken: beim Nachdenken leicht gehalten, bei „nachdenklich“ ab und zu kurz
+    if (this.speaking && mc.brow > 0.25 && mc.energy < 0.9 && now - S.shrugAt > 4500 && Math.random() < 0.01) S.shrugAt = now;
+    const pulse = (now - S.shrugAt) / 900;
+    const shrugT = (this.thinking ? 0.18 : 0) + (pulse >= 0 && pulse < 1 ? Math.sin(pulse * Math.PI) * 0.7 : 0);
+    S.shrug += (shrugT - S.shrug) * 0.12;
+    // Gesten: Hände folgen der Sprechlautstärke (geglättet), mal mehr die eine, mal die andere Hand
+    S.lvl += ((this.speaking ? this.level : 0) - S.lvl) * 0.06;
+    S.gesture += (Math.min(1, S.lvl * 1.6 * mc.energy) - S.gesture) * 0.08;
+    if (now > S.nextSide) {
+      S.side = Math.random() < 0.5 ? -1 : 1;
+      S.nextSide = now + 2500 + Math.random() * 4000;
+    }
+    const breatheRate = this.speaking ? 2.1 : 1.7; // gleicher Takt wie das Atmen des ganzen Bildes
+    return {
+      breathe: Math.sin(t * breatheRate) * m,
+      shrug: S.shrug * m,
+      posture: S.posture * m,
+      swing: (Math.sin(t * 0.9) * 0.6 + Math.sin(t * 0.37) * 0.4) * m,
+      gesture: S.gesture * m,
+      side: S.side,
+    };
   }
 
   /** Mimik für das Gesichts-Rig: Blicksprünge, Brauen je nach Zustand, leichtes Lächeln, Mundform. */
@@ -1154,7 +1197,7 @@ export class Avatar {
 
     // Körperbewegung: atmen, wiegen, beim Sprechen nicken (3D-Figuren bewegen sich selbst)
     const m = this.layers[0]?.isVrm ? 0 : this.motion;
-    const breathe = Math.sin(t * 1.7) * 0.006 * m;
+    const breathe = Math.sin(t * 1.7) * (this.layers[0]?.bodyWarp ? 0.002 : 0.006) * m;
     const sway = (Math.sin(t * 0.55) * 0.006 + Math.sin(t * 0.23) * 0.004) * m;
     const energy = this.moodCur?.energy ?? 1;
     const talk = this.speaking ? (Math.sin(t * 6.3) * 0.006 + Math.sin(t * 3.1) * 0.004) * this.open * m * energy : 0;

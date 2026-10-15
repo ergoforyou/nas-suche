@@ -147,6 +147,17 @@ await page.locator('.rb .fitbar button', { hasText: 'Ganz' }).click();
 await page.waitForTimeout(300);
 const whole = await page.evaluate(() => window.__app.avatar.rect);
 check(whole.w <= stageBox.width + 2 && whole.h <= stageBox.height + 2 && (whole.w >= stageBox.width - 2 || whole.h >= stageBox.height - 2), 'Ganz: ganze Figur, so groß wie möglich', JSON.stringify(whole));
+// Körper-Rig: Schultern, Arme und Hüfte werden aus dem Grundbild erkannt, die Verformung läuft
+const figur = 'data:image/png;base64,' + fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-front.png')).toString('base64');
+const body = await page.evaluate(async (img) => {
+  const av = window.__app.persona().avatar;
+  av.image = img;
+  av.vrm = null;
+  await window.__app.ensureRig();
+  await new Promise((r) => setTimeout(r, 1500));
+  return { found: !!av.bodyRig?.lShoulder && !!av.bodyRig?.rShoulder, warp: !!window.__app.avatar.layers?.[0]?.bodyWarp };
+}, figur);
+check(body.found && body.warp, 'Körper aus dem Grundbild erkannt und bewegt', JSON.stringify(body));
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

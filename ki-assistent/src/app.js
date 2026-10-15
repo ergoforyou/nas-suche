@@ -8,6 +8,7 @@ import { FloatingAvatar, OutputWindow } from './windows.js';
 import { RubberBand } from './rubberband.js';
 import { buildDepthMap, imageKey } from './parallax.js';
 import { detectFaceRig, markersFromRig } from './facerig.js';
+import { detectBodyRig } from './bodyrig.js';
 import { debugVoice, synthesize, piperState } from './piper.js';
 import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
 
@@ -2516,24 +2517,47 @@ $('avAuto').onclick = async () => {
 let rigJob = null;
 async function ensureFaceRig({ force = false } = {}) {
   const av = persona().avatar;
-  if (av.vrm || av.faceRigOn === false || !av.image) return;
+  if (av.vrm || !av.image) return;
   const key = imageKey(av.image);
-  if (!force && av.faceRigFor === key) return;
-  if (rigJob) return rigJob;
+  const needFace = av.faceRigOn !== false && (force || av.faceRigFor !== key);
+  const needBody = av.bodyRigOn !== false && (force || av.bodyRigFor !== key);
+  if (!needFace && !needBody) return;
+  // läuft schon eine Erkennung (evtl. für ein anderes Bild): danach prüfen, ob noch etwas fehlt
+  if (rigJob) return rigJob.then(() => ensureFaceRig());
   rigJob = (async () => {
+    const found = [];
     try {
-      $('avRigInfo').textContent = 'Gesicht wird erkannt …';
-      const rig = await detectFaceRig(await imageToCanvas(av.image));
-      av.faceRig = rig;
-      av.faceRigFor = key;
-      // Markierungen für Mund/Augen setzen, falls noch keine da sind
-      if (rig && (!av.mouth || !av.eyes?.length)) Object.assign(av, markersFromRig(rig));
+      const canvas = await imageToCanvas(av.image);
+      if (needFace) {
+        $('avRigInfo').textContent = 'Gesicht wird erkannt …';
+        try {
+          const rig = await detectFaceRig(canvas);
+          av.faceRig = rig;
+          av.faceRigFor = key;
+          // Markierungen für Mund/Augen setzen, falls noch keine da sind
+          if (rig && (!av.mouth || !av.eyes?.length)) Object.assign(av, markersFromRig(rig));
+          if (rig) found.push('Gesicht: Blinzeln, Blick, Brauen und Mundform');
+        } catch (e) {
+          console.warn('Gesichtserkennung:', e);
+        }
+      }
+      if (needBody) {
+        $('avRigInfo').textContent = 'Körper wird erkannt …';
+        try {
+          const body = await detectBodyRig(canvas);
+          av.bodyRig = body;
+          av.bodyRigFor = key;
+          if (body) found.push('Körper: Atmen, Haltung und Gesten');
+        } catch (e) {
+          console.warn('Körpererkennung:', e);
+        }
+      }
       save();
       applyAvatar();
       drawMarkers();
-      status(rig ? 'Gesicht erkannt: Blinzeln, Blick, Brauen und Mundform sind jetzt lebendig.' : '');
+      status(found.length ? `Erkannt – ${found.join('; ')} sind jetzt lebendig.` : '');
     } catch (e) {
-      console.warn('Gesichtserkennung:', e);
+      console.warn('Erkennung:', e);
     } finally {
       rigJob = null;
       $('avRigInfo') && fillRigInfo();
@@ -2545,15 +2569,33 @@ function fillRigInfo() {
   const av = persona().avatar;
   const ok = av.faceRig && av.faceRigFor === imageKey(av.image ?? '');
   $('avRigOn').checked = av.faceRigOn !== false;
-  $('avRigInfo').textContent =
+  $('avBodyOn').checked = av.bodyRigOn !== false;
+  const key = imageKey(av.image ?? '');
+  const face =
     av.faceRigOn === false
-      ? 'aus'
+      ? 'Gesicht: aus'
       : ok
         ? '✔ Gesicht erkannt'
-        : av.faceRigFor === imageKey(av.image ?? '')
+        : av.faceRigFor === key
           ? 'Kein Gesicht gefunden (sehr stilisiert oder seitlich?) – es bleibt bei der einfachen Animation.'
-          : 'wird beim nächsten Bild automatisch erkannt';
+          : 'Gesicht wird beim nächsten Bild automatisch erkannt';
+  const body =
+    av.bodyRigOn === false
+      ? 'Körper: aus'
+      : av.bodyRig && av.bodyRigFor === key
+        ? '✔ Körper erkannt'
+        : av.bodyRigFor === key
+          ? 'Keine Schultern im Bild – der Körper bewegt sich wie bisher als Ganzes.'
+          : '';
+  $('avRigInfo').textContent = [face, body].filter(Boolean).join(' · ');
 }
+$('avBodyOn').onchange = (e) => {
+  persona().avatar.bodyRigOn = e.target.checked;
+  save();
+  applyAvatar();
+  if (e.target.checked) ensureFaceRig();
+  fillRigInfo();
+};
 $('avRigOn').onchange = (e) => {
   persona().avatar.faceRigOn = e.target.checked;
   save();
@@ -2957,6 +2999,8 @@ window.__app = {
   avatar,
   avatarState,
   setMood,
+  persona: () => persona(),
+  ensureRig: (opts) => ensureFaceRig(opts),
   tts,
   stt,
   state,
