@@ -146,6 +146,7 @@ export class SentenceSplitter {
 export class SpeechOutput {
   constructor({ onLevel, onSpeakingChange, onStatus } = {}) {
     this.onLevel = onLevel ?? (() => {});
+    this.onShape = () => {}; // Mundform: -1 rund (o/u) … +1 breit (e/i), aus dem Klangspektrum
     this.onSpeakingChange = onSpeakingChange ?? (() => {});
     this.onStatus = onStatus ?? (() => {});
     this.engine = 'piper';
@@ -313,12 +314,24 @@ export class SpeechOutput {
     src.connect(analyser);
     analyser.connect(this.ctx.destination);
     const samples = new Float32Array(analyser.fftSize);
+    const spec = new Float32Array(analyser.frequencyBinCount);
+    const hz = this.ctx.sampleRate / analyser.fftSize;
     // setInterval statt requestAnimationFrame: läuft auch, wenn das Chatfenster versteckt ist.
     const timer = setInterval(() => {
       analyser.getFloatTimeDomainData(samples);
       let sum = 0;
       for (const v of samples) sum += v * v;
       this.onLevel(Math.min(1, Math.sqrt(sum / samples.length) * 6));
+      // Klangschwerpunkt: hell (e/i) = breiter Mund, dunkel (o/u) = runder Mund
+      analyser.getFloatFrequencyData(spec);
+      let num = 0;
+      let den = 0;
+      for (let i = Math.floor(250 / hz); i < Math.min(spec.length, 4000 / hz); i++) {
+        const e = Math.pow(10, spec[i] / 20);
+        num += e * i * hz;
+        den += e;
+      }
+      if (den > 1e-4) this.onShape(Math.max(-1, Math.min(1, (num / den - 1300) / 700)));
     }, 33);
     this.currentSource = src;
     await new Promise((resolve) => {

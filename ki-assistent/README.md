@@ -64,6 +64,10 @@ Alles läuft lokal – Hintergründe werden wie beim Avatar-Bild freigestellt (T
 Avatar-Bild plus ② dasselbe Bild mit offenem Mund und ③ mit geschlossenen Augen (gleicher Bildausschnitt). Die
 Freistellung des Avatar-Bilds wird automatisch übernommen. Für Bewegung im Leerlauf zusätzlich Posen oder kurze Videos.
 
+**Lebendiges Gesicht (automatisch):** Beim Avatar-Bild erkennt die App einmalig das Gesicht (MediaPipe, lokal). Danach
+blinzelt die Figur mit echten Lidern, macht kleine Blicksprünge, hebt beim Nachdenken/Zuhören die Brauen, lächelt leicht
+und formt den Mund passend zum Laut (breit bei e/i, rund bei o/u – aus dem Klangspektrum der Stimme).
+
 **Leicht drehen (2,5D):** Eine KI schätzt einmalig die Tiefe des Bildes; danach lässt sich die Bild-Figur per Regler
 oder Umschalttaste + Ziehen bis etwa ±20° drehen und auf Wunsch im Leerlauf leicht mitdrehen.
 

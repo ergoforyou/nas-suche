@@ -7,6 +7,7 @@ import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
 import { RubberBand } from './rubberband.js';
 import { buildDepthMap, imageKey } from './parallax.js';
+import { detectFaceRig, markersFromRig } from './facerig.js';
 import { debugVoice, synthesize, piperState } from './piper.js';
 
 const $ = (id) => document.getElementById(id);
@@ -180,7 +181,10 @@ const avatar = new Avatar($('avatar'), { useLayout: true });
 const status = (text) => ($('status').textContent = text ?? '');
 
 const tts = new SpeechOutput({
-  onLevel: (v) => (avatarState.level = v),
+  onLevel: (v) => {
+    avatarState.level = v;
+    if (v < 0.02) avatarState.shape *= 0.8;
+  },
   onSpeakingChange: (on) => {
     avatarState.speaking = on;
     if (!on) state.lastSpeakEnd = Date.now();
@@ -199,6 +203,7 @@ const tts = new SpeechOutput({
     }
   },
 });
+tts.onShape = (v) => (avatarState.shape = avatarState.shape * 0.5 + v * 0.5);
 
 const stt = new SpeechInput({
   onLevel: (v) => {
@@ -1209,6 +1214,7 @@ function fillSettings() {
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
   $('avVrmOff').hidden = !p.avatar.vrm;
+  fillRigInfo();
   $('avTurnYaw').value = p.avatar.turnYaw ?? 0;
   $('avTurnYawVal').textContent = `${p.avatar.turnYaw ?? 0}°`;
   $('avTurnAuto').checked = !!p.avatar.turnAuto;
@@ -1721,6 +1727,7 @@ async function drawMarkers() {
 function avatarChanged() {
   save();
   applyAvatar();
+  ensureFaceRig();
   renderPoseList();
   drawMarkers();
   $('avRestore').disabled = !target().original;
@@ -2429,11 +2436,74 @@ $('avDefault').onclick = () => {
   avatarChanged();
 };
 $('avAuto').onclick = async () => {
+  // Erst die genaue Gesichtserkennung (MediaPipe), sonst die einfache des Browsers
+  try {
+    const img = await imageToCanvas(target().image);
+    const rig = await detectFaceRig(img);
+    if (rig) {
+      Object.assign(target(), markersFromRig(rig));
+      avatarChanged();
+      return status('Augen und Mund automatisch gesetzt.');
+    }
+  } catch (e) {
+    console.warn('Gesichtserkennung:', e);
+  }
   const face = await detectFace(target().image);
   if (!face) return status('Automatische Erkennung nicht möglich – bitte manuell markieren.');
   Object.assign(target(), face);
   avatarChanged();
 };
+
+// ---- Gesichts-Rig: einmal pro Grundbild Gesichtspunkte erkennen (lokal, MediaPipe)
+let rigJob = null;
+async function ensureFaceRig({ force = false } = {}) {
+  const av = persona().avatar;
+  if (av.vrm || av.faceRigOn === false || !av.image) return;
+  const key = imageKey(av.image);
+  if (!force && av.faceRigFor === key) return;
+  if (rigJob) return rigJob;
+  rigJob = (async () => {
+    try {
+      $('avRigInfo').textContent = 'Gesicht wird erkannt …';
+      const rig = await detectFaceRig(await imageToCanvas(av.image));
+      av.faceRig = rig;
+      av.faceRigFor = key;
+      // Markierungen für Mund/Augen setzen, falls noch keine da sind
+      if (rig && (!av.mouth || !av.eyes?.length)) Object.assign(av, markersFromRig(rig));
+      save();
+      applyAvatar();
+      drawMarkers();
+      status(rig ? 'Gesicht erkannt: Blinzeln, Blick, Brauen und Mundform sind jetzt lebendig.' : '');
+    } catch (e) {
+      console.warn('Gesichtserkennung:', e);
+    } finally {
+      rigJob = null;
+      $('avRigInfo') && fillRigInfo();
+    }
+  })();
+  return rigJob;
+}
+function fillRigInfo() {
+  const av = persona().avatar;
+  const ok = av.faceRig && av.faceRigFor === imageKey(av.image ?? '');
+  $('avRigOn').checked = av.faceRigOn !== false;
+  $('avRigInfo').textContent =
+    av.faceRigOn === false
+      ? 'aus'
+      : ok
+        ? '✔ Gesicht erkannt'
+        : av.faceRigFor === imageKey(av.image ?? '')
+          ? 'Kein Gesicht gefunden (sehr stilisiert oder seitlich?) – es bleibt bei der einfachen Animation.'
+          : 'wird beim nächsten Bild automatisch erkannt';
+}
+$('avRigOn').onchange = (e) => {
+  persona().avatar.faceRigOn = e.target.checked;
+  save();
+  applyAvatar();
+  if (e.target.checked) ensureFaceRig();
+  fillRigInfo();
+};
+$('avRigRedo').onclick = () => ensureFaceRig({ force: true });
 $('avFloating').onchange = (e) => setFloating(e.target.checked);
 $('avFloatSize').oninput = (e) => {
   state.settings.floatingSize = +e.target.value;
@@ -2834,6 +2904,7 @@ window.__app = {
 };
 
 init().then(() => {
+  ensureFaceRig();
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
   if (!state.settings.offline && state.settings.handsFree) setTimeout(() => stt.warmup().catch(() => {}), 3000);
 });

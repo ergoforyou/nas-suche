@@ -52,4 +52,8 @@ copyFiles(path.join(nm, '@diffusionstudio/piper-wasm/build'), path.join(dist, 'w
   /\.(wasm|data)$/.test(f),
 );
 
+// Gesichtserkennung (MediaPipe Face Landmarker, Apache-2.0): Laufzeit und Modell lokal mitliefern
+copyFiles(path.join(nm, '@mediapipe/tasks-vision/wasm'), path.join(dist, 'wasm/mediapipe'), (f) => /^vision_wasm_internal\.(js|wasm)$/.test(f));
+fs.copyFileSync(path.join(root, 'assets/face_landmarker.task'), path.join(dist, 'wasm/mediapipe/face_landmarker.task'));
+
 console.log('Build fertig:', dist);

@@ -11,6 +11,7 @@ import { borderColor } from './cutout.js';
 import { loadVideoMask } from './videomask.js';
 import { createMorpher } from './morph.js';
 import { createParallax, figureCenterX, imageKey } from './parallax.js';
+import { createFaceWarp, faceHandles } from './facerig.js';
 
 const MAX_SIDE = 1024;
 const MAX_VIDEO_SIDE = 640; // Videos werden pro Bild verarbeitet – kleiner halten
@@ -38,7 +39,7 @@ function toCanvas(img, w, h, doc = document) {
 }
 
 /** Gemeinsamer Zustand, damit Chatfenster und freischwebende Figur synchron sind. */
-export const avatarState = { level: 0, speaking: false, thinking: false, listening: false };
+export const avatarState = { level: 0, speaking: false, thinking: false, listening: false, shape: 0 };
 
 export class Avatar {
   /**
@@ -75,7 +76,10 @@ export class Avatar {
 
   destroy() {
     this.active = false;
-    this.layers?.forEach((L) => L.morpher?.dispose());
+    this.layers?.forEach((L) => {
+      L.morpher?.dispose();
+      L.faceWarp?.dispose();
+    });
     this.parallax?.dispose();
     this.layers?.forEach((L) => L.isVideo && L.video.pause());
     this.vrmFigure?.dispose();
@@ -149,6 +153,7 @@ export class Avatar {
     this.layers?.forEach((L) => {
       if (L.isVideo) L.video.pause();
       L.morpher?.dispose();
+      L.faceWarp?.dispose();
     });
     this.layers = layers;
     const main = layers[0];
@@ -370,6 +375,11 @@ export class Avatar {
     L.prepareMouth();
     L.prepareEyes();
     L.prepareHead();
+    // Gesichts-Rig (automatisch erkannte Gesichtspunkte) – nur, wenn es zu genau diesem Bild gehört
+    if (cfg.faceRig && cfg.faceRigFor === imageKey(cfg.image) && cfg.faceRigOn !== false) {
+      L.faceRig = cfg.faceRig;
+      L.faceWarp = createFaceWarp(this.doc);
+    }
     // Bewegungsbilder: fließender Übergang zwischen Grundbild und Zusatzbildern im Leerlauf
     L.morpher = null;
     const morphs = (cfg.morphs ?? []).filter(Boolean).slice(0, 4);
@@ -477,8 +487,44 @@ export class Avatar {
       }
       this.renderMouth(this.open);
     }
+    if (this.faceWarp) {
+      // Gesichts-Rig: Blinzeln, Blick, Brauen und Mundform per Verformung (statt aufgemalter Lider)
+      const out = this.faceWarp.render(this.frame, faceHandles(this.faceRig, this.w, this.h, this.faceState()));
+      this.frameCtx.clearRect(0, 0, this.w, this.h);
+      this.frameCtx.drawImage(out, 0, 0);
+      this.blinkWasDrawn = true; // nächstes Bild wieder vom Grundbild aufbauen
+      this.lastOpenPx = -1;
+      return;
+    }
     this.renderEyes(this.frameCtx, this.blink);
     this.blinkWasDrawn = this.blink > 0.02 || !!this.mouthImg;
+  }
+
+  /** Mimik für das Gesichts-Rig: Blicksprünge, Brauen je nach Zustand, leichtes Lächeln, Mundform. */
+  faceState() {
+    const now = performance.now();
+    const F = (this.face ??= { gx: 0, gy: 0, tx: 0, ty: 0, next: 0, brow: 0, smile: 0.2, shape: 0, lastLevel: 0, browKick: 0 });
+    if (now > F.next) {
+      // Blicksprünge (Sakkaden): meist kurz zur Seite und zurück zur Mitte
+      const center = Math.random() < (this.speaking ? 0.55 : 0.4);
+      F.tx = center ? 0 : (Math.random() * 2 - 1) * (this.thinking ? 0.9 : 0.7);
+      F.ty = center ? 0 : this.thinking ? -0.6 : (Math.random() * 2 - 1) * 0.3;
+      F.next = now + (this.speaking ? 700 + Math.random() * 1600 : 1200 + Math.random() * 2800);
+    }
+    // Sakkaden sind schnell
+    F.gx += (F.tx - F.gx) * 0.35;
+    F.gy += (F.ty - F.gy) * 0.35;
+    // Brauen: Nachdenken/Zuhören hebt, beim Sprechen kurz bei Betonungen
+    const lvl = this.level;
+    if (this.speaking && lvl > 0.55 && F.lastLevel < 0.35 && Math.random() < 0.35) F.browKick = 0.6;
+    F.lastLevel = lvl;
+    F.browKick *= 0.93;
+    const browTarget = this.thinking ? 0.55 : this.listening ? 0.35 : 0;
+    F.brow += (browTarget - F.brow) * 0.06;
+    F.smile += ((this.speaking ? 0.35 : this.thinking ? 0.05 : 0.22) - F.smile) * 0.04;
+    F.shape += ((this.speaking ? this.state.shape ?? 0 : 0) * Math.min(1, this.open * 2) - F.shape) * 0.35;
+    const m = Math.min(1.5, this.motion ?? 1);
+    return { blink: this.blink, gazeX: F.gx * m, gazeY: F.gy * m, brow: (F.brow + F.browKick) * m, smile: F.smile * m, shape: F.shape };
   }
 
   // ---------- Posen: passend zum Zustand wechseln, weich überblenden ----------
