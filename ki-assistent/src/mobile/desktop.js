@@ -35,8 +35,44 @@ async function writeBytes(path, bytes, directory = Directory.Data) {
 const cleanName = (name) => String(name || 'Datei').split(/[\\/]/).pop().replace(/[:*?"<>|\x00-\x1f]+/g, '_').slice(0, 120) || 'Datei';
 
 let data = null;
+// Schlüssel liegen verschlüsselt im App-Speicher: Der AES-Schlüssel dazu steckt im Android-Keystore
+// (Hardware-geschützt, lässt sich nicht auslesen oder kopieren). window.KIKeys kommt aus MainActivity.java.
+const vault = () => (window.KIKeys?.available?.() ? window.KIKeys : null);
+const PROVIDERS = ['anthropic', 'openai'];
 let keys = null;
-const getKeys = async () => (keys ??= (await readJson('schluessel.json')) ?? {});
+async function loadKeys() {
+  const file = (await readJson('schluessel.json')) ?? {};
+  const v = vault();
+  if (!file.enc) {
+    // ältere Versionen: Klartext – gleich verschlüsselt neu speichern
+    const plain = Object.fromEntries(PROVIDERS.filter((p) => file[p]).map((p) => [p, file[p]]));
+    if (v && Object.keys(plain).length) await storeKeys(plain);
+    return plain;
+  }
+  const out = {};
+  for (const p of PROVIDERS) {
+    if (!file[p] || !v) continue;
+    const dec = v.decrypt(file[p]);
+    if (dec) out[p] = dec;
+    else console.warn(`Schlüssel für ${p} ließ sich nicht entschlüsseln – bitte neu eingeben.`);
+  }
+  return out;
+}
+async function storeKeys(k) {
+  const v = vault();
+  if (!v) return writeJson('schluessel.json', k);
+  const file = { enc: 1 };
+  for (const p of PROVIDERS) {
+    if (!k[p]) continue;
+    const enc = v.encrypt(k[p]);
+    if (!enc) throw new Error('Schlüssel konnte nicht verschlüsselt werden.');
+    file[p] = enc;
+  }
+  await writeJson('schluessel.json', file);
+}
+const getKeys = async () => (keys ??= await loadKeys());
+// für den Emulator-Test: Liegt die Schlüsseldatei wirklich verschlüsselt vor?
+window.__keyFile = () => readJson('schluessel.json');
 
 // ---------------------------------------------------------------- Cloud-Anbieter
 const CLOUD_OPTS = { dangerouslyAllowBrowser: true, maxRetries: 3 };
@@ -97,17 +133,17 @@ const api = {
     await writeJson('daten.json', data);
   },
 
-  // ---- Schlüssel (privater App-Speicher, für andere Apps nicht lesbar)
+  // ---- Schlüssel (privater App-Speicher, mit dem Android-Keystore verschlüsselt)
   keyStatus: async () => {
     const k = await getKeys();
-    return { anthropic: !!k.anthropic, openai: !!k.openai, encrypted: false };
+    return { anthropic: !!k.anthropic, openai: !!k.openai, encrypted: !!vault() };
   },
   setKey: async (provider, key) => {
     const k = await getKeys();
     const clean = String(key ?? '').trim();
     if (clean) k[provider] = clean;
     else delete k[provider];
-    await writeJson('schluessel.json', k);
+    await storeKeys(k);
   },
 
   // ---- Modelle

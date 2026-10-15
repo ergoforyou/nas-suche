@@ -194,7 +194,7 @@ export function synthesize(text, voiceId, { rate = 1, onProgress } = {}) {
     if (config.num_speakers > 1) feeds.sid = new ort.Tensor('int64', BigInt64Array.from([0n]), [1]);
     const { output } = await session.run(feeds);
     piperState.step = 'fertig';
-    return { audio: output.data, sampleRate: config.audio?.sample_rate ?? 22050 };
+    return { audio: output.data, sampleRate: config.audio?.sample_rate ?? 22050, phonemes: ph.phonemes.flat() };
   });
   synthChain = run.catch(() => {});
   return run;

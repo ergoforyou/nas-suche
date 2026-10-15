@@ -9,6 +9,7 @@ import { RubberBand } from './rubberband.js';
 import { buildDepthMap, imageKey } from './parallax.js';
 import { detectFaceRig, markersFromRig } from './facerig.js';
 import { debugVoice, synthesize, piperState } from './piper.js';
+import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
@@ -91,6 +92,7 @@ const DEFAULT_SETTINGS = {
   sensitivity: 0.015,
   pipOnLeave: true, // Android: beim Verlassen der App als Bild-im-Bild weiterlaufen
   bargeIn: true, // Live-Gespräch: dazwischenreden erlaubt
+  moodTags: true, // Mimik: das Sprachmodell markiert seine Stimmung, die Figur zeigt sie
   livePauseMs: 800, // so lange Stille, bis mein Satz als fertig gilt
   alwaysOnTop: false,
   stageHeight: null,
@@ -210,9 +212,18 @@ const tts = new SpeechOutput({
   },
 });
 tts.onShape = (v) => (avatarState.shape = avatarState.shape * 0.5 + v * 0.5);
+tts.onViseme = (v) => (avatarState.viseme = v);
+tts.onItem = (meta) => meta?.mood && setMood(meta.mood);
+
+/** Stimmung der Figur setzen (aus der Antwort); sie klingt nach dem Sprechen von selbst ab. */
+function setMood(name) {
+  avatarState.mood = name;
+  avatarState.moodAt = performance.now();
+}
 
 const stt = new SpeechInput({
   onLevel: (v) => {
+    avatarState.voice = v / Math.max(1e-4, state.settings.sensitivity); // Figur reagiert beim Zuhören
     $('micMeter').style.width = Math.min(100, (v / (state.settings.sensitivity * 4)) * 100) + '%';
   },
 });
@@ -445,6 +456,7 @@ function buildMessages() {
   if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech);
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(p.memory.map((m) => `- ${m.text}`).join('\n')));
   if (p.style !== 'frei') parts.push(r.lang);
+  if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
   const sys = parts.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
   const h = history()
@@ -595,13 +607,23 @@ async function send(text) {
   let sources = [];
   const created = [];
   const think = new ThinkFilter();
+  const moods = new MoodFilter(); // Stimmungsmarken wie [freudig] steuern die Mimik und werden entfernt
+  let guessed = null;
   const speak = state.settings.speak;
   state.spoken = '';
   const splitter = new SentenceSplitter((s) => {
-    if (!speak) return;
+    // Hält sich das Modell nicht an die Marken, wird die Stimmung aus dem Satz erraten
+    const mood = moods.tagged ? moods.current : (guessed = guessMood(s) ?? guessed);
+    if (!speak) return mood && setMood(mood);
     state.spoken = (state.spoken + ' ' + s).slice(-1500); // für den Echo-Filter im Live-Gespräch
-    tts.enqueue(s);
+    tts.enqueue(s, { mood });
   });
+  const filter = (text) => {
+    const before = moods.current;
+    const out = moods.push(text);
+    if (!speak && moods.current !== before) setMood(moods.current);
+    return out;
+  };
 
   // Darstellung gedrosselt aktualisieren (Markdown neu rendern ist nicht gratis)
   let renderTimer = null;
@@ -614,7 +636,7 @@ async function send(text) {
 
   const finish = (error) => {
     clearTimeout(renderTimer);
-    const rest = think.flush();
+    const rest = filter(think.flush()) + moods.flush();
     answer += rest;
     splitter.push(rest);
     splitter.flush();
@@ -667,7 +689,7 @@ async function send(text) {
     },
     (ev) => {
       if (ev.type === 'delta') {
-        const visible = think.push(ev.payload);
+        const visible = filter(think.push(ev.payload));
         if (!visible) return;
         if (state.timing && !state.timing.answer) state.timing.answer = performance.now();
         if (avatarState.thinking && visible.trim()) {
@@ -1279,6 +1301,7 @@ function fillSettings() {
   $('sEngineWrap').hidden = !desktop.transcribeCloud;
   $('sEngine').value = s.sttEngine;
   $('sBargeIn').checked = s.bargeIn;
+  $('sMood').checked = s.moodTags !== false;
   $('sLivePause').value = String(s.livePauseMs);
   $('sSens').value = s.sensitivity;
 
@@ -2638,6 +2661,10 @@ $('sEngine').onchange = (e) => {
   save();
 };
 $('btnLive').onclick = () => setHandsFree(!state.settings.handsFree);
+$('sMood').onchange = (e) => {
+  state.settings.moodTags = e.target.checked;
+  save();
+};
 $('sBargeIn').onchange = (e) => {
   state.settings.bargeIn = e.target.checked;
   save();
@@ -2919,6 +2946,8 @@ function applyEdition() {
 window.__app = {
   edition: EDITION,
   avatar,
+  avatarState,
+  setMood,
   tts,
   stt,
   state,

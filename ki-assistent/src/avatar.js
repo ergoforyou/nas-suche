@@ -12,6 +12,7 @@ import { loadVideoMask } from './videomask.js';
 import { createMorpher } from './morph.js';
 import { createParallax, figureCenterX, imageKey } from './parallax.js';
 import { createFaceWarp, faceHandles } from './facerig.js';
+import { MOODS } from './mood.js';
 
 const MAX_SIDE = 1024;
 const MAX_VIDEO_SIDE = 640; // Videos werden pro Bild verarbeitet – kleiner halten
@@ -39,7 +40,8 @@ function toCanvas(img, w, h, doc = document) {
 }
 
 /** Gemeinsamer Zustand, damit Chatfenster und freischwebende Figur synchron sind. */
-export const avatarState = { level: 0, speaking: false, thinking: false, listening: false, shape: 0 };
+// mood/moodAt: Stimmung aus der Antwort; viseme: Mundöffnung je Laut (null = unbekannt); voice: Mikrofonpegel (≥ 1 = Sprache)
+export const avatarState = { level: 0, speaking: false, thinking: false, listening: false, shape: 0, mood: null, moodAt: 0, viseme: null, voice: 0 };
 
 export class Avatar {
   /**
@@ -204,6 +206,10 @@ export class Avatar {
         idleHead: this.idleHead,
         yaw: this.vrmYaw ?? 0,
         framing: this.vrmFraming ?? 'brust',
+        mood: this.moodCur,
+        ack: this.ackPulse,
+        browKick: this.listening && performance.now() - (this.listen?.browAt ?? -1e9) < 700,
+        shape: this.state.shape ?? 0,
       });
     return L;
   }
@@ -512,7 +518,8 @@ export class Avatar {
     const F = (this.face ??= { gx: 0, gy: 0, tx: 0, ty: 0, next: 0, brow: 0, smile: 0.2, shape: 0, lastLevel: 0, browKick: 0 });
     if (now > F.next) {
       // Blicksprünge (Sakkaden): meist kurz zur Seite und zurück zur Mitte
-      const center = Math.random() < (this.speaking ? 0.55 : 0.4);
+      // beim Zuhören meist Blickkontakt
+      const center = Math.random() < (this.listening ? 0.85 : this.speaking ? 0.55 : 0.4);
       F.tx = center ? 0 : (Math.random() * 2 - 1) * (this.thinking ? 0.9 : 0.7);
       F.ty = center ? 0 : this.thinking ? -0.6 : (Math.random() * 2 - 1) * 0.3;
       F.next = now + (this.speaking ? 700 + Math.random() * 1600 : 1200 + Math.random() * 2800);
@@ -525,12 +532,20 @@ export class Avatar {
     if (this.speaking && lvl > 0.55 && F.lastLevel < 0.35 && Math.random() < 0.35) F.browKick = 0.6;
     F.lastLevel = lvl;
     F.browKick *= 0.93;
-    const browTarget = this.thinking ? 0.55 : this.listening ? 0.35 : 0;
+    const mc = this.moodCur ?? MOODS.ruhig;
+    const browAt = this.listen?.browAt;
+    if (browAt && F.browSeen !== browAt) {
+      F.browSeen = browAt;
+      F.browKick = Math.max(F.browKick, 0.5);
+    }
+    const browTarget = (this.thinking ? 0.55 : this.listening ? 0.35 : 0) + mc.brow;
     F.brow += (browTarget - F.brow) * 0.06;
-    F.smile += ((this.speaking ? 0.35 : this.thinking ? 0.05 : 0.22) - F.smile) * 0.04;
+    const smileBase = this.speaking ? 0.3 : this.thinking ? 0.05 : this.listening ? 0.25 : 0.2;
+    F.smile += (Math.max(-0.5, Math.min(1, smileBase + mc.smile)) - F.smile) * 0.05;
     F.shape += ((this.speaking ? this.state.shape ?? 0 : 0) * Math.min(1, this.open * 2) - F.shape) * 0.35;
     const m = Math.min(1.5, this.motion ?? 1);
-    return { blink: this.blink, gazeX: F.gx * m, gazeY: F.gy * m, brow: (F.brow + F.browKick) * m, smile: F.smile * m, shape: F.shape };
+    const brow = Math.max(-1, Math.min(1, (F.brow + F.browKick) * m));
+    return { blink: this.blink, gazeX: F.gx * m, gazeY: F.gy * m, brow, smile: F.smile * m, shape: F.shape };
   }
 
   // ---------- Posen: passend zum Zustand wechseln, weich überblenden ----------
@@ -779,6 +794,56 @@ export class Avatar {
     this.head = { pivotX: (eyeX + mouth.x * this.w) / 2, neckY, band: faceH * 0.55, faceH };
   }
 
+  // ---------- Stimmung: weich zwischen den Gesichtsausdrücken überblenden ----------
+  updateMood(now, dt) {
+    const st = this.state;
+    // Die Stimmung hält, solange gesprochen wird, und klingt danach langsam ab
+    const name = st.mood && (st.speaking || st.thinking || now - st.moodAt < 7000) ? st.mood : 'ruhig';
+    const target = MOODS[name] ?? MOODS.ruhig;
+    const M = (this.moodCur ??= { ...MOODS.ruhig, side: 1, name: 'ruhig' });
+    if (M.name !== name) {
+      M.name = name;
+      M.side = Math.random() < 0.5 ? -1 : 1;
+    }
+    const k = Math.min(1, dt / 450);
+    for (const key of Object.keys(MOODS.ruhig)) M[key] += (target[key] - M[key]) * k;
+    return M;
+  }
+
+  /** Zuhören: nicken, wenn der Nutzer eine kurze Pause macht; Brauen gehen beim Sprechbeginn kurz hoch. */
+  updateListening(now) {
+    const Lr = (this.listen ??= { talking: false, since: 0, quietSince: 0, lastNod: 0, nodAt: 0, browAt: 0 });
+    if (!this.listening) {
+      Lr.talking = false;
+      return Lr;
+    }
+    const loud = (this.state.voice ?? 0) >= 1;
+    if (loud) {
+      if (!Lr.talking) {
+        Lr.talking = true;
+        Lr.since = now;
+        if (now - Lr.browAt > 2500 && Math.random() < 0.6) Lr.browAt = now;
+      }
+      Lr.quietSince = 0;
+    } else if (Lr.talking) {
+      Lr.quietSince ||= now;
+      const quiet = now - Lr.quietSince;
+      // Nach einem Satzteil (mind. 0,9 s gesprochen) kurz zustimmend nicken
+      if (quiet > 260 && now - Lr.since > 900 && now - Lr.lastNod > 1600) {
+        if (Math.random() < 0.75) Lr.nodAt = now;
+        Lr.lastNod = now;
+        Lr.talking = false;
+      } else if (quiet > 1200) Lr.talking = false;
+    }
+    return Lr;
+  }
+
+  /** Kurzer Nick-Impuls (0..1) nach dem Zuhören-Nicken – auch für die 3D-Figur. */
+  get ackPulse() {
+    const t = (performance.now() - (this.listen?.nodAt ?? -1e9)) / 520;
+    return t >= 0 && t < 1 ? Math.sin(t * Math.PI) : 0;
+  }
+
   // ---------- Verhalten: kleine Kopfbewegungen je nach Zustand ----------
   updateBehaviour(now, dt) {
     const h = (this.layers?.[this.current] ?? this).head;
@@ -791,6 +856,7 @@ export class Avatar {
     const rnd = (a, b) => a + Math.random() * (b - a);
     const side = () => (Math.random() < 0.5 ? -1 : 1);
     const f = h.faceH;
+    const energy = this.moodCur?.energy ?? 1;
 
     if (this.thinking) {
       // nachdenklich: Kopf schräg, Blick leicht nach oben
@@ -802,17 +868,23 @@ export class Avatar {
       if (B.mode !== 'listen') {
         B.mode = 'listen';
         B.target = { tilt: 0.03 * side(), look: 0, nod: f * 0.03 };
+        B.next = now + rnd(2500, 4500);
+      }
+      // aufmerksam: ab und zu die Kopfneigung wechseln, Blick bleibt beim Nutzer
+      if (now > B.next) {
+        B.target = { tilt: rnd(0.015, 0.04) * side(), look: rnd(-0.03, 0.03) * f, nod: f * rnd(0.01, 0.04) };
+        B.next = now + rnd(2500, 5000);
       }
     } else if (this.speaking) {
       B.mode = 'speak';
       if (now > B.next) {
-        B.target = { tilt: rnd(-0.035, 0.035), look: rnd(-0.12, 0.12) * f, nod: 0 };
-        B.next = now + rnd(900, 2200);
+        B.target = { tilt: rnd(-0.035, 0.035) * energy, look: rnd(-0.12, 0.12) * f * energy, nod: 0 };
+        B.next = now + rnd(900, 2200) / Math.max(0.6, energy);
       }
       // Betonung: bei Silbenspitzen kurz nicken
       const lvl = this.level;
       if (lvl > 0.45 && B.lastLevel < 0.3 && now - B.lastKick > 380) {
-        B.kick = f * rnd(0.04, 0.08);
+        B.kick = f * rnd(0.04, 0.08) * Math.min(1.3, energy);
         B.lastKick = now;
       }
       B.lastLevel = lvl;
@@ -854,9 +926,10 @@ export class Avatar {
     const yEnd = Math.min(this.h, Math.ceil(h.neckY + h.band));
     ctx.clearRect(0, 0, W, this.h);
     ctx.drawImage(this.frame, 0, yEnd, W, this.h - yEnd, 0, yEnd, W, this.h - yEnd);
-    const tilt = B.tilt * m;
+    const mc = this.moodCur;
+    const tilt = (B.tilt + (mc ? mc.tilt * mc.side : 0)) * m;
     const look = B.look * m;
-    const nod = (B.nod + B.kick) * m;
+    const nod = (B.nod + B.kick + ((mc?.nod ?? 0) + this.ackPulse * 0.07) * h.faceH) * m;
     const step = 2;
     for (let y = 0; y < yEnd; y += step) {
       const wgt = 1 - smoothstep(h.neckY - h.band, h.neckY + h.band, y);
@@ -1036,8 +1109,11 @@ export class Avatar {
     }
 
     // Mund glätten: schnell öffnen, etwas langsamer schließen
-    const target = this.speaking ? this.level : 0;
-    this.open += (target - this.open) * (target > this.open ? 0.55 : 0.3);
+    // Laute bestimmen die Form: bei m/b/p schließen sich die Lippen, bei a weit offen
+    const vis = this.state.viseme;
+    const shapeOpen = vis == null ? 1 : vis < 0.05 ? 0.04 : 0.35 + 0.75 * vis;
+    const target = this.speaking ? Math.min(1, this.level * shapeOpen) : 0;
+    this.open += (target - this.open) * (target > this.open ? 0.55 : vis != null && vis < 0.05 ? 0.6 : 0.3);
 
     // Blinzeln alle paar Sekunden
     const now = performance.now();
@@ -1050,6 +1126,8 @@ export class Avatar {
 
     const dt = Math.min(100, now - (this.lastNow ?? now));
     this.lastNow = now;
+    this.updateMood(now, dt);
+    this.updateListening(now);
     this.updateBehaviour(now, dt);
     this.updatePose(now);
     this.updateMorph(now, dt);
@@ -1076,7 +1154,8 @@ export class Avatar {
     const m = this.layers[0]?.isVrm ? 0 : this.motion;
     const breathe = Math.sin(t * 1.7) * 0.006 * m;
     const sway = (Math.sin(t * 0.55) * 0.006 + Math.sin(t * 0.23) * 0.004) * m;
-    const talk = this.speaking ? (Math.sin(t * 6.3) * 0.006 + Math.sin(t * 3.1) * 0.004) * this.open * m : 0;
+    const energy = this.moodCur?.energy ?? 1;
+    const talk = this.speaking ? (Math.sin(t * 6.3) * 0.006 + Math.sin(t * 3.1) * 0.004) * this.open * m * energy : 0;
     const think = this.thinking ? Math.sin(t * 1.2) * 0.008 * m : 0;
     const lean = this.listening ? 0.012 * m : 0;
     this.lean = (this.lean ?? 0) + (lean - (this.lean ?? 0)) * 0.05;

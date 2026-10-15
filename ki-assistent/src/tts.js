@@ -3,6 +3,7 @@
 // des Generierens gesprochen werden kann. Pro Satz wird die Sprache erkannt und die
 // passende Stimme (Deutsch/Englisch) gewählt.
 import { synthesize, preloadVoice } from './piper.js';
+import { visemeUnits, visemeTimeline, visemeAt } from './visemes.js';
 
 export const PIPER_VOICES = {
   de: [
@@ -146,7 +147,9 @@ export class SentenceSplitter {
 export class SpeechOutput {
   constructor({ onLevel, onSpeakingChange, onStatus } = {}) {
     this.onLevel = onLevel ?? (() => {});
-    this.onShape = () => {}; // Mundform: -1 rund (o/u) … +1 breit (e/i), aus dem Klangspektrum
+    this.onShape = () => {}; // Mundform: -1 rund (o/u) … +1 breit (e/i), aus Lauten oder dem Klangspektrum
+    this.onViseme = () => {}; // Mundöffnung je Laut (0 = Lippen zu bei m/b/p … 1 = weit offen), null = unbekannt
+    this.onItem = () => {}; // ein Satz beginnt (mit den beim Einreihen übergebenen Zusatzdaten)
     this.onSpeakingChange = onSpeakingChange ?? (() => {});
     this.onStatus = onStatus ?? (() => {});
     this.engine = 'piper';
@@ -244,13 +247,13 @@ export class SpeechOutput {
   }
 
   /** Satz in die Warteschlange legen. Piper-Audio wird sofort vorberechnet. */
-  enqueue(text) {
+  enqueue(text, meta) {
     const clean = cleanForSpeech(text);
     if (!clean || !/[\p{L}\p{N}]/u.test(clean)) return;
     if (this.maxSentences && this.spokenInTurn >= this.maxSentences) return;
     this.spokenInTurn++;
     const gen = this.generation;
-    const item = { text: clean, gen };
+    const item = { text: clean, gen, meta };
     if (this.engine !== 'system') {
       const job =
         this.engine === 'server'
@@ -293,8 +296,14 @@ export class SpeechOutput {
     try {
       if (item.audio) {
         const result = await item.audio;
-        if (result && item.gen === this.generation) await this.playPcm(result.audio, result.sampleRate);
+        if (item.gen === this.generation) this.onItem(item.meta); // auch wenn der Satz nicht hörbar ist
+        if (result && item.gen === this.generation) {
+          // Mundbilder: Piper liefert die Laute, sonst aus der Schreibweise
+          const units = visemeUnits(result.phonemes ?? item.text);
+          await this.playPcm(result.audio, result.sampleRate, visemeTimeline(units, result.audio, result.sampleRate));
+        }
       } else {
+        this.onItem(item.meta);
         await this.speakSystem(item.text);
       }
     } catch (err) {
@@ -303,7 +312,7 @@ export class SpeechOutput {
     if (item.gen === this.generation) this.playNext();
   }
 
-  async playPcm(pcm, sampleRate) {
+  async playPcm(pcm, sampleRate, timeline = null) {
     this.ctx ??= new AudioContext();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
     const buf = this.ctx.createBuffer(1, pcm.length, sampleRate);
@@ -323,6 +332,12 @@ export class SpeechOutput {
       let sum = 0;
       for (const v of samples) sum += v * v;
       this.onLevel(Math.min(1, Math.sqrt(sum / samples.length) * 6));
+      if (timeline) {
+        // was gerade zu hören ist (Ausgabeverzögerung des Geräts abziehen)
+        const v = visemeAt(timeline, this.ctx.currentTime - startAt - (this.ctx.outputLatency || this.ctx.baseLatency || 0));
+        this.onViseme(v ? v.open : null);
+        if (v) return this.onShape(v.shape);
+      }
       // Klangschwerpunkt: hell (e/i) = breiter Mund, dunkel (o/u) = runder Mund
       analyser.getFloatFrequencyData(spec);
       let num = 0;
@@ -335,12 +350,15 @@ export class SpeechOutput {
       if (den > 1e-4) this.onShape(Math.max(-1, Math.min(1, (num / den - 1300) / 700)));
     }, 33);
     this.currentSource = src;
+    let startAt = this.ctx.currentTime;
     await new Promise((resolve) => {
       src.onended = resolve;
       src.start();
+      startAt = this.ctx.currentTime;
     });
     clearInterval(timer);
     this.currentSource = null;
+    this.onViseme(null);
     this.onLevel(0);
   }
 
@@ -378,6 +396,7 @@ export class SpeechOutput {
     } catch {}
     globalThis.speechSynthesis?.cancel();
     this.playing = false;
+    this.onViseme(null);
     this.onLevel(0);
     this.onSpeakingChange(false);
   }

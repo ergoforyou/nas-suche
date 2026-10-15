@@ -73,6 +73,36 @@ jobs:
           name: KI-Assistent-Android
           path: ki-assistent/release-android/*.apk
 
+  android-test:
+    name: Android-App im Emulator prüfen
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: KI-Assistent-Android
+          path: ki-assistent/apk
+      - name: KVM für den Emulator freischalten
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: App installieren, starten und prüfen
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: ki-assistent
+          script: node test/android-emulator.mjs "$(ls apk/*.apk | head -1)"
+
   windows:
     name: Windows-Programm bauen
     runs-on: windows-latest

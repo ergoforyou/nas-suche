@@ -1,0 +1,116 @@
+// Prüft die fertige Android-App in einem echten Emulator: installieren, starten und über die
+// WebView-Fehlersuche (Chrome DevTools-Protokoll) nachsehen, ob die Oberfläche vollständig läuft.
+// Fehler, die nur in der Android-WebView auftreten (z. B. fehlende Systemstimmen), fallen so vor dem Ausliefern auf.
+// Aufruf: node test/android-emulator.mjs <app.apk>
+import { execFileSync } from 'node:child_process';
+
+const APP = 'de.ergoforyou.kiassistent';
+const apk = process.argv[2];
+if (!apk) throw new Error('Pfad zur APK fehlt');
+
+const adb = (...args) => execFileSync('adb', args, { encoding: 'utf8' }).trim();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let failed = 0;
+const check = (ok, what, detail = '') => {
+  console.log(`${ok ? '✔' : '✘'} ${what}${detail ? ` – ${detail}` : ''}`);
+  if (!ok) failed++;
+};
+
+adb('install', '-r', '-g', apk); // -g: Mikrofon-Recht gleich erteilen
+adb('logcat', '-c');
+adb('shell', 'am', 'start', '-W', '-n', `${APP}/.MainActivity`);
+
+// WebView-Fehlersuche: Debug-Builds öffnen einen Socket "webview_devtools_remote_<pid>"
+let pid = '';
+let targets = [];
+for (let i = 0; i < 60 && !targets.length; i++) {
+  await sleep(1000);
+  pid = adb('shell', 'pidof', APP).split(/\s+/)[0] ?? '';
+  if (!pid) continue;
+  try {
+    adb('forward', 'tcp:9333', `localabstract:webview_devtools_remote_${pid}`);
+    targets = (await (await fetch('http://127.0.0.1:9333/json/list')).json()).filter((t) => t.type === 'page');
+  } catch {}
+}
+check(targets.length > 0, 'App gestartet, WebView erreichbar', `pid ${pid}`);
+if (!targets.length) {
+  console.log(adb('logcat', '-d', '-t', '300'));
+  process.exit(1);
+}
+
+const ws = new WebSocket(targets[0].webSocketDebuggerUrl);
+await new Promise((res, rej) => {
+  ws.onopen = res;
+  ws.onerror = rej;
+});
+let seq = 0;
+const pending = new Map();
+const consoleErrors = [];
+ws.onmessage = (m) => {
+  const msg = JSON.parse(m.data);
+  if (msg.id && pending.has(msg.id)) {
+    pending.get(msg.id)(msg);
+    pending.delete(msg.id);
+  } else if (msg.method === 'Runtime.exceptionThrown') {
+    consoleErrors.push(msg.params.exceptionDetails?.exception?.description ?? msg.params.exceptionDetails?.text);
+  }
+};
+const send = (method, params = {}) =>
+  new Promise((res) => {
+    const id = ++seq;
+    pending.set(id, res);
+    ws.send(JSON.stringify({ id, method, params }));
+  });
+/** JavaScript in der App ausführen (async erlaubt) und das Ergebnis zurückgeben. */
+async function run(expr) {
+  const r = await send('Runtime.evaluate', { expression: `(async () => { ${expr} })()`, awaitPromise: true, returnByValue: true });
+  if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description ?? 'Fehler im Test-Skript');
+  return r.result?.result?.value;
+}
+await send('Runtime.enable');
+
+// 1) Oberfläche vollständig gestartet (init() lief durch)
+let ready = false;
+for (let i = 0; i < 40 && !ready; i++) {
+  ready = await run(`return !!window.__app && !!document.querySelector('#btnAttach') && !document.querySelector('#btnAttach').hidden`);
+  if (!ready) await sleep(500);
+}
+check(ready, 'Oberfläche vollständig gestartet (Anhang-Knopf sichtbar)');
+const info = await run(`return { title: document.querySelector('#titleVersion')?.textContent, edition: window.__app?.edition,
+  mobile: document.documentElement.classList.contains('mobile'), provider: window.__app?.state?.settings?.provider }`);
+console.log('  ', JSON.stringify(info));
+check(info.mobile, 'Android-Darstellung aktiv');
+check(/\d+\.\d+/.test(info.title ?? ''), 'Version in der Titelzeile', info.title);
+
+// 2) Bild-im-Bild-Schnittstelle aus MainActivity.java
+check(await run(`return !!window.KIPip?.supported?.()`), 'Bild-im-Bild verfügbar');
+
+// 3) Schlüssel im Android-Keystore verschlüsselt
+check(await run(`return !!window.KIKeys?.available?.()`), 'Android-Keystore verfügbar');
+const round = await run(`const e = KIKeys.encrypt('geheim-ä-123'); return { e, d: KIKeys.decrypt(e) }`);
+check(round.d === 'geheim-ä-123' && !String(round.e).includes('geheim'), 'Verschlüsseln und Entschlüsseln');
+const stored = await run(`
+  await desktop.setKey('openai', 'sk-test-emulator-4711');
+  const st = await desktop.keyStatus();
+  const raw = JSON.stringify(await window.__keyFile());
+  await desktop.setKey('openai', '');
+  return { st, raw };`);
+check(stored.st.openai && stored.st.encrypted, 'Schlüssel gespeichert (verschlüsselt gemeldet)');
+check(!stored.raw.includes('sk-test-emulator'), 'Schlüssel liegt nicht im Klartext in der Datei', stored.raw.slice(0, 60));
+
+// 4) Figur: Stimmung und Laute kommen an
+const mood = await run(`
+  const a = window.__app.avatar;
+  window.__app.setMood('freudig');
+  await new Promise((r) => setTimeout(r, 1500));
+  return { name: a.moodCur?.name, smile: a.moodCur?.smile };`);
+check(mood.name === 'freudig' && mood.smile > 0.2, 'Figur übernimmt die Stimmung', JSON.stringify(mood));
+
+// 5) Keine Skriptfehler (auch nicht beim Start – die stehen im Systemprotokoll)
+const log = adb('logcat', '-d', '-s', 'Capacitor/Console:E', 'chromium:E');
+const startErrors = log.split('\n').filter((l) => /Uncaught|TypeError|ReferenceError/.test(l));
+check(!startErrors.length && !consoleErrors.length, 'Keine Skriptfehler', [...startErrors, ...consoleErrors].join(' | ').slice(0, 400));
+
+ws.close();
+console.log(failed ? `\n${failed} Prüfung(en) fehlgeschlagen` : '\nAlles in Ordnung.');
+process.exit(failed ? 1 : 0);
