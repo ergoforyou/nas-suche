@@ -173,8 +173,9 @@ export class SpeechOutput {
     if (maxSentences !== undefined) this.maxSentences = maxSentences;
   }
 
+  // Systemstimmen gibt es nicht überall (z. B. nicht in der Android-WebView) – dann einfach keine
   static systemVoices() {
-    return speechSynthesis.getVoices();
+    return globalThis.speechSynthesis?.getVoices() ?? [];
   }
 
   voiceFor(text) {
@@ -344,6 +345,7 @@ export class SpeechOutput {
   }
 
   speakSystem(text) {
+    if (!globalThis.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return Promise.resolve();
     return new Promise((resolve) => {
       const u = new SpeechSynthesisUtterance(text);
       const voice = speechSynthesis.getVoices().find((v) => v.name === this.systemVoice);
@@ -374,7 +376,7 @@ export class SpeechOutput {
     try {
       this.currentSource?.stop();
     } catch {}
-    speechSynthesis.cancel();
+    globalThis.speechSynthesis?.cancel();
     this.playing = false;
     this.onLevel(0);
     this.onSpeakingChange(false);

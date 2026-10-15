@@ -1302,7 +1302,7 @@ function fillSystemVoices() {
   for (const v of sorted) sel.add(new Option(`${v.name} (${v.lang})`, v.name, false, v.name === persona().voice.systemVoice));
   if (!voices.length) sel.add(new Option('Keine Systemstimmen gefunden', ''));
 }
-speechSynthesis.onvoiceschanged = () => !$('drawer').hidden && fillSystemVoices();
+if (globalThis.speechSynthesis) speechSynthesis.onvoiceschanged = () => !$('drawer').hidden && fillSystemVoices();
 
 function toggleEngineFields() {
   const engine = $('vEngine').value;

@@ -22,6 +22,12 @@ const server = http
 
 const browser = await chromium.launch();
 const page = await (await browser.newContext({ ...devices['Pixel 7'] })).newPage();
+// wie in der Android-WebView: keine Systemstimmen (speechSynthesis fehlt)
+await page.addInitScript(() => {
+  delete window.speechSynthesis;
+  delete window.SpeechSynthesisUtterance;
+  Object.defineProperty(window, 'speechSynthesis', { value: undefined, configurable: true });
+});
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 let request = null;
