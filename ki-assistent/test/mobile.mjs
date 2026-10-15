@@ -61,6 +61,31 @@ await page.waitForTimeout(500);
 const kept = await page.evaluate(() => Object.values(window.__app.state.history).reduce((n, h) => n + h.length, 0));
 check(kept === 2, 'Verlauf bleibt nach Neustart erhalten', `(${kept} Nachrichten)`);
 check((await page.evaluate(() => window.desktop.keyStatus())).anthropic, 'Schlüssel bleibt erhalten');
+// Dateiauswahl: Android-Auswahl simulieren (ein kleines PNG), über die normalen Hochlade-Knöpfe
+await page.evaluate(() => {
+  window.__picked = [];
+  window.__testPicker = {
+    pickFiles: async (opts) => {
+      window.__picked.push(opts);
+      const c = document.createElement('canvas');
+      c.width = 40;
+      c.height = 60;
+      c.getContext('2d').fillRect(10, 10, 20, 40);
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+      return { files: [{ name: 'bild.png', mimeType: 'image/png', size: blob.size, blob }] };
+    },
+  };
+});
+await page.click('#btnSettings');
+await page.evaluate(() => document.querySelector('[data-tab=avatar]').click());
+await page.evaluate(() => document.getElementById('avMorphAdd').click());
+await page.waitForFunction(() => (window.__app.state.personas[0].avatar.morphs?.length ?? 0) === 1, null, { timeout: 10000 }).catch(() => {});
+const morphs = await page.evaluate(() => window.__app.state.personas[0].avatar.morphs?.length ?? 0);
+check(morphs === 1, 'Bild über Android-Dateiauswahl übernommen', JSON.stringify(await page.evaluate(() => window.__picked[0])));
+await page.evaluate(() => document.getElementById('btnCloseDrawer').click());
+await page.evaluate(() => document.getElementById('btnAttach').click());
+await page.waitForFunction(() => document.querySelectorAll('#attachments .chip').length === 1, null, { timeout: 10000 }).catch(() => {});
+check((await page.$$('#attachments .chip')).length === 1, 'Anhang über Android-Dateiauswahl übernommen');
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

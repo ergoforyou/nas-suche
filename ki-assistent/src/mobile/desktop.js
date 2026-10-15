@@ -4,6 +4,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { FilePicker } from '@capawesome/capacitor-file-picker';
 import Anthropic, { toFile } from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import cloud from '../../cloud.js';
@@ -258,6 +259,36 @@ const api = {
   ttsServerMultilingual: notHere('Chatterbox'),
   onCommand: () => {},
   onAvatarCursor: () => {},
+};
+
+// ---------------------------------------------------------------- Dateien auswählen
+// Die versteckten <input type="file">-Felder der Oberfläche öffnen in der Android-Hülle nicht zuverlässig die
+// Dateiauswahl. Darum geht jeder Aufruf über die Android-Dateiauswahl; die gewählten Dateien landen danach im
+// Feld, und die Oberfläche bekommt ganz normal ein "change"-Ereignis – alle Hochlade-Knöpfe funktionieren so.
+const EXT_TYPES = { '.vrm': ['model/gltf-binary', 'application/octet-stream'], '.json': ['application/json', 'application/octet-stream'] };
+async function pickInto(input, picker) {
+  const accept = (input.accept || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const types = [...new Set(accept.flatMap((a) => (a.startsWith('.') ? EXT_TYPES[a.toLowerCase()] ?? ['application/octet-stream'] : [a])))];
+  const { files } = await picker.pickFiles({ ...(types.length ? { types } : {}), limit: input.multiple ? 0 : 1 });
+  if (!files?.length) return;
+  const dt = new DataTransfer();
+  for (const f of files) {
+    const blob = f.blob ?? (await (await fetch(f.webPath ?? Capacitor.convertFileSrc(f.path))).blob());
+    dt.items.add(new File([blob], f.name || 'Datei', { type: f.mimeType || blob.type }));
+  }
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+const nativeClick = HTMLInputElement.prototype.click;
+HTMLInputElement.prototype.click = function () {
+  const picker = window.__testPicker ?? (Capacitor.isNativePlatform() ? FilePicker : null);
+  if (this.type !== 'file' || !picker) return nativeClick.call(this);
+  pickInto(this, picker).catch((e) => {
+    if (!/cancel/i.test(String(e?.message ?? e))) {
+      console.warn('Dateiauswahl:', e);
+      nativeClick.call(this);
+    }
+  });
 };
 
 // Alles Übrige (Fensterfunktionen, freie Figur …) gibt es auf dem Handy nicht: still ignorieren
