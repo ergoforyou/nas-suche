@@ -107,6 +107,27 @@ jobs:
           if (Test-Path "$ziel\Agentur-PDF.exe") { Write-Error "Programm nach Deinstallation noch vorhanden"; exit 1 }
           "Installation und Deinstallation in Ordnung."
 
+      - name: PDF-Drucker zur Probe (einrichten, drucken, entfernen)
+        id: drucker
+        continue-on-error: true
+        working-directory: agentur-pdf/installer
+        run: |
+          $exe = "dist\Agentur-PDF\Agentur-PDF.exe"
+          $ordner = "$env:PUBLIC\Agentur-PDF-Druck"
+          $p = Start-Process -Wait -PassThru -FilePath $exe -ArgumentList "--drucker-einrichten"
+          "Einrichten: Exitcode $($p.ExitCode)"
+          Get-Printer -Name "Agentur-PDF" | Format-List Name, DriverName, PortName
+          "Probedruck von Agentur-PDF" | Out-Printer -Name "Agentur-PDF"
+          $datei = Join-Path $ordner "Ausdruck.pdf"
+          for ($i = 0; $i -lt 30 -and -not (Test-Path $datei); $i++) { Start-Sleep -Seconds 1 }
+          if (-not (Test-Path $datei)) { Write-Error "Kein Ausdruck im Druckordner angekommen"; exit 1 }
+          $kopf = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($datei)[0..3])
+          "Ausdruck: $((Get-Item $datei).Length) Bytes, beginnt mit $kopf"
+          Remove-Item $datei
+          Start-Process -Wait -FilePath $exe -ArgumentList "--drucker-entfernen"
+          if (Get-Printer -Name "Agentur-PDF" -ErrorAction SilentlyContinue) { Write-Error "Drucker nicht entfernt"; exit 1 }
+          if ($kopf -ne "%PDF") { Write-Error "Ausdruck ist keine PDF"; exit 1 }
+
       - name: ZIP erstellen
         working-directory: agentur-pdf/installer/dist
         run: |
@@ -118,6 +139,7 @@ jobs:
         run: |
           "## Agentur-PDF Windows-Testversion" >> $env:GITHUB_STEP_SUMMARY
           "Tests unter Windows: **${{ steps.tests.outcome }}**" >> $env:GITHUB_STEP_SUMMARY
+          "PDF-Drucker-Probe: **${{ steps.drucker.outcome }}**" >> $env:GITHUB_STEP_SUMMARY
           if (Test-Path testergebnis.txt) { '```' >> $env:GITHUB_STEP_SUMMARY; Get-Content testergebnis.txt -Tail 25 >> $env:GITHUB_STEP_SUMMARY; '```' >> $env:GITHUB_STEP_SUMMARY }
           if (Test-Path probelauf.txt) { "### Probelauf der .exe" >> $env:GITHUB_STEP_SUMMARY; '```' >> $env:GITHUB_STEP_SUMMARY; Get-Content probelauf.txt -Tail 40 >> $env:GITHUB_STEP_SUMMARY; '```' >> $env:GITHUB_STEP_SUMMARY }
 
@@ -152,4 +174,4 @@ jobs:
             Empfohlen: `Agentur-PDF-Setup-….exe` ausführen (keine Administratorrechte nötig).
             Für Updates an allen PCs die Setup-Datei in den Ordner „Updates“ im gemeinsamen NAS-Ordner legen.
             Alternativ ZIP entpacken und `Agentur-PDF.exe` starten – Details in `LIESMICH.txt`.
-            Tests unter Windows: ${{ steps.tests.outcome }}
+            Tests unter Windows: ${{ steps.tests.outcome }} · PDF-Drucker-Probe: ${{ steps.drucker.outcome }}

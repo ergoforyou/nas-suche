@@ -72,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--explorer-entfernen", action="store_true", help="Rechtsklick-Einträge entfernen")
     parser.add_argument("--explorer-reg", metavar="DATEI", help="Rechtsklick-Einträge als .reg-Datei exportieren")
     parser.add_argument("--nach-update", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--drucker-einrichten", action="store_true", help="PDF-Drucker „Agentur-PDF“ einrichten (Adminrechte)")
+    parser.add_argument("--drucker-entfernen", action="store_true", help="PDF-Drucker entfernen (Adminrechte)")
     args = parser.parse_args(argv)
 
     if args.explorer_einrichten or args.explorer_entfernen or args.explorer_reg:
@@ -86,6 +88,13 @@ def main(argv: list[str] | None = None) -> int:
             explorer.entfernen()
             print("Rechtsklick-Einträge entfernt.")
         return 0
+    if args.drucker_einrichten or args.drucker_entfernen:
+        from .kern.druckordner import standard_ordner
+        from .windows import drucker
+
+        ordner = Path(BenutzerSpeicher().einstellungen().get("druck_ordner") or standard_ordner())
+        ok = drucker.einrichten(ordner, erhoeht=False) if args.drucker_einrichten else drucker.entfernen(ordner, erhoeht=False)
+        return 0 if ok else 1
     aktion = "zusammenfuehren" if args.zusammenfuehren else "umwandeln" if args.umwandeln else "oeffnen"
 
     einzelinstanz = not (args.nur_dienst or args.neue_instanz)

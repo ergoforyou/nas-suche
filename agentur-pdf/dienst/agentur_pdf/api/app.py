@@ -46,10 +46,12 @@ def erstelle_app(
     async def lebensdauer(_app: FastAPI):
         # Hintergrund: Sicherung ungespeicherter Änderungen, Sperren auffrischen
         aufgabe = asyncio.create_task(_wartungsschleife(_app))
+        _app.state.druckordner.starten()
         try:
             yield
         finally:
             aufgabe.cancel()
+            _app.state.druckordner.stoppen()
             _app.state.aufraeumen()
 
     app = FastAPI(
@@ -161,6 +163,49 @@ def erstelle_app(
 
     app.state.wartung = wartung
     app.state.aufraeumen = aufraeumen
+
+    # --------------------------------------------- PDF-Drucker „Agentur-PDF“
+    from ..kern.druckordner import Druckordner, standard_ordner
+
+    def druck_ordner() -> Path:
+        eigener = str(benutzer.einstellungen().get("druck_ordner") or "").strip()
+        return Path(eigener) if eigener else standard_ordner()
+
+    def ausdruck_oeffnen(daten: bytes, titel: str) -> None:
+        def oeffnen():
+            dok = dokumente.oeffnen_bytes(daten, titel)
+            dok.geaendert = True
+            return dok.id
+
+        dok_id = im_mupdf_thread_sync(oeffnen)
+        ereignisse.hinzufuegen({"art": "oeffnen", "dokumente": [dok_id]})
+        if app.state.fenster_vorholen:
+            app.state.fenster_vorholen()
+
+    app.state.druckordner = Druckordner(druck_ordner, ausdruck_oeffnen)
+
+    @app.get("/api/system/drucker")
+    async def drucker_status():
+        from ..windows import drucker
+
+        return {
+            "windows": os.name == "nt",
+            "eingerichtet": await asyncio.get_running_loop().run_in_executor(None, drucker.eingerichtet),
+            "ordner": str(druck_ordner()),
+            "name": drucker.DRUCKER,
+        }
+
+    @app.post("/api/system/drucker")
+    async def drucker_einrichten(einrichten: bool = Body(True, embed=True)):
+        from ..windows import drucker
+
+        if os.name != "nt":
+            raise DokumentFehler("Den PDF-Drucker gibt es nur unter Windows.")
+        funktion = drucker.einrichten if einrichten else drucker.entfernen
+        ok = await asyncio.get_running_loop().run_in_executor(None, funktion, druck_ordner())
+        if not ok:
+            raise DokumentFehler("Der Drucker konnte nicht eingerichtet werden (Administratorrechte abgelehnt?).")
+        return await drucker_status()
 
     @app.get("/api/wiederherstellung")
     async def wiederherstellung_liste():

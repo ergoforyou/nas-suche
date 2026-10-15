@@ -53,6 +53,8 @@ STANDARD_EINSTELLUNGEN: dict[str, Any] = {
     "werkzeug_stile": {},
     # Ordner für gemeinsame Einstellungen aller Arbeitsplätze (NAS), leer = aus
     "gemeinsamer_ordner": "",
+    # Druckordner des PDF-Druckers „Agentur-PDF“ (leer = Öffentlich\Agentur-PDF-Druck)
+    "druck_ordner": "",
 }
 
 # Diese Einstellungen gelten – bei eingetragenem gemeinsamem Ordner – für alle

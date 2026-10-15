@@ -50,6 +50,7 @@ Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 [Tasks]
 Name: "desktop"; Description: "Verknüpfung auf dem Desktop anlegen"
 Name: "explorer"; Description: "Explorer-Rechtsklick („Mit Agentur-PDF öffnen“, „Zu einer PDF zusammenführen“) und „Öffnen mit“ einrichten"
+Name: "drucker"; Description: "PDF-Drucker „Agentur-PDF“ einrichten (fragt nach Administratorrechten)"; Flags: unchecked
 
 [InstallDelete]
 ; alte Programmdateien entfernen – sonst bleiben bei Updates Reste liegen
@@ -64,6 +65,7 @@ Name: "{autodesktop}\Agentur-PDF"; Filename: "{app}\Agentur-PDF.exe"; Tasks: des
 
 [Run]
 Filename: "{app}\Agentur-PDF.exe"; Parameters: "--explorer-einrichten"; StatusMsg: "Explorer-Einträge werden eingerichtet …"; Flags: runhidden waituntilterminated; Tasks: explorer
+Filename: "{app}\Agentur-PDF.exe"; Parameters: "--drucker-einrichten"; StatusMsg: "PDF-Drucker wird eingerichtet …"; Verb: "runas"; Flags: shellexec runhidden waituntilterminated; Tasks: drucker; Check: not NachUpdateStarten
 Filename: "{app}\Agentur-PDF.exe"; Description: "Agentur-PDF jetzt starten"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\Agentur-PDF.exe"; Parameters: "--nach-update"; Flags: nowait; Check: NachUpdateStarten
 

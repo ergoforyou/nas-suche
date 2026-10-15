@@ -109,6 +109,9 @@ export const api = {
     anfrage<{ anzahl: number; dateien: { pfad: string; name: string; ordner: string; groesse: number }[] }>("POST", "/api/stapel/vorschau", { pfade, unterordner }),
   stapelStarten: (pfade: string[], unterordner: boolean, optionen: StapelOptionen) =>
     anfrage<Auftrag>("POST", "/api/stapel", { pfade, unterordner, optionen }),
+  druckerStatus: () => anfrage<{ windows: boolean; eingerichtet: boolean; ordner: string; name: string }>("GET", "/api/system/drucker"),
+  druckerEinrichten: (einrichten: boolean) =>
+    anfrage<{ windows: boolean; eingerichtet: boolean; ordner: string; name: string }>("POST", "/api/system/drucker", { einrichten }),
   ordnerDialog: (start = "") => anfrage<{ verfuegbar: boolean; pfad: string | null }>("POST", "/api/dialog/ordner", { start }),
   updatePruefen: () => anfrage<UpdateInfo>("GET", "/api/update"),
   updateInstallieren: () => anfrage<{ ok: boolean; version: string }>("POST", "/api/update/installieren"),

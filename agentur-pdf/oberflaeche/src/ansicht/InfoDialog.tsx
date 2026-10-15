@@ -2,6 +2,7 @@
 
 import { Camera, CheckCircle2, Download, Info, MonitorCog, MousePointerClick, RefreshCw, Settings, Users, XCircle } from "lucide-react";
 import { updateInstallieren, updatePruefen } from "../zustand/aktionen";
+import { DruckerBereich } from "./DruckerBereich";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { holen, melden, setzen, useZustand } from "../zustand/store";
@@ -106,6 +107,7 @@ function EinstellungenBereich() {
         )}
       </fieldset>
       <WindowsUndUpdates />
+      <DruckerBereich />
       <fieldset className="gruppe">
         <legend>
           <Camera size={13} /> Screenshot-Werkzeug

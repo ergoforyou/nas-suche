@@ -32,3 +32,21 @@ test("Stapelverarbeitung: Ordner verkleinern und in Zielordner speichern", async
   expect(readdirSync(ziel).sort()).toEqual(["001 a.pdf", "002 duplex.pdf", "003 foto.pdf"]);
   expect(existsSync(join(quelle, "a.pdf"))).toBe(true); // Original bleibt
 });
+
+test("PDF-Drucker: Ausdruck im Druckordner öffnet sich als neues Dokument", async ({ page }) => {
+  const druck = join(DATEN, "druck");
+  rmSync(druck, { recursive: true, force: true });
+  mkdirSync(druck, { recursive: true });
+  await start(page);
+  await page.request.put("/api/einstellungen", { headers: { "X-Agentur-Token": "e2e" }, data: { druck_ordner: druck } });
+  await page.locator(".mb-reiter").getByRole("tab", { name: "Konvertieren" }).click();
+  await page.locator('[data-befehl="konvertieren.drucker"]').click();
+  const dialog = page.getByRole("dialog", { name: "PDF-Drucker" });
+  await expect(dialog).toContainText("Agentur-PDF");
+  await dialog.getByRole("button", { name: "Schließen" }).click();
+  // so legt der Drucker einen Ausdruck ab
+  copyFileSync(join(DATEN, "brief.pdf"), join(druck, "Ausdruck.pdf"));
+  await expect(page.locator(".tab.aktiv")).toContainText("Ausdruck", { timeout: 10_000 });
+  expect(existsSync(join(druck, "Ausdruck.pdf"))).toBe(false);
+  await page.request.put("/api/einstellungen", { headers: { "X-Agentur-Token": "e2e" }, data: { druck_ordner: "" } });
+});

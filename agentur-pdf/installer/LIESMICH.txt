@@ -43,6 +43,19 @@ UPDATES FÜR ALLE PCs
   „Update x.y.z“ – ein Klick, Agentur-PDF schließt sich, aktualisiert
   und startet neu. Ungespeicherte Änderungen werden vorher gesichert.
 
+PDF-DRUCKER „AGENTUR-PDF“
+  Einmal je PC einrichten: im Setup ankreuzen oder „Konvertieren“ →
+  „PDF-Drucker“ → „Drucker einrichten …“ (Windows fragt nach
+  Administratorrechten). Danach in Word, Outlook, Browser oder Fach-
+  software „Drucken“ → Drucker „Agentur-PDF“: Der Ausdruck öffnet sich
+  sofort in Agentur-PDF als neues Dokument.
+
+STAPELVERARBEITUNG
+  „Konvertieren“ → „Stapelverarbeitung“: Dateien oder ganze Ordner auf
+  einmal – Texterkennung, Leerseiten entfernen, Metadaten entfernen,
+  verkleinern. Speichern neben dem Original, in einen Zielordner oder
+  Original ersetzen (Sicherung in „_Original“).
+
 GEMEINSAM GENUTZTE DATEIEN, ABSTURZ
   • Hat ein Kollege eine Datei geöffnet, erscheint ein gelber Hinweis
     („Bei martina (PC-02) geöffnet“) und ein Schloss im Tab. Speichern

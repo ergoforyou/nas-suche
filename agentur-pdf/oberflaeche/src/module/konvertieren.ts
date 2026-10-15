@@ -1,6 +1,6 @@
 // Register „Konvertieren“: Zusammenführen, In PDF umwandeln, Als PDF speichern.
 
-import { Camera, FileDown, FileInput, FolderSync, Layers, Layers3, ScanText, TextSelect, TriangleAlert } from "lucide-react";
+import { Camera, FileDown, FileInput, FolderSync, Layers, Layers3, Printer, ScanText, TextSelect, TriangleAlert } from "lucide-react";
 import { api } from "../api";
 import { registrieren } from "../befehle/register";
 import { umwandelnDialog, zusammenfuehrenOeffnen } from "../zustand/konvertieren";
@@ -42,6 +42,17 @@ registrieren(
     stichworte: ["stapel", "batch", "viele dateien", "ordner", "alle dateien", "massen", "texterkennung ordner", "verkleinern ordner", "umbenennen"],
     beschreibung: "Viele Dateien oder ganze Ordner auf einmal: Texterkennung, Leerseiten entfernen, Metadaten entfernen, verkleinern.",
     ausfuehren: () => setzen({ dialog: { art: "stapel", pfade: [] } }),
+  },
+  {
+    id: "konvertieren.drucker",
+    titel: "PDF-Drucker",
+    register: "konvertieren",
+    gruppe: "PDF erstellen",
+    icon: Printer,
+    farbe: "#3B4A5A",
+    stichworte: ["drucker", "drucken als pdf", "print to pdf", "aus word drucken", "fachsoftware", "ausdruck"],
+    beschreibung: "Aus jedem Programm auf den Drucker „Agentur-PDF“ drucken – der Ausdruck öffnet sich hier als Dokument.",
+    ausfuehren: () => setzen({ dialog: { art: "drucker" } }),
   },
   {
     id: "konvertieren.als_pdf_speichern",
