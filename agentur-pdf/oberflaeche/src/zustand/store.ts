@@ -23,6 +23,7 @@ import type {
   Wiederherstellung,
   UpdateInfo,
   FormularTyp,
+  VergleichErgebnis,
 } from "../typen";
 
 export const ZOOM_MIN = 0.1;
@@ -97,6 +98,7 @@ export type Dialog =
   | { art: "wiederherstellung"; eintraege: Wiederherstellung[] }
   | { art: "stapel"; pfade: string[] }
   | { art: "drucker" }
+  | { art: "vergleich" }
   | { art: "zusammenfuehren"; eintraege: ZfEintrag[] }
   | { art: "ocr"; dokId: string }
   | { art: "ueberwachung" }
@@ -123,6 +125,8 @@ export interface Zustand {
   formulare: Record<string, { version: number; seiten: Record<string, Formularfeld[]> }>;
   /** ausgewählte Anmerkung */
   anmAuswahl: { dokId: string; seite: number; id: number } | null;
+  /** Dokumentvergleich: A (alt) und B (neu), Unterschiede, gewählter Unterschied */
+  vergleich: { a: string; b: string; ergebnis: VergleichErgebnis; aktiv: number } | null;
   /** Formular gestalten: Typ neuer Felder und ausgewähltes Feld */
   formularTyp: FormularTyp;
   formularAuswahl: { dokId: string; seite: number; id: number } | null;
@@ -177,6 +181,7 @@ let zustand: Zustand = {
   anmerkungen: {},
   formulare: {},
   anmAuswahl: null,
+  vergleich: null,
   formularTyp: "text",
   formularAuswahl: null,
   editor: null,

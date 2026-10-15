@@ -4,6 +4,7 @@ import {
   BookOpen,
   Columns2,
   FileText,
+  GitCompareArrows,
   FolderOpen,
   Hand,
   Maximize,
@@ -152,6 +153,21 @@ registrieren(
     kuerzel: "Strg+F",
     stichworte: ["volltextsuche", "finden", "text suchen"],
     ausfuehren: sucheOeffnen,
+  },
+  // ---------------------------------------------------------- Vergleichen
+  {
+    id: "ansicht.vergleichen",
+    titel: "Vergleichen",
+    register: "ansicht",
+    gruppe: "Vergleichen",
+    icon: GitCompareArrows,
+    gross: true,
+    farbe: "#C27C00",
+    stichworte: ["vergleich", "unterschiede", "fassung", "version", "änderungen finden", "diff", "alt und neu"],
+    beschreibung: "Zwei Fassungen nebeneinander vergleichen – Unterschiede Wort für Wort markiert, Scans als Bild.",
+    ausfuehren: () => setzen({ dialog: { art: "vergleich" } }),
+    aktiv: mitDokument,
+    gewaehlt: (z) => z.vergleich !== null,
   },
   // ---------------------------------------------------------- Werkzeuge
   {

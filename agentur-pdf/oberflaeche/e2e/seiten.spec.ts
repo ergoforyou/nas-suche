@@ -233,3 +233,33 @@ test("Seite direkt auf einen Tab fallen lassen (hinten anhängen, Strg = kopiere
   expect((await dokumentInfo(page, "b.pdf")).seitenanzahl).toBe(3); // verschoben
   await expect(page.locator(".seiten-ablage-linie")).toHaveCount(0);
 });
+
+test("Dokumente vergleichen: Unterschiede nebeneinander markiert und anspringbar", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "vertrag_alt.pdf");
+  await oeffnen(page, "vertrag_neu.pdf");
+  await page.locator(".mb-reiter").getByRole("tab", { name: "Ansicht" }).click();
+  await page.locator('[data-befehl="ansicht.vergleichen"]').click();
+  const dialog = page.getByRole("dialog", { name: "Dokumente vergleichen" });
+  await dialog.getByLabel("Alte Fassung").selectOption({ label: "vertrag_alt.pdf" });
+  await dialog.getByLabel("Neue Fassung").selectOption({ label: "vertrag_neu.pdf" });
+  await dialog.getByRole("button", { name: "Vergleichen" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId("bereich")).toHaveCount(2);
+  const liste = page.getByRole("list", { name: "Unterschiede" });
+  await expect(liste).toContainText("1.200,00");
+  await expect(liste).toContainText("1.250,00");
+  await expect(liste).toContainText("Selbstbeteiligung");
+  // Markierungen in beiden Dokumenten
+  await expect(page.locator(".vergleich.v-geaendert")).toHaveCount(2);
+  await expect(page.locator(".vergleich.aktiv").first()).toBeVisible();
+  // weiterblättern
+  const zaehler = page.locator(".vergleich-navi strong");
+  await expect(zaehler).toHaveText(/^1 \/ \d+$/);
+  await page.getByRole("button", { name: "Nächster Unterschied" }).click();
+  await expect(zaehler).toHaveText(/^2 \/ \d+$/);
+  if (process.env.E2E_BILDER) await page.screenshot({ path: join(process.env.E2E_BILDER, "vergleich.png") });
+  await page.getByRole("button", { name: "Vergleich beenden" }).click();
+  await expect(page.locator(".vergleich")).toHaveCount(0);
+  await expect(page.getByTestId("bereich")).toHaveCount(0); // wieder nur ein Dokument
+});

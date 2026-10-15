@@ -44,6 +44,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
   const lupeFaktor = useZustand((z) => z.lupeFaktor);
   const sprung = useZustand((z) => z.sprung);
   const suche = useZustand((z) => z.suche);
+  const vergleich = useZustand((z) => z.vergleich);
   const unsicher = useZustand((z) => z.unsicher[dokId]);
   const version = useZustand((z) => z.dokumente.find((d) => d.id === dokId)?.version ?? -1);
 
@@ -539,9 +540,18 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
       <div className="flaeche" style={{ width: layout.breite, height: layout.hoehe }}>
         {sichtbar.map(({ box, prio, bereich }) => {
           const [bPt, hPt] = anzeigeGroesse(seiten[box.seite], ansicht.drehung);
-          const markierungen = suche.treffer
+          const markierungen: { r: [number, number, number, number]; aktiv: boolean; art?: string }[] = suche.treffer
             .filter((t) => t.dokId === dokId && t.seite === box.seite)
             .map((t) => ({ r: t.rechteck, aktiv: t === aktiverTreffer }));
+          if (vergleich && (vergleich.a === dokId || vergleich.b === dokId)) {
+            const seiteA = vergleich.a === dokId;
+            vergleich.ergebnis.aenderungen.forEach((x, i) => {
+              for (const bereich of seiteA ? x.a : x.b) {
+                if (bereich.seite !== box.seite) continue;
+                markierungen.push({ r: bereich.rechteck, aktiv: i === vergleich.aktiv, art: `vergleich v-${x.art}${bereich.stelle ? " v-stelle" : ""}` });
+              }
+            });
+          }
           const unsichereWoerter = unsicher?.[String(box.seite)] ?? [];
           return (
             <div key={box.seite} className="seite" style={{ left: box.x, top: box.y, width: box.b, height: box.h }}>

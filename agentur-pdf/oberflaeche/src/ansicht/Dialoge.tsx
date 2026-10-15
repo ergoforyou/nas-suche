@@ -11,6 +11,7 @@ import { dokumentSchliessen } from "../zustand/aktionen";
 import { ZusammenfuehrenDialog } from "./Zusammenfuehren";
 import { StapelDialog } from "./StapelDialog";
 import { DruckerDialog } from "./DruckerBereich";
+import { VergleichDialog } from "./Vergleich";
 import { InfoDialog } from "./InfoDialog";
 import { BereichstextDialog, OcrDialog, UeberwachungDialog } from "./OcrDialoge";
 import {
@@ -52,6 +53,7 @@ export function Dialoge() {
   if (dialog.art === "wiederherstellung") return <WiederherstellungDialog eintraege={dialog.eintraege} />;
   if (dialog.art === "stapel") return <StapelDialog pfade={dialog.pfade} />;
   if (dialog.art === "drucker") return <DruckerDialog />;
+  if (dialog.art === "vergleich") return <VergleichDialog />;
   return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
 }
 

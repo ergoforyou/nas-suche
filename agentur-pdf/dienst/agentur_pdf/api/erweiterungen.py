@@ -665,6 +665,40 @@ def einrichten(
         anzahl = await im_mupdf_thread(setzen)
         return await antwort([dok_id], anzahl=anzahl)
 
+    # ============================================================ Vergleichen
+    @app.post("/api/vergleich")
+    async def vergleich(a: str = Body(...), b: str = Body(...)):
+        from ..kern import vergleich as v
+
+        if a == b:
+            raise DokumentFehler("Bitte zwei verschiedene Dokumente wählen.")
+
+        def lesen():
+            doc_a, doc_b = dokumente.get(a).doc, dokumente.get(b).doc
+            wa, wb = v.woerter_lesen(doc_a), v.woerter_lesen(doc_b)
+            ohne_text = [i for i in range(min(len(wa), len(wb))) if not wa[i] and not wb[i]]
+            return wa, wb, v.bildvergleich(doc_a, doc_b, ohne_text), doc_a.page_count, doc_b.page_count
+
+        wa, wb, bilder, seiten_a, seiten_b = await im_mupdf_thread(lesen)
+        text = await asyncio.get_running_loop().run_in_executor(None, v.vergleichen, wa, wb)
+
+        def ordnung(x: dict):
+            bereich = (x["a"] or x["b"])[0]
+            seite = x["seite_a"] if x["seite_a"] is not None else x["seite_b"]
+            return (seite, bereich["rechteck"][1])
+
+        aenderungen = sorted(text + bilder, key=ordnung)
+        woerter_a = sum(len(z) for s in wa for z in s)
+        woerter_b = sum(len(z) for s in wb for z in s)
+        return {
+            "aenderungen": aenderungen,
+            "anzahl": len(aenderungen),
+            "gekuerzt": len(text) >= v.MAX_AENDERUNGEN,
+            "seiten_a": seiten_a,
+            "seiten_b": seiten_b,
+            "ohne_text": woerter_a == 0 and woerter_b == 0,
+        }
+
     # ============================================================= Formulare
     @app.get("/api/dokumente/{dok_id}/formular")
     async def formular(dok_id: str):

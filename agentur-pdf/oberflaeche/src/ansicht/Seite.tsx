@@ -23,7 +23,7 @@ export interface SeiteProps {
   prioritaet: number;
   /** sichtbarer Bereich der Seite in CSS-px relativ zur Seite (null = nicht sichtbar) */
   sichtbar: { x0: number; y0: number; x1: number; y1: number } | null;
-  markierungen: { r: [number, number, number, number]; aktiv: boolean }[];
+  markierungen: { r: [number, number, number, number]; aktiv: boolean; art?: string }[];
   /** unsichere OCR-Wörter (normiert, angezeigte Seite ohne Ansichtsdrehung) */
   unsicher?: [number, number, number, number][];
   /** ausgeblendete Anmerkungsgruppen (kommagetrennt) */
@@ -146,7 +146,7 @@ export const Seite = memo(function Seite(p: SeiteProps) {
         return (
           <div
             key={i}
-            className={m.aktiv ? "treffer aktiv" : "treffer"}
+            className={`${m.art ?? "treffer"}${m.aktiv ? " aktiv" : ""}`}
             style={{ left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` }}
           />
         );

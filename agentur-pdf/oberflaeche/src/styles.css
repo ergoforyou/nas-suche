@@ -3679,3 +3679,101 @@ body {
   border: 1px solid #1e6fd9;
   background: #fff;
 }
+
+/* ---------------------------------------------------------- Vergleich */
+.vergleich {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+}
+
+.vergleich.v-geaendert { background: rgba(255, 170, 0, 0.38); }
+.vergleich.v-entfernt { background: rgba(220, 40, 40, 0.3); }
+.vergleich.v-eingefuegt { background: rgba(30, 160, 80, 0.32); }
+.vergleich.v-bild { background: rgba(120, 70, 200, 0.18); outline: 2px dashed rgba(120, 70, 200, 0.8); }
+.vergleich.v-stelle { background: rgba(220, 40, 40, 0.75); }
+.vergleich.aktiv { outline: 2px solid var(--akzent); outline-offset: 1px; mix-blend-mode: normal; }
+.vergleich.v-geaendert.aktiv, .vergleich.v-entfernt.aktiv, .vergleich.v-eingefuegt.aktiv { mix-blend-mode: multiply; }
+
+.vergleich-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.vergleich-kopf {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--linie);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vergleich-navi {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vergleich-navi strong {
+  flex: 1;
+  font-size: 12px;
+}
+
+.vergleich-navi button {
+  border: 1px solid var(--linie);
+  border-radius: 4px;
+  background: var(--hg);
+  padding: 2px 4px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.v-farbe {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 3px;
+}
+
+.v-farbe.v-alt { background: rgba(220, 40, 40, 0.6); }
+.v-farbe.v-neu { background: rgba(30, 160, 80, 0.6); }
+
+.v-art {
+  display: inline-block;
+  padding: 0 5px;
+  margin-right: 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  color: #fff;
+}
+
+.v-art.v-geaendert { background: #c27c00; }
+.v-art.v-entfernt { background: #c0262d; }
+.v-art.v-eingefuegt { background: #1f7a4d; }
+.v-art.v-bild { background: #6b3fa0; }
+
+.vergleich-liste button.aktiv {
+  background: var(--akzent-hell);
+}
+
+.vergleich-liste del {
+  color: #b3261e;
+}
+
+.vergleich-liste ins {
+  color: #1f7a4d;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.panel-leer {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}

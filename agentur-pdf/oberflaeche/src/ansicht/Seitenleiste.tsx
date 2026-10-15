@@ -1,6 +1,7 @@
 // Linke Seitenleiste: Miniaturen (Standard), Lesezeichen, Suche, Kommentare, Ebenen.
 
-import { ChevronDown, ChevronRight, Files, Bookmark, Layers3, MessageSquare, Search, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Files, Bookmark, GitCompareArrows, Layers3, MessageSquare, Search, Trash2, X } from "lucide-react";
+import { VergleichPanel } from "./Vergleich";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { Miniaturen } from "./Miniaturen";
@@ -16,6 +17,7 @@ const PANELS: { id: Seitenleistenpanel; titel: string; icon: typeof Files }[] = 
   { id: "suche", titel: "Suche", icon: Search },
   { id: "kommentare", titel: "Kommentare", icon: MessageSquare },
   { id: "ebenen", titel: "Ebenen", icon: Layers3 },
+  { id: "vergleich", titel: "Vergleich", icon: GitCompareArrows },
 ];
 
 /** Senkrechte Leiste ganz links: Bereiche ein-/ausblenden */
@@ -23,7 +25,8 @@ export function Panelleiste() {
   const leiste = useZustand((z) => z.seitenleiste);
   const geteilt = useZustand((z) => z.bereiche.length > 1);
   const anzahlKommentare = useZustand((z) => (z.aktiv ? Object.values(z.anmerkungen[z.aktiv]?.seiten ?? {}).reduce((n, l) => n + l.length, 0) : 0));
-  const panels = geteilt ? PANELS.filter((p) => p.id !== "miniaturen") : PANELS;
+  const vergleich = useZustand((z) => z.vergleich !== null);
+  const panels = PANELS.filter((p) => !(geteilt && p.id === "miniaturen") && (p.id !== "vergleich" || vergleich));
   return (
     <nav className="panelleiste" aria-label="Bereiche">
       {panels.map((p) => {
@@ -68,6 +71,7 @@ export function Seitenleiste() {
         {leiste.panel === "suche" && <SuchePanel />}
         {leiste.panel === "kommentare" && dok && <KommentarPanel dok={dok} />}
         {leiste.panel === "ebenen" && dok && <EbenenPanel dok={dok} />}
+        {leiste.panel === "vergleich" && <VergleichPanel />}
         {!dok && leiste.panel !== "suche" && <p className="leer-hinweis">Kein Dokument geöffnet.</p>}
       </div>
       {leiste.panel === "miniaturen" && dok && (

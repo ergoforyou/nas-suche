@@ -272,7 +272,33 @@ export interface Sitzung {
   aktiv: number | null;
 }
 
-export type Seitenleistenpanel = "miniaturen" | "lesezeichen" | "suche" | "kommentare" | "ebenen";
+export type Seitenleistenpanel = "miniaturen" | "lesezeichen" | "suche" | "kommentare" | "ebenen" | "vergleich";
+
+export interface VergleichBereich {
+  seite: number;
+  rechteck: Rechteck;
+  /** nur eine Einfügestelle (Text fehlt hier) */
+  stelle?: boolean;
+}
+
+export interface VergleichAenderung {
+  art: "geaendert" | "entfernt" | "eingefuegt" | "bild";
+  alt: string;
+  neu: string;
+  a: VergleichBereich[];
+  b: VergleichBereich[];
+  seite_a: number | null;
+  seite_b: number | null;
+}
+
+export interface VergleichErgebnis {
+  aenderungen: VergleichAenderung[];
+  anzahl: number;
+  gekuerzt: boolean;
+  seiten_a: number;
+  seiten_b: number;
+  ohne_text: boolean;
+}
 
 export interface Auftrag {
   id: string;
