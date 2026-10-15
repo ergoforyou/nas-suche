@@ -125,6 +125,21 @@ python -m unittest discover -s tests
 Mitgelieferte Bibliotheken für die Vorschau (`bild2vrm/static/vendor`): three.js (MIT) und
 @pixiv/three-vrm (MIT), siehe die dortigen Lizenzdateien.
 
+## Fotos: Gesichts- und Körpererkennung (JavaScript-Version)
+
+Für echte Fotos nutzt die JavaScript-Version optional **MediaPipe** (Gesicht: 478 Punkte, Körper: 33 Gelenke),
+übergeben als `landmarks` an `analyze()`/`generate()`:
+
+- **Gelenke** kommen aus der Körpererkennung; **Halbkörperbilder** (an der Hüfte abgeschnitten) werden als
+  Brustbild aufgebaut, **Arme vor dem Körper** (z. B. verschränkt) bleiben fest am Oberkörper.
+- **Mimik durch Verformen des Fotos** statt aufgemalter Formen: Beim Blinzeln gleitet das eigene Oberlid über das
+  Auge, beim Sprechen öffnen sich die Lippen entlang eines Schnitts und geben einen Mundinnenraum frei.
+- **Kein Gesicht gefunden** (Rückansicht, Profil) → keine Mimik statt geratener Augen; **Rückansichten** werden
+  erkannt und gemeldet.
+
+Die Python-Version nutzt weiterhin die einfachere Erkennung (ohne MediaPipe-Gesichtsnetz); auch dort gibt es keine
+Mimik mehr, wenn keine Augen gefunden werden.
+
 ## JavaScript-Version (für Browser / Electron)
 
 `bild2vrm/js/` enthält dieselbe Pipeline als ES-Module ohne Abhängigkeiten – gedacht für den

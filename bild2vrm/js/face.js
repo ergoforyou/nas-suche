@@ -79,7 +79,9 @@ export function detectFaceBoxes(img, mask, kp) {
       const i = y * W + x;
       if (mask[i]) { sr.push(D[i * 4]); sg.push(D[i * 4 + 1]); sb.push(D[i * 4 + 2]); }
     }
-  const finish = () => Object.fromEntries(Object.entries(boxes).map(([k, b]) => [k, clipBox(b, W, H)]));
+  // Nur wenn beide Augen wirklich gefunden werden, gibt es Kästen – sonst keine Mimik (statt geratener Positionen).
+  let eyesFound = 0;
+  const finish = () => (eyesFound === 2 ? Object.fromEntries(Object.entries(boxes).map(([k, b]) => [k, clipBox(b, W, H)])) : {});
   if (sr.length < 10) return finish();
   const skin = [median(sr), median(sg), median(sb)];
 
@@ -114,6 +116,7 @@ export function detectFaceBoxes(img, mask, kp) {
     const [lo, hi] = sgn > 0 ? [cx + 0.04 * headW, cx + 0.48 * headW] : [cx - 0.48 * headW, cx - 0.04 * headW];
     const b = blob(lo, top[1] + 0.32 * hh, hi, top[1] + 0.8 * hh, 110, cx + sgn * 0.2 * headW);
     if (b) {
+      eyesFound++;
       const bw = clamp((b[2] - b[0]) * 1.35, 0.6 * ew, 1.7 * ew), bh = clamp((b[3] - b[1]) * 1.5, 0.6 * eh, 1.9 * eh);
       boxes[key] = box((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, bw, bh);
     }

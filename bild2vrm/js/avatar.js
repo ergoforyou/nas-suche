@@ -1,7 +1,8 @@
 // Gesamte Pipeline: Bild(er) -> Maske -> Keypoints -> Rig + Mesh + Mimik -> VRM (Uint8Array).
 import { createImage, cropImage, encodePNG, loadImage, resizeImage, resizeMask } from './image.js';
 import { bleedColors, computeMask, dilate } from './segment.js';
-import { FACE_BOXES, KEYPOINT_NAMES, heuristicKeypoints, maskBounds, validateKeypoints } from './keypoints.js';
+import { FACE_BOXES, KEYPOINT_NAMES, heuristicKeypoints, keypointsFromLandmarks, maskBounds, validateKeypoints } from './keypoints.js';
+import { buildFaceRig, mouthInteriorTexture } from './facerig.js';
 import { EXPRESSIONS, buildTiles, detectFaceBoxes } from './face.js';
 import { averageProfiles, backTexture, sideProfile, splitSheet } from './views.js';
 import { ARM_BONES, BONES, BONE_INDEX, applyLbs, buildFrontMesh, buildSkeleton, skinWeights, surfaceDepth, torsoHalfWidth, tposeTransforms, vertexNormals } from './rig.js';
@@ -22,13 +23,30 @@ export const DEFAULT_OPTIONS = {
   maxTexture: 2048,
 };
 
-/** Maske und automatisch erkannte Gelenkpunkte inkl. Gesichtskästen (Bildkoordinaten). */
-export function analyze(image, options = {}) {
+/**
+ * Maske, Gelenkpunkte und Hinweise (Bildkoordinaten).
+ * landmarks (optional, z. B. von MediaPipe): { pose: 33 × {x, y, v}, face: 478 × [x, y] } in Pixeln.
+ * Rückgabe: { mask, keypoints, halfBody, armsFree, faceMode: 'landmarks'|'boxes'|'none', warnings }
+ */
+export function analyze(image, options = {}, landmarks = null) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const mask = computeMask(image, opts.background);
-  const kp = heuristicKeypoints(mask, image.width, image.height);
-  Object.assign(kp, detectFaceBoxes(image, mask, kp));
-  return { mask, keypoints: kp };
+  let kp, halfBody = false, armsFree = true, backView = false;
+  if (landmarks?.pose) ({ keypoints: kp, halfBody, armsFree, backView } = keypointsFromLandmarks(landmarks.pose, landmarks.face, mask, image.width, image.height));
+  else kp = heuristicKeypoints(mask, image.width, image.height);
+  let faceMode = 'none';
+  if (landmarks?.face) faceMode = 'landmarks';
+  else if (boxFallbackAllowed(landmarks, backView)) {
+    const boxes = detectFaceBoxes(image, mask, kp);
+    if (Object.keys(boxes).length) { Object.assign(kp, boxes); faceMode = 'boxes'; }
+  }
+  const warnings = [];
+  if (backView) warnings.push('Das ist eine Rückansicht. Bitte als „Rückansicht“ verwenden und eine Frontansicht laden.');
+  if (!landmarks?.pose) warnings.push('Körper nur geschätzt (keine Körpererkennung) – Punkte bitte prüfen.');
+  if (faceMode === 'none') warnings.push('Kein Gesicht erkannt (z. B. Rückansicht) – die Figur bekommt keine Mimik.');
+  if (halfBody) warnings.push('Halbkörperbild – die Figur wird als Brustbild aufgebaut (Beine werden ergänzt, aber nicht angezeigt).');
+  if (!armsFree) warnings.push('Arme liegen am oder vor dem Körper – sie bewegen sich mit dem Oberkörper.');
+  return { mask, keypoints: kp, halfBody, armsFree, backView, faceMode, warnings };
 }
 
 /** Freigestellte Vorschau (Alpha = Maske). */
@@ -47,15 +65,23 @@ class ToWorld {
  * Avatar erzeugen.
  * image: Frontansicht ({width, height, data}); keypoints: optional (sonst automatisch);
  * views: { back?: Bild, sides?: [{ image, facing: 'auto'|'left'|'right' }] }
+ * landmarks: optional MediaPipe-Punkte wie bei analyze() – liefern Gelenke, Halbkörper-Erkennung und das Gesichts-Rig.
  * Rückgabe: { vrm: Uint8Array, keypoints, stats }
  */
-export async function generate(image, options = {}, keypoints = null, views = {}) {
+export async function generate(image, options = {}, keypoints = null, views = {}, landmarks = null) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const W = image.width, H = image.height;
   const mask = computeMask(image, opts.background);
-  if (!keypoints) keypoints = heuristicKeypoints(mask, W, H);
+  const info = landmarks?.pose ? keypointsFromLandmarks(landmarks.pose, landmarks.face, mask, W, H) : null;
+  if (info?.backView && !keypoints) throw new Error('Das Bild zeigt die Figur von hinten. Bitte als Rückansicht verwenden und eine Frontansicht laden.');
+  const halfBody = opts.halfBody ?? info?.halfBody ?? false;
+  const armsFree = opts.armsFree ?? info?.armsFree ?? true;
+  if (!keypoints) keypoints = info?.keypoints ?? heuristicKeypoints(mask, W, H);
   keypoints = validateKeypoints(keypoints);
-  if (opts.expressions && !FACE_BOXES.every((k) => keypoints[k])) Object.assign(keypoints, detectFaceBoxes(image, mask, keypoints));
+  const faceLm = opts.expressions ? landmarks?.face ?? null : null;
+  if (opts.expressions && !faceLm && !FACE_BOXES.every((k) => keypoints[k]) && boxFallbackAllowed(landmarks, info?.backView)) {
+    Object.assign(keypoints, detectFaceBoxes(image, mask, keypoints));
+  }
 
   // --- auf die Figur zuschneiden (+ Rand), Texturgröße begrenzen
   const bb = maskBounds(mask, W, H);
@@ -72,6 +98,7 @@ export async function generate(image, options = {}, keypoints = null, views = {}
     const b = keypoints[k];
     return [k, [(b[0] - x0) * f, (b[1] - y0) * f, (b[2] - x0) * f, (b[3] - y0) * f]];
   }));
+  const lmPx = faceLm ? faceLm.map((p) => [(p[0] - x0) * f, (p[1] - y0) * f]) : null;
   if (f < 1) {
     const nw = Math.max(1, Math.round(w * f)), nh = Math.max(1, Math.round(h * f));
     rgba = resizeImage(rgba, nw, nh);
@@ -99,8 +126,15 @@ export async function generate(image, options = {}, keypoints = null, views = {}
     backMaterial = 1;
   }
 
-  // --- Weltkoordinaten: Füße auf dem Boden, Figur = opts.height hoch
-  const topPx = mb.top, groundPx = mb.bottom + 1, scale = opts.height / (groundPx - topPx);
+  // --- Weltkoordinaten: Füße auf dem Boden, Figur = opts.height hoch.
+  // Halbkörper: Maßstab aus der Kopfhöhe (Scheitel bis Kinn ≈ 13,5 % der Körpergröße), Boden liegt unterhalb des Bildes.
+  const topPx = mb.top;
+  let groundPx = mb.bottom + 1, scale = opts.height / (groundPx - topPx);
+  if (halfBody) {
+    const chinPx = lmPx ? lmPx[152][1] : kpPx.neck[1] - 0.2 * (kpPx.neck[1] - kpPx.head_top[1]);
+    scale = (0.135 * opts.height) / Math.max(8, chinPx - kpPx.head_top[1]);
+    groundPx = topPx + opts.height / scale;
+  }
   const hipCx = (kpPx.left_hip[0] + kpPx.right_hip[0]) / 2;
   const tw = new ToWorld(hipCx, groundPx, scale);
   const toWorld = Object.assign((x, y) => tw.call(x, y), { scale });
@@ -109,7 +143,7 @@ export async function generate(image, options = {}, keypoints = null, views = {}
   const skel = buildSkeleton(kpW, 0);
 
   // --- Körper
-  const fm = buildFrontMesh(m, w, h, cell, toWorld, skel, opts.height, torsoHalfWidth(m, w, h, toWorld, kpPx));
+  const fm = buildFrontMesh(m, w, h, cell, toWorld, skel, opts.height, torsoHalfWidth(m, w, h, toWorld, kpPx), armsFree);
   const sides = views.sides ?? [];
   const profile = sides.length ? averageProfiles(sides.map((s) => sideProfile(s.image, opts.height, s.facing ?? 'auto', opts.background))) : null;
   const depth = surfaceDepth(fm, (0.06 * opts.height) / 1.6, opts.depth, profile);
@@ -118,7 +152,7 @@ export async function generate(image, options = {}, keypoints = null, views = {}
   let xy = lbs ? applyLbs(fm.xy, joints, weights, lbs) : Float64Array.from(fm.xy);
   let minY = Infinity;
   for (let i = 1; i < xy.length; i += 2) minY = Math.min(minY, xy[i]);
-  const dy = -minY;
+  const dy = halfBody ? 0 : -minY; // Halbkörper: Bildunterkante ist kein Boden
   for (let i = 1; i < xy.length; i += 2) xy[i] += dy;
   const restHeads = (lbs ? lbs.newHeads : skel.heads).map((p) => [p[0], p[1] + dy]);
 
@@ -136,7 +170,28 @@ export async function generate(image, options = {}, keypoints = null, views = {}
 
   // --- Mimik
   const expressions = {};
-  if (opts.expressions && Object.keys(boxesPx).length === FACE_BOXES.length) {
+  let faceMode = 'none';
+  if (lmPx) {
+    materials.push({ name: 'Mouth', png: await encodePNG(mouthInteriorTexture()) });
+    const rig = buildFaceRig({ lm: lmPx, tex, fm, zFront: depth.front, frontNormals: frontPrim.normals, toWorld, skel, lbs, dy,
+      height: opts.height, frontMaterial: 0, mouthMaterial: materials.length - 1 });
+    if (rig) {
+      meshes.push(rig.mesh);
+      // Öffnung in der Körper-Vorderseite hinter dem Mund (sonst verdeckt sie den Mundraum)
+      const [hx0, hy0, hx1, hy1] = rig.mouthHole, keep = [];
+      for (let t = 0; t < fm.tris.length; t += 3) {
+        let cx = 0, cy = 0;
+        for (let k = 0; k < 3; k++) { cx += fm.uv[2 * fm.tris[t + k]] * w; cy += fm.uv[2 * fm.tris[t + k] + 1] * h; }
+        cx /= 3; cy /= 3;
+        if (!(cx > hx0 && cx < hx1 && cy > hy0 && cy < hy1)) keep.push(fm.tris[t], fm.tris[t + 1], fm.tris[t + 2]);
+      }
+      frontPrim.indices = Uint32Array.from(keep);
+      faceMode = 'landmarks';
+      const index = Object.fromEntries(rig.mesh.targetNames.map((n, i) => [n, i]));
+      for (const [preset, parts] of Object.entries(rig.expressions)) expressions[preset] = parts.map(([t, wt]) => [1, index[t], wt]);
+    } else materials.pop();
+  } else if (opts.expressions && Object.keys(boxesPx).length === FACE_BOXES.length) {
+    faceMode = 'boxes';
     const tiles = buildTiles(tex, boxesPx);
     if (tiles.names.length) {
       materials.push({ name: 'Face', png: await encodePNG(tiles.atlas) });
@@ -158,6 +213,7 @@ export async function generate(image, options = {}, keypoints = null, views = {}
   return {
     vrm, keypoints,
     stats: { vertices: nVert, triangles: nTri, texture: `${w}x${h}`, bytes: vrm.length, expressions: Object.keys(expressions).sort(),
+      faceMode, halfBody, armsFree,
       backView: !!views.back, sideViews: sides.length },
   };
 }
@@ -232,6 +288,16 @@ function nearest4(ids, xy, x, y) {
     best[k] = [d, i];
   }
   return best;
+}
+
+/**
+ * Ersatz-Erkennung (dunkle Flecken als Augen/Mund) nur für gezeichnete Figuren: wenn keine Erkennung lief oder
+ * MediaPipe gar keine Person findet. Erkennt es eine Person, aber kein Gesicht (Profil, Rückansicht, zu klein),
+ * gibt es keine Mimik – geratene Augen landen bei Fotos sonst im Haar oder am Ohr.
+ */
+function boxFallbackAllowed(landmarks, backView) {
+  if (backView) return false;
+  return !landmarks || !landmarks.pose;
 }
 
 function checkSides(kpW) {

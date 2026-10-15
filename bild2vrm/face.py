@@ -100,8 +100,10 @@ def detect_face_boxes(rgb: np.ndarray, mask: np.ndarray, kp: dict) -> dict:
     sx0, sx1 = int(cx - 0.22 * head_w), int(cx + 0.22 * head_w)
     region = rgb[max(0, sy0):max(1, sy1), max(0, sx0):max(1, sx1)].reshape(-1, 3)
     region_m = mask[max(0, sy0):max(1, sy1), max(0, sx0):max(1, sx1)].reshape(-1)
+    # Only when both eyes are actually found are boxes returned; otherwise no expressions
+    # (instead of guessed positions that end up in the hair or on the back of the head).
     if region_m.sum() < 10:
-        return {k: _clip_box(v, w_img, h_img) for k, v in boxes.items()}
+        return {}
     skin = np.median(region[region_m], axis=0)
 
     def blob(x0, y0, x1, y1, thresh, prefer_x):
@@ -133,6 +135,8 @@ def detect_face_boxes(rgb: np.ndarray, mask: np.ndarray, kp: dict) -> dict:
     for key, sgn in (("left_eye_box", 1), ("right_eye_box", -1)):
         lo, hi = (cx + 0.04 * head_w, cx + 0.48 * head_w) if sgn > 0 else (cx - 0.48 * head_w, cx - 0.04 * head_w)
         b = blob(lo, top[1] + 0.32 * hh, hi, top[1] + 0.8 * hh, 110, cx + sgn * 0.2 * head_w)
+        if not b:
+            return {}
         if b:
             bw, bh = b[2] - b[0], b[3] - b[1]
             bw, bh = np.clip(bw * 1.35, 0.6 * ew, 1.7 * ew), np.clip(bh * 1.5, 0.6 * eh, 1.9 * eh)
