@@ -38,6 +38,12 @@ WAS IN DIESER TESTVERSION GEHT
   • Screenshot: überall Strg+Umschalt+Druck → Bereich aufziehen. Bild + PDF
     mit Texterkennung landen in Bilder\Screenshots\Agentur-PDF (Ordner und
     Tastenkürzel unter „Testversion“ änderbar, z. B. auf das NAS).
+    In der Karte danach: „Zuschneiden & einfügen …“.
+  • Zuschneiden & aufhellen (Start, Seiten oder Rechtsklick auf eine Seite):
+    Rahmen ist als DIN A4 vorbelegt und liegt schon auf dem Beleg;
+    „Frei transformieren“ = vier Ecken einzeln ziehen (schräges Blatt/Trapez
+    gerade rücken). Licht & Schatten werden automatisch ausgeglichen, Farben
+    bleiben erhalten; Helligkeit/Kontrast nachregeln. Danach Texterkennung.
   Kommentieren
   • Hervorheben (M), Unterstreichen, Durchstreichen, Text kopieren (V)
   • Notiz, Textfeld, Rechteck, Ellipse, Linie, Pfeil, Freihand

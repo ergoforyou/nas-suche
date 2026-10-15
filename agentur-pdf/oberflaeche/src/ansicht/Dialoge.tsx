@@ -38,7 +38,7 @@ export function Dialoge() {
   if (dialog.art === "komprimieren") return <KomprimierenDialog dokId={dialog.dokId} />;
   if (dialog.art === "eigenschaften") return <EigenschaftenDialog dokId={dialog.dokId} />;
   if (dialog.art === "bild") return <BildDialog dokId={dialog.dokId} unterschrift={dialog.unterschrift} />;
-  if (dialog.art === "foto") return <FotoDialog dokId={dialog.dokId} seite={dialog.seite} />;
+  if (dialog.art === "foto") return <FotoDialog dokId={dialog.dokId} seite={dialog.seite} bild={dialog.bild} />;
   if (dialog.art === "stempel") return <StempelDialog />;
   if (dialog.art === "bilderexport") return <BilderExportDialog dokId={dialog.dokId} />;
   if (dialog.art === "wasserzeichen") return <WasserzeichenDialog dokId={dialog.dokId} />;

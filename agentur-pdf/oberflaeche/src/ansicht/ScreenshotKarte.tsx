@@ -1,6 +1,6 @@
 // Karte nach einem Screenshot: öffnen, ins Dokument einfügen, Text kopieren.
 
-import { Camera, ClipboardCopy, FilePlus2, FolderOpen, FileText, X } from "lucide-react";
+import { Camera, ClipboardCopy, Crop, FilePlus2, FolderOpen, FileText, X } from "lucide-react";
 import { useEffect } from "react";
 import { api } from "../api";
 import { pfadOeffnen } from "../zustand/aktionen";
@@ -62,6 +62,20 @@ export function ScreenshotKarte() {
             <FilePlus2 size={14} /> In Dokument einfügen
           </button>
         )}
+        <button
+          className="primaer"
+          onClick={async () => {
+            try {
+              const bild = await api.bildAusDatei(s.png);
+              zu();
+              setzen({ dialog: { art: "foto", dokId: holen().aktiv, seite: null, bild } });
+            } catch (e) {
+              melden((e as Error).message, "fehler");
+            }
+          }}
+        >
+          <Crop size={14} /> Zuschneiden & einfügen …
+        </button>
         {s.text && (
           <button
             onClick={() =>

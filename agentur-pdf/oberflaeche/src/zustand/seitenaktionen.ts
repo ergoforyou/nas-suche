@@ -64,6 +64,12 @@ export async function seitenLoeschen(d = aktiv()): Promise<void> {
   if (ok) melden(`${seitenText(seiten.length)} gelöscht – Strg+Z macht es rückgängig.`);
 }
 
+/** Seite zuschneiden & aufhellen (markierte bzw. aktuelle Seite) */
+export function seiteAufbereiten(d = aktiv()): void {
+  if (!d) return;
+  setzen({ dialog: { art: "foto", dokId: d.id, seite: zielseiten(d)[0] ?? d.ansicht.seite } });
+}
+
 export async function seitenDuplizieren(d = aktiv()): Promise<void> {
   if (!d) return;
   await sicher(async () => anwenden(await api.duplizieren(d.id, zielseiten(d)), d.id));

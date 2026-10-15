@@ -3260,3 +3260,166 @@ body {
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
+
+/* ---------------------------------------------- Zuschneiden & aufhellen */
+.zuschnitt-leiste,
+.aufbereiten-optionen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.aufbereiten-optionen {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  background: var(--hg-flaeche);
+}
+
+.zuschnitt-leiste .abstand {
+  flex: 1;
+}
+
+.segment {
+  display: inline-flex;
+  border: 1px solid var(--linie-stark);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.segment button {
+  border: 0;
+  border-radius: 0;
+  padding: 4px 10px;
+  background: var(--hg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segment button + button {
+  border-left: 1px solid var(--linie-stark);
+}
+
+.segment button.an {
+  background: var(--akzent);
+  color: #fff;
+}
+
+.umschalter.an {
+  background: var(--akzent-hell, rgba(181, 18, 27, 0.1));
+  border-color: var(--akzent);
+}
+
+.schalter-zeile,
+.regler {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.regler input[type="range"] {
+  width: 110px;
+}
+
+.dialog-knoepfe .abstand-links {
+  margin-right: auto;
+}
+
+.foto-quelle {
+  align-items: center;
+}
+
+.foto-flaeche {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.foto-flaeche img {
+  width: auto;
+  max-width: 100%;
+  max-height: 58vh;
+}
+
+.foto-flaeche.rechteck {
+  cursor: crosshair;
+}
+
+.foto-flaeche .zuschnitt-abdunkeln {
+  fill: rgba(0, 0, 0, 0.45);
+  stroke: none;
+}
+
+.foto-flaeche polygon {
+  fill: none;
+}
+
+.foto-flaeche .zuschnitt-raster line {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.zuschnitt-rahmen {
+  position: absolute;
+  cursor: move;
+}
+
+.foto-ecke {
+  border-radius: 2px;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  z-index: 2;
+}
+
+.foto-flaeche.frei .foto-ecke {
+  border-radius: 50%;
+}
+
+.foto-flaeche .ecke-0,
+.foto-flaeche .ecke-2 {
+  cursor: nwse-resize;
+}
+
+.foto-flaeche .ecke-1,
+.foto-flaeche .ecke-3 {
+  cursor: nesw-resize;
+}
+
+.foto-kante {
+  position: absolute;
+  z-index: 2;
+  background: #fff;
+  border: 2px solid var(--akzent);
+  border-radius: 3px;
+}
+
+.foto-kante.kante-0,
+.foto-kante.kante-2 {
+  width: 24px;
+  height: 8px;
+  margin: -4px 0 0 -12px;
+  cursor: ns-resize;
+}
+
+.foto-kante.kante-1,
+.foto-kante.kante-3 {
+  width: 8px;
+  height: 24px;
+  margin: -12px 0 0 -4px;
+  cursor: ew-resize;
+}
+
+.foto-ergebnis img {
+  max-height: 58vh;
+}
+
+.dialog.sehr-breit:has(.foto-bereich) {
+  width: min(1120px, 96vw);
+  max-width: none;
+}

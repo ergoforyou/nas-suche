@@ -19,6 +19,7 @@ import type {
   ZfEintrag,
   ZoomModus,
   Auftrag,
+  BildDaten,
 } from "../typen";
 
 export const ZOOM_MIN = 0.1;
@@ -82,7 +83,7 @@ export type Dialog =
   | { art: "komprimieren"; dokId: string }
   | { art: "eigenschaften"; dokId: string }
   | { art: "bild"; dokId: string; unterschrift: boolean }
-  | { art: "foto"; dokId: string | null; seite: number | null }
+  | { art: "foto"; dokId: string | null; seite: number | null; bild?: BildDaten }
   | { art: "stempel" }
   | { art: "bilderexport"; dokId: string }
   | { art: "wasserzeichen"; dokId: string }

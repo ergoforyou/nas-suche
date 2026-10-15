@@ -296,3 +296,104 @@ def test_bilder_export(client, brief):
     assert antwort.headers["content-type"] == "image/jpeg" and "attachment" in antwort.headers["content-disposition"]
     r = client.post(f"/api/dokumente/{dok_id}/bilder_export", json={"seiten": [0, 1], "dpi": 72, "format": "png"}).json()
     assert r["name"].endswith(".zip")
+
+
+def _beleg_screenshot() -> bytes:
+    """Bildschirmfoto: dunkler Rahmen (Mailprogramm), darin ein schief
+    beleuchteter Kassenbon mit blauem Logo."""
+    im = Image.new("RGB", (1400, 900), (40, 40, 48))
+    beleg = Image.new("RGB", (420, 760), (255, 255, 255))
+    zeichnen = ImageDraw.Draw(beleg)
+    zeichnen.rectangle((0, 0, 420, 90), fill=(30, 60, 170))
+    for i in range(20):
+        zeichnen.text((30, 120 + i * 30), f"Position {i}   {i * 3},50 EUR", fill=(20, 20, 20))
+    arr = np.asarray(beleg).astype(np.float32)
+    verlauf = np.linspace(1.0, 0.6, arr.shape[1])[None, :, None]  # Schatten nach rechts
+    beleg = Image.fromarray((arr * verlauf).astype(np.uint8))
+    im.paste(beleg, (500, 70))
+    puffer = io.BytesIO()
+    im.save(puffer, "PNG")
+    return puffer.getvalue()
+
+
+def test_beleg_im_screenshot_wird_gefunden():
+    inhalt = foto.ecken_finden(_beleg_screenshot())["inhalt"]
+    for wert, soll in zip(inhalt, [500 / 1400, 70 / 900, 920 / 1400, 830 / 900]):
+        assert abs(wert - soll) < 0.02
+    # heller Bildschirmhintergrund mit Kopfzeile, fast weißer Beleg mit Lücke vor der Fußzeile
+    im = Image.new("RGB", (1600, 900), (255, 255, 255))
+    z = ImageDraw.Draw(im)
+    z.rectangle((0, 0, 1600, 40), fill=(225, 225, 230))  # Fensterleiste am Rand
+    z.ellipse((20, 60, 60, 100), fill=(200, 30, 30))  # Absenderbild
+    z.rectangle((700, 80, 980, 170), fill=(140, 90, 50))  # Holz/Logo oben
+    for i in range(8):
+        z.text((710, 200 + i * 18), "Position 1   12,00 EUR", fill=(60, 60, 60))
+    z.text((710, 700), "Wir danken fuer Ihren Auftrag", fill=(60, 60, 60))
+    z.text((710, 760), "Bankverbindung ...", fill=(90, 90, 90))
+    puffer = io.BytesIO()
+    im.save(puffer, "PNG")
+    x0, y0, x1, y1 = foto.ecken_finden(puffer.getvalue())["inhalt"]
+    assert x0 > 0.4 and x1 < 0.65 and y0 < 0.1 and y1 > 0.84
+
+
+def test_automatik_haelt_farbe_und_gleicht_licht_aus():
+    daten = _beleg_screenshot()
+    ecken = [[500 / 1400, 70 / 900], [920 / 1400, 70 / 900], [920 / 1400, 830 / 900], [500 / 1400, 830 / 900]]
+    bild, format_ = foto.entzerren(daten, ecken, "auto")
+    im = np.asarray(Image.open(io.BytesIO(bild)).convert("RGB")).astype(int)
+    assert format_ == "jpeg"
+    h, b = im.shape[:2]
+    assert abs(b / h - 420 / 760) < 0.02  # zugeschnitten
+    logo = im[h // 40, b // 2]
+    assert logo[2] - logo[0] > 60  # Logo bleibt blau
+    papier_links, papier_rechts = im[-20:, : b // 8].mean(), im[-20:, -b // 8 :].mean()
+    assert papier_links > 228 and papier_rechts > 228  # Schatten rechts ausgeglichen
+    assert abs(papier_links - papier_rechts) < 10
+    # Graues Dokument → Automatik wählt Graustufen
+    grau = Image.new("RGB", (300, 400), (235, 235, 230))
+    ImageDraw.Draw(grau).text((20, 20), "Text", fill=(0, 0, 0))
+    puffer = io.BytesIO()
+    grau.save(puffer, "PNG")
+    assert not foto.farbig(np.asarray(grau))
+    bild, _ = foto.entzerren(puffer.getvalue(), None, "auto")
+    kanaele = np.asarray(Image.open(io.BytesIO(bild)).convert("RGB")).astype(int)
+    assert np.abs(kanaele[:, :, 0] - kanaele[:, :, 2]).max() <= 3  # Graustufen
+
+
+def test_helligkeit_und_kontrast():
+    daten = _beleg_screenshot()
+    normal = np.asarray(Image.open(io.BytesIO(foto.entzerren(daten, None, "original")[0])).convert("L")).mean()
+    heller = np.asarray(Image.open(io.BytesIO(foto.entzerren(daten, None, "original", 0, 30)[0])).convert("L")).mean()
+    dunkler = np.asarray(Image.open(io.BytesIO(foto.entzerren(daten, None, "original", 0, -30)[0])).convert("L")).mean()
+    assert dunkler < normal - 20 < heller - 40
+
+
+def test_seite_aufbereiten_ersetzt_seite_in_papiergroesse(client, brief):
+    dok_id = oeffnen(client, brief)
+    hoch = client.post("/api/bilder", content=_beleg_screenshot()).json()
+    # Screenshot als Seite (wie „In Dokument einfügen“) …
+    client.post(f"/api/dokumente/{dok_id}/seiten/bild_einsetzen", json={"bild_id": hoch["id"], "position": 1})
+    # … dann diese Seite aufbereiten und ersetzen
+    seite = client.post(f"/api/dokumente/{dok_id}/seiten/1/als_bild").json()
+    assert 1300 <= seite["breite"] <= 3500
+    fertig = client.post(
+        "/api/foto/entzerren",
+        json={"bild_id": seite["id"], "ecken": [[0.357, 0.078], [0.657, 0.078], [0.657, 0.922], [0.357, 0.922]], "filter": "auto", "helligkeit": 5},
+    ).json()
+    r = client.post(f"/api/dokumente/{dok_id}/seiten/bild_einsetzen", json={"bild_id": fertig["id"], "position": 1, "ersetzen": True}).json()
+    assert r["dokumente"][0]["seitenanzahl"] == 4
+    info = client.get(f"/api/dokumente/{dok_id}").json()
+    breite, hoehe = info["seiten"][1]["breite"], info["seiten"][1]["hoehe"]
+    assert abs(breite - 595.3) < 1 and 1.7 < hoehe / breite < 1.9  # A4-Breite, Bon-Format
+    assert client.post(f"/api/dokumente/{dok_id}/rueckgaengig").status_code == 200
+
+
+def test_bild_aus_datei(client, tmp_path):
+    pfad = tmp_path / "Screenshot.png"
+    pfad.write_bytes(_beleg_screenshot())
+    r = client.post("/api/bilder/aus_datei", json={"pfad": str(pfad)}).json()
+    assert r["breite"] == 1400 and r["bild"].startswith("data:image/png")
+    assert client.post("/api/bilder/aus_datei", json={"pfad": str(tmp_path / "x.exe")}).status_code >= 400
+    grau, _ = foto.entzerren(pfad.read_bytes(), None, "grau")
+    kanaele = np.asarray(Image.open(io.BytesIO(grau)).convert("RGB")).astype(int)
+    assert np.abs(kanaele[:, :, 0] - kanaele[:, :, 2]).max() <= 3

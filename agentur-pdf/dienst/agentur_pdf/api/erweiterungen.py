@@ -206,15 +206,37 @@ def einrichten(
         ecken: list[list[float]] | None = Body(None),
         filter: str = Body("dokument"),  # noqa: A002 – Feldname der Oberfläche
         drehung: int = Body(0),
+        helligkeit: int = Body(0),
+        kontrast: int = Body(0),
     ):
         daten = ablage.holen(bild_id)
-        ergebnis, format_ = await asyncio.get_running_loop().run_in_executor(None, foto.entzerren, daten, ecken, filter, drehung)
+        ergebnis, format_ = await asyncio.get_running_loop().run_in_executor(
+            None, foto.entzerren, daten, ecken, filter, drehung, helligkeit, kontrast
+        )
         neu = ablage.ablegen(ergebnis)
         b, h = bilder.groesse(ergebnis)
         mime = "image/jpeg" if format_ == "jpeg" else "image/png"
         import base64
 
         return {"id": neu, "format": format_, "breite": b, "hoehe": h, "bild": f"data:{mime};base64,{base64.b64encode(ergebnis).decode()}"}
+
+    @app.post("/api/bilder/aus_datei")
+    async def bild_aus_datei(pfad: str = Body(..., embed=True)):
+        """Bilddatei (z. B. gespeicherter Screenshot) zum Aufbereiten laden."""
+        ziel = Path(pfad)
+        if ziel.suffix.lower() not in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}:
+            raise DokumentFehler("Nur Bilddateien können aufbereitet werden.")
+        try:
+            roh = await asyncio.get_running_loop().run_in_executor(None, ziel.read_bytes)
+        except OSError as e:
+            raise DokumentFehler(f"Datei nicht lesbar: {ziel.name}") from e
+        daten = bilder.als_png(bilder.bild_laden(roh)) if ziel.suffix.lower() not in {".png", ".jpg", ".jpeg"} else roh
+        bild_id = ablage.ablegen(daten)
+        b, h = bilder.groesse(daten)
+        mime = "image/jpeg" if daten[:2] == b"\xff\xd8" else "image/png"
+        import base64
+
+        return {"id": bild_id, "breite": b, "hoehe": h, "bild": f"data:{mime};base64,{base64.b64encode(daten).decode()}"}
 
     @app.post("/api/dokumente/{dok_id}/seiten/{seite}/als_bild")
     async def seite_als_bild(dok_id: str, seite: int):
@@ -231,14 +253,12 @@ def einrichten(
 
     @app.post("/api/dokumente/{dok_id}/seiten/bild_einsetzen")
     async def bild_einsetzen(dok_id: str, bild_id: str = Body(...), position: int = Body(...), ersetzen: bool = Body(False)):
-        """Bild als Seite einfügen (A4-Breite bei 200 dpi) – auf Wunsch statt der Seite ``position``."""
+        """Bild als Seite einfügen (A4-Breite) – auf Wunsch statt der Seite ``position``."""
         daten = ablage.holen(bild_id)
 
         def einsetzen():
             dok = dokumente.get(dok_id)
-            quelle = pymupdf.open(stream=daten, filetype="jpg" if daten[:2] == b"\xff\xd8" else "png")
-            pdf = pymupdf.open("pdf", quelle.convert_to_pdf())
-            quelle.close()
+            pdf = foto.bild_als_pdf(daten)
             titel = "Seite durch Foto ersetzen" if ersetzen else "Foto als Seite einfügen"
             with bearbeitung.aendern(titel, dok):
                 from ..kern.dokumente import neue_seiten_id

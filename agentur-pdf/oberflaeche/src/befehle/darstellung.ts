@@ -50,7 +50,7 @@ const START: [id: string, gruppe: string, gross?: boolean][] = [
   ["werkzeug.schreibmaschine", "Bearbeiten", true],
   ["bild.unterschrift", "Bearbeiten", true],
   ["bild.einfuegen", "Bearbeiten"],
-  ["foto.aufbereiten", "Bearbeiten"],
+  ["seiten.aufbereiten", "Bearbeiten"],
   ["werkzeug.abdecken", "Bearbeiten"],
   ["seiten.rechts_drehen", "Seiten"],
   ["seiten.datei_einfuegen", "Seiten"],

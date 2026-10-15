@@ -411,3 +411,42 @@ test("Wasserzeichen und Seitenzahlen einfügen", async ({ page }) => {
   expect(text).toContain("KOPIE");
   expect(text).toMatch(/Seite 1 von \d/);
 });
+
+test("Seite zuschneiden & aufhellen: A4-Rahmen, frei transformieren, ersetzen", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "brief.pdf");
+  const dokId = await aktivesDok(page);
+  await page.locator('.miniatur[data-seite="1"]').click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Zuschneiden & aufhellen/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Seite aufbereiten" });
+  await expect(dialog.getByRole("heading")).toContainText("Seite 2 zuschneiden");
+  await expect(dialog.getByRole("radio", { name: "DIN A4 hoch" })).toHaveAttribute("aria-checked", "true");
+  await expect(dialog.getByRole("radio", { name: "Farbe" })).toHaveAttribute("aria-checked", "true");
+  await expect(dialog.getByRole("img", { name: "Ergebnis" })).toBeVisible({ timeout: 15_000 });
+  // Rahmen an der Ecke verkleinern – Format bleibt A4
+  const ecke = dialog.getByLabel("Ecke 3");
+  const box = (await ecke.boundingBox())!;
+  await page.mouse.move(box.x + 7, box.y + 7);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 60, box.y - 40, { steps: 5 });
+  await page.mouse.up();
+  // frei transformieren: vier einzelne Ecken
+  await dialog.getByRole("button", { name: "Frei transformieren" }).click();
+  await expect(dialog.getByRole("button", { name: "Frei transformieren" })).toHaveAttribute("aria-pressed", "true");
+  const e1 = (await dialog.getByLabel("Ecke 1").boundingBox())!;
+  await page.mouse.move(e1.x + 7, e1.y + 7);
+  await page.mouse.down();
+  await page.mouse.move(e1.x + 20, e1.y + 4, { steps: 3 });
+  await page.mouse.up();
+  await dialog.getByRole("button", { name: "Frei transformieren" }).click(); // zurück zum A4-Rahmen
+  await dialog.getByLabel("Helligkeit").fill("10");
+  await foto(page, "zuschneiden-dialog");
+  await expect(dialog.getByRole("img", { name: "Ergebnis" })).toBeVisible();
+  await page.waitForTimeout(800);
+  await dialog.getByRole("button", { name: "Seite 2 ersetzen" }).click();
+  await expect(dialog).toBeHidden();
+  const info = (await (await page.request.get(`/api/dokumente/${dokId}`, { headers: H })).json()) as { seitenanzahl: number; seiten: { breite: number; hoehe: number }[] };
+  expect(info.seitenanzahl).toBe(3);
+  expect(Math.abs(info.seiten[1].breite - 595.3)).toBeLessThan(1);
+  expect(Math.abs(info.seiten[1].hoehe - 841.9)).toBeLessThan(6); // DIN A4
+});

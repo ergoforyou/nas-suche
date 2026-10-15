@@ -152,9 +152,10 @@ export const api = {
   unterschriften: () => anfrage<Unterschrift[]>("GET", "/api/unterschriften"),
   unterschriftSpeichern: (bild_id: string, name: string) => anfrage<{ id: string }>("POST", "/api/unterschriften", { bild_id, name }),
   unterschriftEntfernen: (id: string) => anfrage("DELETE", `/api/unterschriften/${id}`),
-  fotoEcken: (bild_id: string) => anfrage<{ ecken: [number, number][]; gefunden: boolean }>("POST", "/api/foto/ecken", { bild_id }),
-  fotoEntzerren: (bild_id: string, ecken: [number, number][] | null, filter: string, drehung: number) =>
-    anfrage<BildDaten & { format: string }>("POST", "/api/foto/entzerren", { bild_id, ecken, filter, drehung }),
+  fotoEcken: (bild_id: string) => anfrage<{ ecken: [number, number][]; gefunden: boolean; inhalt: [number, number, number, number] | null }>("POST", "/api/foto/ecken", { bild_id }),
+  fotoEntzerren: (bild_id: string, ecken: [number, number][] | null, filter: string, drehung: number, helligkeit = 0, kontrast = 0) =>
+    anfrage<BildDaten & { format: string }>("POST", "/api/foto/entzerren", { bild_id, ecken, filter, drehung, helligkeit, kontrast }),
+  bildAusDatei: (pfad: string) => anfrage<BildDaten>("POST", "/api/bilder/aus_datei", { pfad }),
   seiteAlsBild: (id: string, seite: number) => anfrage<BildDaten>("POST", `/api/dokumente/${id}/seiten/${seite}/als_bild`),
   bildEinsetzen: (id: string, bild_id: string, position: number, ersetzen: boolean) =>
     anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/seiten/bild_einsetzen`, { bild_id, position, ersetzen }),

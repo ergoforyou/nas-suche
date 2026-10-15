@@ -6,19 +6,24 @@ import {
   Droplet,
   PanelTop,
   Camera,
+  Crop,
   Eraser,
   FileArchive,
   FileImage,
   ImagePlus,
   Info,
   KeyRound,
+  Maximize,
   Plus,
   Printer,
   RotateCcw,
   RotateCw,
+  ScanLine,
   Search,
   Signature,
+  Spline,
   Stamp,
+  Sun,
   Trash2,
   X,
 } from "lucide-react";
@@ -772,64 +777,193 @@ export function BildDialog({ unterschrift }: { dokId: string; unterschrift: bool
 }
 
 // ========================================================== Foto aufbereiten
-const FILTER: [string, string][] = [
-  ["dokument", "Dokument (Schatten weg)"],
-  ["farbe", "Farbe aufhellen"],
-  ["sw", "Schwarz-Weiß"],
-  ["original", "Original"],
+type Punkt = [number, number];
+type Rechteck = [number, number, number, number]; // x0, y0, x1, y1 (Anteile 0..1)
+type Format = "a4hoch" | "a4quer" | "frei";
+type Ziehen =
+  | { art: "ecke"; anker: Punkt }
+  | { art: "kante"; kante: 0 | 1 | 2 | 3 }
+  | { art: "schieben"; start: Punkt; r: Rechteck }
+  | { art: "punkt"; i: number };
+
+const FORMATE: [Format, string][] = [
+  ["a4hoch", "DIN A4 hoch"],
+  ["a4quer", "DIN A4 quer"],
+  ["frei", "Freies Format"],
+];
+const A4 = 210 / 297;
+const MIN = 0.03;
+const klemmen = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+/** Seitenverhältnis Breite/Höhe des Ergebnisses (null = frei) – vor der Drehung gemessen */
+function verhaeltnis(format: Format, drehung: number): number | null {
+  if (format === "frei") return null;
+  const r = format === "a4hoch" ? A4 : 1 / A4;
+  return drehung % 180 ? 1 / r : r;
+}
+
+/** Rechteck auf das Seitenverhältnis bringen (umschließend), im Bild halten */
+function passend(r: Rechteck, ziel: number | null, bb: number, bh: number): Rechteck {
+  if (!ziel) return r;
+  const cx = (r[0] + r[2]) / 2;
+  const cy = (r[1] + r[3]) / 2;
+  let w = r[2] - r[0];
+  let h = r[3] - r[1];
+  const hAusW = (w * bb) / (ziel * bh);
+  if (hAusW >= h) h = hAusW;
+  else w = (h * ziel * bh) / bb;
+  if (w > 1) {
+    h /= w;
+    w = 1;
+  }
+  if (h > 1) {
+    w /= h;
+    h = 1;
+  }
+  const x0 = klemmen(cx - w / 2, 0, 1 - w);
+  const y0 = klemmen(cy - h / 2, 0, 1 - h);
+  return [x0, y0, x0 + w, y0 + h];
+}
+
+function umriss(ecken: Punkt[]): Rechteck {
+  const xs = ecken.map((p) => p[0]);
+  const ys = ecken.map((p) => p[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+const alsEcken = (r: Rechteck): Punkt[] => [
+  [r[0], r[1]],
+  [r[2], r[1]],
+  [r[2], r[3]],
+  [r[0], r[3]],
 ];
 
-export function FotoDialog({ dokId, seite }: { dokId: string | null; seite: number | null }) {
+const GANZ: Rechteck = [0, 0, 1, 1];
+
+/**
+ * Seite, Screenshot oder Foto aufbereiten: zuschneiden (Rechteck, auf
+ * Wunsch im DIN-A4-Format) oder frei transformieren (vier Ecken – rückt
+ * schräg aufgenommene Blätter gerade), Licht & Schatten automatisch
+ * ausgleichen, Farben erhalten. Danach läuft die Texterkennung.
+ */
+export function FotoDialog({ dokId, seite, bild }: { dokId: string | null; seite: number | null; bild?: BildDaten }) {
+  const istFoto = seite === null && !bild;
   const [quelle, setQuelle] = useState<BildDaten | null>(null);
-  const [ecken, setEcken] = useState<[number, number][] | null>(null);
-  const [filter, setFilter] = useState("dokument");
+  const [form, setForm] = useState<"rechteck" | "frei">(istFoto ? "frei" : "rechteck");
+  const [format, setFormat] = useState<Format>("a4hoch");
+  const [rechteck, setRechteck] = useState<Rechteck>(GANZ);
+  const [ecken, setEcken] = useState<Punkt[]>(alsEcken(GANZ));
+  const [erkannt, setErkannt] = useState<Punkt[] | null>(null);
+  const [ausgleich, setAusgleich] = useState(true);
+  const [farbmodus, setFarbmodus] = useState<"farbig" | "grau" | "sw">("farbig");
+  const [helligkeit, setHelligkeit] = useState(0);
+  const [kontrast, setKontrast] = useState(0);
   const [drehung, setDrehung] = useState(0);
   const [ergebnis, setErgebnis] = useState<(BildDaten & { format: string }) | null>(null);
   const [laeuft, setLaeuft] = useState(false);
-  const [ziehe, setZiehe] = useState<number | null>(null);
+  const [ziehe, setZiehe] = useState<Ziehen | null>(null);
   const flaeche = useRef<HTMLDivElement>(null);
   const dok = useZustand((z) => (dokId ? z.dokumente.find((d) => d.id === dokId) : undefined));
+
+  const bb = quelle?.breite ?? 1;
+  const bh = quelle?.hoehe ?? 1;
+  const ziel = verhaeltnis(format, drehung);
+  const filter = farbmodus === "sw" ? "sw" : farbmodus === "grau" ? (ausgleich ? "dokument" : "grau") : ausgleich ? "farbe" : "original";
+  const zuschnitt = form === "rechteck" ? alsEcken(rechteck) : ecken;
 
   const laden = async (b: BildDaten) => {
     setQuelle(b);
     setErgebnis(null);
+    let gefunden: Punkt[] | null = null;
+    let inhalt: Rechteck | null = null;
     try {
       const r = await api.fotoEcken(b.id);
-      setEcken(r.ecken);
-      if (!r.gefunden) melden("Dokumentkanten nicht sicher erkannt – Ecken bitte von Hand setzen.");
-    } catch (e) {
-      fehlerMelden(e);
-      setEcken([
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-      ]);
+      if (r.gefunden) gefunden = r.ecken;
+      inhalt = r.inhalt;
+    } catch {
+      /* ohne Erkennung weiter */
     }
+    setErkannt(gefunden);
+    if (istFoto) {
+      setEcken(gefunden ?? alsEcken(GANZ));
+      if (!gefunden) melden("Blattkanten nicht sicher erkannt – Ecken bitte von Hand setzen.");
+      return;
+    }
+    // Rechteck: erkanntes Blatt bzw. Beleg im Screenshot (sonst fast ganzes Bild) im passenden A4-Format
+    const basis = gefunden ? umriss(gefunden) : inhalt ?? ([0.02, 0.02, 0.98, 0.98] as Rechteck);
+    const f: Format = (basis[2] - basis[0]) * b.breite > (basis[3] - basis[1]) * b.hoehe ? "a4quer" : "a4hoch";
+    setFormat(f);
+    setRechteck(passend(basis, verhaeltnis(f, 0), b.breite, b.hoehe));
   };
 
   useEffect(() => {
-    if (dokId !== null && seite !== null) api.seiteAlsBild(dokId, seite).then(laden).catch(fehlerMelden);
+    if (bild) void laden(bild);
+    else if (dokId !== null && seite !== null) api.seiteAlsBild(dokId, seite).then(laden).catch(fehlerMelden);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dokId, seite]);
+  }, [dokId, seite, bild]);
 
-  // Ergebnis-Vorschau (verzögert)
+  // Ergebnis-Vorschau (verzögert, nicht während des Ziehens)
+  const zuschnittText = JSON.stringify(zuschnitt);
   useEffect(() => {
-    if (!quelle || !ecken || ziehe !== null) return;
+    if (!quelle || ziehe !== null) return;
     const t = window.setTimeout(() => {
-      api.fotoEntzerren(quelle.id, ecken, filter, drehung).then(setErgebnis).catch(fehlerMelden);
-    }, 250);
+      api
+        .fotoEntzerren(quelle.id, JSON.parse(zuschnittText) as Punkt[], filter, drehung, helligkeit, kontrast)
+        .then(setErgebnis)
+        .catch(fehlerMelden);
+    }, 300);
     return () => window.clearTimeout(t);
-  }, [quelle, ecken, filter, drehung, ziehe]);
+  }, [quelle, zuschnittText, filter, drehung, helligkeit, kontrast, ziehe]);
+
+  const punktAus = (e: { clientX: number; clientY: number }): Punkt => {
+    const r = flaeche.current!.getBoundingClientRect();
+    return [klemmen((e.clientX - r.left) / r.width, 0, 1), klemmen((e.clientY - r.top) / r.height, 0, 1)];
+  };
 
   useEffect(() => {
     if (ziehe === null) return;
     const bewegen = (e: MouseEvent) => {
-      const r = flaeche.current?.getBoundingClientRect();
-      if (!r || !ecken) return;
-      const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-      const y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-      setEcken(ecken.map((p, i) => (i === ziehe ? [x, y] : p)));
+      if (!flaeche.current) return;
+      const [mx, my] = punktAus(e);
+      if (ziehe.art === "punkt") {
+        setEcken((alt) => alt.map((p, i) => (i === ziehe.i ? [mx, my] : p)));
+        return;
+      }
+      if (ziehe.art === "schieben") {
+        const [w, h] = [ziehe.r[2] - ziehe.r[0], ziehe.r[3] - ziehe.r[1]];
+        const x0 = klemmen(ziehe.r[0] + mx - ziehe.start[0], 0, 1 - w);
+        const y0 = klemmen(ziehe.r[1] + my - ziehe.start[1], 0, 1 - h);
+        setRechteck([x0, y0, x0 + w, y0 + h]);
+        return;
+      }
+      if (ziehe.art === "kante") {
+        setRechteck((r) => {
+          const n: Rechteck = [...r];
+          if (ziehe.kante === 0) n[1] = Math.min(my, r[3] - MIN);
+          if (ziehe.kante === 1) n[2] = Math.max(mx, r[0] + MIN);
+          if (ziehe.kante === 2) n[3] = Math.max(my, r[1] + MIN);
+          if (ziehe.kante === 3) n[0] = Math.min(mx, r[2] - MIN);
+          return n;
+        });
+        return;
+      }
+      // Ecke: gegenüberliegende Ecke bleibt stehen
+      const [ax, ay] = ziehe.anker;
+      let w = Math.max(MIN, Math.abs(mx - ax));
+      let h = Math.max(MIN, Math.abs(my - ay));
+      if (ziel) {
+        const hAusW = (w * bb) / (ziel * bh);
+        if (hAusW >= h) h = hAusW;
+        else w = (h * ziel * bh) / bb;
+        const maxW = mx >= ax ? 1 - ax : ax;
+        const maxH = my >= ay ? 1 - ay : ay;
+        const s = Math.min(1, maxW / w, maxH / h);
+        w *= s;
+        h *= s;
+      }
+      const x0 = mx >= ax ? ax : ax - w;
+      const y0 = my >= ay ? ay : ay - h;
+      setRechteck([x0, y0, x0 + w, y0 + h]);
     };
     const los = () => setZiehe(null);
     window.addEventListener("mousemove", bewegen);
@@ -838,14 +972,34 @@ export function FotoDialog({ dokId, seite }: { dokId: string | null; seite: numb
       window.removeEventListener("mousemove", bewegen);
       window.removeEventListener("mouseup", los);
     };
-  }, [ziehe, ecken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ziehe, ziel, bb, bh]);
+
+  const formatWaehlen = (f: Format) => {
+    setFormat(f);
+    setRechteck((r) => passend(r, verhaeltnis(f, drehung), bb, bh));
+  };
+  const drehen = (um: number) => {
+    const neu = (drehung + um + 360) % 360;
+    setDrehung(neu);
+    if (form === "rechteck") setRechteck((r) => passend(r, verhaeltnis(format, neu), bb, bh));
+  };
+  const formUmschalten = () => {
+    if (form === "rechteck") {
+      setEcken(alsEcken(rechteck));
+      setForm("frei");
+    } else {
+      setRechteck(passend(umriss(ecken), ziel, bb, bh));
+      setForm("rechteck");
+    }
+  };
 
   const fertig = async (aktion: "neu" | "einfuegen" | "ersetzen") => {
     if (!ergebnis) return;
     setLaeuft(true);
     try {
       if (aktion === "neu") {
-        const r = await api.bildAlsDokument(ergebnis.id, "Foto " + new Date().toLocaleDateString("de-DE"));
+        const r = await api.bildAlsDokument(ergebnis.id, (bild ? "Screenshot " : "Foto ") + new Date().toLocaleDateString("de-DE"));
         anwenden(r);
         const neu = r.neu[0];
         if (neu) void ocrStarten(neu.id, { erzwingen: false, ausrichten: true, entzerren: false });
@@ -863,87 +1017,214 @@ export function FotoDialog({ dokId, seite }: { dokId: string | null; seite: numb
     setLaeuft(false);
   };
 
+  const titel = seite !== null ? `Seite ${seite + 1} zuschneiden & aufhellen` : bild ? "Screenshot zuschneiden & aufhellen" : "Foto aufbereiten";
+  const [x0, y0, x1, y1] = rechteck;
+  const pz = (v: number) => `${v * 100}%`;
+
   return (
-    <Rahmen titel="Foto aufbereiten" icon={<Camera size={18} />} breit="sehr-breit" label="Foto aufbereiten">
+    <Rahmen titel={titel} icon={istFoto ? <Camera size={18} /> : <Crop size={18} />} breit="sehr-breit" label={istFoto ? "Foto aufbereiten" : "Seite aufbereiten"}>
       {!quelle ? (
-        <div className="bild-ablage">
-          <p>Abfotografiertes Dokument wählen – Kanten werden erkannt, das Blatt gerade gerückt und Schatten entfernt.</p>
-          <button
-            type="button"
-            className="umschalter"
-            onClick={async () => {
-              const f = await bildWaehlen();
-              if (!f) return;
-              try {
-                await laden(await api.bildHochladen(f, false));
-              } catch (e) {
-                fehlerMelden(e);
-              }
-            }}
-          >
-            <ImagePlus size={14} /> Foto wählen …
-          </button>
-        </div>
+        istFoto ? (
+          <div className="bild-ablage">
+            <p>Abfotografiertes Dokument wählen – Kanten werden erkannt, das Blatt gerade gerückt und Schatten entfernt.</p>
+            <button
+              type="button"
+              className="umschalter"
+              onClick={async () => {
+                const f = await bildWaehlen();
+                if (!f) return;
+                try {
+                  await laden(await api.bildHochladen(f, false));
+                } catch (e) {
+                  fehlerMelden(e);
+                }
+              }}
+            >
+              <ImagePlus size={14} /> Foto wählen …
+            </button>
+          </div>
+        ) : (
+          <p className="leise">Seite wird vorbereitet …</p>
+        )
       ) : (
-        <div className="foto-bereich">
-          <div className="foto-quelle">
-            <div ref={flaeche} className="foto-flaeche">
-              <img src={quelle.bild} alt="Foto" draggable={false} />
-              {ecken && (
+        <>
+          <div className="zuschnitt-leiste">
+            {form === "rechteck" ? (
+              <div className="segment" role="radiogroup" aria-label="Format">
+                {FORMATE.map(([f, t]) => (
+                  <button key={f} type="button" role="radio" aria-checked={format === f} className={format === f ? "an" : ""} onClick={() => formatWaehlen(f)}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="leise">Ecken einzeln ziehen – schräge Blätter werden gerade gerückt.</span>
+            )}
+            <button type="button" className={`umschalter${form === "frei" ? " an" : ""}`} aria-pressed={form === "frei"} onClick={formUmschalten} title="Vier Ecken einzeln verschieben (Trapez ausgleichen)">
+              <Spline size={14} /> Frei transformieren
+            </button>
+            {form === "frei" && erkannt && (
+              <button type="button" className="umschalter" onClick={() => setEcken(erkannt)}>
+                <ScanLine size={14} /> Blatt erkennen
+              </button>
+            )}
+            <button
+              type="button"
+              className="umschalter"
+              onClick={() => (form === "rechteck" ? setRechteck(passend(GANZ, ziel, bb, bh)) : setEcken(alsEcken(GANZ)))}
+            >
+              <Maximize size={14} /> Ganzes Bild
+            </button>
+            <span className="abstand" />
+            <button type="button" className="umschalter" title="Links drehen" aria-label="Links drehen" onClick={() => drehen(270)}>
+              <RotateCcw size={14} />
+            </button>
+            <button type="button" className="umschalter" title="Rechts drehen" aria-label="Rechts drehen" onClick={() => drehen(90)}>
+              <RotateCw size={14} />
+            </button>
+          </div>
+          <div className="foto-bereich">
+            <div className="foto-quelle">
+              <div
+                ref={flaeche}
+                className={`foto-flaeche ${form}`}
+                onMouseDown={(e) => {
+                  if (form !== "rechteck" || e.button !== 0) return;
+                  e.preventDefault();
+                  // neues Rechteck aufziehen
+                  const p = punktAus(e);
+                  setRechteck([p[0], p[1], p[0] + MIN, p[1] + MIN]);
+                  setZiehe({ art: "ecke", anker: p });
+                }}
+              >
+                <img src={quelle.bild} alt="Vorlage" draggable={false} />
                 <svg viewBox="0 0 1000 1000" preserveAspectRatio="none">
-                  <polygon points={ecken.map(([x, y]) => `${x * 1000},${y * 1000}`).join(" ")} />
+                  <path
+                    className="zuschnitt-abdunkeln"
+                    fillRule="evenodd"
+                    d={`M0 0H1000V1000H0Z M${zuschnitt.map(([x, y]) => `${x * 1000} ${y * 1000}`).join(" L")} Z`}
+                  />
+                  <polygon points={zuschnitt.map(([x, y]) => `${x * 1000},${y * 1000}`).join(" ")} />
+                  {form === "rechteck" &&
+                    [1, 2].map((i) => (
+                      <g key={i} className="zuschnitt-raster">
+                        <line x1={(x0 + ((x1 - x0) * i) / 3) * 1000} x2={(x0 + ((x1 - x0) * i) / 3) * 1000} y1={y0 * 1000} y2={y1 * 1000} />
+                        <line y1={(y0 + ((y1 - y0) * i) / 3) * 1000} y2={(y0 + ((y1 - y0) * i) / 3) * 1000} x1={x0 * 1000} x2={x1 * 1000} />
+                      </g>
+                    ))}
                 </svg>
-              )}
-              {ecken?.map(([x, y], i) => (
-                <div
-                  key={i}
-                  className="foto-ecke"
-                  style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setZiehe(i);
-                  }}
-                  aria-label={`Ecke ${i + 1}`}
-                />
+                {form === "rechteck" ? (
+                  <>
+                    <div
+                      className="zuschnitt-rahmen"
+                      style={{ left: pz(x0), top: pz(y0), width: pz(x1 - x0), height: pz(y1 - y0) }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setZiehe({ art: "schieben", start: punktAus(e), r: rechteck });
+                      }}
+                      aria-label="Zuschnitt verschieben"
+                    />
+                    {alsEcken(rechteck).map(([x, y], i) => (
+                      <div
+                        key={i}
+                        className={`foto-ecke ecke-${i}`}
+                        style={{ left: pz(x), top: pz(y) }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setZiehe({ art: "ecke", anker: alsEcken(rechteck)[(i + 2) % 4] });
+                        }}
+                        aria-label={`Ecke ${i + 1}`}
+                      />
+                    ))}
+                    {!ziel &&
+                      ([
+                        [(x0 + x1) / 2, y0],
+                        [x1, (y0 + y1) / 2],
+                        [(x0 + x1) / 2, y1],
+                        [x0, (y0 + y1) / 2],
+                      ] as Punkt[]).map(([x, y], i) => (
+                        <div
+                          key={`k${i}`}
+                          className={`foto-kante kante-${i}`}
+                          style={{ left: pz(x), top: pz(y) }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setZiehe({ art: "kante", kante: i as 0 | 1 | 2 | 3 });
+                          }}
+                          aria-label={`Kante ${i + 1}`}
+                        />
+                      ))}
+                  </>
+                ) : (
+                  ecken.map(([x, y], i) => (
+                    <div
+                      key={i}
+                      className="foto-ecke"
+                      style={{ left: pz(x), top: pz(y) }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setZiehe({ art: "punkt", i });
+                      }}
+                      aria-label={`Ecke ${i + 1}`}
+                    />
+                  ))
+                )}
+              </div>
+              <span className="leise klein">
+                {form === "rechteck"
+                  ? "Rahmen verschieben, an den Ecken größer/kleiner ziehen oder neu aufziehen."
+                  : "Ecken auf die Blattecken ziehen."}
+              </span>
+            </div>
+            <div className="foto-ergebnis">{ergebnis ? <img src={ergebnis.bild} alt="Ergebnis" /> : <span className="leise">Vorschau wird berechnet …</span>}</div>
+          </div>
+          <div className="aufbereiten-optionen">
+            <label className="schalter-zeile">
+              <input type="checkbox" checked={ausgleich} disabled={farbmodus === "sw"} onChange={(e) => setAusgleich(e.target.checked)} />
+              <Sun size={14} /> Licht & Schatten automatisch ausgleichen
+            </label>
+            <div className="segment" role="radiogroup" aria-label="Farbe">
+              {(
+                [
+                  ["farbig", "Farbe"],
+                  ["grau", "Graustufen"],
+                  ["sw", "Schwarz-Weiß"],
+                ] as const
+              ).map(([m, t]) => (
+                <button key={m} type="button" role="radio" aria-checked={farbmodus === m} className={farbmodus === m ? "an" : ""} onClick={() => setFarbmodus(m)}>
+                  {t}
+                </button>
               ))}
             </div>
-            <span className="leise">Ecken mit der Maus verschieben.</span>
+            <label className="regler">
+              Helligkeit
+              <input type="range" min={-50} max={50} value={helligkeit} onChange={(e) => setHelligkeit(Number(e.target.value))} aria-label="Helligkeit" />
+            </label>
+            <label className="regler">
+              Kontrast
+              <input type="range" min={-50} max={50} value={kontrast} disabled={farbmodus === "sw"} onChange={(e) => setKontrast(Number(e.target.value))} aria-label="Kontrast" />
+            </label>
+            {(helligkeit !== 0 || kontrast !== 0) && (
+              <button
+                type="button"
+                className="umschalter"
+                onClick={() => {
+                  setHelligkeit(0);
+                  setKontrast(0);
+                }}
+              >
+                Zurücksetzen
+              </button>
+            )}
           </div>
-          <div className="foto-ergebnis">{ergebnis ? <img src={ergebnis.bild} alt="Ergebnis" /> : <span className="leise">Vorschau wird berechnet …</span>}</div>
-        </div>
-      )}
-      {quelle && (
-        <div className="auswahl-zeile">
-          <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter">
-            {FILTER.map(([id, t]) => (
-              <option key={id} value={id}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="umschalter" title="Links drehen" onClick={() => setDrehung((drehung + 270) % 360)}>
-            <RotateCcw size={14} />
-          </button>
-          <button type="button" className="umschalter" title="Rechts drehen" onClick={() => setDrehung((drehung + 90) % 360)}>
-            <RotateCw size={14} />
-          </button>
-          <button
-            type="button"
-            className="umschalter"
-            onClick={() =>
-              setEcken([
-                [0, 0],
-                [1, 0],
-                [1, 1],
-                [0, 1],
-              ])
-            }
-          >
-            Ganzes Bild
-          </button>
-        </div>
+        </>
       )}
       <div className="dialog-knoepfe">
+        {quelle && dokId && <span className="leise klein abstand-links">Die Texterkennung läuft danach automatisch.</span>}
         <button type="button" onClick={schliessen}>
           Abbrechen
         </button>

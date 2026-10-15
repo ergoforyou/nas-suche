@@ -16,6 +16,7 @@ import {
   SquareSplitHorizontal,
   Trash2,
   CheckSquare,
+  Crop,
 } from "lucide-react";
 import { registrieren } from "../befehle/register";
 import {
@@ -23,6 +24,7 @@ import {
   dateiEinfuegenDialog,
   leereSeiteEinfuegen,
   leerseitenSuchen,
+  seiteAufbereiten,
   seitenDrehen,
   seitenDuplizieren,
   seitenExtrahieren,
@@ -117,6 +119,19 @@ registrieren(
       const d = aktivesDokument(z);
       return !!d && (d.auswahl.length || 1) < d.seitenanzahl;
     },
+  },
+  {
+    id: "seiten.aufbereiten",
+    titel: "Zuschneiden & aufhellen",
+    register: "seiten",
+    gruppe: "Bearbeiten",
+    icon: Crop,
+    gross: true,
+    farbe: "#1F7A4D",
+    stichworte: ["zuschneiden", "beschneiden", "crop", "screenshot", "aufhellen", "schatten", "licht", "helligkeit", "kontrast", "entzerren", "trapez", "gerade rücken", "rechnung", "beleg"],
+    beschreibung: "Seite (z. B. eingefügter Screenshot) auf DIN A4 zuschneiden, schräge Blätter gerade rücken, Licht & Schatten ausgleichen – Farben bleiben erhalten. Danach Texterkennung.",
+    ausfuehren: () => seiteAufbereiten(),
+    aktiv: mitDokument,
   },
   {
     id: "seiten.duplizieren",

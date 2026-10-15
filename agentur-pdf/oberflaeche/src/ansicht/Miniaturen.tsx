@@ -4,6 +4,7 @@
 
 import {
   Copy,
+  Crop,
   FileOutput,
   FilePlus2,
   FileUp,
@@ -20,6 +21,7 @@ import {
   dateiEinfuegenDialog,
   dateienEinfuegen,
   leereSeiteEinfuegen,
+  seiteAufbereiten,
   seitenDrehen,
   seitenDuplizieren,
   seitenExtrahieren,
@@ -226,6 +228,12 @@ export function Miniaturen({ dok, groesse }: { dok: Dokument; groesse: number })
     { titel: "Links drehen", icon: RotateCcw, aktion: () => void seitenDrehen(-90, d()) },
     { titel: "Rechts drehen", icon: RotateCw, aktion: () => void seitenDrehen(90, d()) },
     { titel: "180° drehen", icon: RefreshCw, aktion: () => void seitenDrehen(180, d()) },
+    {
+      titel: "Zuschneiden & aufhellen …",
+      icon: Crop,
+      deaktiviert: anzahl > 1,
+      aktion: () => seiteAufbereiten(d()),
+    },
     "trenner",
     { titel: "Leere Seite davor", icon: FilePlus2, aktion: () => void leereSeiteEinfuegen(false, d()) },
     { titel: "Leere Seite danach", icon: FilePlus2, aktion: () => void leereSeiteEinfuegen(true, d()) },
