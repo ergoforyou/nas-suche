@@ -627,7 +627,8 @@ async function send(text) {
   const filter = (text) => {
     const before = moods.current;
     const out = moods.push(text);
-    if (!speak && moods.current !== before) setMood(moods.current);
+    // Stimmung sofort zeigen, solange noch nichts gesprochen wird (sonst ab dem passenden Satz)
+    if (moods.current !== before && (!speak || !tts.speaking)) setMood(moods.current);
     return out;
   };
 

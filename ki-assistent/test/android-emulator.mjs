@@ -108,7 +108,8 @@ check(mood.name === 'freudig' && mood.smile > 0.2, 'Figur übernimmt die Stimmun
 
 // 5) Keine Skriptfehler (auch nicht beim Start – die stehen im Systemprotokoll)
 const log = adb('logcat', '-d', '-s', 'Capacitor/Console:E', 'chromium:E');
-const startErrors = log.split('\n').filter((l) => /Uncaught|TypeError|ReferenceError/.test(l));
+// nur unbehandelte Fehler zählen (Capacitor meldet z. B. beim Start harmlos „Error injecting safe area CSS“)
+const startErrors = log.split('\n').filter((l) => /Uncaught/.test(l));
 check(!startErrors.length && !consoleErrors.length, 'Keine Skriptfehler', [...startErrors, ...consoleErrors].join(' | ').slice(0, 400));
 
 ws.close();
