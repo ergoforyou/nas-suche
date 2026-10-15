@@ -91,8 +91,16 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
       </div>
       <div>
         <div class="b2v-legend">Punkte prüfen und bei Bedarf verschieben:<i style="background:${COLORS.left}"></i>linke Körperseite (im Bild rechts)<i style="background:${COLORS.right}"></i>rechte<i style="background:${COLORS.face}"></i>Augen/Mund (Mitte ziehen = verschieben, Ecke = Größe)</div>
-        <div class="row" style="margin-bottom:6px"><button data-act="markface" hidden>Gesicht markieren …</button>
+        <div class="row wrap" style="margin-bottom:6px"><button data-act="markface" hidden>Gesicht markieren …</button>
+          <button data-act="paint" hidden>Freistellung bearbeiten …</button>
           <span class="hint" data-hint="mark"></span></div>
+        <div class="row wrap" data-paintbar hidden style="margin-bottom:6px">
+          <label class="check" style="margin:0"><input type="radio" name="b2vbrush" value="add" checked> Pinsel: hinzufügen</label>
+          <label class="check" style="margin:0"><input type="radio" name="b2vbrush" value="remove"> entfernen</label>
+          <label style="margin:0">Größe <input type="range" min="3" max="60" value="16" data-opt="brush" style="width:110px"></label>
+          <button data-act="undo">Rückgängig</button>
+          <button class="b2v-primary" data-act="paintdone">Fertig</button>
+        </div>
         <div class="b2v-stage"><span>Noch kein Bild</span></div>
       </div>
       <input type="file" accept="image/*" hidden>
@@ -142,6 +150,11 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
     }
     state.front = image;
     state.frontCanvas = canvas;
+    // Original (ohne Freistellung) im selben Ausschnitt – für den Pinsel „hinzufügen“
+    const orig = canvas.original;
+    state.original = orig && orig.width === image.width && orig.height === image.height
+      ? orig.getContext('2d').getImageData(0, 0, orig.width, orig.height).data : null;
+    q('[data-act=paint]').hidden = false;
     state.lm = lm;
     q('[data-act=markface]').hidden = !detect;
     state.kp = a.keypoints;
@@ -153,6 +166,24 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
   }
   const hints = (a) => (a.warnings.length ? ` Hinweis: ${a.warnings.join(' ')}` : '')
     + (a.faceMode === 'none' && detect ? ' Mit „Gesicht markieren“ kannst du den Gesichtsbereich von Hand einrahmen.' : '');
+
+  // Freistellung von Hand verbessern: Pinsel „hinzufügen“ holt Bildteile aus dem Original zurück,
+  // „entfernen“ macht sie durchsichtig. Danach wird mit der korrigierten Figur weitergearbeitet.
+  q('[data-act=paint]').onclick = () => {
+    q('[data-paintbar]').hidden = false;
+    q('[data-act=paint]').hidden = true;
+    q('[data-hint=mark]').textContent = state.original ? '' : 'Hinweis: Für dieses Bild gibt es kein Original – „hinzufügen“ stellt nur noch vorhandene Farben wieder her.';
+    editor.startPaint();
+  };
+  q('[data-act=undo]').onclick = () => editor.undo();
+  q('[data-act=paintdone]').onclick = () => {
+    editor.stopPaint();
+    q('[data-paintbar]').hidden = true;
+    q('[data-act=paint]').hidden = false;
+    q('[data-hint=mark]').textContent = '';
+    state.vrm = null;
+    setStatus('Freistellung übernommen. Punkte prüfen, dann „Figur erstellen“.');
+  };
 
   // Gesicht von Hand markieren: Rahmen aufziehen -> Erkennung genau dort; findet sie nichts, einfache Mimik mit
   // Augen-/Mundkästen aus dem Rahmen (die Kästen lassen sich danach noch verschieben)
@@ -266,7 +297,28 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
     const stageEl = q('.b2v-stage');
     const cv = document.createElement('canvas');
     const ctx = cv.getContext('2d');
-    let scale = 1, drag = null, marking = null, markRect = null;
+    let scale = 1, drag = null, marking = null, markRect = null, painting = false, stroke = false, undoStack = [];
+    // Pinsel: Alpha der Frontansicht ändern und die Vorschau (state.cut) im betroffenen Bereich neu zeichnen
+    const paintAt = (x, y) => {
+      const img = state.front, W = img.width, H = img.height, d = img.data, o = state.original;
+      const r = +q('[data-opt=brush]').value / scale, add = q('input[name=b2vbrush]:checked').value === 'add';
+      const x0 = Math.max(0, Math.floor(x - r)), x1 = Math.min(W - 1, Math.ceil(x + r));
+      const y0 = Math.max(0, Math.floor(y - r)), y1 = Math.min(H - 1, Math.ceil(y + r));
+      if (x1 < x0 || y1 < y0) return;
+      for (let yy = y0; yy <= y1; yy++)
+        for (let xx = x0; xx <= x1; xx++) {
+          if ((xx - x) ** 2 + (yy - y) ** 2 > r * r) continue;
+          const i = (yy * W + xx) * 4;
+          if (add) {
+            if (o && d[i + 3] < 128) { d[i] = o[i]; d[i + 1] = o[i + 1]; d[i + 2] = o[i + 2]; }
+            d[i + 3] = 255;
+          } else d[i + 3] = 0;
+        }
+      const g = state.cut.getContext('2d');
+      const part = new ImageData(x1 - x0 + 1, y1 - y0 + 1);
+      for (let yy = y0; yy <= y1; yy++) part.data.set(d.subarray((yy * W + x0) * 4, (yy * W + x1 + 1) * 4), (yy - y0) * part.width * 4);
+      g.putImageData(part, x0, y0);
+    };
     const color = (n) => (n.endsWith('_box') ? COLORS.face : n.startsWith('left') ? COLORS.left : n.startsWith('right') ? COLORS.right : COLORS.center);
     function draw() {
       const { kp, cut } = state;
@@ -279,6 +331,7 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.drawImage(cut, 0, 0, cut.width * scale, cut.height * scale);
       const P = (n) => [kp[n][0] * scale, kp[n][1] * scale];
+      if (painting) return; // beim Freistellen nur das Bild zeigen
       ctx.lineWidth = 3;
       for (const [a, b] of LINKS) {
         ctx.strokeStyle = color(a === 'head_top' || a === 'neck' ? b : a);
@@ -317,6 +370,15 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
         cv.setPointerCapture(e.pointerId);
         return;
       }
+      if (painting) {
+        undoStack.push(Uint8ClampedArray.from(state.front.data));
+        if (undoStack.length > 15) undoStack.shift();
+        stroke = true;
+        cv.setPointerCapture(e.pointerId);
+        paintAt(...pos(e));
+        draw();
+        return;
+      }
       const [x, y] = pos(e), tol = 12 / scale;
       let hit = null;
       for (const n of FACE) {
@@ -333,6 +395,7 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
     });
     cv.addEventListener('pointermove', (e) => {
       if (marking && markRect) { const [x, y] = pos(e); markRect[2] = x; markRect[3] = y; draw(); return; }
+      if (painting) { if (stroke) { paintAt(...pos(e)); draw(); } return; }
       if (!drag) return;
       const [x, y] = pos(e), kp = state.kp, b = kp[drag.name];
       if (drag.mode === 'point') kp[drag.name] = [x, y];
@@ -341,6 +404,7 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
       draw();
     });
     cv.addEventListener('pointerup', () => {
+      if (painting) { stroke = false; return; }
       if (marking && markRect) {
         const [ax, ay, bx, by] = markRect, box = [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)];
         const done = marking;
@@ -354,6 +418,15 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
     return {
       show: () => { stageEl.replaceChildren(cv); draw(); },
       startMark: (cb) => { marking = cb; markRect = null; cv.style.cursor = 'crosshair'; },
+      startPaint: () => { painting = true; undoStack = []; cv.style.cursor = 'crosshair'; draw(); },
+      stopPaint: () => { painting = false; stroke = false; cv.style.cursor = ''; draw(); },
+      undo: () => {
+        const prev = undoStack.pop();
+        if (!prev) return;
+        state.front.data.set(prev);
+        state.cut.getContext('2d').putImageData(new ImageData(Uint8ClampedArray.from(prev), state.front.width, state.front.height), 0, 0);
+        draw();
+      },
     };
   })();
 

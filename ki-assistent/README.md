@@ -64,7 +64,8 @@ Brustbild gebaut, Arme vor dem Körper bleiben am Oberkörper. Rückansichten er
 ins Feld „Rückansicht“; ohne erkanntes Gesicht gibt es keine Mimik. Erstellte Figuren können außerdem den Blick bewegen
 (die Iris folgt dem Betrachter) und zeigen die Stimmung der Antwort über Augenbrauen, Lider und Mundwinkel
 (überrascht, traurig, verärgert, fröhlich). Wird ein Gesicht nicht gefunden, lässt es sich mit **„Gesicht markieren“**
-von Hand einrahmen. Ohne Rückansicht bekommt die Figur eine neutrale Rückseite (Hinterkopf in Haarfarbe, Kleidung
+von Hand einrahmen; mit **„Freistellung bearbeiten“** lässt sich die Freistellung per Pinsel korrigieren (hinzufügen
+holt Bildteile aus dem Original zurück, entfernen macht sie durchsichtig). Ohne Rückansicht bekommt die Figur eine neutrale Rückseite (Hinterkopf in Haarfarbe, Kleidung
 ohne Details) – drehen lässt sie sich wie jede VRM-Figur über den Regler oder Umschalttaste + Ziehen.
 
 ### 2D-Figur aus mehreren Bildern

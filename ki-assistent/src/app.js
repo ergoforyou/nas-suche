@@ -2015,16 +2015,25 @@ async function useVrm(bytes, name) {
 // vorhandene Transparenz, sonst einfarbiger Hintergrund, sonst KI.
 async function prepareFigureImage(file) {
   const url = URL.createObjectURL(file);
+  // Ergebnis-Canvas bekommt das Original im selben Ausschnitt mit (canvas.original) – für den Freistell-Pinsel
+  const withOriginal = (res, src) => {
+    const o = document.createElement('canvas');
+    o.width = res.canvas.width;
+    o.height = res.canvas.height;
+    o.getContext('2d').drawImage(src, res.crop.x, res.crop.y, res.crop.w, res.crop.h, 0, 0, o.width, o.height);
+    res.canvas.original = o;
+    return res.canvas;
+  };
   try {
     const canvas = await imageToCanvas(url, 2048);
     if (hasTransparency(canvas)) return canvas;
     if (hasUniformBorder(canvas, +$('avTol').value)) {
-      const { canvas: out, removed } = removeBackground(canvas, { tolerance: +$('avTol').value });
-      if (removed >= 0.02) return out;
+      const res = removeBackground(canvas, { tolerance: +$('avTol').value });
+      if (res.removed >= 0.02) return withOriginal(res, canvas);
     }
     const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
     const rgba = await stt.removeBackground(imageData, progressStatus('Freistellen'));
-    return applyAlpha(canvas, rgba).canvas;
+    return withOriginal(applyAlpha(canvas, rgba), canvas);
   } finally {
     URL.revokeObjectURL(url);
   }
