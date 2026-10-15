@@ -3,6 +3,7 @@
 import { chromium, devices } from 'playwright';
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -180,6 +181,29 @@ await page.click('.b2v [data-act=create]');
 await page.waitForFunction(() => /^Fertig|Fehler/.test(document.querySelector('.b2v-status').textContent), null, { timeout: 120000 }).catch(() => {});
 const made = await page.textContent('.b2v-status');
 check(/^Fertig/.test(made) && (await page.evaluate(() => !!window.__app.persona().avatar.vrm)), '3D-Figur auf dem Handy erstellt', made.slice(0, 100));
+// VRM speichern („Speichern unter …“ der Android-App, hier nachgebildet) und wieder laden
+await page.evaluate(() => {
+  window.__saved = [];
+  window.KIFiles = { saveAs: (id, name, b64) => { window.__saved.push({ name, b64 }); setTimeout(() => window.__kiSaveDone(id, true, 'content://test'), 50); } };
+});
+await page.click('.b2v [data-act=save]');
+await page.waitForFunction(() => /Gespeichert|nicht möglich/.test(document.querySelector('.b2v-status').textContent), null, { timeout: 10000 }).catch(() => {});
+const saved = await page.evaluate(() => ({ status: document.querySelector('.b2v-status').textContent, files: window.__saved.map((f) => ({ name: f.name, len: f.b64.length })), b64: window.__saved[0]?.b64 }));
+check(/Gespeichert/.test(saved.status) && /\.vrm$/.test(saved.files[0]?.name ?? '') && saved.files[0].len > 10000, 'VRM-Datei auf dem Handy gespeichert', JSON.stringify(saved.files));
+await page.click('.b2v [data-act=close]');
+const vrmPath = path.join(os.tmpdir(), 'ki-test-figur.vrm');
+fs.writeFileSync(vrmPath, Buffer.from(saved.b64 ?? '', 'base64'));
+const before = await page.evaluate(() => window.__app.persona().avatar.vrm);
+await page.click('#avVrm');
+await page.waitForSelector('#pickSheet');
+check(!(await page.getAttribute('#pickSheet input[type=file]', 'accept')), 'VRM-Auswahl zeigt alle Dateien (nicht ausgegraut)');
+await page.setInputFiles('#pickSheet input[type=file]', path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-front.png'));
+check(/passt nicht/.test(await page.textContent('#pickSheet .ps-info')), 'Falsche Datei wird abgelehnt');
+await page.setInputFiles('#pickSheet input[type=file]', vrmPath);
+await page.waitForFunction((b) => window.__app.persona().avatar.vrm && window.__app.persona().avatar.vrm !== b, before, { timeout: 30000 }).catch(() => {});
+const loaded = await page.evaluate(() => ({ vrm: !!window.__app.persona().avatar.vrm, layer: !!window.__app.avatar.layers?.[0]?.isVrm, name: window.__app.persona().avatar.vrmName }));
+check(loaded.vrm && loaded.layer && /\.vrm$/.test(loaded.name ?? ''), 'Gespeicherte VRM-Datei wieder geladen und zugeordnet', JSON.stringify(loaded));
+check(await page.isVisible('#avVrmSave'), 'Knopf „VRM-Datei speichern“ sichtbar');
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

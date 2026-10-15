@@ -84,6 +84,7 @@ check(/\d+\.\d+/.test(info.title ?? ''), 'Version in der Titelzeile', info.title
 
 // 2) Bild-im-Bild-Schnittstelle aus MainActivity.java
 check(await run(`return !!window.KIPip?.supported?.()`), 'Bild-im-Bild verfügbar');
+check(await run(`return typeof window.KIFiles?.saveAs === 'function'`), '„Speichern unter …“ verfügbar');
 
 // 3) Schlüssel im Android-Keystore verschlüsselt
 check(await run(`return !!window.KIKeys?.available?.()`), 'Android-Keystore verfügbar');

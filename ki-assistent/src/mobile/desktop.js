@@ -275,6 +275,20 @@ const api = {
   },
 
   // ---- Weitergeben (statt "Speichern unter" / "Im Ordner zeigen")
+  /** „Speichern unter …“ mit Android-Dialog (Ordner und Name wählbar); ohne ihn über „Teilen“. */
+  saveFileAs: async (name, bytes) => {
+    const clean = cleanName(name);
+    if (!window.KIFiles?.saveAs) {
+      const uri = await writeBytes(clean, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), Directory.Cache);
+      await Share.share({ title: clean, files: [uri] }).catch(() => {});
+      return { ok: true, shared: true };
+    }
+    const id = String(Date.now() + Math.random());
+    return new Promise((resolve) => {
+      saveWaiters.set(id, resolve);
+      window.KIFiles.saveAs(id, clean, toBase64(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)));
+    });
+  },
   exportSave: async (name, ext, _label, bytes) => {
     const uri = await writeBytes(`${cleanName(name)}.${ext}`, bytes, Directory.Cache);
     await Share.share({ title: name, files: [uri] }).catch(() => {});
@@ -304,6 +318,13 @@ const api = {
   pipEnter: () => window.KIPip?.enter?.(),
 };
 
+// Antwort des „Speichern unter …“-Dialogs (MainActivity.java)
+const saveWaiters = new Map();
+window.__kiSaveDone = (id, ok, msg) => {
+  saveWaiters.get(id)?.({ ok, cancelled: !ok && msg === 'abgebrochen', message: msg });
+  saveWaiters.delete(id);
+};
+
 // Native Seite meldet den Wechsel ins/aus dem Bild-im-Bild-Fenster: dann nur die Figur zeigen
 window.__setPip = (on) => {
   document.documentElement.classList.toggle('pip', !!on);
@@ -317,6 +338,16 @@ if (window.KIPip?.supported?.()) document.documentElement.classList.add('pip-ok'
 // Feld, und die Oberfläche bekommt ganz normal ein "change"-Ereignis – alle Hochlade-Knöpfe funktionieren so.
 const EXT_TYPES = { '.vrm': ['model/gltf-binary', 'application/octet-stream'], '.json': ['application/json', 'application/octet-stream'] };
 const nativeClick = HTMLInputElement.prototype.click;
+
+/** Nur Endungen (z. B. ".vrm") würden in der Android-Auswahl alle Dateien ausgrauen – dann alles zulassen. */
+const pickAccept = (accept) => (String(accept || '').split(',').some((a) => a.trim().startsWith('.')) ? '' : accept || '');
+/** Passt die Endung zur erwarteten (z. B. nur .vrm)? Liefert sonst eine Meldung. */
+function extMismatch(accept, names) {
+  const exts = String(accept || '').split(',').map((a) => a.trim().toLowerCase()).filter((a) => a.startsWith('.'));
+  if (!exts.length) return '';
+  const bad = names.find((n) => !exts.some((e) => String(n).toLowerCase().endsWith(e)));
+  return bad ? `„${bad}“ passt nicht – bitte eine Datei mit ${exts.join(' / ')} wählen.` : '';
+}
 
 /** Gewählte Dateien in das Feld der Oberfläche übernehmen und dessen "change" auslösen. */
 function deliver(input, fileList) {
@@ -340,7 +371,7 @@ function openPickSheet(target) {
     <div class="ps-box">
       <h3>Datei auswählen</h3>
       <label class="ps-btn ps-main">📁 Datei auswählen
-        <input type="file" ${target.multiple ? 'multiple' : ''} ${target.accept ? `accept="${target.accept}"` : ''} />
+        <input type="file" ${target.multiple ? 'multiple' : ''} ${pickAccept(target.accept) ? `accept="${pickAccept(target.accept)}"` : ''} />
       </label>
       <button class="ps-btn" data-act="plugin">Android-Dateiauswahl (anderer Weg)</button>
       <button class="ps-btn ps-cancel" data-act="cancel">Abbrechen</button>
@@ -354,6 +385,8 @@ function openPickSheet(target) {
   direct.addEventListener('click', () => say('Dateiauswahl wird geöffnet …'));
   direct.addEventListener('change', () => {
     if (!direct.files?.length) return say('Keine Datei gewählt.');
+    const wrong = extMismatch(target.accept, [...direct.files].map((f) => f.name));
+    if (wrong) return say(wrong);
     const files = [...direct.files];
     close();
     deliver(target, files);
@@ -366,9 +399,12 @@ function openPickSheet(target) {
     say('Android-Dateiauswahl wird geöffnet …');
     try {
       const accept = (target.accept || '').split(',').map((s) => s.trim()).filter(Boolean);
-      const types = [...new Set(accept.flatMap((a) => (a.startsWith('.') ? EXT_TYPES[a.toLowerCase()] ?? ['application/octet-stream'] : [a])))];
+      // Endungen wie .vrm kennt Android nicht als Dateityp – dann alle Dateien anbieten und danach prüfen
+      const types = accept.some((a) => a.startsWith('.')) ? [] : accept;
       const { files } = await picker.pickFiles({ ...(types.length ? { types } : {}), limit: target.multiple ? 0 : 1 });
       if (!files?.length) return say('Keine Datei gewählt.');
+      const wrong = extMismatch(target.accept, files.map((f) => f.name));
+      if (wrong) return say(wrong);
       say('Datei wird geladen …');
       const out = [];
       for (const f of files) {

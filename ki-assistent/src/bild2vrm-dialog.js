@@ -214,8 +214,15 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
       btn.disabled = false;
     }
   };
-  q('[data-act=save]').onclick = () => {
+  q('[data-act=save]').onclick = async () => {
     if (!state.vrm) return;
+    // Android-App: echter „Speichern unter …“-Dialog (ein Download-Link tut dort nichts)
+    if (window.desktop?.saveFileAs) {
+      const r = await window.desktop.saveFileAs(`${state.vrm.name}.vrm`, state.vrm.bytes);
+      if (r?.ok) setStatus(r.shared ? 'Zum Speichern geteilt.' : 'Gespeichert – über „VRM-Datei laden“ jederzeit wieder verwendbar.');
+      else if (!r?.cancelled) setStatus(`Speichern nicht möglich: ${r?.message ?? ''}`, true);
+      return;
+    }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([state.vrm.bytes], { type: 'application/octet-stream' }));
     a.download = `${state.vrm.name}.vrm`;

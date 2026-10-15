@@ -1266,6 +1266,7 @@ function fillSettings() {
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
   $('avVrmOff').hidden = !p.avatar.vrm;
+  $('avVrmSave').hidden = !p.avatar.vrm;
   fillRigInfo();
   $('avTurnYaw').value = p.avatar.turnYaw ?? 0;
   $('avTurnYawVal').textContent = `${p.avatar.turnYaw ?? 0}°`;
@@ -2079,6 +2080,28 @@ $('avVrmFraming').onchange = (e) => {
   avatar.vrmFraming = e.target.value;
   if (floating.avatar) floating.avatar.vrmFraming = e.target.value;
   save();
+};
+// Aktuelle 3D-Figur als Datei sichern (z. B. eine selbst erstellte), um sie später wieder zu laden
+$('avVrmSave').onclick = async () => {
+  const av = persona().avatar;
+  if (!av.vrm) return;
+  try {
+    const bytes = new Uint8Array(await (await fetch(av.vrm)).arrayBuffer());
+    const name = /\.vrm$/i.test(av.vrmName ?? '') ? av.vrmName : `${av.vrmName || persona().name || 'Figur'}.vrm`;
+    if (desktop.saveFileAs) {
+      const r = await desktop.saveFileAs(name, bytes);
+      if (r?.ok) status(r.shared ? 'VRM-Datei zum Speichern geteilt.' : 'VRM-Datei gespeichert.');
+      else if (!r?.cancelled) status(`Speichern nicht möglich: ${r?.message ?? ''}`);
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (e) {
+    status(`Speichern nicht möglich: ${e.message}`);
+  }
 };
 $('avVrmOff').onclick = () => {
   const av = persona().avatar;

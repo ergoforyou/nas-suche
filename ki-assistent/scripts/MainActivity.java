@@ -1,6 +1,10 @@
 package de.ergoforyou.kiassistent;
 
 import android.app.PictureInPictureParams;
+import android.net.Uri;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import java.io.OutputStream;
 import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
@@ -25,6 +29,50 @@ import javax.crypto.spec.GCMParameterSpec;
  */
 public class MainActivity extends BridgeActivity {
     private boolean pipEnabled = true;
+
+    // ---- „Speichern unter …“: Android fragt nach Ordner und Dateiname (Downloads, Drive, …)
+    private ActivityResultLauncher<String> createDoc;
+    private byte[] pendingBytes;
+    private String pendingId;
+
+    private void saveDone(boolean ok, String msg) {
+        String id = pendingId;
+        pendingBytes = null;
+        pendingId = null;
+        if (bridge == null || id == null) return;
+        String js = "window.__kiSaveDone && window.__kiSaveDone(" + org.json.JSONObject.quote(id) + "," + ok + "," + org.json.JSONObject.quote(msg == null ? "" : msg) + ")";
+        bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(js, null));
+    }
+
+    private void writePending(Uri uri) {
+        if (uri == null) {
+            saveDone(false, "abgebrochen");
+            return;
+        }
+        try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+            out.write(pendingBytes);
+            saveDone(true, uri.toString());
+        } catch (Exception e) {
+            saveDone(false, String.valueOf(e.getMessage()));
+        }
+    }
+
+    public class FileSaver {
+        @JavascriptInterface
+        public void saveAs(String id, String name, String base64) {
+            byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+            runOnUiThread(() -> {
+                if (pendingId != null) saveDone(false, "abgebrochen");
+                pendingId = id;
+                pendingBytes = bytes;
+                try {
+                    createDoc.launch(name);
+                } catch (Exception e) {
+                    saveDone(false, String.valueOf(e.getMessage()));
+                }
+            });
+        }
+    }
 
     // ---- API-Schlüssel verschlüsseln: AES-256-GCM, der Schlüssel liegt im Android-Keystore und verlässt ihn nie
     private static final String KEY_ALIAS = "ki-assistent-schluessel";
@@ -97,6 +145,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // muss vor dem Start der Activity registriert werden
+        createDoc = registerForActivityResult(new ActivityResultContracts.CreateDocument("application/octet-stream"), this::writePending);
         super.onCreate(savedInstanceState);
         applyParams();
         bridge.getWebView().addJavascriptInterface(new Object() {
@@ -121,6 +171,7 @@ public class MainActivity extends BridgeActivity {
             }
         }, "KIPip");
         bridge.getWebView().addJavascriptInterface(new KeyVault(), "KIKeys");
+        bridge.getWebView().addJavascriptInterface(new FileSaver(), "KIFiles");
     }
 
     // Android 8–11: beim Verlassen (Home-Taste, App-Wechsel) selbst auslösen; ab 12 macht das setAutoEnterEnabled
