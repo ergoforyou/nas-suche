@@ -1,0 +1,66 @@
+// Android-Oberfläche (dist-mobile) im Browser mit Handy-Größe prüfen: Start, Claude-Anfrage direkt aus der
+// App (Antwort simuliert), Speicherung über Neustart, Desktop-Knöpfe ausgeblendet.
+import { chromium, devices } from 'playwright';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist-mobile');
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
+const server = http
+  .createServer((req, res) => {
+    const f = path.join(dist, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    if (!f.startsWith(dist) || !fs.existsSync(f)) {
+      res.writeHead(404);
+      return res.end();
+    }
+    res.writeHead(200, { 'Content-Type': types[path.extname(f)] ?? 'application/octet-stream' });
+    fs.createReadStream(f).pipe(res);
+  })
+  .listen(8776);
+
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ ...devices['Pixel 7'] })).newPage();
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+let request = null;
+await page.route('https://api.anthropic.com/**', (route) => {
+  request = { headers: route.request().headers(), body: JSON.parse(route.request().postData()) };
+  const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
+  const evs = [
+    { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hallo vom Handy!' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 3 } },
+    { type: 'message_stop' },
+  ];
+  route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream', 'access-control-allow-origin': '*' }, body: evs.map(ev).join('') });
+});
+
+const check = (ok, label, detail = '') => {
+  console.log(ok ? '✔' : '✘', label, detail);
+  if (!ok) process.exitCode = 1;
+};
+await page.goto('http://localhost:8776/index.html');
+await page.waitForFunction(() => window.__app, null, { timeout: 30000 });
+check((await page.evaluate(() => window.__app.edition)) === 'mobile', 'Android-Ausgabe aktiv');
+check((await page.evaluate(() => window.__app.state.settings.provider)) === 'anthropic', 'Claude ist Standard');
+check(!(await page.isVisible('#btnFloat')) && !(await page.isVisible('#btnClose')), 'Desktop-Knöpfe ausgeblendet');
+check((await page.isVisible('#btnLive')) && (await page.isVisible('#btnMic')), 'Live-Gespräch und Mikrofon sichtbar');
+await page.evaluate(() => window.desktop.setKey('anthropic', 'sk-ant-test'));
+await page.fill('#input', 'Hallo');
+await page.click('#btnSend');
+await page.waitForFunction(() => /Hallo vom Handy/.test(document.querySelector('.msg.assistant:last-child')?.textContent ?? ''), null, { timeout: 15000 });
+check(request?.headers['anthropic-dangerous-direct-browser-access'] === 'true', 'Claude direkt aus der App angefragt', request?.body?.model);
+await page.waitForTimeout(2500);
+await page.reload();
+await page.waitForFunction(() => window.__app);
+await page.waitForTimeout(500);
+const kept = await page.evaluate(() => Object.values(window.__app.state.history).reduce((n, h) => n + h.length, 0));
+check(kept === 2, 'Verlauf bleibt nach Neustart erhalten', `(${kept} Nachrichten)`);
+check((await page.evaluate(() => window.desktop.keyStatus())).anthropic, 'Schlüssel bleibt erhalten');
+check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
+await browser.close();
+server.close();

@@ -16,6 +16,17 @@ function friendlyCloudError(err, name, SDK) {
   return `${name}: ${err?.message ?? err}`;
 }
 
+// Läuft sowohl im Electron-Hauptprozess (Node) als auch in der Android-App (Browser): darum keine Node-Module.
+const toBase64 = (bytes) => {
+  if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');
+  let s = '';
+  const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+const toText = (bytes) => new TextDecoder().decode(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+const baseName = (p) => String(p).split(/[\\/]/).pop();
+
 // Anhänge in Claude-Inhaltsblöcke umwandeln (PDF als Dokument, Bilder als Bild, Text direkt).
 // Office-Dateien (Excel, Word, PowerPoint …) landen über die Files-API im Arbeitsbereich von Claude.
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
@@ -26,13 +37,13 @@ function attachmentBlocks(attachments, uploaded = {}) {
       blocks.push({ type: 'text', text: `[Anhang „${a?.name}“ ist nicht mehr verfügbar.]` });
       continue;
     }
-    const b64 = () => Buffer.from(a.data).toString('base64');
+    const b64 = () => toBase64(a.data);
     if (a.mime === 'application/pdf') {
       blocks.push({ type: 'document', title: a.name, source: { type: 'base64', media_type: 'application/pdf', data: b64() } });
     } else if (IMAGE_TYPES.includes(a.mime)) {
       blocks.push({ type: 'image', source: { type: 'base64', media_type: a.mime, data: b64() } });
     } else if (a.text) {
-      blocks.push({ type: 'document', title: a.name, source: { type: 'text', media_type: 'text/plain', data: Buffer.from(a.data).toString('utf8') } });
+      blocks.push({ type: 'document', title: a.name, source: { type: 'text', media_type: 'text/plain', data: toText(a.data) } });
     } else if (uploaded[a.key]) {
       blocks.push({ type: 'container_upload', file_id: uploaded[a.key] });
       blocks.push({ type: 'text', text: `[Datei „${a.name}“ liegt im Arbeitsbereich.]` });
@@ -134,7 +145,7 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
           continue;
         }
         const { toFile } = require('@anthropic-ai/sdk');
-        const meta = await client.files.upload({ file: await toFile(Buffer.from(a.data), a.name) }, { signal });
+        const meta = await client.files.upload({ file: await toFile(new Uint8Array(a.data), a.name) }, { signal });
         uploaded[key] = meta.id;
         ctx.uploads?.set(key, meta.id);
       }
@@ -206,7 +217,7 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
         const meta = await client.files.retrieveMetadata(id, {}, { signal });
         const res = await client.files.download(id, {}, { signal });
         const path = await ctx.saveFile(meta.filename, new Uint8Array(await res.arrayBuffer()));
-        send('file', { name: require('node:path').basename(path), path });
+        send('file', { name: baseName(path), path });
       } catch (err) {
         send('status', `Datei konnte nicht geladen werden: ${err.message}`);
       }

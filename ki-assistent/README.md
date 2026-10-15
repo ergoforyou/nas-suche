@@ -165,6 +165,19 @@ Gespräche, Sprache, Bilder und Personas bleiben auf dem Rechner. Die Oberfläch
 Internetzugriff; einzig der Hauptprozess lädt einmalig die Sprachmodelle von Hugging Face und speichert sie
 in `%APPDATA%\KI-Assistent Modelle` (gemeinsam für beide Ausgaben). Im **Offline-Modus** (⚙ → Verbindung) entfällt auch das.
 
+## Android-App (Testversion)
+
+Die Oberfläche läuft auch als Android-App (Capacitor). Die APK kommt aus der GitHub-Action („KI-Assistent-Android“):
+APK aufs Handy laden, öffnen, Installation aus dieser Quelle einmal erlauben.
+
+- Denken über **Claude** oder **ChatGPT** (Schlüssel unter ⚙ → Verbindung, liegen im privaten App-Speicher),
+  oder über **LM Studio auf dem PC im selben WLAN** (dort Server im Netzwerk freigeben und CORS aktivieren,
+  Adresse z. B. `http://192.168.1.20:1234`) – dann bleibt alles im eigenen Netz.
+- Spracherkennung wahlweise in der Cloud (OpenAI, schnell) oder auf dem Gerät (Whisper, langsamer).
+- Avatar, 3D-Figur (VRM), Bewegungsbilder, lebendiges Gesicht, Live-Gespräch und Neuer Chat wie am PC.
+- Personas vom PC: dort „Persona exportieren“, auf dem Handy „Persona importieren“.
+- Nicht auf dem Handy: freie Figur über anderen Apps (geplant), Ausgabefenster, PDF-Export, Chatterbox.
+
 ## Entwickeln
 
 ```bash

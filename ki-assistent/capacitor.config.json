@@ -1,0 +1,12 @@
+{
+  "appId": "de.ergoforyou.kiassistent",
+  "appName": "KI-Assistent",
+  "webDir": "dist-mobile",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

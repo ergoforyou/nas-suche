@@ -9,7 +9,7 @@ import * as ort from 'onnxruntime-web/wasm';
 import { createPiperPhonemize } from '../node_modules/@mintplex-labs/piper-tts-web/dist/piper-o91UDS6e.js';
 
 const base = (p) => new URL(p, location.href).href;
-const VOICE_BASE = base('models/hf/diffusionstudio/piper-voices/resolve/main/');
+const VOICE_BASE = (typeof __HF_BASE__ !== 'undefined' ? __HF_BASE__ : base('models/hf/')) + 'diffusionstudio/piper-voices/resolve/main/';
 
 ort.env.wasm.wasmPaths = base('wasm/ort18/');
 // Ein Kern: Mehrkern-WASM im Hauptfenster kann blockieren (der Browser darf dort nicht warten).

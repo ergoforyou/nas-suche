@@ -35,6 +35,43 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm test
+      - name: Android-Oberfläche prüfen
+        run: node build.mjs --mobile && node test/mobile.mjs
+
+  android:
+    name: Android-App bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ki-assistent/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: node build.mjs --mobile
+      - run: npx cap add android
+      - name: Mikrofon-Recht, WLAN-Zugriff und Version eintragen
+        run: node scripts/android-patch.mjs
+      - run: npx cap sync android
+      - name: APK bauen
+        working-directory: ki-assistent/android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: APK benennen
+        run: |
+          v=$(node -p "require('./package.json').version")
+          mkdir -p release-android
+          cp android/app/build/outputs/apk/debug/app-debug.apk "release-android/KI-Assistent-Android-$v.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KI-Assistent-Android
+          path: ki-assistent/release-android/*.apk
 
   windows:
     name: Windows-Programm bauen

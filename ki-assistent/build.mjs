@@ -6,14 +6,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const dist = path.join(root, 'dist');
+// --mobile: Android-App (Capacitor) nach dist-mobile/
+const MOBILE = process.argv.includes('--mobile');
+const dist = path.join(root, MOBILE ? 'dist-mobile' : 'dist');
 const nm = path.join(root, 'node_modules');
 
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });
 
 await build({
-  entryPoints: { app: 'src/app.js', 'stt-worker': 'src/stt-worker.js' },
+  entryPoints: { app: MOBILE ? 'src/mobile/main.js' : 'src/app.js', 'stt-worker': 'src/stt-worker.js' },
+  // Android: Modelle direkt von Hugging Face (auf dem PC über den Hauptprozess)
+  define: MOBILE ? { __HF_BASE__: '"https://huggingface.co/"' } : {},
   outdir: dist,
   bundle: true,
   format: 'esm',
@@ -30,6 +34,13 @@ await build({
 
 for (const f of ['index.html', 'style.css', 'avatar.html', 'output.html', 'output.css', 'default-avatar.svg', 'default-figur.svg']) {
   fs.copyFileSync(path.join(root, 'src', f), path.join(dist, f));
+}
+if (MOBILE) {
+  // Netzwerk: Claude, OpenAI, Hugging Face (https) und LM Studio im WLAN (http); Handy-Ansicht
+  let html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
+  html = html.replace("connect-src 'self' data: blob:", "connect-src 'self' data: blob: https: http:");
+  html = html.replace('<meta charset="utf-8" />', '<meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />');
+  fs.writeFileSync(path.join(dist, 'index.html'), html);
 }
 
 function copyFiles(fromDir, toDir, filter) {

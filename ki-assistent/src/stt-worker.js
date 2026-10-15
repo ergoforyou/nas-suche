@@ -4,7 +4,8 @@ import { pipeline, env, RawImage } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
 // Modelle kommen über den Hauptprozess (app://local/models/hf/…), der sie auf der Festplatte speichert.
-env.remoteHost = new URL('models/hf/', self.location.href).href;
+// Android-App: direkt von Hugging Face (Zwischenspeicher im Browser-Speicher der App)
+env.remoteHost = typeof __HF_BASE__ !== 'undefined' ? __HF_BASE__ : new URL('models/hf/', self.location.href).href;
 env.useBrowserCache = false;
 // Im Worker nur einen Kern für die CPU-Variante: Mehrkern-WASM kann hier blockieren (GPU wird bevorzugt).
 env.backends.onnx.wasm.numThreads = 1;

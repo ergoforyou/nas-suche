@@ -262,3 +262,12 @@ body.floating .stage { display: none; }
 .file-list button { font-size: 12px; padding: 3px 8px; }
 #btnLive.active { background: #2e7d4f; border-color: #4caf7d; animation: pulse-live 1.6s infinite; }
 @keyframes pulse-live { 50% { box-shadow: 0 0 0 6px rgba(76, 175, 125, .25); } }
+
+/* ---------- Android-App ---------- */
+.mobile body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.mobile #btnFloat, .mobile #btnOutput, .mobile #btnPin, .mobile #btnMin, .mobile #btnClose, .mobile #btnQuit,
+.mobile .desktop-only, .mobile #avFloatSize, .mobile label:has(> #avFloatSize) { display: none !important; }
+.mobile .titlebar { -webkit-app-region: none; height: 44px; }
+.mobile .round { width: 44px; height: 44px; }
+.mobile .composer textarea { font-size: 16px; } /* verhindert automatisches Hineinzoomen beim Tippen */
+.mobile .drawer { inset: calc(44px + env(safe-area-inset-top)) 0 0 0; }

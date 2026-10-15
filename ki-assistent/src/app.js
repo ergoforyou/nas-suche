@@ -81,6 +81,7 @@ const DEFAULT_SETTINGS = {
   speak: true,
   maxSentences: 0,
   sttModel: 'onnx-community/whisper-base',
+  sttEngine: desktop.transcribeCloud ? 'cloud' : 'local', // Android: Cloud-Erkennung ist dort deutlich schneller
   sttLang: 'persona',
   handsFree: false,
   sensitivity: 0.015,
@@ -94,7 +95,7 @@ const DEFAULT_SETTINGS = {
   memoryLearn: true,
   ttsServerUrl: 'http://localhost:8004',
   floatingSize: 0.4,
-  provider: 'lmstudio', // 'lmstudio' | 'anthropic' | 'openai'
+  provider: desktop.platform === 'android' ? 'anthropic' : 'lmstudio', // 'lmstudio' | 'anthropic' | 'openai'
   claudeModel: 'claude-haiku-5-5',
   claudeEffort: 'low',
   openaiModel: '',
@@ -890,6 +891,13 @@ const waitIdle = async (ms) => {
 /** Spracherkennung; scheitert der Download des gewählten Modells, mit einem kleineren weiterversuchen. */
 const STT_FALLBACKS = ['onnx-community/whisper-base', 'onnx-community/whisper-tiny'];
 async function transcribeWithFallback(audio) {
+  if (state.settings.sttEngine === 'cloud' && desktop.transcribeCloud) {
+    try {
+      return await desktop.transcribeCloud(audio, stt.language);
+    } catch (e) {
+      status(`Cloud-Spracherkennung: ${e.message} – nutze Whisper auf dem Gerät.`);
+    }
+  }
   try {
     return await stt.transcribe(audio, progressStatus('Spracherkennung'));
   } catch (e) {
@@ -1252,6 +1260,8 @@ function fillSettings() {
   $('sModel').value = s.sttModel;
   $('sLang').value = ['german', 'english'].includes(s.sttLang) ? s.sttLang : 'persona';
   $('sHandsFree').checked = s.handsFree;
+  $('sEngineWrap').hidden = !desktop.transcribeCloud;
+  $('sEngine').value = s.sttEngine;
   $('sBargeIn').checked = s.bargeIn;
   $('sLivePause').value = String(s.livePauseMs);
   $('sSens').value = s.sensitivity;
@@ -2607,6 +2617,10 @@ $('sLang').onchange = (e) => {
   save();
 };
 $('sHandsFree').onchange = (e) => setHandsFree(e.target.checked);
+$('sEngine').onchange = (e) => {
+  state.settings.sttEngine = e.target.value;
+  save();
+};
 $('btnLive').onclick = () => setHandsFree(!state.settings.handsFree);
 $('sBargeIn').onchange = (e) => {
   state.settings.bargeIn = e.target.checked;
