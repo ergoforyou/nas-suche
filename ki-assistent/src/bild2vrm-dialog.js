@@ -91,6 +91,8 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
       </div>
       <div>
         <div class="b2v-legend">Punkte prüfen und bei Bedarf verschieben:<i style="background:${COLORS.left}"></i>linke Körperseite (im Bild rechts)<i style="background:${COLORS.right}"></i>rechte<i style="background:${COLORS.face}"></i>Augen/Mund (Mitte ziehen = verschieben, Ecke = Größe)</div>
+        <div class="row" style="margin-bottom:6px"><button data-act="markface" hidden>Gesicht markieren …</button>
+          <span class="hint" data-hint="mark"></span></div>
         <div class="b2v-stage"><span>Noch kein Bild</span></div>
       </div>
       <input type="file" accept="image/*" hidden>
@@ -139,7 +141,9 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
       return a;
     }
     state.front = image;
+    state.frontCanvas = canvas;
     state.lm = lm;
+    q('[data-act=markface]').hidden = !detect;
     state.kp = a.keypoints;
     state.cut = toCanvas(cutout(image, a.mask));
     setThumb('front', canvas);
@@ -147,7 +151,34 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
     q('[data-act=create]').disabled = false;
     return a;
   }
-  const hints = (a) => (a.warnings.length ? ` Hinweis: ${a.warnings.join(' ')}` : '');
+  const hints = (a) => (a.warnings.length ? ` Hinweis: ${a.warnings.join(' ')}` : '')
+    + (a.faceMode === 'none' && detect ? ' Mit „Gesicht markieren“ kannst du den Gesichtsbereich von Hand einrahmen.' : '');
+
+  // Gesicht von Hand markieren: Rahmen aufziehen -> Erkennung genau dort; findet sie nichts, einfache Mimik mit
+  // Augen-/Mundkästen aus dem Rahmen (die Kästen lassen sich danach noch verschieben)
+  q('[data-act=markface]').onclick = () => {
+    q('[data-hint=mark]').textContent = 'Rahmen um das Gesicht ziehen (Stirn bis Kinn).';
+    editor.startMark(async (box) => {
+      q('[data-hint=mark]').textContent = '';
+      setStatus('Gesicht wird im markierten Bereich gesucht …');
+      let face = null;
+      try { face = (await detect(state.frontCanvas, { faceBox: box })).face; } catch (err) { console.warn(err); }
+      for (const k of FACE) delete state.kp[k];
+      if (face) {
+        state.lm = { ...(state.lm ?? {}), face };
+        setStatus('Gesicht erkannt – die Figur bekommt Mimik aus der Gesichtserkennung.');
+      } else {
+        state.lm = state.lm ? { ...state.lm, face: null } : null;
+        const [x0, y0, x1, y1] = box, w = x1 - x0, h = y1 - y0;
+        const at = (cx, cy, bw, bh) => [x0 + (cx - bw / 2) * w, y0 + (cy - bh / 2) * h, x0 + (cx + bw / 2) * w, y0 + (cy + bh / 2) * h];
+        state.kp.left_eye_box = at(0.7, 0.42, 0.24, 0.14); // linkes Auge der Figur = im Bild rechts
+        state.kp.right_eye_box = at(0.3, 0.42, 0.24, 0.14);
+        state.kp.mouth_box = at(0.5, 0.77, 0.36, 0.13);
+        setStatus('Im Rahmen wurde kein Gesicht erkannt – einfache Mimik. Bitte die Kästen genau auf Augen und Mund schieben.');
+      }
+      editor.show();
+    });
+  };
 
   let pickSlot = null;
   overlay.querySelectorAll('[data-pick]').forEach((b) => (b.onclick = () => { pickSlot = b.dataset.pick; fileInput.click(); }));
@@ -235,7 +266,7 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
     const stageEl = q('.b2v-stage');
     const cv = document.createElement('canvas');
     const ctx = cv.getContext('2d');
-    let scale = 1, drag = null;
+    let scale = 1, drag = null, marking = null, markRect = null;
     const color = (n) => (n.endsWith('_box') ? COLORS.face : n.startsWith('left') ? COLORS.left : n.startsWith('right') ? COLORS.right : COLORS.center);
     function draw() {
       const { kp, cut } = state;
@@ -270,11 +301,22 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
         ctx.fillStyle = color(n); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(x, y, drag?.name === n ? 8 : 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       }
+      if (markRect) {
+        const [x0, y0, x1, y1] = markRect.map((v) => v * scale);
+        ctx.setLineDash([6, 4]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0)); ctx.setLineDash([]);
+      }
     }
     const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale]; };
     cv.addEventListener('pointerdown', (e) => {
       const kp = state.kp;
       if (!kp) return;
+      if (marking) {
+        const [x, y] = pos(e);
+        markRect = [x, y, x, y];
+        cv.setPointerCapture(e.pointerId);
+        return;
+      }
       const [x, y] = pos(e), tol = 12 / scale;
       let hit = null;
       for (const n of FACE) {
@@ -290,6 +332,7 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
       if (hit) { drag = hit; cv.setPointerCapture(e.pointerId); draw(); }
     });
     cv.addEventListener('pointermove', (e) => {
+      if (marking && markRect) { const [x, y] = pos(e); markRect[2] = x; markRect[3] = y; draw(); return; }
       if (!drag) return;
       const [x, y] = pos(e), kp = state.kp, b = kp[drag.name];
       if (drag.mode === 'point') kp[drag.name] = [x, y];
@@ -297,8 +340,21 @@ export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultN
       else { const dx = x - drag.start[0], dy = y - drag.start[1]; kp[drag.name] = [drag.box[0] + dx, drag.box[1] + dy, drag.box[2] + dx, drag.box[3] + dy]; }
       draw();
     });
-    cv.addEventListener('pointerup', () => { drag = null; draw(); });
-    return { show: () => { stageEl.replaceChildren(cv); draw(); } };
+    cv.addEventListener('pointerup', () => {
+      if (marking && markRect) {
+        const [ax, ay, bx, by] = markRect, box = [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)];
+        const done = marking;
+        marking = null; markRect = null; cv.style.cursor = '';
+        draw();
+        if (box[2] - box[0] > 6 && box[3] - box[1] > 6) done(box);
+        return;
+      }
+      drag = null; draw();
+    });
+    return {
+      show: () => { stageEl.replaceChildren(cv); draw(); },
+      startMark: (cb) => { marking = cb; markRect = null; cv.style.cursor = 'crosshair'; },
+    };
   })();
 
   return { close };

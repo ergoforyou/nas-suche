@@ -199,3 +199,81 @@ export function splitSheet(sheet, background = 'auto') {
   }
   return figs.map(({ image, role }) => ({ image, role }));
 }
+
+// ------------------------------------------------------------------ Rückseite ohne Rückansicht
+
+function boxBlur(rgb, w, h, r) {
+  const out = Float32Array.from(rgb), tmp = new Float32Array(rgb.length);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 0; y < h; y++)
+      for (let c = 0; c < 3; c++) {
+        let acc = 0;
+        for (let x = -r; x <= r; x++) acc += out[(y * w + Math.min(w - 1, Math.max(0, x))) * 3 + c];
+        for (let x = 0; x < w; x++) {
+          tmp[(y * w + x) * 3 + c] = acc / (2 * r + 1);
+          acc += out[(y * w + Math.min(w - 1, x + r + 1)) * 3 + c] - out[(y * w + Math.max(0, x - r)) * 3 + c];
+        }
+      }
+    for (let x = 0; x < w; x++)
+      for (let c = 0; c < 3; c++) {
+        let acc = 0;
+        for (let y = -r; y <= r; y++) acc += tmp[(Math.min(h - 1, Math.max(0, y)) * w + x) * 3 + c];
+        for (let y = 0; y < h; y++) {
+          out[(y * w + x) * 3 + c] = acc / (2 * r + 1);
+          acc += tmp[(Math.min(h - 1, y + r + 1) * w + x) * 3 + c] - tmp[(Math.max(0, y - r) * w + x) * 3 + c];
+        }
+      }
+  }
+  return out;
+}
+
+/**
+ * Rückseite, wenn keine Rückansicht vorliegt – statt eines gespiegelten zweiten Gesichts am Hinterkopf:
+ * Kopf in Haarfarbe (oberste Haarreihe), Kleidung/Körper je Bildzeile in der vorherrschenden Farbe (schmale Details
+ * wie Krawatte, Knöpfe, Augen verschwinden), leicht mit der weichgezeichneten Front gemischt.
+ * headTop/chinY: Scheitel und Kinn (Texturpixel).
+ */
+export function syntheticBack(tex, headTop, chinY) {
+  const w = tex.width, h = tex.height, n = w * h;
+  const rgb = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { rgb[i * 3] = tex.data[i * 4]; rgb[i * 3 + 1] = tex.data[i * 4 + 1]; rgb[i * 3 + 2] = tex.data[i * 4 + 2]; }
+  const blurred = boxBlur(rgb, w, h, Math.max(2, Math.round(0.02 * h)));
+  const inMask = (i) => tex.data[i * 4 + 3] > 127;
+  const med = (vals) => { if (!vals.length) return null; const s2 = Float64Array.from(vals).sort(); return s2[s2.length >> 1]; };
+  // Zeilenfarbe (Median der Figurpixel), danach senkrecht geglättet
+  const rowCol = [];
+  for (let y = 0; y < h; y++) {
+    const r = [], g = [], b = [];
+    for (let x = 0; x < w; x++) { const i = y * w + x; if (inMask(i)) { r.push(rgb[i * 3]); g.push(rgb[i * 3 + 1]); b.push(rgb[i * 3 + 2]); } }
+    rowCol.push(r.length ? [med(r), med(g), med(b)] : null);
+  }
+  const k = Math.max(1, Math.round(0.01 * h)), rowSm = [];
+  for (let y = 0; y < h; y++) {
+    const acc = [0, 0, 0];
+    let c = 0;
+    for (let j = y - k; j <= y + k; j++) if (rowCol[j]) { acc[0] += rowCol[j][0]; acc[1] += rowCol[j][1]; acc[2] += rowCol[j][2]; c++; }
+    rowSm.push(c ? acc.map((v) => v / c) : [0, 0, 0]);
+  }
+  // Haarfarbe: Median der obersten Kopfzeilen
+  const headH = Math.max(8, chinY - headTop);
+  const hr = [], hg = [], hb = [];
+  for (let y = Math.max(0, Math.floor(headTop)); y < Math.min(h, headTop + 0.12 * headH); y++)
+    for (let x = 0; x < w; x++) { const i = y * w + x; if (inMask(i)) { hr.push(rgb[i * 3]); hg.push(rgb[i * 3 + 1]); hb.push(rgb[i * 3 + 2]); } }
+  const hair = hr.length > 10 ? [med(hr), med(hg), med(hb)] : null;
+  const headEnd = chinY + 0.08 * headH, band = 0.12 * headH;
+  const out = createImage(w, h);
+  for (let y = 0; y < h; y++) {
+    // 1 im Kopf, 0 darunter, weicher Übergang am Hals
+    const tHead = hair ? Math.min(1, Math.max(0, (headEnd - y) / band)) : 0;
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      for (let c = 0; c < 3; c++) {
+        const body = 0.8 * rowSm[y][c] + 0.2 * blurred[i * 3 + c];
+        const head = hair ? 0.92 * hair[c] + 0.08 * blurred[i * 3 + c] : body;
+        out.data[i * 4 + c] = head * tHead + body * (1 - tHead);
+      }
+      out.data[i * 4 + 3] = tex.data[i * 4 + 3];
+    }
+  }
+  return out;
+}
