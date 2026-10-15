@@ -285,11 +285,19 @@ export function buildFrontMesh(mask, w, h, cell, toWorld, skel, height, rTorso, 
 }
 
 /** Tiefe von Vorder- (+z) und Rückseite (−z) je Vertex; mit Seitenprofil elliptischer Querschnitt. */
-export function surfaceDepth(fm, radius, scale, profile = null) {
+export function surfaceDepth(fm, radius, scale, profile = null, head = null) {
   const n = fm.d.length, front = new Float64Array(n), back = new Float64Array(n);
+  const circ = (d, r) => (d < r ? Math.sqrt(Math.max(0, 2 * d * r - d * d)) : r);
   for (let i = 0; i < n; i++) {
     const d = fm.d[i];
-    const z = (d < radius ? Math.sqrt(Math.max(0, 2 * d * radius - d * d)) : radius) * scale;
+    let z = circ(d, radius);
+    // Kopf: ohne Seitenansicht deutlich runder und tiefer als der Rumpf (Kopf ist etwa so tief wie breit),
+    // weicher Übergang am Hals
+    if (head && fm.part[i] === 0) {
+      const t = Math.min(1, Math.max(0, (fm.xy[2 * i + 1] - head.neckY) / Math.max(1e-6, head.blend)));
+      if (t > 0) z = z + t * (circ(d, head.radius) * head.factor - z);
+    }
+    z *= scale;
     front[i] = z; back[i] = z;
   }
   if (profile) {

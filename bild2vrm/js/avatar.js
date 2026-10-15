@@ -4,7 +4,7 @@ import { bleedColors, computeMask, dilate } from './segment.js';
 import { FACE_BOXES, KEYPOINT_NAMES, heuristicKeypoints, keypointsFromLandmarks, maskBounds, validateKeypoints } from './keypoints.js';
 import { buildFaceRig, mouthInteriorTexture } from './facerig.js';
 import { EXPRESSIONS, buildTiles, detectFaceBoxes } from './face.js';
-import { averageProfiles, backTexture, sideProfile, splitSheet } from './views.js';
+import { averageProfiles, backTexture, sideProfile, splitSheet, syntheticBack } from './views.js';
 import { ARM_BONES, BONES, BONE_INDEX, applyLbs, buildFrontMesh, buildSkeleton, skinWeights, surfaceDepth, torsoHalfWidth, tposeTransforms, vertexNormals } from './rig.js';
 import { writeVrm } from './vrm.js';
 
@@ -120,11 +120,11 @@ export async function generate(image, options = {}, keypoints = null, views = {}
   const alphaWide = dilate(m, w, h, Math.max(3, Math.floor(cell / 2)));
   const withAlpha = (img) => { const o = { width: w, height: h, data: Uint8ClampedArray.from(img.data) }; for (let i = 0; i < w * h; i++) o.data[i * 4 + 3] = alphaWide[i] ? 255 : 0; return o; };
   const materials = [{ name: 'Front', png: await encodePNG(withAlpha(tex)) }];
-  let backMaterial = 0;
-  if (views.back) {
-    materials.push({ name: 'Back', png: await encodePNG(withAlpha(backTexture(views.back, tex, opts.background))) });
-    backMaterial = 1;
-  }
+  // Rückseite: echte Rückansicht, sonst eine neutrale Rückseite (weichgezeichnet, Gesicht -> Haarfarbe)
+  const chinTex = lmPx ? lmPx[152][1] : kpPx.neck[1] - 0.15 * (kpPx.neck[1] - kpPx.head_top[1]);
+  const backTex = views.back ? backTexture(views.back, tex, opts.background) : syntheticBack(tex, kpPx.head_top[1], chinTex);
+  materials.push({ name: 'Back', png: await encodePNG(withAlpha(backTex)) });
+  const backMaterial = 1;
 
   // --- Weltkoordinaten: Füße auf dem Boden, Figur = opts.height hoch.
   // Halbkörper: Maßstab aus der Kopfhöhe (Scheitel bis Kinn ≈ 13,5 % der Körpergröße), Boden liegt unterhalb des Bildes.
@@ -146,7 +146,10 @@ export async function generate(image, options = {}, keypoints = null, views = {}
   const fm = buildFrontMesh(m, w, h, cell, toWorld, skel, opts.height, torsoHalfWidth(m, w, h, toWorld, kpPx), armsFree);
   const sides = views.sides ?? [];
   const profile = sides.length ? averageProfiles(sides.map((s) => sideProfile(s.image, opts.height, s.facing ?? 'auto', opts.background))) : null;
-  const depth = surfaceDepth(fm, (0.06 * opts.height) / 1.6, opts.depth, profile);
+  // Kopf ohne Seitenansicht: Kreisprofil mit größerem Radius, etwas gestreckt (Kopf tiefer als breit wirkt)
+  const headDepth = profile ? null : { neckY: kpW.neck[1], blend: 0.35 * Math.max(0.05, kpW.head_top[1] - kpW.neck[1]),
+    radius: (0.1 * opts.height) / 1.6, factor: 1.25 };
+  const depth = surfaceDepth(fm, (0.06 * opts.height) / 1.6, opts.depth, profile, headDepth);
   const { joints, weights } = skinWeights(fm.xy, skel, fm.allowed, opts.height);
   const lbs = opts.tpose ? tposeTransforms(skel) : null;
   let xy = lbs ? applyLbs(fm.xy, joints, weights, lbs) : Float64Array.from(fm.xy);
