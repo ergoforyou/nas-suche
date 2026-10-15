@@ -266,31 +266,78 @@ const api = {
 // Dateiauswahl. Darum geht jeder Aufruf über die Android-Dateiauswahl; die gewählten Dateien landen danach im
 // Feld, und die Oberfläche bekommt ganz normal ein "change"-Ereignis – alle Hochlade-Knöpfe funktionieren so.
 const EXT_TYPES = { '.vrm': ['model/gltf-binary', 'application/octet-stream'], '.json': ['application/json', 'application/octet-stream'] };
-async function pickInto(input, picker) {
-  const accept = (input.accept || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const types = [...new Set(accept.flatMap((a) => (a.startsWith('.') ? EXT_TYPES[a.toLowerCase()] ?? ['application/octet-stream'] : [a])))];
-  const { files } = await picker.pickFiles({ ...(types.length ? { types } : {}), limit: input.multiple ? 0 : 1 });
-  if (!files?.length) return;
+const nativeClick = HTMLInputElement.prototype.click;
+
+/** Gewählte Dateien in das Feld der Oberfläche übernehmen und dessen "change" auslösen. */
+function deliver(input, fileList) {
   const dt = new DataTransfer();
-  for (const f of files) {
-    const blob = f.blob ?? (await (await fetch(f.webPath ?? Capacitor.convertFileSrc(f.path))).blob());
-    dt.items.add(new File([blob], f.name || 'Datei', { type: f.mimeType || blob.type }));
-  }
+  for (const f of fileList) dt.items.add(f);
   input.files = dt.files;
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
-const nativeClick = HTMLInputElement.prototype.click;
-HTMLInputElement.prototype.click = function () {
-  const picker = window.__testPicker ?? (Capacitor.isNativePlatform() ? FilePicker : null);
-  if (this.type !== 'file' || !picker) return nativeClick.call(this);
-  pickInto(this, picker).catch((e) => {
-    const msg = String(e?.message ?? e);
-    if (/cancel/i.test(msg)) return;
-    console.warn('Dateiauswahl:', e);
-    // sichtbar machen, damit Probleme auf dem Handy erkennbar sind
-    const st = document.getElementById('status');
-    if (st) st.textContent = `Dateiauswahl nicht möglich: ${msg}`;
+
+/**
+ * Auswahlfenster mit zwei unabhängigen Wegen:
+ *  1. ein echtes, sichtbares Dateifeld zum direkten Antippen (Standardweg der Android-WebView)
+ *  2. die Android-Dateiauswahl über die Erweiterung (FilePicker)
+ * Jede Rückmeldung erscheint im Fenster – so ist auf dem Handy sichtbar, was passiert.
+ */
+function openPickSheet(target) {
+  document.getElementById('pickSheet')?.remove();
+  const sheet = document.createElement('div');
+  sheet.id = 'pickSheet';
+  sheet.innerHTML = `
+    <div class="ps-box">
+      <h3>Datei auswählen</h3>
+      <label class="ps-btn ps-main">📁 Datei auswählen
+        <input type="file" ${target.multiple ? 'multiple' : ''} ${target.accept ? `accept="${target.accept}"` : ''} />
+      </label>
+      <button class="ps-btn" data-act="plugin">Android-Dateiauswahl (anderer Weg)</button>
+      <button class="ps-btn ps-cancel" data-act="cancel">Abbrechen</button>
+      <p class="ps-info"></p>
+    </div>`;
+  document.body.appendChild(sheet);
+  const info = sheet.querySelector('.ps-info');
+  const say = (t) => (info.textContent = t);
+  const close = () => sheet.remove();
+  const direct = sheet.querySelector('input[type=file]');
+  direct.addEventListener('click', () => say('Dateiauswahl wird geöffnet …'));
+  direct.addEventListener('change', () => {
+    if (!direct.files?.length) return say('Keine Datei gewählt.');
+    const files = [...direct.files];
+    close();
+    deliver(target, files);
   });
+  sheet.querySelector('[data-act=cancel]').onclick = close;
+  sheet.addEventListener('click', (e) => e.target === sheet && close());
+  sheet.querySelector('[data-act=plugin]').onclick = async () => {
+    const picker = window.__testPicker ?? (Capacitor.isNativePlatform() ? FilePicker : null);
+    if (!picker) return say('Android-Dateiauswahl ist hier nicht verfügbar.');
+    say('Android-Dateiauswahl wird geöffnet …');
+    try {
+      const accept = (target.accept || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const types = [...new Set(accept.flatMap((a) => (a.startsWith('.') ? EXT_TYPES[a.toLowerCase()] ?? ['application/octet-stream'] : [a])))];
+      const { files } = await picker.pickFiles({ ...(types.length ? { types } : {}), limit: target.multiple ? 0 : 1 });
+      if (!files?.length) return say('Keine Datei gewählt.');
+      say('Datei wird geladen …');
+      const out = [];
+      for (const f of files) {
+        const blob = f.blob ?? (await (await fetch(f.webPath ?? Capacitor.convertFileSrc(f.path))).blob());
+        out.push(new File([blob], f.name || 'Datei', { type: f.mimeType || blob.type }));
+      }
+      close();
+      deliver(target, out);
+    } catch (e) {
+      const msg = String(e?.message ?? e);
+      say(/cancel/i.test(msg) ? 'Abgebrochen.' : `Android-Dateiauswahl nicht möglich: ${msg}`);
+    }
+  };
+}
+
+// Jeder "Hochladen"-Knopf der Oberfläche ruft input.click() auf – auf dem Handy öffnet das unser Auswahlfenster
+HTMLInputElement.prototype.click = function () {
+  if (this.type !== 'file' || this.closest?.('#pickSheet')) return nativeClick.call(this);
+  openPickSheet(this);
 };
 
 // Alles Übrige (Fensterfunktionen, freie Figur …) gibt es auf dem Handy nicht: still ignorieren

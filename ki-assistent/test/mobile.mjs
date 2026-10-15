@@ -79,13 +79,25 @@ await page.evaluate(() => {
 await page.click('#btnSettings');
 await page.evaluate(() => document.querySelector('[data-tab=avatar]').click());
 await page.evaluate(() => document.getElementById('avMorphAdd').click());
+check(await page.isVisible('#pickSheet'), 'Auswahlfenster öffnet sich');
+// Weg 1: direktes Antippen des echten Dateifelds
+const png = await page.evaluate(async () => {
+  const c = document.createElement('canvas');
+  c.width = 40;
+  c.height = 60;
+  c.getContext('2d').fillRect(10, 10, 20, 40);
+  return c.toDataURL('image/png').split(',')[1];
+});
+await page.setInputFiles('#pickSheet input[type=file]', { name: 'bild.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
 await page.waitForFunction(() => (window.__app.state.personas[0].avatar.morphs?.length ?? 0) === 1, null, { timeout: 10000 }).catch(() => {});
-const morphs = await page.evaluate(() => window.__app.state.personas[0].avatar.morphs?.length ?? 0);
-check(morphs === 1, 'Bild über Android-Dateiauswahl übernommen', JSON.stringify(await page.evaluate(() => window.__picked[0])));
+check((await page.evaluate(() => window.__app.state.personas[0].avatar.morphs?.length ?? 0)) === 1, 'Bild über direktes Dateifeld übernommen');
+check(!(await page.isVisible('#pickSheet')), 'Auswahlfenster schließt danach');
 await page.evaluate(() => document.getElementById('btnCloseDrawer').click());
+// Weg 2: Android-Dateiauswahl (simuliert) für einen Anhang
 await page.evaluate(() => document.getElementById('btnAttach').click());
+await page.click('#pickSheet [data-act=plugin]');
 await page.waitForFunction(() => document.querySelectorAll('#attachments .chip').length === 1, null, { timeout: 10000 }).catch(() => {});
-check((await page.$$('#attachments .chip')).length === 1, 'Anhang über Android-Dateiauswahl übernommen');
+check((await page.$$('#attachments .chip')).length === 1, 'Anhang über Android-Dateiauswahl übernommen', JSON.stringify(await page.evaluate(() => window.__picked[0])));
 // Schlüssel eingeben: beide Felder sichtbar (auch der OpenAI-Schlüssel, wenn Claude der Anbieter ist)
 await page.click('#btnSettings');
 await page.evaluate(() => document.querySelector('[data-tab=conn]').click());
