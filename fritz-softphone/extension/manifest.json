@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Fritz Browser-Telefon",
+  "short_name": "FritzPhone",
+  "version": "1.0.0",
+  "description": "Softphone für die FRITZ!Box im Browser: mehrere Leitungen, Heranholen (*09), Vermitteln, Konferenz, Telefonbuch.",
+  "minimum_chrome_version": "116",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "action": { "default_title": "Telefon öffnen", "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png" } },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["offscreen", "storage", "notifications", "contextMenus"],
+  "commands": {
+    "open-phone": {
+      "suggested_key": { "default": "Alt+Shift+T" },
+      "description": "Telefonfenster öffnen"
+    }
+  }
+}

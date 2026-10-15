@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser-Telefon</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="pipNote" hidden>
+  <p>Das Telefon ist gerade im Mini-Fenster geöffnet.</p>
+  <button class="btn" data-act="pip">Zurückholen</button>
+</div>
+
+<div id="app">
+  <header>
+    <span id="regDot" class="dot"></span>
+    <div class="who">
+      <div id="regText">Verbinde…</div>
+      <div id="regSub" class="sub"></div>
+    </div>
+    <button class="icon" id="btnDnd" title="Nicht stören">🔕</button>
+    <button class="icon" data-act="pip" title="Mini-Fenster (bleibt immer im Vordergrund)">⧉</button>
+  </header>
+
+  <div id="banner" hidden></div>
+
+  <nav class="tabs">
+    <button data-tab="phone" class="on">Telefon</button>
+    <button data-tab="book">Telefonbuch</button>
+    <button data-tab="history">Anrufe <span id="missedBadge" class="badge" hidden></span></button>
+    <button data-tab="settings">⚙</button>
+  </nav>
+
+  <main>
+    <!-- ======================= Telefon ======================= -->
+    <section id="tab-phone" class="tab on">
+      <div class="dialrow">
+        <div class="dialwrap">
+          <input id="dialInput" autocomplete="off" placeholder="Nummer oder Name…" spellcheck="false">
+          <div id="suggest" class="suggest" hidden></div>
+        </div>
+        <button id="btnDial" class="btn green" title="Anrufen (Enter)">📞</button>
+      </div>
+      <div class="quick">
+        <button class="btn" id="btnPickup" title="Klingelnden Anruf an der FRITZ!Box heranholen">⤵ Heranholen <span id="pickupCode">*09</span></button>
+        <button class="btn" id="btnRedial" title="Wahlwiederholung">↻</button>
+        <button class="btn" id="btnPad" title="Wähltastatur">⌨</button>
+      </div>
+      <div id="pad" class="pad" hidden>
+        <div id="padHint" class="hint"></div>
+        <div class="keys"></div>
+      </div>
+
+      <div id="lines"></div>
+      <div id="multi" class="multi" hidden></div>
+
+      <div id="extPanel" hidden>
+        <h3>Nebenstellen <span id="monState" class="sub"></span></h3>
+        <div id="ringingExt"></div>
+        <div id="extList" class="extgrid"></div>
+      </div>
+    </section>
+
+    <!-- ======================= Telefonbuch ======================= -->
+    <section id="tab-book" class="tab">
+      <div class="row">
+        <input id="bookSearch" placeholder="Suchen…" autocomplete="off">
+        <button class="btn green" id="btnNewContact" title="Neuer Kontakt">＋</button>
+      </div>
+      <div id="bookList" class="list"></div>
+      <div class="row small">
+        <label class="btn">Importieren…<input type="file" id="importFile" accept=".xml,.csv,.vcf,.txt" hidden></label>
+        <button class="btn" id="btnExport">Exportieren (CSV)</button>
+      </div>
+      <p class="sub">Import: FRITZ!Box-Telefonbuch (XML), CSV (Name;Firma;Nummer…) oder vCard (.vcf).</p>
+    </section>
+
+    <!-- ======================= Anrufliste ======================= -->
+    <section id="tab-history" class="tab">
+      <div class="row">
+        <select id="histFilter">
+          <option value="all">Alle Anrufe</option>
+          <option value="missed">Nicht angenommen</option>
+          <option value="in">Eingehend</option>
+          <option value="out">Ausgehend</option>
+        </select>
+        <button class="btn" id="btnClearHist">Leeren</button>
+      </div>
+      <div id="histList" class="list"></div>
+    </section>
+
+    <!-- ======================= Einstellungen ======================= -->
+    <section id="tab-settings" class="tab">
+      <form id="settingsForm">
+        <fieldset>
+          <legend>Verbindung zum Gateway</legend>
+          <label>Gateway-Adresse (WebSocket)
+            <input name="wsUrl" placeholder="ws://192.168.178.10:8088/ws" required></label>
+          <label>Benutzername <input name="user" required></label>
+          <label>Passwort <input name="password" type="password" required></label>
+          <label>Anzeigename (optional) <input name="displayName"></label>
+        </fieldset>
+        <fieldset>
+          <legend>Telefon</legend>
+          <label>Leitungen
+            <select name="lines"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+          <label>Code „Anruf heranholen“ <input name="pickupCode"></label>
+          <label class="chk"><input type="checkbox" name="autoStart"> Beim Browserstart automatisch anmelden</label>
+          <label class="chk"><input type="checkbox" name="popupOnIncoming"> Bei Anruf Fenster nach vorne holen</label>
+          <label class="chk"><input type="checkbox" name="notifications"> Desktop-Benachrichtigung bei Anruf</label>
+        </fieldset>
+        <fieldset>
+          <legend>Audio</legend>
+          <label>Mikrofon <select name="micId"></select></label>
+          <label>Lautsprecher / Headset <select name="speakerId"></select></label>
+          <label>Klingeln über <select name="ringId"></select></label>
+          <label>Klingel-Lautstärke <input name="ringVolume" type="range" min="0.05" max="1" step="0.05"></label>
+          <button type="button" class="btn" id="btnMic">Mikrofon freigeben / Geräte neu laden</button>
+        </fieldset>
+        <fieldset>
+          <legend>Nebenstellen (DECT &amp; Co.)</legend>
+          <label>Monitor-Adresse (optional)
+            <input name="monitorUrl" placeholder="http://192.168.178.10:8089"></label>
+          <label>Nebenstellen – je Zeile <code>Name = interne Nummer</code>
+            <textarea name="extensions" rows="5" placeholder="Büro Jens = **610&#10;Werkstatt = **611&#10;Lager = **612"></textarea></label>
+          <p class="sub">DECT-Telefone haben in der FRITZ!Box die internen Nummern **610 bis **615, IP-Telefone **620 bis **629. Die Kennung für die Besetzt-Anzeige ergibt sich daraus automatisch; abweichend kann sie mit einem dritten Feld angegeben werden: <code>Fax = **1 = 0</code>.</p>
+        </fieldset>
+        <div class="row">
+          <button class="btn green" type="submit">Speichern &amp; verbinden</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- Dialog: Weiterleiten -->
+  <dialog id="xferDlg">
+    <form method="dialog">
+      <h3 id="xferTitle">Weiterleiten</h3>
+      <div class="dialwrap">
+        <input id="xferInput" placeholder="Zielnummer oder Name" autocomplete="off">
+        <div id="xferSuggest" class="suggest" hidden></div>
+      </div>
+      <p class="sub">Der Gesprächspartner wird direkt an diese Nummer übergeben. Tipp: Für eine Übergabe mit vorheriger Rückfrage einfach auf einer zweiten Leitung anrufen und dann „Verbinden“ drücken.</p>
+      <div class="row end">
+        <button class="btn" value="cancel">Abbrechen</button>
+        <button class="btn green" id="xferOk" value="ok">Weiterleiten</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Kontakt -->
+  <dialog id="contactDlg">
+    <form method="dialog" id="contactForm">
+      <h3>Kontakt</h3>
+      <label>Name <input name="name"></label>
+      <label>Firma <input name="company"></label>
+      <label>Mobil <input name="mobile"></label>
+      <label>Festnetz <input name="home"></label>
+      <label>Geschäftlich <input name="work"></label>
+      <label>Notiz <input name="note"></label>
+      <div class="row end">
+        <button class="btn danger" id="contactDelete" value="delete" type="submit">Löschen</button>
+        <span class="spacer"></span>
+        <button class="btn" value="cancel">Abbrechen</button>
+        <button class="btn green" value="save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" hidden></div>
+</div>
+
+<script src="common.js"></script>
+<script src="import.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

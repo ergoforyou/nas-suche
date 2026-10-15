@@ -1,0 +1,19 @@
+services:
+  fritz-gateway:
+    build: .
+    container_name: fritz-gateway
+    restart: unless-stopped
+    # Host-Netzwerk: kein Port-Mapping-Ärger mit RTP/ICE
+    network_mode: host
+    env_file: .env
+
+  # Zeigt an, welche Nebenstellen (DECT, analog, IP) gerade telefonieren
+  fritz-monitor:
+    image: python:3.12-alpine
+    container_name: fritz-monitor
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./monitor/fritz_monitor.py:/app/fritz_monitor.py:ro
+    command: ["python", "-u", "/app/fritz_monitor.py"]
