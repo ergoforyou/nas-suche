@@ -125,3 +125,80 @@ export function heuristicKeypoints(mask, w, h) {
   }
   return kp;
 }
+
+// ------------------------------------------------------------------ MediaPipe
+
+const POSE = { nose: 0, lShoulder: 11, rShoulder: 12, lElbow: 13, rElbow: 14, lWrist: 15, rWrist: 16,
+  lHip: 23, rHip: 24, lKnee: 25, rKnee: 26, lAnkle: 27, rAnkle: 28 };
+
+/**
+ * Gelenkpunkte aus MediaPipe-Landmarks (Pixelkoordinaten).
+ * pose: 33 Punkte {x, y, v} (v = Sichtbarkeit 0..1), face: 478 Punkte [x, y] oder null.
+ * Fehlende Teile (z. B. Beine bei Halbkörperbildern) werden aus Körperproportionen ergänzt.
+ * Rückgabe: { keypoints, halfBody, armsFree, chinY }
+ */
+export function keypointsFromLandmarks(pose, face, mask, w, h) {
+  const inImg = (p, m = 0.01) => p.x > -m * w && p.x < w * (1 + m) && p.y > -m * h && p.y < h * (1 + m);
+  const vis = (i) => pose[i] && pose[i].v > 0.5 && inImg(pose[i]);
+  const P = (i) => [pose[i].x, pose[i].y];
+  const ls = P(POSE.lShoulder), rs = P(POSE.rShoulder);
+  const midSh = [(ls[0] + rs[0]) / 2, (ls[1] + rs[1]) / 2];
+  const shW = Math.max(4, Math.abs(ls[0] - rs[0]));
+
+  // Kopf: Gesichtspunkte, sonst Nase aus der Pose
+  const cxHead = face ? face[1][0] : pose[POSE.nose].x;
+  const chinY = face ? face[152][1] : pose[POSE.nose].y + 0.35 * shW;
+  let top = face ? face[10][1] - 0.3 * (face[152][1] - face[10][1]) : pose[POSE.nose].y - 0.6 * shW;
+  const col = Math.min(w - 1, Math.max(0, Math.round(cxHead)));
+  for (let y = 0; y < h; y++) {
+    let hit = false;
+    for (let x = Math.max(0, col - 3); x <= Math.min(w - 1, col + 3); x++) if (mask[y * w + x]) { hit = true; break; }
+    if (hit) { top = Math.min(top, y); break; }
+  }
+  const headPx = Math.max(8, chinY - top);
+  const kp = {
+    head_top: [cxHead, top],
+    neck: [midSh[0], (chinY + midSh[1]) / 2],
+    left_shoulder: ls, right_shoulder: rs,
+  };
+
+  // Hüfte: sichtbar oder aus den Proportionen (Hüfte ~ 4 Kopfhöhen unter dem Scheitel)
+  const hipsVisible = vis(POSE.lHip) && vis(POSE.rHip);
+  const hipY = hipsVisible ? (pose[POSE.lHip].y + pose[POSE.rHip].y) / 2 : top + 3.9 * headPx;
+  const hipHalf = hipsVisible ? Math.abs(pose[POSE.lHip].x - pose[POSE.rHip].x) / 2 : 0.37 * shW;
+  kp.left_hip = hipsVisible ? P(POSE.lHip) : [midSh[0] + hipHalf, hipY];
+  kp.right_hip = hipsVisible ? P(POSE.rHip) : [midSh[0] - hipHalf, hipY];
+
+  const legsVisible = vis(POSE.lAnkle) && vis(POSE.rAnkle) && vis(POSE.lKnee) && vis(POSE.rKnee);
+  // Halbkörper nur, wenn die Figur am unteren Bildrand abgeschnitten ist; sonst (Beine nicht erkannt, z. B. bei
+  // gezeichneten Figuren) kommen Hüfte/Knie/Knöchel aus der Silhouette.
+  const { bottom } = maskBounds(mask, w, h);
+  const cutOff = bottom >= h - 1 - Math.max(2, 0.01 * h);
+  const fromMask = !legsVisible && !cutOff ? heuristicKeypoints(mask, w, h) : null;
+  if (fromMask && !hipsVisible) { kp.left_hip = fromMask.left_hip; kp.right_hip = fromMask.right_hip; }
+  for (const [side, knee, ankle] of [['left', POSE.lKnee, POSE.lAnkle], ['right', POSE.rKnee, POSE.rAnkle]]) {
+    const hip = kp[`${side}_hip`];
+    kp[`${side}_knee`] = legsVisible ? P(knee) : fromMask ? fromMask[`${side}_knee`] : [hip[0], top + 5.75 * headPx];
+    kp[`${side}_ankle`] = legsVisible ? P(ankle) : fromMask ? fromMask[`${side}_ankle`] : [hip[0], top + 7.35 * headPx];
+  }
+
+  // Arme: frei beweglich nur, wenn Ellbogen und Handgelenke sichtbar sind und nicht vor dem Rumpf liegen
+  let armsFree = true;
+  for (const [side, sh, el, wr] of [['left', POSE.lShoulder, POSE.lElbow, POSE.lWrist], ['right', POSE.rShoulder, POSE.rElbow, POSE.rWrist]]) {
+    const sgn = side === 'left' ? 1 : -1;
+    if (vis(el) && vis(wr)) {
+      kp[`${side}_elbow`] = P(el);
+      kp[`${side}_wrist`] = P(wr);
+      const torsoEdge = midSh[0] + sgn * 0.42 * shW;
+      if (sgn * (pose[wr].x - torsoEdge) < 0 && pose[wr].y > midSh[1]) armsFree = false; // Hand vor dem Körper
+    } else {
+      armsFree = false;
+      const s = P(sh);
+      kp[`${side}_elbow`] = [s[0] + sgn * 0.1 * shW, s[1] + 1.3 * headPx];
+      kp[`${side}_wrist`] = [s[0] + sgn * 0.15 * shW, s[1] + 2.5 * headPx];
+    }
+  }
+  // Rückansicht: die linke Schulter der Person liegt im Bild links und es gibt kein Gesicht
+  const backView = !face && ls[0] < rs[0];
+  return { keypoints: kp, halfBody: !legsVisible && cutOff, armsFree, chinY, backView };
+}

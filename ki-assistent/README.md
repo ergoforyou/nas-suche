@@ -58,6 +58,10 @@ Ganzkörperbild (frontal, stehend). Optional machen eine **Rückansicht** (eigen
 automatisch aufgeteilt. Gelenkpunkte und die Kästen um Augen und Mund lassen sich vor dem Erstellen verschieben. Die
 Figur bekommt Blinzeln, Mundformen (A/I/U/E/O) und ein Lächeln; „Als .vrm speichern“ exportiert sie z. B. für VSeeFace.
 Alles läuft lokal – Hintergründe werden wie beim Avatar-Bild freigestellt (Transparenz, einfarbig oder KI).
+Bei **Fotos** erkennt die App Gesicht und Körper (MediaPipe): Gelenke sitzen genau, beim Blinzeln gleitet das eigene
+Lid über das Auge und beim Sprechen öffnen sich die Lippen (statt aufgemalter Formen). Halbkörperbilder werden als
+Brustbild gebaut, Arme vor dem Körper bleiben am Oberkörper. Rückansichten erkennt die App und legt sie automatisch
+ins Feld „Rückansicht“; ohne erkanntes Gesicht gibt es keine Mimik.
 
 ### 2D-Figur aus mehreren Bildern
 
@@ -201,6 +205,7 @@ src/avatar.js     Avatar-Animation (Canvas): Atmen, Blinzeln, Lippen öffnen
 src/cutout.js     Hintergrund entfernen (freistellen)
 src/bild2vrm/     3D-Figur (VRM mit Mimik) aus Bildern erzeugen – Ursprung: bild2vrm/js im Repo
 src/bild2vrm-dialog.js  Dialog „Aus Bildern erstellen“
+src/bild2vrm-detect.js  Gesichts-/Körpererkennung dafür (MediaPipe, Modelle in assets/)
 src/windows.js    freischwebende Figur + Ausgabefenster
 src/piper.js      Piper-Anbindung mit korrekter Laut-Zuordnung je Stimme
 src/stt.js        Mikrofon + Sprechpausen-Erkennung

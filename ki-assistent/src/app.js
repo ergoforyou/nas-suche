@@ -1986,8 +1986,8 @@ async function prepareFigureImage(file) {
   }
 }
 $('avVrmCreate').onclick = async () => {
-  const { openBild2VrmDialog } = await import('./bild2vrm-dialog.js');
-  openBild2VrmDialog({ prepare: prepareFigureImage, onCreated: useVrm, defaultName: persona().name || 'Meine Figur' });
+  const [{ openBild2VrmDialog }, { detectFigure }] = await Promise.all([import('./bild2vrm-dialog.js'), import('./bild2vrm-detect.js')]);
+  openBild2VrmDialog({ prepare: prepareFigureImage, onCreated: useVrm, detect: detectFigure, defaultName: persona().name || 'Meine Figur' });
 };
 $('avVrmYaw').oninput = (e) => setVrmYaw(+e.target.value);
 

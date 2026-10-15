@@ -9,6 +9,10 @@ const LINKS = [['head_top', 'neck'], ['neck', 'left_shoulder'], ['neck', 'right_
   ['left_elbow', 'left_wrist'], ['right_shoulder', 'right_elbow'], ['right_elbow', 'right_wrist'], ['left_shoulder', 'left_hip'],
   ['right_shoulder', 'right_hip'], ['left_hip', 'right_hip'], ['left_hip', 'left_knee'], ['left_knee', 'left_ankle'],
   ['right_hip', 'right_knee'], ['right_knee', 'right_ankle']];
+// Lid- und Lippenkonturen aus der Gesichtserkennung (nur zur Anzeige)
+const FACE_POINTS = [33, 246, 161, 160, 159, 158, 157, 173, 133, 7, 163, 144, 145, 153, 154, 155, 263, 466, 388, 387, 386, 385,
+  384, 398, 362, 249, 390, 373, 374, 380, 381, 382, 61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 146, 91, 181, 84, 17, 314,
+  405, 321, 375, 78, 13, 308, 14];
 const COLORS = { left: '#e0605b', right: '#52c27a', center: '#5b9cf5', face: '#f0b440' };
 
 const CSS = `
@@ -46,8 +50,10 @@ function canvasToImage(canvas) {
  * Dialog öffnen.
  * prepare(file) -> Promise<HTMLCanvasElement>: Bild laden und freistellen (Transparenz/einfarbig/KI) – liefert die App.
  * onCreated(bytes: Uint8Array, name: string) -> Promise: fertige VRM übernehmen.
+ * detect(canvas) -> Promise<{ face, pose }> (optional): Gesichts-/Körpererkennung (MediaPipe) – liefert genaue Gelenke,
+ *   Halbkörper-Erkennung und das Gesichts-Rig (Mimik durch Verformen des Fotos).
  */
-export function openBild2VrmDialog({ prepare, onCreated, defaultName = 'Meine Figur' }) {
+export function openBild2VrmDialog({ prepare, onCreated, detect = null, defaultName = 'Meine Figur' }) {
   if (!document.getElementById('b2v-style')) {
     const st = document.createElement('style');
     st.id = 'b2v-style';
@@ -114,17 +120,32 @@ export function openBild2VrmDialog({ prepare, onCreated, defaultName = 'Meine Fi
     return c;
   };
 
+  /** Frontansicht übernehmen; gibt die Analyse zurück (inkl. Hinweisen). Rückansichten wandern ins Rückenfeld. */
   async function setFront(canvas) {
-    state.front = canvasToImage(canvas);
+    const image = canvasToImage(canvas);
+    let lm = null;
+    if (detect) {
+      setStatus('Gesicht und Körper werden erkannt …');
+      try { lm = await detect(canvas); } catch (err) { console.warn('Erkennung fehlgeschlagen', err); }
+    }
+    const a = analyze(image, { background: 'alpha' }, lm);
     state.vrm = null;
     q('[data-act=save]').hidden = true;
+    if (a.backView) {
+      state.back = image;
+      setThumb('back', canvas);
+      return a;
+    }
+    state.front = image;
+    state.lm = lm;
+    state.kp = a.keypoints;
+    state.cut = toCanvas(cutout(image, a.mask));
     setThumb('front', canvas);
-    const { mask, keypoints } = analyze(state.front, { background: 'alpha' });
-    state.kp = keypoints;
-    state.cut = toCanvas(cutout(state.front, mask));
     editor.show();
     q('[data-act=create]').disabled = false;
+    return a;
   }
+  const hints = (a) => (a.warnings.length ? ` Hinweis: ${a.warnings.join(' ')}` : '');
 
   let pickSlot = null;
   overlay.querySelectorAll('[data-pick]').forEach((b) => (b.onclick = () => { pickSlot = b.dataset.pick; fileInput.click(); }));
@@ -146,11 +167,12 @@ export function openBild2VrmDialog({ prepare, onCreated, defaultName = 'Meine Fi
         state.back = back ? back.image : null; setThumb('back', back ? toCanvas(back.image) : null);
         state.side = side ? side.image : null; setThumb('side', side ? toCanvas(side.image) : null);
         if (!front) throw new Error('Im Blatt wurde keine Frontansicht erkannt – bitte die Frontansicht einzeln laden.');
-        await setFront(toCanvas(front.image));
-        setStatus(`${figs.length} Figuren erkannt: ${figs.map((f) => names[f.role]).join(', ')}. Punkte prüfen, dann „Figur erstellen“.`);
+        const a = await setFront(toCanvas(front.image));
+        setStatus(`${figs.length} Figuren erkannt: ${figs.map((f) => names[f.role]).join(', ')}. Punkte prüfen, dann „Figur erstellen“.${hints(a)}`);
       } else if (pickSlot === 'front') {
-        await setFront(canvas);
-        setStatus('Punkte prüfen und ggf. verschieben, dann „Figur erstellen“.');
+        const a = await setFront(canvas);
+        if (a.backView) setStatus('Das Bild zeigt die Figur von hinten – es wurde als Rückansicht übernommen. Bitte noch eine Frontansicht laden.', true);
+        else setStatus(`Punkte prüfen und ggf. verschieben, dann „Figur erstellen“.${hints(a)}`);
       } else {
         state[pickSlot] = canvasToImage(canvas);
         setThumb(pickSlot, canvas);
@@ -175,13 +197,14 @@ export function openBild2VrmDialog({ prepare, onCreated, defaultName = 'Meine Fi
       const res = await generate(state.front, {
         background: 'alpha', vrmVersion: '1', name, depth: +q('[data-opt=depth]').value,
         expressions: q('[data-opt=expressions]').checked,
-      }, state.kp, { back: state.back, sides: state.side ? [{ image: state.side }] : [] });
+      }, state.kp, { back: state.back, sides: state.side ? [{ image: state.side }] : [] }, state.lm);
       state.vrm = { bytes: res.vrm, name };
       await onCreated(res.vrm, `${name}.vrm`);
       q('[data-act=save]').hidden = false;
       q('[data-act=close]').textContent = 'Schließen';
-      setStatus(`Fertig: „${name}“ ist jetzt die 3D-Figur (${res.stats.expressions.length} Ausdrücke`
-        + `${res.stats.backView ? ', mit Rückansicht' : ''}${res.stats.sideViews ? ', mit Seitenprofil' : ''}).`);
+      const face = { landmarks: 'Mimik aus der Gesichtserkennung', boxes: 'einfache Mimik', none: 'ohne Mimik (kein Gesicht erkannt)' }[res.stats.faceMode];
+      setStatus(`Fertig: „${name}“ ist jetzt die 3D-Figur – ${face}${res.stats.halfBody ? ', als Brustbild' : ''}`
+        + `${res.stats.backView ? ', mit Rückansicht' : ''}${res.stats.sideViews ? ', mit Seitenprofil' : ''}.`);
     } catch (err) {
       setStatus(`Fehler: ${err.message}`, true);
     } finally {
@@ -220,6 +243,10 @@ export function openBild2VrmDialog({ prepare, onCreated, defaultName = 'Meine Fi
       for (const [a, b] of LINKS) {
         ctx.strokeStyle = color(a === 'head_top' || a === 'neck' ? b : a);
         ctx.beginPath(); ctx.moveTo(...P(a)); ctx.lineTo(...P(b)); ctx.stroke();
+      }
+      if (state.lm?.face) {
+        ctx.fillStyle = COLORS.face;
+        for (const i of FACE_POINTS) { const [x, y] = state.lm.face[i]; ctx.fillRect(x * scale - 1, y * scale - 1, 2, 2); }
       }
       for (const n of FACE) {
         if (!kp[n]) continue;

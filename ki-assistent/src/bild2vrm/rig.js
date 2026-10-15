@@ -199,7 +199,7 @@ function snapToSilhouette(px, border, mask, w, h, cell) {
  * Gittermesh über der Silhouette. Arme werden (außer an der Schulter) vom Körper getrennt.
  * Rückgabe: { xy, d, part, row, uv, tris, allowed }
  */
-export function buildFrontMesh(mask, w, h, cell, toWorld, skel, height, rTorso) {
+export function buildFrontMesh(mask, w, h, cell, toWorld, skel, height, rTorso, splitArms = true) {
   const rows = Math.ceil(h / cell), cols = Math.ceil(w / cell);
   const covered = new Uint8Array(rows * cols);
   for (let y = 0; y < h; y++)
@@ -212,9 +212,13 @@ export function buildFrontMesh(mask, w, h, cell, toWorld, skel, height, rTorso) 
     const p = toWorld((cc[i] + 0.5) * cell, (cr[i] + 0.5) * cell);
     centers[2 * i] = p[0]; centers[2 * i + 1] = p[1];
   }
-  let group = classifyCells(centers, skel, height, rTorso);
-  group = smoothLabels(group, cr, cc, rows, cols);
-  group = keepMainArmParts(group, cr, cc, rows, cols);
+  // Arme nur abtrennen, wenn sie frei neben dem Körper liegen; sonst bleiben sie fest am Oberkörper.
+  let group = new Int8Array(nc);
+  if (splitArms) {
+    group = classifyCells(centers, skel, height, rTorso);
+    group = smoothLabels(group, cr, cc, rows, cols);
+    group = keepMainArmParts(group, cr, cc, rows, cols);
+  }
 
   const W1 = cols + 1;
   const corners = new Int32Array(nc * 4);
