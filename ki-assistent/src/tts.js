@@ -4,6 +4,7 @@
 // passende Stimme (Deutsch/Englisch) gewählt.
 import { synthesize, preloadVoice } from './piper.js';
 import { visemeUnits, visemeTimeline, visemeAt } from './visemes.js';
+import { MOOD_VOICE } from './mood.js';
 
 export const PIPER_VOICES = {
   de: [
@@ -187,8 +188,11 @@ export class SpeechOutput {
   }
 
   /** Sprach-Server (Chatterbox): ein Satz -> Audio. Anfragen laufen nacheinander. */
-  synthServer(text) {
+  synthServer(text, mood) {
     const v = this.server ?? {};
+    // Chatterbox: „exaggeration“ steuert, wie gefühlvoll gesprochen wird – je nach Stimmung etwas mehr oder weniger
+    const MOOD_EXAG = { freudig: 0.2, überrascht: 0.25, traurig: 0.05, nachdenklich: -0.1, ernst: -0.15 };
+    const exag = mood in MOOD_EXAG ? Math.max(0.25, Math.min(1.2, (v.exaggeration ?? 0.5) + MOOD_EXAG[mood])) : v.exaggeration;
     const lang = detectLanguage(text, this.language);
     const [mode, file] = (v.voice || '').split(/:(.*)/s);
     const body = {
@@ -199,7 +203,7 @@ export class SpeechOutput {
       language: lang,
       ...(mode === 'clone' ? { voice_mode: 'clone', reference_audio_filename: file } : {}),
       ...(mode === 'predefined' ? { voice_mode: 'predefined', predefined_voice_id: file } : {}),
-      ...(v.exaggeration != null ? { exaggeration: v.exaggeration } : {}),
+      ...(exag != null ? { exaggeration: +exag.toFixed(2) } : {}),
       ...(v.cfg != null ? { cfg_weight: v.cfg } : {}),
       ...(v.temperature != null ? { temperature: v.temperature } : {}),
       ...(this.rate !== 1 ? { speed_factor: this.rate } : {}),
@@ -217,14 +221,17 @@ export class SpeechOutput {
   }
 
   /** Cloud-Stimme (OpenAI): ein Satz -> Audio. Anfragen laufen parallel (die Warteschlange hält die Reihenfolge). */
-  synthCloud(text) {
+  synthCloud(text, mood) {
     const c = this.cloud ?? {};
+    // Gefühl passend zur Stimmung der Antwort an den Sprechstil anhängen (nur Modelle mit Sprechstil nutzen das)
+    const feeling = c.emotion !== false && MOOD_VOICE[mood] ? MOOD_VOICE[mood] : '';
+    const instructions = [c.instructions, feeling].filter(Boolean).join(' ');
     const run = (async () => {
       const bytes = await window.desktop.ttsCloudSpeak({
         text,
         voice: c.voice,
         model: c.model,
-        instructions: c.instructions,
+        instructions,
         speed: this.rate,
       });
       this.ctx ??= new AudioContext();
@@ -257,9 +264,9 @@ export class SpeechOutput {
     if (this.engine !== 'system') {
       const job =
         this.engine === 'server'
-          ? this.synthServer(clean)
+          ? this.synthServer(clean, meta?.mood)
           : this.engine === 'cloud'
-            ? this.synthCloud(clean)
+            ? this.synthCloud(clean, meta?.mood)
             : synthesize(clean, this.voiceFor(clean), {
               rate: this.rate,
               onProgress: ({ loaded, total }) =>

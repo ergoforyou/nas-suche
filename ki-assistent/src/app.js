@@ -1338,6 +1338,7 @@ function fillSettings() {
   if (!LOCAL_ONLY) {
     $('vCloudVoice').value = p.voice.cloud?.voice ?? 'nova';
     $('vCloudStyle').value = p.voice.cloud?.instructions ?? '';
+    $('vCloudEmotion').checked = p.voice.cloud?.emotion !== false;
     fillCloudTtsModels();
   }
   drawMarkers();
@@ -1410,6 +1411,11 @@ $('vSrvUrl').onchange = (e) => {
 $('vSrvConnect').onclick = refreshServer;
 $('vCloudVoice').onchange = (e) => {
   persona().voice.cloud.voice = e.target.value;
+  applyVoice();
+  save();
+};
+$('vCloudEmotion').onchange = (e) => {
+  persona().voice.cloud.emotion = e.target.checked;
   applyVoice();
   save();
 };

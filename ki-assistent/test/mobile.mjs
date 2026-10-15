@@ -280,6 +280,27 @@ page.once('dialog', (d) => d.accept());
 await page.click('#vtool [data-act=still]');
 await page.waitForFunction((b) => window.__app.persona().avatar.image && window.__app.persona().avatar.image !== b, imgBefore, { timeout: 20000 }).catch(() => {});
 check(await page.evaluate((b) => window.__app.persona().avatar.image !== b, imgBefore), 'Standbild aus dem Video als Grundbild übernommen');
+// ---- Gefühl in der Stimme: Stimmung der Antwort geht als Sprechanweisung an die OpenAI-Stimme
+let ttsBody = null;
+await page.route('https://api.openai.com/v1/audio/speech', (route) => {
+  ttsBody = JSON.parse(route.request().postData());
+  // kurze, gültige WAV-Datei (Stille) zurückgeben
+  const n = 1600;
+  const b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22); b.writeUInt32LE(16000, 24); b.writeUInt32LE(32000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
+  b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  route.fulfill({ status: 200, headers: { 'content-type': 'audio/wav', 'access-control-allow-origin': '*' }, body: b });
+});
+await page.evaluate(() => {
+  const t = window.__app.tts;
+  t.configure({ engine: 'cloud', cloud: { voice: 'nova', model: 'gpt-4o-mini-tts', instructions: 'Sprich warm.', emotion: true } });
+  t.enqueue('Das ist ja großartig!', { mood: 'freudig' });
+});
+await page.waitForFunction(() => true);
+for (let i = 0; i < 40 && !ttsBody; i++) await page.waitForTimeout(250);
+check(/Sprich warm\./.test(ttsBody?.instructions ?? '') && /fröhlich/.test(ttsBody?.instructions ?? ''), 'Gefühl in der Stimme: Stimmung geht an die OpenAI-Stimme', ttsBody?.instructions);
+await page.evaluate(() => window.__app.tts.stop());
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

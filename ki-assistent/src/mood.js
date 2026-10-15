@@ -95,3 +95,13 @@ export function guessMood(sentence) {
   for (const [mood, re] of GUESS) if (re.test(s)) return mood;
   return /!\s*$/.test(s.trim()) ? 'freudig' : null;
 }
+
+/** Sprechanweisung je Stimmung für die OpenAI-Stimme (gpt-4o-mini-tts) – so klingt die Stimme wie die Figur aussieht. */
+export const MOOD_VOICE = {
+  freudig: 'Gefühl jetzt: fröhlich und begeistert – mit hörbarem Lächeln, etwas lebhafter und schwungvoller.',
+  ruhig: 'Gefühl jetzt: ruhig, freundlich und entspannt.',
+  nachdenklich: 'Gefühl jetzt: nachdenklich – etwas langsamer, mit kleinen Denkpausen, abwägend.',
+  überrascht: 'Gefühl jetzt: überrascht und erstaunt – lebhafte Betonung, etwas höher.',
+  traurig: 'Gefühl jetzt: mitfühlend und sanft – leiser, langsamer, warm.',
+  ernst: 'Gefühl jetzt: sachlich und ernst – klar, bestimmt, ohne Lächeln.',
+};
