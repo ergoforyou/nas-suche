@@ -504,7 +504,13 @@ async function saveSettings(ev) {
     else if (k === 'lines' || k === 'ringVolume') next[k] = Number(el.value);
     else next[k] = el.value.trim();
   }
-  if (next.wsUrl && !/^wss?:\/\//.test(next.wsUrl)) return toast('Gateway-Adresse muss mit ws:// oder wss:// beginnen');
+  // Es reicht die IP des NAS: "192.168.10.20" -> ws://192.168.10.20:8088/ws (+ Monitor auf 8089)
+  if (next.wsUrl && /^[\w.-]+(:\d+)?$/.test(next.wsUrl)) {
+    const host = next.wsUrl.replace(/:\d+$/, '');
+    next.wsUrl = `ws://${next.wsUrl.includes(':') ? next.wsUrl : host + ':8088'}/ws`;
+    if (!next.monitorUrl) next.monitorUrl = `http://${host}:8089`;
+  }
+  if (next.wsUrl && !/^wss?:\/\//.test(next.wsUrl)) return toast('Gateway-Adresse: bitte die IP des NAS eintragen, z.B. 192.168.10.20');
   if (next.monitorUrl && !/^https?:\/\//.test(next.monitorUrl)) return toast('Monitor-Adresse muss mit http:// beginnen');
   await saveAndApply(next);
   toast('Gespeichert', 'ok');

@@ -98,8 +98,8 @@
       <form id="settingsForm">
         <fieldset>
           <legend>Verbindung zum Gateway</legend>
-          <label>Gateway-Adresse (WebSocket)
-            <input name="wsUrl" placeholder="ws://192.168.178.10:8088/ws" required></label>
+          <label>IP-Adresse des NAS (Gateway)
+            <input name="wsUrl" placeholder="z.B. 192.168.10.20" required></label>
           <label>Benutzername <input name="user" required></label>
           <label>Passwort <input name="password" type="password" required></label>
           <label>Anzeigename (optional) <input name="displayName"></label>
@@ -130,7 +130,7 @@
         <fieldset>
           <legend>Kurzwahl &amp; Nebenstellen</legend>
           <label>Monitor-Adresse (optional)
-            <input name="monitorUrl" placeholder="http://192.168.178.10:8089"></label>
+            <input name="monitorUrl" placeholder="wird automatisch gesetzt"></label>
           <label>Kurzwahltasten – je Zeile <code>Name = Nummer</code>
             <textarea name="extensions" rows="6" placeholder="Annahme = *09&#10;Andrea Seifert = **610&#10;PW = **611&#10;JK = **615&#10;Umleitung an Pia = *21*+493075939886#"></textarea></label>
           <p class="sub">Jede Nummer ist erlaubt (intern, extern oder FRITZ!Box-Codes). Im Telefonbuch lässt sich ein Kontakt mit ☆ auch direkt als Kurzwahl übernehmen. DECT-Telefone haben in der FRITZ!Box die internen Nummern **610 bis **615, IP-Telefone **620 bis **629. Die Kennung für die Besetzt-Anzeige ergibt sich daraus automatisch; abweichend kann sie mit einem dritten Feld angegeben werden: <code>Fax = **1 = 0</code>.</p>

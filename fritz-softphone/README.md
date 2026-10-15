@@ -70,9 +70,8 @@ Folgende Ports müssen im LAN erreichbar sein (Host-Netzwerk): `8088/tcp` (WebSo
 1. `chrome://extensions` öffnen und rechts oben den **Entwicklermodus** einschalten.
 2. **Entpackte Erweiterung laden** → den Ordner `extension/` auswählen.
 3. Das Telefonfenster öffnet sich. Unter ⚙ Folgendes eintragen:
-   - Gateway-Adresse: `ws://<NAS-IP>:8088/ws`
+   - IP-Adresse des NAS, z. B. `192.168.10.20` (Gateway- und Monitor-Adresse werden daraus automatisch gebildet)
    - Benutzername/Passwort: `WEBPHONE_USER` / `WEBPHONE_PASSWORD` aus der `.env`
-   - Monitor-Adresse: `http://<NAS-IP>:8089`
    - Nebenstellen, je Zeile `Name = interne Nummer`, z. B. `Werkstatt = **611`
 4. Beim ersten Mal das **Mikrofon freigeben**. Die Erweiterung öffnet dafür einen Tab.
 
