@@ -14,6 +14,8 @@ const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
 const MOBILE = desktop.platform === 'android';
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
+// Versionsnummer gut sichtbar in der Titelleiste (zum Unterscheiden der Testversionen)
+document.getElementById('titleVersion').textContent = APP_VERSION ? `v${APP_VERSION}` : '';
 // "lokal" = Ausgabe ganz ohne Cloud-Funktionen, "cloud" = mit Claude/ChatGPT/OpenAI-Stimme
 const EDITION = desktop.edition ?? 'cloud';
 const LOCAL_ONLY = EDITION === 'lokal';
