@@ -9,6 +9,7 @@ import { RubberBand } from './rubberband.js';
 import { buildDepthMap, imageKey } from './parallax.js';
 import { detectFaceRig, markersFromRig } from './facerig.js';
 import { detectBodyRig } from './bodyrig.js';
+import { openMarkEditor } from './markeditor.js';
 import { debugVoice, synthesize, piperState } from './piper.js';
 import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
 
@@ -1897,8 +1898,34 @@ async function remapMask(av, from, to, outW, outH) {
   av.mouthMask = c.toDataURL('image/png');
 }
 
+/** Großer Editor: Vollbild, Zoom, Punkte ziehen mit Lupe, Vorschlag aus der Gesichtserkennung. */
+async function openBigMarkEditor() {
+  const av = target();
+  if (!av.image) return status('Erst ein Bild laden.');
+  const image = await loadImage(av.image);
+  openMarkEditor({
+    image,
+    mouth: av.mouth,
+    eyes: av.eyes,
+    detect: async () => {
+      const rig = await detectFaceRig(await imageToCanvas(av.image)).catch(() => null);
+      return rig ? markersFromRig(rig) : await detectFace(av.image);
+    },
+    onDone: ({ mouth, eyes }) => {
+      av.mouth = mouth;
+      av.eyes = eyes;
+      setMarkMode(null);
+      avatarChanged();
+      status('Mund und Augen übernommen.');
+    },
+  });
+}
+$('avMarkBig').onclick = openBigMarkEditor;
+
 $('markerCanvas').onclick = (e) => {
   if (!markMode || markMode === 'paint' || markMode === 'erase') return;
+  // Handy: Tippen auf das kleine Bild setzt keine Punkte (zu ungenau, passiert auch beim Scrollen) – großer Editor
+  if (MOBILE) return openBigMarkEditor();
   const r = e.target.getBoundingClientRect();
   const x = (e.clientX - r.left) / r.width;
   const y = (e.clientY - r.top) / r.height;
@@ -2194,15 +2221,24 @@ $('avFile').onchange = async (e) => {
     av.loop ??= false;
     if (av.mask) desktop.deleteMedia(av.mask);
     av.mask = null;
-    // Greenscreen -> schnelles Farbverfahren, sonst (z. B. weiße Wand) KI-Freistellung
-    av.cutMode = (await isGreenScreen(av.video)) ? 'color' : 'ai';
+    // Schon freigestellt (WebM mit Transparenz) -> so übernehmen; Greenscreen -> schnelles Farbverfahren;
+    // sonst (z. B. weiße Wand) KI-Freistellung
+    av.cutMode = (await videoHasAlpha(av.video)) ? 'alpha' : (await isGreenScreen(av.video)) ? 'color' : 'ai';
     delete av.key;
+    delete av.clip;
     avatarChanged();
     previewEdited();
     if (av.cutMode === 'ai') await computeMaskFor(av);
+    else if (av.cutMode === 'alpha') status('Video-Pose hinzugefügt – das Video ist schon freigestellt (Transparenz), wird so verwendet.');
     else status('Video-Pose hinzugefügt – Greenscreen erkannt, wird live entfernt.');
     return;
   }
+  await useImageFile(file);
+};
+
+/** Neues Bild für Grundbild oder Pose übernehmen: freistellen, Mund und Augen setzen. */
+async function useImageFile(file) {
+  const av = target();
   av.video = null;
   av.image = await readImage(file);
   av.original = null;
@@ -2229,7 +2265,7 @@ $('avFile').onchange = async (e) => {
     status('Bitte die Lippen ausmalen (🖌) oder die Mundmitte anklicken, danach beide Augen anklicken.');
   }
   avatarChanged();
-};
+}
 
 /**
  * Figur freistellen. mode: 'auto' (einfarbig -> Farbe, sonst KI), 'color' oder 'ai'.
@@ -2297,6 +2333,15 @@ async function videoFirstFrame(url) {
   c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
   v.src = '';
   return c;
+}
+
+/** Hat das Video schon einen transparenten Hintergrund (z. B. WebM VP9 mit Alpha)? */
+async function videoHasAlpha(url) {
+  try {
+    return hasTransparency(await videoFirstFrame(url));
+  } catch {
+    return false;
+  }
 }
 
 async function isGreenScreen(url) {
@@ -2424,9 +2469,11 @@ function renderPoseList() {
     del.title = 'Pose löschen';
     del.onclick = () => {
       if (!confirm(`Pose „${pose.name ?? i + 1}“ löschen?`)) return;
-      if (pose.video) desktop.deleteMedia(pose.video);
-      if (pose.mask) desktop.deleteMedia(pose.mask);
       poses.splice(i, 1);
+      // Abschnitte desselben Videos teilen sich die Datei – nur löschen, wenn sie niemand mehr nutzt
+      const used = (url) => poses.some((p) => p.video === url || p.mask === url);
+      if (pose.video && !used(pose.video)) desktop.deleteMedia(pose.video);
+      if (pose.mask && !used(pose.mask)) desktop.deleteMedia(pose.mask);
       if (editIndex >= poses.length) editIndex = -1;
       setEditIndex(editIndex === i ? -1 : editIndex > i ? editIndex - 1 : editIndex);
       avatarChanged();
@@ -2468,6 +2515,7 @@ function renderPoseList() {
       const current = pose.cutMode ?? (pose.key ? 'color' : 'none');
       for (const [v, label] of [
         ['ai', 'KI (beste Qualität)'],
+        ['alpha', 'schon freigestellt (Transparenz)'],
         ['flood', 'Einfarbige Wand'],
         ['color', 'Greenscreen'],
         ['none', 'nicht freistellen'],
@@ -2483,7 +2531,11 @@ function renderPoseList() {
         renderPoseList();
       };
       modeLabel.append('Freistellen', mode);
-      opts.append(check('Schleife', 'loop'), modeLabel);
+      const cut = document.createElement('button');
+      cut.textContent = pose.clip ? `✂ ${fmtSec(pose.clip.start)}–${fmtSec(pose.clip.end)}` : '✂ Abschnitt / Standbild';
+      cut.title = 'Nur einen Teil des Videos verwenden, weitere Abschnitte als eigene Posen anlegen oder ein Standbild als Grundbild übernehmen';
+      cut.onclick = () => openVideoTool(pose);
+      opts.append(check('Schleife', 'loop'), modeLabel, cut);
       if (current === 'flood' || current === 'color') opts.append(tol);
       if (current === 'ai') {
         const redo = document.createElement('button');
@@ -2512,6 +2564,137 @@ $('poseAdd').onclick = () => {
   $('avFile').click();
 };
 $('poseEditMain').onclick = () => setEditIndex(-1);
+
+const fmtSec = (t) => `${(+t).toFixed(1).replace('.', ',')} s`;
+
+/**
+ * Video-Werkzeug für eine Video-Pose: Abschnitt wählen (nur ein Teil wird abgespielt), weitere Abschnitte
+ * desselben Videos als eigene Posen anlegen (z. B. Nicken, Lachen, Nachdenken aus einer Aufnahme) oder ein
+ * einzelnes Bild als Grundbild übernehmen – dann passen Licht, Größe und Position von Bild und Video zusammen.
+ */
+function openVideoTool(pose) {
+  document.getElementById('vtool')?.remove();
+  const box = document.createElement('div');
+  box.id = 'vtool';
+  box.innerHTML = `
+    <div class="vt-box">
+      <h3>Video: Abschnitt und Standbild</h3>
+      <div class="vt-video checker"><video playsinline muted preload="auto"></video></div>
+      <input type="range" class="vt-pos" min="0" max="1" step="0.01" value="0" />
+      <div class="vt-time"></div>
+      <div class="row wrap">
+        <button data-act="back" title="ein Bild zurück">◀</button>
+        <button data-act="play">▶ Abspielen</button>
+        <button data-act="fwd" title="ein Bild vor">▶|</button>
+        <button data-act="start">⟦ Anfang hier</button>
+        <button data-act="end">Ende hier ⟧</button>
+        <button data-act="full">ganzes Video</button>
+      </div>
+      <div class="row wrap">
+        <button data-act="apply" class="primary">✔ Abschnitt für diese Pose</button>
+        <button data-act="newpose">＋ Abschnitt als neue Pose</button>
+        <button data-act="still">📷 Dieses Bild als Grundbild</button>
+      </div>
+      <p class="hint vt-info">Tipp: Aus einer längeren Aufnahme mehrere kurze Abschnitte als eigene Posen anlegen – z. B. „sprechen“, „nachdenken“, „zuhören“.</p>
+      <button data-act="close">Schließen</button>
+    </div>`;
+  document.body.appendChild(box);
+  const q = (sel) => box.querySelector(sel);
+  const v = q('video');
+  const pos = q('.vt-pos');
+  const info = q('.vt-info');
+  const sel = { ...(pose.clip ?? { start: 0, end: 0 }) };
+  let dur = 0;
+  v.src = pose.video;
+  const showTime = () => {
+    const clip = sel.end > sel.start + 0.2 ? `Abschnitt ${fmtSec(sel.start)} – ${fmtSec(sel.end)}` : 'ganzes Video';
+    q('.vt-time').textContent = `${fmtSec(v.currentTime)} / ${fmtSec(dur)} · ${clip}`;
+    pos.value = String(v.currentTime);
+  };
+  v.onloadedmetadata = () => {
+    dur = v.duration || 0;
+    pos.max = String(dur);
+    if (!(sel.end > sel.start)) Object.assign(sel, { start: 0, end: dur });
+    v.currentTime = sel.start;
+    showTime();
+  };
+  v.ontimeupdate = () => {
+    if (!v.paused && sel.end > sel.start + 0.2 && v.currentTime >= sel.end) v.currentTime = sel.start; // Abschnitt in Schleife
+    showTime();
+  };
+  v.onseeked = showTime;
+  pos.oninput = () => {
+    v.pause();
+    v.currentTime = +pos.value;
+  };
+  const step = 1 / 25;
+  const close = () => {
+    v.pause();
+    v.removeAttribute('src');
+    box.remove();
+  };
+  const clipOrNull = () => (sel.end > sel.start + 0.2 && (sel.start > 0.05 || sel.end < dur - 0.05) ? { start: +sel.start.toFixed(2), end: +sel.end.toFixed(2) } : null);
+  const act = {
+    back: () => (v.pause(), (v.currentTime = Math.max(0, v.currentTime - step))),
+    fwd: () => (v.pause(), (v.currentTime = Math.min(dur, v.currentTime + step))),
+    play: () => {
+      if (v.paused) {
+        if (v.currentTime < sel.start || v.currentTime >= sel.end) v.currentTime = sel.start;
+        v.play().catch(() => {});
+      } else v.pause();
+    },
+    start: () => {
+      sel.start = Math.min(v.currentTime, Math.max(0, sel.end - 0.3));
+      showTime();
+    },
+    end: () => {
+      sel.end = Math.max(v.currentTime, sel.start + 0.3);
+      showTime();
+    },
+    full: () => {
+      Object.assign(sel, { start: 0, end: dur });
+      showTime();
+    },
+    apply: () => {
+      const clip = clipOrNull();
+      if (clip) pose.clip = clip;
+      else delete pose.clip;
+      save();
+      applyAvatar();
+      renderPoseList();
+      previewEdited();
+      close();
+      status(clip ? `Abschnitt übernommen: ${fmtSec(clip.start)} – ${fmtSec(clip.end)}.` : 'Es wird wieder das ganze Video verwendet.');
+    },
+    newpose: () => {
+      const clip = clipOrNull();
+      if (!clip) return (info.textContent = 'Bitte zuerst mit „Anfang hier“ und „Ende hier“ einen Abschnitt wählen.');
+      const poses = persona().avatar.poses;
+      const copy = { ...structuredClone(pose), id: newId(), name: `${pose.name ?? 'Video'} – ${fmtSec(clip.start)}`, clip };
+      poses.push(copy);
+      save();
+      applyAvatar();
+      renderPoseList();
+      info.textContent = `Neue Pose „${copy.name}“ angelegt (gleiches Video, eigener Abschnitt). Auslöser in der Posen-Liste wählen.`;
+    },
+    still: async () => {
+      if (!confirm('Dieses Videobild als neues Grundbild verwenden? Mund und Augen werden danach neu gesetzt.')) return;
+      v.pause();
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      c.getContext('2d').drawImage(v, 0, 0);
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+      close();
+      setEditIndex(-1);
+      await useImageFile(new File([blob], 'standbild.png', { type: 'image/png' }));
+      status('Standbild aus dem Video ist jetzt das Grundbild – Mund und Augen bitte prüfen.');
+    },
+    close,
+  };
+  box.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () => act[b.dataset.act]()));
+  box.addEventListener('click', (e) => e.target === box && close());
+}
 
 $('avCutout').onclick = () => cutoutAvatar('color');
 $('avCutoutAi').onclick = () => cutoutAvatar('ai');

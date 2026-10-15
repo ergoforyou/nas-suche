@@ -204,6 +204,82 @@ await page.waitForFunction((b) => window.__app.persona().avatar.vrm && window.__
 const loaded = await page.evaluate(() => ({ vrm: !!window.__app.persona().avatar.vrm, layer: !!window.__app.avatar.layers?.[0]?.isVrm, name: window.__app.persona().avatar.vrmName }));
 check(loaded.vrm && loaded.layer && /\.vrm$/.test(loaded.name ?? ''), 'Gespeicherte VRM-Datei wieder geladen und zugeordnet', JSON.stringify(loaded));
 check(await page.isVisible('#avVrmSave'), 'Knopf „VRM-Datei speichern“ sichtbar');
+// ---- Regler auf dem Handy: Antippen/Scrollen verstellt nichts, –/+ stellt fein ein
+await page.evaluate(() => window.__app.persona().avatar.vrm && document.querySelector('#avVrmOff')?.click());
+await page.waitForTimeout(300);
+const slider = await page.evaluate(() => {
+  const r = document.querySelector('#avMotion');
+  const before = r.value;
+  const o = { pointerId: 9, pointerType: 'touch', bubbles: true, clientX: 10, clientY: 10 };
+  r.dispatchEvent(new PointerEvent('pointerdown', o));
+  // so verhält sich der Browser beim Antippen der Leiste: Wert springt
+  r.value = String(+r.max);
+  r.dispatchEvent(new Event('input', { bubbles: true }));
+  r.dispatchEvent(new PointerEvent('pointerup', o));
+  r.dispatchEvent(new Event('change', { bubbles: true }));
+  const afterTap = r.value;
+  const motionAfterTap = window.__app.persona().avatar.motion ?? 1;
+  const wrap = r.closest('.range-step');
+  wrap?.querySelectorAll('button')[1].click();
+  return { before, afterTap, motionAfterTap, hasButtons: !!wrap, afterPlus: r.value, motion: window.__app.persona().avatar.motion };
+});
+check(slider.afterTap === slider.before && String(slider.motionAfterTap) === slider.before, 'Regler: Antippen beim Scrollen verstellt nichts', JSON.stringify(slider));
+check(slider.hasButtons && +slider.afterPlus > +slider.before && slider.motion === +slider.afterPlus, 'Regler: –/+ stellt genau ein');
+
+// ---- Großer Markier-Editor: Mundpunkt ziehen und übernehmen
+await page.click('#avMarkBig');
+await page.waitForSelector('#markEd canvas');
+await page.waitForTimeout(300);
+const mouthBefore = await page.evaluate(() => ({ ...window.__app.persona().avatar.mouth }));
+const startPt = await page.evaluate(() => {
+  const ed = document.querySelector('#markEd');
+  const r = ed.querySelector('canvas').getBoundingClientRect();
+  const p = ed.pointOnScreen('mouth');
+  return { x: r.left + p.x, y: r.top + p.y };
+});
+if (startPt) {
+  await page.mouse.move(startPt.x, startPt.y);
+  await page.mouse.down();
+  await page.mouse.move(startPt.x + 30, startPt.y + 20, { steps: 5 });
+  await page.mouse.up();
+}
+await page.click('#markEd [data-act=done]');
+const mouthAfter = await page.evaluate(() => ({ ...window.__app.persona().avatar.mouth }));
+check(!!startPt && (mouthAfter.x !== mouthBefore.x || mouthAfter.y !== mouthBefore.y), 'Großer Editor: Mundpunkt verschoben und übernommen', JSON.stringify({ mouthBefore, mouthAfter }));
+
+// ---- Video mit transparentem Hintergrund als Pose, Abschnitt wählen, Abschnitt als neue Pose, Standbild
+const posesBefore = await page.evaluate(() => (window.__app.persona().avatar.poses ?? []).length);
+await page.click('#poseAdd');
+await page.waitForSelector('#pickSheet');
+await page.setInputFiles('#pickSheet input[type=file]', path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-alpha.webm'));
+await page.waitForFunction((n) => (window.__app.persona().avatar.poses ?? []).length > n && window.__app.persona().avatar.poses.at(-1).cutMode, posesBefore, { timeout: 20000 }).catch(() => {});
+const vpose = await page.evaluate(() => window.__app.persona().avatar.poses.at(-1));
+check(vpose?.cutMode === 'alpha', 'Video mit Transparenz erkannt (keine KI-Freistellung nötig)', vpose?.cutMode);
+await page.locator('.pose-opts button', { hasText: 'Abschnitt' }).last().click();
+await page.waitForSelector('#vtool video');
+await page.waitForFunction(() => document.querySelector('#vtool video').readyState >= 1);
+await page.evaluate(async () => {
+  const v = document.querySelector('#vtool video');
+  const seek = (t) => new Promise((r) => { v.onseeked = r; v.currentTime = t; });
+  await seek(0.5);
+  document.querySelector('#vtool [data-act=start]').click();
+  await seek(2.0);
+  document.querySelector('#vtool [data-act=end]').click();
+});
+await page.click('#vtool [data-act=newpose]');
+await page.click('#vtool [data-act=apply]');
+const clips = await page.evaluate(() => window.__app.persona().avatar.poses.slice(-2).map((p) => ({ clip: p.clip, video: p.video })));
+check(clips.length === 2 && clips.every((c) => c.clip && Math.abs(c.clip.start - 0.5) < 0.06 && Math.abs(c.clip.end - 2) < 0.06) && clips[0].video === clips[1].video, 'Video-Abschnitt gewählt und als weitere Pose angelegt', JSON.stringify(clips));
+const layerClip = await page.waitForFunction(() => window.__app.avatar.layers?.find((L) => L.clip)?.clip, null, { timeout: 10000 }).then((h) => h.jsonValue()).catch(() => null);
+check(layerClip && Math.abs(layerClip.start - 0.5) < 0.06, 'Figur spielt nur den Abschnitt', JSON.stringify(layerClip));
+const imgBefore = await page.evaluate(() => window.__app.persona().avatar.image);
+await page.locator('.pose-opts button', { hasText: '✂' }).last().click();
+await page.waitForSelector('#vtool video');
+await page.waitForFunction(() => document.querySelector('#vtool video').readyState >= 2);
+page.once('dialog', (d) => d.accept());
+await page.click('#vtool [data-act=still]');
+await page.waitForFunction((b) => window.__app.persona().avatar.image && window.__app.persona().avatar.image !== b, imgBefore, { timeout: 20000 }).catch(() => {});
+check(await page.evaluate((b) => window.__app.persona().avatar.image !== b, imgBefore), 'Standbild aus dem Video als Grundbild übernommen');
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

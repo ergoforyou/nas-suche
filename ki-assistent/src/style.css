@@ -294,3 +294,21 @@ body.floating .stage { display: none; }
 .pip .state-badge, .pip .resize-handle { display: none !important; }
 .pip body { padding: 0; }
 .pip .stage { height: 100vh !important; min-height: 0; }
+
+/* Video-Werkzeug: Abschnitt wählen, Standbild übernehmen */
+#vtool { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+#vtool .vt-box { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; width: min(560px, 96vw);
+                 max-height: 96vh; overflow: auto; display: grid; gap: 8px; }
+#vtool h3 { margin: 0; font-size: 16px; }
+#vtool .vt-video { border-radius: 8px; overflow: hidden; display: flex; justify-content: center; max-height: 50vh; }
+#vtool video { max-width: 100%; max-height: 50vh; display: block; }
+#vtool .vt-pos { width: 100%; }
+#vtool .vt-time { font-size: 13px; color: var(--muted); }
+#vtool .row { display: flex; gap: 6px; }
+#vtool .wrap { flex-wrap: wrap; }
+#vtool button.primary { background: var(--accent-2); border-color: var(--accent); }
+/* Handy: Regler mit –/+ zum genauen Einstellen; senkrechtes Wischen scrollt (siehe mobile/desktop.js) */
+.mobile input[type=range] { touch-action: pan-y; }
+.range-step { display: flex; align-items: center; gap: 6px; }
+.range-step input[type=range] { flex: 1; min-width: 0; margin-top: 0 !important; }
+.range-step button { min-width: 38px; height: 34px; padding: 0; font-size: 18px; line-height: 1; flex: none; }

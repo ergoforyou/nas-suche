@@ -228,7 +228,10 @@ export class Avatar {
     v.muted = true;
     v.playsInline = true;
     v.preload = 'auto';
-    v.loop = !!cfg.loop;
+    // Abschnitt: nur ein Teil des Videos wird verwendet (Anfang/Ende in Sekunden)
+    const clip = cfg.clip && cfg.clip.end > cfg.clip.start + 0.2 ? cfg.clip : null;
+    L.clip = clip;
+    v.loop = !!cfg.loop && !clip;
     v.src = cfg.video;
     await new Promise((resolve, reject) => {
       v.onloadeddata = resolve;
@@ -242,7 +245,8 @@ export class Avatar {
     L.frame.width = L.w;
     L.frame.height = L.h;
     L.frameCtx = L.frame.getContext('2d', { willReadFrequently: true });
-    // Freistellen: 'color' (Greenscreen), 'flood' (einfarbige Wand), 'ai' (vorberechnete KI-Masken), 'none'
+    // Freistellen: 'color' (Greenscreen), 'flood' (einfarbige Wand), 'ai' (vorberechnete KI-Masken),
+    // 'alpha' (Video ist schon freigestellt, z. B. WebM mit Transparenz), 'none'
     L.cutMode = cfg.cutMode ?? (cfg.key ? 'color' : 'none');
     if (L.cutMode === 'ai' && cfg.mask) {
       try {
@@ -270,7 +274,7 @@ export class Avatar {
     g.clearRect(0, 0, this.w, this.h);
     g.drawImage(v, 0, 0, this.w, this.h);
     const mode = this.cutMode;
-    if (mode === 'none' || (mode === 'ai' && !this.mask)) return;
+    if (mode === 'none' || mode === 'alpha' || (mode === 'ai' && !this.mask)) return;
     const img = g.getImageData(0, 0, this.w, this.h);
     const d = img.data;
     if (mode === 'ai') {
@@ -605,10 +609,26 @@ export class Avatar {
     this.current = i;
     this.fadeStart = now;
     const L = this.layers?.[i];
-    if (L?.isVideo) {
-      L.video.currentTime = 0;
-      L.video.play().catch(() => {});
+    if (L?.isVideo) this.restartVideo(L);
+  }
+
+  /** Video (bzw. seinen Abschnitt) von vorn abspielen. */
+  restartVideo(L) {
+    L.clipDone = false;
+    L.video.currentTime = L.clip?.start ?? 0;
+    L.video.play().catch(() => {});
+  }
+
+  /** Ist das Video (bzw. der Abschnitt) zu Ende? Abschnitte in Schleife springen zurück an den Anfang. */
+  videoEnded(L) {
+    if (L.clip && !L.clipDone && L.video.currentTime >= L.clip.end - 0.03) {
+      if (L.config.loop) L.video.currentTime = L.clip.start;
+      else {
+        L.video.pause();
+        L.clipDone = true;
+      }
     }
+    return L.video.ended || !!L.clipDone;
   }
 
   /** Videos, die gerade nicht zu sehen sind, anhalten. */
@@ -624,14 +644,11 @@ export class Avatar {
     if (this.forcePose != null) {
       this.switchPose(Math.min(this.forcePose, n - 1), now);
       // Vorschau im Editor: Video immer wieder abspielen
-      if (curL?.isVideo && curL.video.ended) {
-        curL.video.currentTime = 0;
-        curL.video.play().catch(() => {});
-      }
+      if (curL?.isVideo && this.videoEnded(curL)) this.restartVideo(curL);
       return;
     }
     // Einmal abgespielte Videos kehren danach zum Grundbild zurück
-    if (curL?.isVideo && !curL.config.loop && curL.video.ended) {
+    if (curL?.isVideo && this.videoEnded(curL) && !curL.config.loop) {
       this.switchPose(0, now);
       this.poseUntil = now + 2500 + Math.random() * 4000;
       return;

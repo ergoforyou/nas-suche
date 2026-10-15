@@ -412,3 +412,79 @@ document.documentElement.classList.add('mobile');
 document.addEventListener('focusin', (e) => {
   if (e.target.matches?.('input, textarea, select')) setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350);
 });
+
+// ---------------------------------------------------------------- Regler auf dem Handy
+// Beim Scrollen streift der Finger leicht einen Regler und verstellt ihn. Darum gilt hier:
+//  - Antippen der Leiste verstellt nichts (der Wert springt zurück),
+//  - der Regler bewegt sich erst, wenn der Finger deutlich zur Seite zieht – senkrechtes Wischen scrollt,
+//  - neben jedem Regler gibt es –/+ für genaues Einstellen.
+let rangeGesture = null;
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    const el = e.target;
+    if (e.pointerType === 'mouse' || !(el instanceof HTMLInputElement) || el.type !== 'range') return;
+    rangeGesture = { el, x: e.clientX, y: e.clientY, value: el.value, ok: false };
+  },
+  true,
+);
+document.addEventListener(
+  'pointermove',
+  (e) => {
+    const g = rangeGesture;
+    if (!g || g.ok) return;
+    const dx = Math.abs(e.clientX - g.x);
+    const dy = Math.abs(e.clientY - g.y);
+    if (dx > 12 && dx > dy * 1.5) g.ok = true;
+  },
+  true,
+);
+const guardRange = (e) => {
+  const g = rangeGesture;
+  if (!g || g.ok || e.target !== g.el) return;
+  // noch kein seitliches Ziehen: Änderung verwerfen und an die App nicht weitergeben
+  e.stopImmediatePropagation();
+  g.el.value = g.value;
+};
+document.addEventListener('input', guardRange, true);
+document.addEventListener('change', guardRange, true);
+const endRange = () => {
+  const g = rangeGesture;
+  rangeGesture = null;
+  if (g && !g.ok && g.el.value !== g.value) g.el.value = g.value;
+};
+document.addEventListener('pointerup', endRange, true);
+document.addEventListener('pointercancel', endRange, true);
+
+/** –/+ neben einen Regler setzen (einmal je Regler). */
+function addRangeButtons(r) {
+  if (r.dataset.steps || r.closest('.range-step, #vtool, .b2v')) return;
+  r.dataset.steps = '1';
+  const wrap = document.createElement('span');
+  wrap.className = 'range-step';
+  r.replaceWith(wrap);
+  const btn = (label, dir) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.onclick = (e) => {
+      e.preventDefault();
+      const min = +r.min || 0;
+      const max = r.max === '' ? 100 : +r.max;
+      const step = r.step && r.step !== 'any' ? +r.step : (max - min) / 100;
+      const fine = Math.max(step, (max - min) / 50);
+      const v = Math.min(max, Math.max(min, +r.value + dir * fine));
+      r.value = String(Math.round(v / step) * step);
+      r.dispatchEvent(new Event('input', { bubbles: true }));
+      r.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    return b;
+  };
+  wrap.append(btn('−', -1), r, btn('+', 1));
+}
+const scanRanges = (root = document) => root.querySelectorAll?.('input[type=range]').forEach(addRangeButtons);
+new MutationObserver((list) => {
+  for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) (n.matches?.('input[type=range]') ? addRangeButtons(n) : scanRanges(n));
+}).observe(document.documentElement, { childList: true, subtree: true });
+document.addEventListener('DOMContentLoaded', () => scanRanges());
+scanRanges();
