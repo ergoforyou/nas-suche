@@ -68,11 +68,10 @@ let birefnet = null;
 async function removeBackgroundFigure({ rgba, width, height }, progress) {
   birefnet ??= (async () => {
     const id = 'onnx-community/BiRefNet_lite';
+    // Nur mit echter Grafikkarte: auf der CPU (WASM) reicht der Speicher für 1024×1024 nicht – dann MODNet
     const adapter = await navigator.gpu?.requestAdapter().catch(() => null);
-    const opts = (device, dtype) => ({ device, dtype, progress_callback: progress });
-    let model = null;
-    if (adapter) model = await AutoModel.from_pretrained(id, opts('webgpu', 'fp16')).catch(() => null);
-    model ??= await AutoModel.from_pretrained(id, opts('wasm', 'fp16')).catch(() => AutoModel.from_pretrained(id, opts('wasm', 'fp32')));
+    if (!adapter || adapter.isFallbackAdapter || adapter.info?.isFallbackAdapter) throw new Error('keine Grafikkarte (WebGPU)');
+    const model = await AutoModel.from_pretrained(id, { device: 'webgpu', dtype: 'fp16', progress_callback: progress });
     const processor = await AutoProcessor.from_pretrained(id);
     return { model, processor };
   })().catch((e) => {

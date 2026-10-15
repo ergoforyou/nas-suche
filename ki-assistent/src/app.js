@@ -3011,6 +3011,8 @@ async function selfTest() {
     src.start();
     const audio = (await off.startRendering()).getChannelData(0).slice();
     stt.language = 'german';
+    // Selbsttest prüft die Kette, nicht die Genauigkeit: kleines Modell, damit er auch auf langsamen Rechnern schnell ist
+    stt.model = 'onnx-community/whisper-base';
     const heard = await withTimeout('Whisper', stt.transcribe(audio));
     applyVoice();
     // zweiter Satz: zeigt die Geschwindigkeit, wenn alles geladen ist

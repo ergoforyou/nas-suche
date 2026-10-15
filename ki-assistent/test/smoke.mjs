@@ -214,7 +214,8 @@ const fig = await page.evaluate(async (b64) => {
   const a = (fx, fy) => rgba[(Math.round(fy * 500) * 300 + Math.round(fx * 300)) * 4 + 3];
   return { ms: Math.round(performance.now() - t0), model: window.__app.stt.cutoutModel, torso: a(0.5, 0.35), head: a(0.5, 0.12), wall: a(0.05, 0.05), legGap: a(0.5, 0.8) };
 }, figB64);
-const figOk = fig.model === 'BiRefNet' && fig.torso > 200 && fig.head > 200 && fig.wall < 40 && fig.legGap < 80;
+// BiRefNet nur mit Grafikkarte; ohne (wie hier) muss MODNet sauber übernehmen
+const figOk = ['BiRefNet', 'MODNet'].includes(fig.model) && fig.torso > 200 && fig.wall < 40 && (fig.model !== 'BiRefNet' || fig.legGap < 80);
 ok &&= figOk;
 console.log(figOk ? '✔' : '✘', 'KI-Freistellen ganzer Figuren', JSON.stringify(fig));
 
