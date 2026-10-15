@@ -8,7 +8,6 @@ with its ReferenceLatent node). The prompt is extended with an instruction
 telling Klein to follow the edges of that reference.
 """
 
-import cv2
 import gradio as gr
 import numpy as np
 import torch
@@ -22,6 +21,7 @@ from modules.shared import device, opts
 from modules.ui_components import FormRow, InputAccordion
 
 TAG = "[KleinCanny]"
+print(f"{TAG} extension loaded ({__file__})")
 
 MODES = ["Canny", "Canny + Original", "Original (no preprocessing)"]
 
@@ -57,6 +57,8 @@ def _fit(img: Image.Image, limit: int) -> Image.Image:
 
 
 def make_canny(img: Image.Image, low: int, high: int, blur: int, invert: bool) -> Image.Image:
+    import cv2  # bundled with Forge Neo (opencv-python)
+
     gray = cv2.cvtColor(np.array(_to_rgb(img)), cv2.COLOR_RGB2GRAY)
     if blur > 0:
         k = blur * 2 + 1
