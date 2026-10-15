@@ -6,6 +6,7 @@ import "./module/start";
 import "./module/seiten";
 import "./module/konvertieren";
 import "./module/kommentieren";
+import "./module/design";
 import "./module/schuetzen";
 import { startEinrichten } from "./befehle/darstellung";
 

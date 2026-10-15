@@ -53,12 +53,14 @@ STANDARD_EINSTELLUNGEN: dict[str, Any] = {
     "werkzeug_stile": {},
     # Ordner für gemeinsame Einstellungen aller Arbeitsplätze (NAS), leer = aus
     "gemeinsamer_ordner": "",
+    # Hausfarben (Design): erscheinen zuerst in allen Farbauswahlen
+    "hausfarben": [],
     # Druckordner des PDF-Druckers „Agentur-PDF“ (leer = Öffentlich\Agentur-PDF-Druck)
     "druck_ordner": "",
 }
 
 # Diese Einstellungen gelten – bei eingetragenem gemeinsamem Ordner – für alle
-GEMEINSAME_SCHLUESSEL = ("stempel", "ocr_sprachen")
+GEMEINSAME_SCHLUESSEL = ("stempel", "ocr_sprachen", "hausfarben")
 GEMEINSAM_DATEI = "einstellungen.json"
 GEMEINSAM_NEU_LESEN_S = 20
 

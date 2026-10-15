@@ -12,6 +12,7 @@ import { ZusammenfuehrenDialog } from "./Zusammenfuehren";
 import { StapelDialog } from "./StapelDialog";
 import { DruckerDialog } from "./DruckerBereich";
 import { VergleichDialog } from "./Vergleich";
+import { BriefpapierDialog, DeckblattDialog, FreistellenDialog, HausfarbenDialog } from "./DesignDialoge";
 import { InfoDialog } from "./InfoDialog";
 import { BereichstextDialog, OcrDialog, UeberwachungDialog } from "./OcrDialoge";
 import {
@@ -54,6 +55,10 @@ export function Dialoge() {
   if (dialog.art === "stapel") return <StapelDialog pfade={dialog.pfade} />;
   if (dialog.art === "drucker") return <DruckerDialog />;
   if (dialog.art === "vergleich") return <VergleichDialog />;
+  if (dialog.art === "freistellen") return <FreistellenDialog dokId={dialog.dokId} seite={dialog.seite} rechteck={dialog.rechteck} />;
+  if (dialog.art === "briefpapier") return <BriefpapierDialog dokId={dialog.dokId} />;
+  if (dialog.art === "deckblatt") return <DeckblattDialog dokId={dialog.dokId} />;
+  if (dialog.art === "hausfarben") return <HausfarbenDialog />;
   return <UngespeichertDialog dokId={dialog.dokId} weiter={dialog.weiter} />;
 }
 

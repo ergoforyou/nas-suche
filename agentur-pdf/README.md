@@ -17,6 +17,7 @@ Architektur und Plan: [docs/ARCHITEKTUR_UND_PLAN.md](docs/ARCHITEKTUR_UND_PLAN.m
 | M7 | Schwärzen (Bereich, Textauswahl, Suchmuster IBAN/E-Mail/Telefon/Datum, auch OCR-Text), Kennwort AES-256 mit Rechten, Metadaten, Ebenen-Panel, Drucken mit Vorschau und Export ohne Kommentare/Ebenen, Komprimieren, Seiten als Bilder, Text-Export | ✅ |
 | M8 | Setup.exe (pro Benutzer), Updates über NAS-Ordner, Standard-PDF-Programm, Explorer-Rechtsklick, PDF-Drucker, Sperrhinweis/automatische Sicherung, gemeinsame Einstellungen | ✅ (Windows-11-Kontextmenü direkt im neuen Menü, Chrome-Kachel offen) |
 | M9 | Text bearbeiten, Formularfelder gestalten, Dokumente vergleichen, Stapelverarbeitung | ✅ |
+| M10 | Register „Design“: Objekte freistellen (Motiv/Logo), Anordnen/Ausrichten, Textbausteine, Deckblatt, Inhaltsverzeichnis, Briefpapier, Hausfarben; KI vorbereitet | ✅ (KI folgt) |
 
 ## Starten (Entwicklung)
 

@@ -28,13 +28,14 @@ export interface Befehl {
   gewaehlt?: (z: Zustand) => boolean; // als „eingedrückt“ darstellen
 }
 
-export type RegisterId = "start" | "ansicht" | "seiten" | "kommentieren" | "bearbeiten" | "konvertieren" | "schuetzen";
+export type RegisterId = "start" | "ansicht" | "seiten" | "kommentieren" | "bearbeiten" | "design" | "konvertieren" | "schuetzen";
 
 export const REGISTER: { id: RegisterId; titel: string; geplant?: string }[] = [
   { id: "start", titel: "Start" },
   { id: "ansicht", titel: "Ansicht" },
   { id: "kommentieren", titel: "Kommentieren" },
   { id: "bearbeiten", titel: "Bearbeiten" },
+  { id: "design", titel: "Design" },
   { id: "seiten", titel: "Seiten" },
   { id: "konvertieren", titel: "Konvertieren" },
   { id: "schuetzen", titel: "Schützen" },

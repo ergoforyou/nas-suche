@@ -84,7 +84,8 @@ export type Werkzeug =
   | "abdecken"
   | "schwaerzen"
   | "formular"
-  | "textbearbeiten";
+  | "textbearbeiten"
+  | "freistellen";
 
 /** Textzeile im PDF (für „Text bearbeiten“) */
 export interface Textzeile {
@@ -241,6 +242,8 @@ export interface Einstellungen {
   werkzeug_stile: Record<string, Partial<Stil>>;
   /** Ordner für gemeinsame Einstellungen aller Arbeitsplätze (NAS) */
   gemeinsamer_ordner: string;
+  /** Hausfarben (Design) – für alle Arbeitsplätze gleich */
+  hausfarben: string[];
 }
 
 export interface UpdateInfo {

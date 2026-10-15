@@ -66,6 +66,22 @@ GEMEINSAM GENUTZTE DATEIEN, ABSTURZ
   • Ungespeicherte Änderungen werden jede Minute gesichert. Nach einem
     Absturz oder Stromausfall bietet der nächste Start sie an.
 
+DESIGN (NEUES REGISTER)
+  Zum Aufwerten von Kundenschreiben, Angeboten und Präsentationen:
+  • „Objekt freistellen“: Rahmen um Logo, Foto oder Motiv ziehen – der
+    Hintergrund verschwindet, das Objekt wird ein frei verschiebbares Bild
+    (Original darunter wahlweise weiß abgedeckt).
+  • Anordnen: nach vorne/hinten, drehen, spiegeln, duplizieren und an den
+    Seitenrändern (20 mm) oder mittig ausrichten.
+  • Textbausteine: Überschrift, Hinweisbox, Preisbox, Infokasten – einfach
+    Rahmen aufziehen und tippen.
+  • Deckblatt (3 Layouts, mit Logo), Inhaltsverzeichnis aus den
+    Lesezeichen (klickbar), Briefpapier unterlegen (Seite 1 / Folgeseiten,
+    als Ebene ausblendbar). Briefpapier-Vorlagen liegen im gemeinsamen
+    Ordner unter „Briefpapier“.
+  • Hausfarben: bis zu 6 Firmenfarben, erscheinen in allen Farbauswahlen.
+  • KI-Bild/KI-Text sind vorbereitet und folgen in einer späteren Version.
+
 ERSTE SCHRITTE
   Oben links auf „Testversion“ klicken → „Ihr Kürzel“ eintragen (z. B. JK).
   Es erscheint in Stempeln, Kommentaren und Screenshot-Dateinamen.

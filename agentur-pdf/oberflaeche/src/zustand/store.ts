@@ -99,6 +99,10 @@ export type Dialog =
   | { art: "stapel"; pfade: string[] }
   | { art: "drucker" }
   | { art: "vergleich" }
+  | { art: "freistellen"; dokId: string; seite: number; rechteck: Rechteck }
+  | { art: "briefpapier"; dokId: string }
+  | { art: "deckblatt"; dokId: string }
+  | { art: "hausfarben" }
   | { art: "zusammenfuehren"; eintraege: ZfEintrag[] }
   | { art: "ocr"; dokId: string }
   | { art: "ueberwachung" }

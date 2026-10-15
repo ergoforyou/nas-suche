@@ -17,7 +17,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { ART_NAMEN, auswahlLoeschen, FARBEN, stilAendern, stilFuer } from "../zustand/anmerkungen";
+import { ART_NAMEN, auswahlLoeschen, farbpalette, stilAendern, stilFuer } from "../zustand/anmerkungen";
 import { useEffect, useRef, useState } from "react";
 import { dokumentSchliessen, oeffnenDialog } from "../zustand/aktionen";
 import { Kontextmenue } from "./Kontextmenue";
@@ -198,6 +198,7 @@ const HINWEISE: Partial<Record<string, string>> = {
   stempel: "Vorlage wählen und auf die Seite klicken.",
   platzieren: "Auf die Seite klicken oder Rechteck aufziehen.",
   abdecken: "Bereich aufziehen, der weiß überdeckt wird.",
+  freistellen: "Rahmen eng um das Motiv (Logo, Foto, Unterschrift) ziehen – der Hintergrund wird entfernt.",
   textbearbeiten: "Text bearbeiten: Zeile anklicken und ändern · Enter übernimmt · Esc bricht ab · Strg+Z macht es rückgängig",
   formular: "Formular gestalten: Feld aufziehen oder klicken · Feld ziehen = verschieben · Griffe = Größe · Entf = löschen · Esc = fertig",
   schwaerzen: "Bereich aufziehen – wird zum Schwärzen vorgemerkt (rot). Endgültig erst mit „Schwärzungen anwenden“.",
@@ -351,7 +352,7 @@ function Farbwahl(p: { titel: string; wert: string | null; aendern: (f: string |
       {p.leer && (
         <button className={`farbe keine${p.wert === null ? " gewaehlt" : ""}`} title="Keine" aria-label="Keine Füllung" onClick={() => p.aendern(null)} />
       )}
-      {FARBEN.map((f) => (
+      {farbpalette().map((f) => (
         <button
           key={f}
           className={`farbe${p.wert?.toUpperCase() === f ? " gewaehlt" : ""}`}

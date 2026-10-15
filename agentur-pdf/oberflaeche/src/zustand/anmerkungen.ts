@@ -25,8 +25,15 @@ export const STANDARD_STILE: Record<string, Stil> = {
 
 export const FARBEN = ["#1A1A1A", "#D92C2C", "#E8730C", "#FFE14D", "#3FA34D", "#1E6FD9", "#1E3A8A", "#8E3FB5", "#FFFFFF"];
 
+/** Farbauswahl: zuerst die Hausfarben der Agentur, dann die Standardfarben */
+export function farbpalette(): string[] {
+  const haus = (holen().einstellungen?.hausfarben ?? []).map((f) => f.toUpperCase());
+  return [...haus, ...FARBEN.filter((f) => !haus.includes(f.toUpperCase()))];
+}
+
 /** Werkzeuge, die auf der Seite etwas zeichnen/platzieren */
 export const ZEICHENWERKZEUGE: Werkzeug[] = [
+  "freistellen",
   "notiz",
   "textfeld",
   "schreibmaschine",

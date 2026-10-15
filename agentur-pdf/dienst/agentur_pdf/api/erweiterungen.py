@@ -665,6 +665,181 @@ def einrichten(
         anzahl = await im_mupdf_thread(setzen)
         return await antwort([dok_id], anzahl=anzahl)
 
+    # ================================================================ Design
+    from ..kern import design
+
+    def briefpapier_ordner() -> Path:
+        gemeinsam = benutzer.gemeinsamer_ordner()
+        ordner = gemeinsam / "Briefpapier" if gemeinsam else benutzer.ordner / "briefpapier"
+        ordner.mkdir(parents=True, exist_ok=True)
+        return ordner
+
+    def briefpapier_datei(name: str) -> Path:
+        name = Path(name).name
+        if not name.lower().endswith(".pdf") or name.startswith("."):
+            raise DokumentFehler("Ungültiger Name.")
+        return briefpapier_ordner() / name
+
+    @app.post("/api/dokumente/{dok_id}/freistellen")
+    async def freistellen_vorschau(
+        dok_id: str, seite: int = Body(...), rechteck: list[float] = Body(...), modus: str = Body("motiv"), staerke: int = Body(50)
+    ):
+        """Ausschnitt der Seite freistellen – Ergebnis in die Bildablage (Vorschau)."""
+        png = await im_mupdf_thread(lambda: design.ausschnitt(dokumente.get(dok_id).doc, seite, rechteck))
+        loop = asyncio.get_running_loop()
+        if modus == "motiv":
+            ergebnis, zuschnitt = await loop.run_in_executor(None, design.freistellen_motiv, png, staerke)
+        elif modus == "weiss":
+            ergebnis, zuschnitt = await loop.run_in_executor(None, design.freistellen_weiss, png, staerke)
+        elif modus == "keiner":
+            ergebnis, zuschnitt = png, [0.0, 0.0, 1.0, 1.0]
+        else:
+            raise DokumentFehler("Unbekannte Art des Freistellens.")
+        bild_id = ablage.ablegen(ergebnis)
+        return {
+            "bild_id": bild_id,
+            "bild": bilder.daten_url(ergebnis),
+            "rechteck": design.neue_rechteck_nach_zuschnitt(rechteck, zuschnitt),
+        }
+
+    @app.post("/api/dokumente/{dok_id}/freistellen/einsetzen")
+    async def freistellen_einsetzen(
+        dok_id: str,
+        seite: int = Body(...),
+        bild_id: str = Body(...),
+        rechteck: list[float] = Body(...),
+        abdecken: list[float] | None = Body(None),
+    ):
+        """Freigestelltes Objekt als verschiebbares Bild einsetzen, auf Wunsch
+        den Ursprungsbereich weiß abdecken – ein Rückgängig-Schritt."""
+        bild = ablage.holen(bild_id)
+        name = autor()
+
+        def einsetzen():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Objekt freistellen", dok):
+                if abdecken:
+                    design.bereich_abdecken(dok.doc, seite, abdecken)
+                xref = anmerkungen.erstellen(dok.doc, seite, {"art": "bild", "rechteck": rechteck, "inhalt": "Freigestelltes Objekt"}, name, bild)
+                dok.seite_geaendert(seite)
+            return xref
+
+        xref = await im_mupdf_thread(einsetzen)
+        return await antwort([dok_id], id=xref)
+
+    @app.post("/api/dokumente/{dok_id}/anmerkungen/{xref}/ebene")
+    async def anmerkung_ebene(dok_id: str, xref: int, seite: int = Body(...), richtung: str = Body(...)):
+        def aendern():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Reihenfolge ändern", dok):
+                design.ebene(dok.doc, seite, xref, richtung)
+                dok.seite_geaendert(seite)
+
+        await im_mupdf_thread(aendern)
+        return await antwort([dok_id], id=xref)
+
+    @app.post("/api/dokumente/{dok_id}/anmerkungen/{xref}/umformen")
+    async def anmerkung_umformen(dok_id: str, xref: int, seite: int = Body(...), aktion: str = Body(...)):
+        titel = {"rechts": "Bild drehen", "links": "Bild drehen", "waagerecht": "Bild spiegeln", "senkrecht": "Bild spiegeln", "duplizieren": "Bild duplizieren"}.get(aktion, "Bild ändern")
+
+        def umformen():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern(titel, dok):
+                neu = design.bild_umformen(dok.doc, seite, xref, aktion)
+                dok.seite_geaendert(seite)
+            return neu
+
+        neu = await im_mupdf_thread(umformen)
+        return await antwort([dok_id], id=neu)
+
+    @app.get("/api/briefpapier")
+    async def briefpapier_liste():
+        ordner = await asyncio.get_running_loop().run_in_executor(None, briefpapier_ordner)
+        return sorted(({"name": d.name, "groesse": d.stat().st_size} for d in ordner.glob("*.pdf")), key=lambda x: x["name"].lower())
+
+    @app.post("/api/briefpapier")
+    async def briefpapier_hochladen(request: Request, name: str = Query(...)):
+        daten = await request.body()
+        try:
+            probe = pymupdf.open("pdf", daten)
+            seiten = probe.page_count
+            probe.close()
+        except Exception:  # noqa: BLE001
+            raise DokumentFehler("Das ist keine lesbare PDF.") from None
+        if not seiten:
+            raise DokumentFehler("Die PDF hat keine Seiten.")
+        ziel = briefpapier_datei(name if name.lower().endswith(".pdf") else f"{name}.pdf")
+        await asyncio.get_running_loop().run_in_executor(None, _atomar_schreiben, ziel, daten)
+        return {"name": ziel.name, "seiten": seiten}
+
+    @app.delete("/api/briefpapier/{name}")
+    async def briefpapier_loeschen(name: str):
+        try:
+            briefpapier_datei(name).unlink()
+        except FileNotFoundError:
+            pass
+        return {"ok": True}
+
+    @app.get("/api/briefpapier/{name}/vorschau")
+    async def briefpapier_vorschau(name: str):
+        daten = briefpapier_datei(name).read_bytes()
+
+        def rendern():
+            quelle = pymupdf.open("pdf", daten)
+            pix = quelle[0].get_pixmap(dpi=40)
+            quelle.close()
+            return pix.tobytes("png")
+
+        return Response(await im_mupdf_thread(rendern), media_type="image/png")
+
+    @app.post("/api/dokumente/{dok_id}/briefpapier")
+    async def briefpapier_anwenden(dok_id: str, name: str = Body(...), seiten: list[int] | None = Body(None)):
+        try:
+            daten = briefpapier_datei(name).read_bytes()
+        except OSError:
+            raise DokumentFehler("Briefpapier nicht gefunden.") from None
+
+        def anwenden():
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Briefpapier", dok):
+                ziel = design.briefpapier(dok.doc, daten, seiten)
+                for s in ziel:
+                    dok.seite_geaendert(s)
+            return len(ziel)
+
+        anzahl = await im_mupdf_thread(anwenden)
+        return await antwort([dok_id], anzahl=anzahl)
+
+    @app.post("/api/dokumente/{dok_id}/deckblatt")
+    async def deckblatt_einfuegen(dok_id: str, daten: dict = Body(...)):
+        logo = ablage.holen(daten["logo_id"]) if daten.get("logo_id") else None
+
+        def einfuegen():
+            from ..kern.dokumente import neue_seiten_id
+
+            dok = dokumente.get(dok_id)
+            with bearbeitung.aendern("Deckblatt", dok):
+                design.deckblatt(dok.doc, daten, logo)
+                dok.seiten_ids.insert(0, neue_seiten_id())
+
+        await im_mupdf_thread(einfuegen)
+        return await antwort([dok_id], auswahl=[0])
+
+    @app.post("/api/dokumente/{dok_id}/inhaltsverzeichnis")
+    async def verzeichnis_einfuegen(dok_id: str, position: int = Body(1), titel: str = Body("Inhalt"), farbe: str = Body("#B5121B")):
+        def einfuegen():
+            from ..kern.dokumente import neue_seiten_id
+
+            dok = dokumente.get(dok_id)
+            pos = max(0, min(position, dok.doc.page_count))
+            with bearbeitung.aendern("Inhaltsverzeichnis", dok):
+                anzahl = design.inhaltsverzeichnis(dok.doc, pos, titel, farbe)
+                dok.seiten_ids.insert(pos, neue_seiten_id())
+            return pos, anzahl
+
+        pos, anzahl = await im_mupdf_thread(einfuegen)
+        return await antwort([dok_id], auswahl=[pos], anzahl=anzahl)
+
     # ======================================================= Text bearbeiten
     @app.get("/api/dokumente/{dok_id}/seiten/{seite}/textzeilen")
     async def textzeilen(dok_id: str, seite: int):

@@ -115,6 +115,23 @@ export const api = {
   textzeilen: (id: string, seite: number) => anfrage<Textzeile[]>("GET", `/api/dokumente/${id}/seiten/${seite}/textzeilen`),
   textErsetzen: (id: string, seite: number, bbox: number[], neu: string, groesse?: number, farbe?: string) =>
     anfrage<Aenderungsantwort & { zeile: Partial<Textzeile> }>("POST", `/api/dokumente/${id}/seiten/${seite}/text_ersetzen`, { bbox, neu, groesse, farbe }),
+  freistellen: (id: string, seite: number, rechteck: number[], modus: string, staerke: number) =>
+    anfrage<{ bild_id: string; bild: string; rechteck: [number, number, number, number] }>("POST", `/api/dokumente/${id}/freistellen`, { seite, rechteck, modus, staerke }),
+  freistellenEinsetzen: (id: string, seite: number, bild_id: string, rechteck: number[], abdecken: number[] | null) =>
+    anfrage<Aenderungsantwort & { id: number }>("POST", `/api/dokumente/${id}/freistellen/einsetzen`, { seite, bild_id, rechteck, abdecken }),
+  anmerkungEbene: (id: string, xref: number, seite: number, richtung: string) =>
+    anfrage<Aenderungsantwort & { id: number }>("POST", `/api/dokumente/${id}/anmerkungen/${xref}/ebene`, { seite, richtung }),
+  anmerkungUmformen: (id: string, xref: number, seite: number, aktion: string) =>
+    anfrage<Aenderungsantwort & { id: number }>("POST", `/api/dokumente/${id}/anmerkungen/${xref}/umformen`, { seite, aktion }),
+  briefpapierListe: () => anfrage<{ name: string; groesse: number }[]>("GET", "/api/briefpapier"),
+  briefpapierHochladen: (datei: Blob, name: string) => anfrage<{ name: string; seiten: number }>("POST", `/api/briefpapier?name=${encodeURIComponent(name)}`, datei),
+  briefpapierLoeschen: (name: string) => anfrage("DELETE", `/api/briefpapier/${encodeURIComponent(name)}`),
+  briefpapierVorschau: (name: string) => mitToken(`/api/briefpapier/${encodeURIComponent(name)}/vorschau`),
+  briefpapierAnwenden: (id: string, name: string, seiten: number[] | null) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/briefpapier`, { name, seiten }),
+  deckblatt: (id: string, daten: Record<string, unknown>) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/deckblatt`, daten),
+  inhaltsverzeichnis: (id: string, position: number, titel: string, farbe: string) =>
+    anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/inhaltsverzeichnis`, { position, titel, farbe }),
   vergleichen: (a: string, b: string) => anfrage<VergleichErgebnis>("POST", "/api/vergleich", { a, b }),
   ordnerDialog: (start = "") => anfrage<{ verfuegbar: boolean; pfad: string | null }>("POST", "/api/dialog/ordner", { start }),
   updatePruefen: () => anfrage<UpdateInfo>("GET", "/api/update"),

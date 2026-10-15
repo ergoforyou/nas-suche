@@ -12,7 +12,7 @@ import {
   formularfeldLoeschen,
   anmerkungFinden,
   ART_NAMEN,
-  FARBEN,
+  farbpalette,
   GRUPPEN_NAMEN,
   stilAendern,
   stilFuer,
@@ -63,7 +63,7 @@ function Farbe({ wert, aendern, leer }: { wert: string | null; aendern: (f: stri
   return (
     <div className="eig-farben">
       {leer && <button className={`farbe keine${wert === null ? " gewaehlt" : ""}`} title="Keine" aria-label="Keine" onClick={() => aendern(null)} />}
-      {FARBEN.map((f) => (
+      {farbpalette().map((f) => (
         <button key={f} className={`farbe${wert?.toUpperCase() === f ? " gewaehlt" : ""}`} style={{ background: f }} aria-label={`Farbe ${f}`} onClick={() => aendern(f)} />
       ))}
       <input type="color" value={wert ?? "#ffffff"} aria-label="Farbe frei wählen" onChange={(e) => aendern(e.target.value.toUpperCase())} />

@@ -47,7 +47,7 @@ import { GRUPPEN_NAMEN } from "../zustand/anmerkungen";
 
 const schliessen = () => setzen({ dialog: null });
 
-function Rahmen(p: { titel: ReactNode; icon: ReactNode; breit?: "breit" | "sehr-breit"; children: ReactNode; label: string; onSubmit?: () => void }) {
+export function Rahmen(p: { titel: ReactNode; icon: ReactNode; breit?: "breit" | "sehr-breit"; children: ReactNode; label: string; onSubmit?: () => void }) {
   return (
     <div className="dialog-hintergrund" onMouseDown={schliessen}>
       <form
@@ -73,9 +73,9 @@ function Rahmen(p: { titel: ReactNode; icon: ReactNode; breit?: "breit" | "sehr-
 }
 
 // =================================================================== Seiten
-type Bereich = "alle" | "aktuell" | "markiert" | "eigene";
+export type Bereich = "alle" | "aktuell" | "markiert" | "eigene";
 
-function SeitenWahl(p: { dokId: string; bereich: Bereich; setBereich: (b: Bereich) => void; eigene: string; setEigene: (s: string) => void }) {
+export function SeitenWahl(p: { dokId: string; bereich: Bereich; setBereich: (b: Bereich) => void; eigene: string; setEigene: (s: string) => void }) {
   const dok = useZustand((z) => z.dokumente.find((d) => d.id === p.dokId));
   if (!dok) return null;
   return (
@@ -107,7 +107,7 @@ function SeitenWahl(p: { dokId: string; bereich: Bereich; setBereich: (b: Bereic
   );
 }
 
-function seitenErmitteln(dokId: string, bereich: Bereich, eigene: string): number[] | null | undefined {
+export function seitenErmitteln(dokId: string, bereich: Bereich, eigene: string): number[] | null | undefined {
   const d = holen().dokumente.find((x) => x.id === dokId);
   if (!d) return undefined;
   if (bereich === "alle") return null;

@@ -3850,3 +3850,180 @@ body {
   width: 16px;
   height: 16px;
 }
+
+/* ------------------------------------------------------------ Design */
+.fs-bereich {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 16px;
+  min-height: 300px;
+}
+.fs-optionen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fs-art {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.fs-art.gewaehlt {
+  border-color: var(--akzent);
+  background: var(--akzent-hell);
+}
+.fs-art span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fs-vorschau {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  min-height: 300px;
+  max-height: 420px;
+  overflow: hidden;
+  padding: 12px;
+}
+.fs-vorschau img {
+  max-width: 100%;
+  max-height: 396px;
+  object-fit: contain;
+}
+
+.bp-liste {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+.bp-karte {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  background: var(--hg-flaeche);
+  overflow: hidden;
+}
+.bp-karte > button:first-child,
+.bp-karte.bp-neu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.bp-karte.bp-neu {
+  justify-content: center;
+  min-height: 170px;
+  border: 1px dashed var(--linie-stark);
+}
+.bp-karte img {
+  width: 100%;
+  aspect-ratio: 210 / 297;
+  object-fit: contain;
+  background: #fff;
+  box-shadow: var(--schatten);
+}
+.bp-karte.gewaehlt {
+  border-color: var(--akzent);
+  box-shadow: 0 0 0 2px var(--akzent-mittel);
+}
+.bp-loeschen {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 3px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--hg-flaeche);
+  opacity: 0;
+  cursor: pointer;
+}
+.bp-karte:hover .bp-loeschen,
+.bp-loeschen:focus-visible {
+  opacity: 1;
+}
+
+.db-raster {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+}
+.db-felder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.db-zwei {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.db-layouts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.db-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  background: var(--hg-flaeche);
+  font-size: 12px;
+  cursor: pointer;
+}
+.db-layout.gewaehlt {
+  border-color: var(--akzent);
+  box-shadow: 0 0 0 2px var(--akzent-mittel);
+}
+.db-skizze {
+  width: 70px;
+  height: 99px;
+}
+.db-logo {
+  max-height: 36px;
+  max-width: 120px;
+  object-fit: contain;
+}
+
+.hf-liste {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+.hf-farbe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hf-farbe input[type="color"] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--linie);
+  border-radius: 4px;
+}
+.hf-farbe button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--text-2);
+}

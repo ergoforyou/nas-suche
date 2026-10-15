@@ -243,6 +243,11 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
         return;
       }
       if (klein) return;
+      if (w === "freistellen") {
+        setzen({ dialog: { art: "freistellen", dokId: p.dokId, seite: p.seite, rechteck: r } });
+        werkzeugBenutzt();
+        return;
+      }
       if (w === "schwaerzen") {
         try {
           anwenden(await api.schwaerzenVormerken(p.dokId, [{ seite: p.seite, rechteck: r }]));
@@ -329,7 +334,7 @@ export function AnmerkungsEbene(p: AnmerkungsEbeneProps) {
       e.preventDefault();
       setzen({ anmAuswahl: null, textAuswahl: null });
     }
-    if (["rechteck", "ellipse", "abdecken", "schwaerzen", "textfeld", "platzieren"].includes(w)) setOp({ art: "rechteck", p0: pt, p1: pt });
+    if (["rechteck", "ellipse", "abdecken", "schwaerzen", "textfeld", "platzieren", "freistellen"].includes(w)) setOp({ art: "rechteck", p0: pt, p1: pt });
     else if (w === "linie" || w === "pfeil") setOp({ art: "linie", p0: pt, p1: pt });
     else if (w === "freihand") setOp({ art: "freihand", punkte: [pt] });
     else if (textwerkzeug) {

@@ -5,7 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "../api";
 import type { Textzeile } from "../typen";
-import { FARBEN } from "../zustand/anmerkungen";
+import { farbpalette } from "../zustand/anmerkungen";
 import { anwenden } from "../zustand/seitenaktionen";
 import { melden } from "../zustand/store";
 
@@ -149,7 +149,7 @@ export function TextBearbeitung(p: { dokId: string; seite: number; kennung: stri
                   </option>
                 ))}
             </select>
-            {[bearbeiten.zeile.farbe, ...FARBEN.filter((f) => f.toUpperCase() !== bearbeiten.zeile.farbe.toUpperCase()).slice(0, 5)].map((f) => (
+            {[bearbeiten.zeile.farbe, ...farbpalette().filter((f) => f.toUpperCase() !== bearbeiten.zeile.farbe.toUpperCase()).slice(0, 5)].map((f) => (
               <button
                 key={f}
                 type="button"
