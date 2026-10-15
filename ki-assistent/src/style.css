@@ -285,3 +285,12 @@ body.floating .stage { display: none; }
 #pickSheet .ps-cancel { background: none; }
 #pickSheet .ps-info { margin: 0; min-height: 1.2em; color: var(--muted); font-size: 13px; text-align: center; }
 .title .version { font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 4px; }
+
+/* ---------- Android: Bild-im-Bild ---------- */
+.pip-only { display: none; }
+.pip-ok .pip-only { display: revert; }
+.pip-ok button.pip-only { display: inline-block; }
+.pip .titlebar, .pip .chat, .pip .composer, .pip .status, .pip .attachments, .pip .drawer, .pip #pickSheet,
+.pip .state-badge, .pip .resize-handle { display: none !important; }
+.pip body { padding: 0; }
+.pip .stage { height: 100vh !important; min-height: 0; }

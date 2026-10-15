@@ -12,6 +12,7 @@
   <header class="titlebar">
     <span class="title"><span id="titleName">KI-Assistent</span> <span id="titleVersion" class="version"></span></span>
     <div class="titlebar-buttons">
+      <button id="btnPip" class="pip-only" title="Figur als Bild-im-Bild über anderen Apps">⧉</button>
       <button id="btnNewChat" title="Neuer Chat (Strg+N oder „Neuer Chat“ sagen) – Persona und Gedächtnis bleiben">🗨＋</button>
       <button id="btnFloat" title="Figur frei auf dem Desktop">🧍</button>
       <button id="btnOutput" title="Ausgabefenster (formatierte Antworten)">📄</button>
@@ -108,6 +109,11 @@
 
     <div class="tab" data-tab="avatar" hidden>
       <label class="check desktop-only"><input id="avFloating" type="checkbox" /> Figur frei auf dem Desktop anzeigen</label>
+      <div class="pip-only">
+        <label class="check"><input id="avPip" type="checkbox" /> Beim Verlassen der App als Bild-im-Bild weiterlaufen – die Figur
+          schwebt über anderen Apps, frei verschiebbar und in der Größe änderbar (wie Videos bei YouTube)</label>
+        <button id="avPipNow">⧉ Jetzt als Bild-im-Bild</button>
+      </div>
       <label>Größe der freien Figur (Anteil der Bildschirmhöhe) <span id="avFloatSizeVal" class="hint"></span>
         <input id="avFloatSize" type="range" min="0.15" max="1" step="0.01" /></label>
       <p class="hint">Freischwebend: Figur anklicken zeigt einen Rahmen – ziehen verschiebt, Ecken, Mausrad oder die

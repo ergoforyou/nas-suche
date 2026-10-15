@@ -10,7 +10,13 @@ for (const perm of ['android.permission.RECORD_AUDIO', 'android.permission.MODIF
   if (!xml.includes(perm)) xml = xml.replace('</manifest>', `    <uses-permission android:name="${perm}" />\n</manifest>`);
 }
 if (!xml.includes('usesCleartextTraffic')) xml = xml.replace('<application', '<application\n        android:usesCleartextTraffic="true"');
+// Bild-im-Bild: Aktivität darf als kleines schwebendes Fenster laufen
+if (!xml.includes('supportsPictureInPicture')) {
+  xml = xml.replace(/<activity\b/, '<activity\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"');
+}
 fs.writeFileSync(manifest, xml);
+// eigene MainActivity mit Bild-im-Bild-Steuerung
+fs.copyFileSync(path.join(root, 'scripts/MainActivity.java'), path.join(root, 'android/app/src/main/java/de/ergoforyou/kiassistent/MainActivity.java'));
 
 const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const gradle = path.join(root, 'android/app/build.gradle');

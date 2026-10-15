@@ -89,6 +89,7 @@ const DEFAULT_SETTINGS = {
   sttLang: 'persona',
   handsFree: false,
   sensitivity: 0.015,
+  pipOnLeave: true, // Android: beim Verlassen der App als Bild-im-Bild weiterlaufen
   bargeIn: true, // Live-Gespräch: dazwischenreden erlaubt
   livePauseMs: 800, // so lange Stille, bis mein Satz als fertig gilt
   alwaysOnTop: false,
@@ -1146,6 +1147,14 @@ setInterval(() => {
 }, 250);
 
 $('btnNewChat').onclick = newChat;
+// Android: Bild-im-Bild (Figur schwebt über anderen Apps)
+$('avPip').onchange = (e) => {
+  state.settings.pipOnLeave = e.target.checked;
+  save();
+  desktop.pipSetEnabled?.(e.target.checked);
+};
+$('avPipNow').onclick = () => desktop.pipEnter?.();
+$('btnPip').onclick = () => desktop.pipEnter?.();
 $('btnMin').onclick = () => desktop.minimize();
 $('btnClose').onclick = () => desktop.close();
 $('btnQuit').onclick = () => desktop.quit();
@@ -1265,6 +1274,7 @@ function fillSettings() {
   $('sModel').value = s.sttModel;
   $('sLang').value = ['german', 'english'].includes(s.sttLang) ? s.sttLang : 'persona';
   $('sHandsFree').checked = s.handsFree;
+  $('avPip').checked = s.pipOnLeave;
   $('appVersion').textContent = `KI-Assistent ${APP_VERSION}${MOBILE ? ' (Android)' : ''}`;
   $('sEngineWrap').hidden = !desktop.transcribeCloud;
   $('sEngine').value = s.sttEngine;
@@ -2924,6 +2934,7 @@ window.__app = {
 };
 
 init().then(() => {
+  if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
   ensureFaceRig();
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
   if (!state.settings.offline && state.settings.handsFree) setTimeout(() => stt.warmup().catch(() => {}), 3000);

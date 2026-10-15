@@ -146,7 +146,7 @@ export class RubberBand {
     const canvas = this.avatar.canvas;
     canvas.setPointerCapture(e.pointerId);
     const start = { ...p, layout: { ...this.avatar.layout } };
-    const dpr = this.win.devicePixelRatio || 1;
+    const dpr = this.avatar.dpr ?? (this.win.devicePixelRatio || 1);
     const move = (ev) => {
       const q = this.local(ev);
       this.avatar.layout = {

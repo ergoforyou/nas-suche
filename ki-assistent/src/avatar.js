@@ -86,6 +86,12 @@ export class Avatar {
     this.vrmFigure = null;
   }
 
+  /** Zeichenauflösung: auf dem Handy höchstens 1,5-fach – spart viel Rechenzeit, sieht kaum anders aus. */
+  get dpr() {
+    const d = this.host.devicePixelRatio || 1;
+    return this.doc.documentElement.classList.contains('mobile') ? Math.min(d, 1.5) : d;
+  }
+
   // Kompatibilität: Zustand liegt im gemeinsamen Objekt
   get speaking() {
     return this.state.speaking;
@@ -113,7 +119,7 @@ export class Avatar {
   }
 
   resize() {
-    const dpr = this.host.devicePixelRatio || 1;
+    const dpr = this.dpr;
     const r = this.canvas.getBoundingClientRect();
     this.canvas.width = Math.max(1, Math.round(r.width * dpr));
     this.canvas.height = Math.max(1, Math.round(r.height * dpr));
@@ -1084,7 +1090,7 @@ export class Avatar {
     const bx = W / 2 + L.x * W;
     const by = (H + this.h * fit) / 2 + L.y * H;
     // Position der Figur (ohne Wiegen) für Auswahlrahmen und Trefferprüfung, in CSS-Pixeln
-    const dpr = this.host.devicePixelRatio || 1;
+    const dpr = this.dpr;
     this.rect = { x: (bx - dw / 2) / dpr, y: (by - dh) / dpr, w: dw / dpr, h: dh / dpr };
     ctx.save();
     ctx.translate(bx, by); // Drehpunkt unten Mitte
@@ -1104,7 +1110,7 @@ export class Avatar {
 
   /** Figur so platzieren, dass sie das angegebene Rechteck (CSS-Pixel) ausfüllt. */
   setRect(r) {
-    const dpr = this.host.devicePixelRatio || 1;
+    const dpr = this.dpr;
     const W = this.canvas.width;
     const H = this.canvas.height;
     const fitPx = this.fitPx || H;
@@ -1118,7 +1124,7 @@ export class Avatar {
     const r = this.rect;
     if (!r || x < r.x || y < r.y || x > r.x + r.w || y > r.y + r.h) return false;
     if (!this.hasAlpha) return true;
-    const dpr = this.host.devicePixelRatio || 1;
+    const dpr = this.dpr;
     const px = Math.round(x * dpr);
     const py = Math.round(y * dpr);
     if (px < 0 || py < 0 || px >= this.canvas.width || py >= this.canvas.height) return false;

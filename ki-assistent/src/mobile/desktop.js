@@ -259,7 +259,19 @@ const api = {
   ttsServerMultilingual: notHere('Chatterbox'),
   onCommand: () => {},
   onAvatarCursor: () => {},
+
+  // ---- Bild-im-Bild (siehe scripts/MainActivity.java)
+  pipSupported: () => !!window.KIPip?.supported?.(),
+  pipSetEnabled: (on) => window.KIPip?.setEnabled?.(!!on),
+  pipEnter: () => window.KIPip?.enter?.(),
 };
+
+// Native Seite meldet den Wechsel ins/aus dem Bild-im-Bild-Fenster: dann nur die Figur zeigen
+window.__setPip = (on) => {
+  document.documentElement.classList.toggle('pip', !!on);
+  window.dispatchEvent(new Event('resize'));
+};
+if (window.KIPip?.supported?.()) document.documentElement.classList.add('pip-ok');
 
 // ---------------------------------------------------------------- Dateien auswählen
 // Die versteckten <input type="file">-Felder der Oberfläche öffnen in der Android-Hülle nicht zuverlässig die
