@@ -46,6 +46,16 @@ function parseCsv(text) {
   const rows = text.replace(/^﻿/, '').split(/\r?\n/).filter((r) => r.trim());
   if (!rows.length) return [];
   const sep = (rows[0].match(/;/g) || []).length >= (rows[0].match(/,/g) || []).length ? ';' : ',';
+  const isNum = (v) => /^[+*#0-9 ()\/.-]{2,}(@\S+)?$/.test((v || '').trim()) && /[0-9*#]/.test(v);
+  // Ohne Kopfzeile (z.B. PhonerLite: "Nummer;Name"): Nummernspalte je Zeile erkennen
+  if (splitCsvLine(rows[0], sep).some(isNum)) {
+    return rows.map((r) => {
+      const c = splitCsvLine(r, sep);
+      const numbers = c.filter(isNum).map((n) => ({ type: 'other', number: cleanDial(n) }));
+      const name = c.filter((x) => x && !isNum(x)).join(' ');
+      return contactFrom(name, '', numbers);
+    }).filter(Boolean);
+  }
   const head = splitCsvLine(rows[0], sep).map((h) => h.toLowerCase());
   const find = (...keys) => head.findIndex((h) => keys.some((k) => h.includes(k)));
   const iFirst = find('vorname', 'first');
@@ -59,7 +69,7 @@ function parseCsv(text) {
   return rows.slice(1).map((r) => {
     const c = splitCsvLine(r, sep);
     const name = iName >= 0 ? c[iName] : [c[iFirst], c[iLast]].filter(Boolean).join(' ');
-    const numbers = numCols.map(({ h, i }) => ({ type: typeOf(h), number: c[i] }));
+    const numbers = numCols.map(({ h, i }) => ({ type: typeOf(h), number: c[i] && /@/.test(c[i]) ? cleanDial(c[i]) : c[i] }));
     return contactFrom(name, iCompany >= 0 ? c[iCompany] : '', numbers, iNote >= 0 ? c[iNote] : '');
   }).filter(Boolean);
 }

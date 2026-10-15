@@ -159,3 +159,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break;
   }
 });
+
+// Jede Änderung der Einstellungen sofort an die Engine weitergeben
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.settings) return;
+  const config = Object.assign({}, DEFAULT_SETTINGS, changes.settings.newValue || {});
+  ensureEngine().then(() => chrome.runtime.sendMessage({ target: 'engine', cmd: 'config', config })).catch(() => {});
+});

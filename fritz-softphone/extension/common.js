@@ -12,6 +12,12 @@ const DEFAULT_SETTINGS = {
   popupOnIncoming: true,
   notifications: true,
   dnd: false,           // Nicht stören
+  callWaiting: true,    // Anklopfen: zweiter Anruf darf klingeln, während man spricht
+  anonymous: false,     // eigene Nummer unterdrücken
+  clirPrefix: '*31#',   // FRITZ!Box: Rufnummer für diesen Anruf unterdrücken
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: false,
   micId: '',
   speakerId: '',
   ringId: '',
@@ -29,9 +35,11 @@ async function loadSettings() {
 function cleanDial(input) {
   if (!input) return '';
   let s = String(input).trim();
-  if (s.toLowerCase().startsWith('tel:')) s = decodeURIComponent(s.slice(4));
-  const plus = s.startsWith('+');
-  return (plus ? '+' : '') + s.replace(/[^0-9*#]/g, '');
+  s = s.replace(/^(tel|sip|sips):/i, '');
+  try { s = decodeURIComponent(s); } catch (e) { /* */ }
+  s = s.replace(/@.*$/, '');            // "0170…@fritz.box" -> "0170…"
+  // + bleibt erhalten (auch mitten drin, z.B. Rufumleitung *21*+4930…#)
+  return s.replace(/[^0-9*#+]/g, '').replace(/(?!^)\+(?<![*#]\+)/g, '');
 }
 
 /** Für Vergleiche: +49 / 0049 -> 0, nur Ziffern. */

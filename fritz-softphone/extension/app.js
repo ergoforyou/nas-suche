@@ -105,8 +105,13 @@ function renderHeader() {
   const map = { registered: ['ok', 'Bereit'], connecting: ['warn', 'Verbinde…'], failed: ['err', 'Keine Verbindung'], unconfigured: ['', 'Nicht eingerichtet'] };
   const [cls, text] = map[r.status] || ['', r.status];
   dot.className = 'dot ' + cls;
-  $('regText').textContent = settings.dnd ? text + ' · Nicht stören' : text;
+  const flags = [settings.dnd && 'Nicht stören', settings.anonymous && 'Anonym', !settings.callWaiting && 'kein Anklopfen'].filter(Boolean);
+  $('regText').textContent = [text, ...flags].join(' · ');
   $('regSub').textContent = r.status === 'registered' ? `${settings.user} · ${st.maxLines} Leitungen` : (r.error || '');
+  $('btnWait').classList.toggle('off', !settings.callWaiting);
+  $('btnWait').title = settings.callWaiting ? 'Anklopfen ist AN – zweite Anrufe klingeln während eines Gesprächs' : 'Anklopfen ist AUS – während eines Gesprächs ist besetzt';
+  $('btnAnon').classList.toggle('active', !!settings.anonymous);
+  $('btnAnon').title = settings.anonymous ? 'Anonym ist AN – externe Anrufe ohne eigene Nummer' : 'Anonym anrufen einschalten';
   $('btnDnd').classList.toggle('active', !!settings.dnd);
   $('btnDnd').textContent = settings.dnd ? '🔕' : '🔔';
   $('btnDnd').title = settings.dnd ? 'Nicht stören ist AN – klicken zum Ausschalten' : 'Nicht stören einschalten';
@@ -137,6 +142,7 @@ function lineCard(l) {
   if (l.state === 'active' && l.remoteHeld) state += ' · Gegenüber hält';
   if (l.inConference) state = 'Konferenz';
   if (l.muted) state += ' · stumm';
+  if (l.anonymous) state += ' · anonym';
   const cls = ['line', l.state, l.held ? 'held' : '', l.inConference ? 'conf' : ''].join(' ');
   const since = l.answeredAt || l.createdAt;
 
@@ -253,11 +259,12 @@ function renderExtensions() {
   $('extList').replaceChildren(...exts.map((e) => {
     const call = (mon.calls || []).find((c) => c.ext !== null && String(c.ext) === e.extId && c.state !== 'ringing');
     const busy = !!call;
+    const watched = !!e.extId && mon.status === 'ok';
     let sub = e.number;
     if (busy) sub = (call.state === 'dialing' ? 'wählt ' : 'spricht mit ') + (nameFor(call.remote) || call.remote || '…');
-    else if (mon.status === 'ok') sub = e.number + ' · frei';
+    else if (watched) sub = e.number + ' · frei';
     return h('div', { class: 'ext' + (busy ? ' busy' : ''), title: `${e.name} intern anrufen (${e.number})`, onclick: () => dial(e.number, e.name) },
-      h('span', { class: 'dot ' + (busy ? 'err' : mon.status === 'ok' ? 'ok' : '') }),
+      e.extId ? h('span', { class: 'dot ' + (busy ? 'err' : watched ? 'ok' : '') }) : h('span', { class: 'sub' }, '☆'),
       h('div', { class: 't' }, h('div', {}, e.name), h('div', { class: 'sub' }, sub)),
       busy ? h('span', { class: 'sub', 'data-since': call.since }, fmtDur(Date.now() - call.since)) : '');
   }));
@@ -358,7 +365,17 @@ function renderBook() {
       h('div', { class: 'nums' }, e.numbers.map((n) => h('button', {
         class: 'btn sm', title: 'Anrufen', onclick: () => { dial(n.number, displayName(e)); showTab('phone'); }
       }, `📞 ${NUMBER_LABELS[n.type] ? NUMBER_LABELS[n.type] + ': ' : ''}${n.number}`)))),
+    h('button', { class: 'icon', title: 'Als Kurzwahltaste übernehmen', onclick: () => addSpeedDial(e) }, '☆'),
     h('button', { class: 'icon', title: 'Bearbeiten', onclick: () => editContact(e) }, '✎'))));
+}
+
+async function addSpeedDial(e) {
+  const n = e.numbers[0];
+  if (!n) return;
+  if (extensions().some((x) => x.number === cleanDial(n.number))) return toast('Ist schon eine Kurzwahltaste', 'warn');
+  const text = (settings.extensions ? settings.extensions.replace(/\s*$/, '') + '\n' : '') + `${displayName(e).replace(/[=;]/g, ' ')} = ${n.number}`;
+  await saveAndApply(Object.assign({}, settings, { extensions: text }));
+  toast(`„${displayName(e)}“ als Kurzwahltaste übernommen`, 'ok');
 }
 
 let editing = null;
@@ -419,20 +436,29 @@ function exportBook() {
 
 // ------------------------------------------------------------------ Anrufliste
 
+const REASON_TEXT = {
+  elsewhere: 'anderswo angenommen', rejected: 'abgelehnt', declined: 'abgelehnt', canceled: 'Anrufer hat aufgelegt',
+  aborted: 'abgebrochen', busy: 'besetzt', 'not-found': 'nicht erreichbar', unavailable: 'nicht erreichbar',
+  'no-answer': 'keine Antwort', connection: 'Verbindungsfehler', mic: 'kein Mikrofon',
+  'hangup-local': 'selbst aufgelegt', 'hangup-remote': 'Gegenüber hat aufgelegt'
+};
+
 function renderHistory() {
   const filter = $('histFilter').value;
-  const list = callLog.filter((c) => filter === 'all' || (filter === 'missed' ? c.missed : c.direction === filter));
+  const list = callLog.filter((c) => filter === 'all' || (filter === 'missed' ? c.missed : filter === 'elsewhere' ? c.reason === 'elsewhere' : c.direction === filter));
   const box = $('histList');
   if (!list.length) { box.replaceChildren(h('div', { class: 'empty' }, 'Keine Anrufe')); return; }
   box.replaceChildren(...list.slice(0, 200).map((c) => {
     const anon = !c.number || /^anonymous$/i.test(c.number);
     const name = anon ? 'Rufnummer unterdrückt' : nameFor(c.number, c.name);
-    const dur = c.answeredAt ? fmtDur(c.endedAt - c.answeredAt) : (c.missed ? 'nicht angenommen' : 'nicht verbunden');
+    const why = REASON_TEXT[c.reason] || (c.missed ? 'nicht angenommen' : '');
+    const dur = c.answeredAt ? fmtDur(c.endedAt - c.answeredAt) + (why ? ' · ' + why : '') : (why || 'nicht verbunden');
+    const elsewhere = c.reason === 'elsewhere';
     const known = !!lookupNumber(phonebook, c.number) || /^[*#]|anonymous/i.test(c.number || '');
     return h('div', { class: 'item' + (c.missed ? ' missed' : '') },
-      h('span', { class: 'dir', title: c.direction === 'in' ? 'eingehend' : 'ausgehend' }, c.missed ? '✕' : c.direction === 'in' ? '↙' : '↗'),
+      h('span', { class: 'dir', title: elsewhere ? 'anderswo angenommen' : c.direction === 'in' ? 'eingehend' : 'ausgehend' }, c.missed ? '✕' : elsewhere ? '⤳' : c.direction === 'in' ? '↙' : '↗'),
       h('div', { class: 't' }, h('div', {}, name || c.number || 'Unbekannt'),
-        h('div', { class: 'sub' }, `${name && !anon ? c.number + ' · ' : ''}${fmtTime(c.startedAt)} · ${dur}`)),
+        h('div', { class: 'sub' }, `${name && !anon ? c.number + ' · ' : ''}${fmtTime(c.startedAt)} · ${dur}${c.anonymous ? ' · anonym' : ''}`)),
       !known && !anon ? h('button', { class: 'icon', title: 'Ins Telefonbuch', onclick: () => editContact(null, { number: c.number, name: c.name }) }, '＋') : '',
       !anon ? h('button', { class: 'btn sm green', title: 'Zurückrufen', onclick: () => { dial(c.number, name); showTab('phone'); } }, '📞') : '');
   }));
@@ -558,6 +584,8 @@ async function init() {
   $('btnRedial').addEventListener('click', () => { if (lastDialed) dial(lastDialed); else toast('Noch keine Nummer gewählt', 'warn'); });
   $('btnPad').addEventListener('click', () => { $('pad').hidden = !$('pad').hidden; });
   $('btnDnd').addEventListener('click', () => saveAndApply(Object.assign({}, settings, { dnd: !settings.dnd })));
+  $('btnWait').addEventListener('click', () => saveAndApply(Object.assign({}, settings, { callWaiting: !settings.callWaiting })));
+  $('btnAnon').addEventListener('click', () => saveAndApply(Object.assign({}, settings, { anonymous: !settings.anonymous })));
   buildPad();
 
   wireSuggest($('xferInput'), $('xferSuggest'), (c) => doTransfer(c.number));

@@ -24,7 +24,7 @@ let monitorSrc = null;
 
 function publicLine(l) {
   return {
-    id: l.id, slot: l.slot, number: l.number, name: l.name, direction: l.direction,
+    id: l.id, slot: l.slot, number: l.number, name: l.name, direction: l.direction, anonymous: !!l.anonymous,
     state: l.state, createdAt: l.createdAt, answeredAt: l.answeredAt,
     held: l.held, remoteHeld: l.remoteHeld, muted: conf && conf.members.has(l.id) ? conf.muted : l.muted,
     inConference: !!(conf && conf.members.has(l.id))
@@ -60,7 +60,11 @@ function ctx() {
 }
 
 function audioConstraints() {
-  const a = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  const a = {
+    echoCancellation: config.echoCancellation !== false,
+    noiseSuppression: config.noiseSuppression !== false,
+    autoGainControl: !!config.autoGainControl
+  };
   if (config.micId) a.deviceId = { ideal: config.micId };
   return { audio: a, video: false };
 }
@@ -218,7 +222,8 @@ function onNewSession(e) {
   const s = e.session;
   const incoming = e.originator === 'remote';
   const slot = freeSlot();
-  if (incoming && (!slot || config.dnd)) {
+  const talking = [...lines.values()].some((l) => l.state === 'active' || l.state === 'incoming');
+  if (incoming && (!slot || config.dnd || (!config.callWaiting && talking))) {
     s.terminate({ status_code: 486, reason_phrase: 'Busy Here' });
     return;
   }
@@ -237,6 +242,10 @@ function onNewSession(e) {
     audio: null, remoteStream: null, localTrack: null, remoteSrc: null, dest: null
   };
   pendingName = '';
+  if (!incoming && config.clirPrefix && l.number.startsWith(config.clirPrefix) && l.number.length > config.clirPrefix.length) {
+    l.number = l.number.slice(config.clirPrefix.length);
+    l.anonymous = true;
+  }
   if (l.name === l.number) l.name = '';
   lines.set(l.id, l);
   attach(l);
@@ -285,8 +294,8 @@ function attach(l) {
   s.on('unhold', (ev) => { if (ev.originator === 'local') l.held = false; else l.remoteHeld = false; updateTones(); broadcast(); });
   s.on('muted', () => { l.muted = true; broadcast(); });
   s.on('unmuted', () => { l.muted = false; broadcast(); });
-  s.on('ended', (ev) => finish(l, ev.cause));
-  s.on('failed', (ev) => finish(l, ev.cause));
+  s.on('ended', (ev) => finish(l, ev.cause, ev));
+  s.on('failed', (ev) => finish(l, ev.cause, ev));
 }
 
 function markActive(l) {
@@ -301,7 +310,22 @@ function markActive(l) {
   broadcast();
 }
 
-function finish(l, cause) {
+/** Grund wie im PhonerLite-Logbuch, z.B. "anderswo angenommen" */
+function endReason(l, cause, ev) {
+  const C = JsSIP.C.causes;
+  const msg = ev && ev.message;
+  const reasonHdr = msg && msg.getHeader ? (msg.getHeader('Reason') || '') : '';
+  if (/cause=200|completed elsewhere/i.test(reasonHdr)) return 'elsewhere';
+  if (l.rejected) return 'rejected';
+  if (l.answeredAt) return ev && ev.originator === 'local' ? 'hangup-local' : 'hangup-remote';
+  return {
+    [C.CANCELED]: l.direction === 'in' ? 'canceled' : 'aborted', [C.BUSY]: 'busy', [C.REJECTED]: 'declined',
+    [C.NOT_FOUND]: 'not-found', [C.UNAVAILABLE]: 'unavailable', [C.NO_ANSWER]: 'no-answer',
+    [C.CONNECTION_ERROR]: 'connection', [C.USER_DENIED_MEDIA_ACCESS]: 'mic'
+  }[cause] || String(cause || '');
+}
+
+function finish(l, cause, ev) {
   if (!lines.has(l.id)) return;
   if (conf && conf.members.has(l.id)) leaveConference(l, true);
   lines.delete(l.id);
@@ -309,12 +333,13 @@ function finish(l, cause) {
   if (l.remoteSrc) { try { l.remoteSrc.disconnect(); } catch (e) { /* */ } }
   toBackground({ type: 'incoming-end', id: l.id });
   const C = JsSIP.C.causes;
-  const missed = l.direction === 'in' && !l.answeredAt && !l.rejected;
+  const reason = endReason(l, cause, ev);
+  const missed = l.direction === 'in' && !l.answeredAt && !l.rejected && reason !== 'elsewhere';
   toBackground({
     type: 'call-log',
     entry: {
       id: newId(), number: l.number, name: l.name, direction: l.direction,
-      startedAt: l.createdAt, answeredAt: l.answeredAt, endedAt: Date.now(), missed, cause: cause || ''
+      startedAt: l.createdAt, answeredAt: l.answeredAt, endedAt: Date.now(), missed, reason, anonymous: !!l.anonymous, cause: cause || ''
     }
   });
   if (l.direction === 'out' && !l.answeredAt && cause && cause !== C.CANCELED) {
@@ -350,6 +375,8 @@ function holdOthers(exceptId) {
 function call(number, name) {
   number = cleanDial(number);
   if (!number) throw new Error('Keine Nummer');
+  // Anonym: Präfix nur für externe Nummern, nicht für **610, *09, *21*… usw.
+  if (config.anonymous && config.clirPrefix && !/^[*#]/.test(number)) number = config.clirPrefix + number;
   if (!ua || !ua.isRegistered()) throw new Error('Nicht angemeldet – Verbindung prüfen.');
   if (!freeSlot()) throw new Error('Alle Leitungen belegt');
   if (mic === 'denied' || mic === 'prompt') throw new Error('Bitte zuerst das Mikrofon freigeben.');

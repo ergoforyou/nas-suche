@@ -7,9 +7,13 @@ Softphone als Chrome-Erweiterung für die FRITZ!Box, angelehnt an PhonerLite:
 - **Verbinden (Vermitteln mit Rückfrage):** Zwei Gesprächspartner werden miteinander verbunden, man selbst ist danach raus.
 - **Weiterleiten (blind)** an eine beliebige Nummer
 - **Dreierkonferenz:** alle Leitungen zusammenschalten und wieder trennen
-- **Halten, Stumm, Tonwahl (DTMF), Wahlwiederholung, Nicht stören**
-- **Telefonbuch:** suchen, anlegen, Import (FRITZ!Box-XML, CSV, vCard), Export als CSV. Namen erscheinen bei eingehenden Anrufen.
-- **Anrufliste** mit verpassten Anrufen (Zähler am Symbol), Rückruf und „ins Telefonbuch übernehmen“
+- **Halten, Stumm, Tonwahl (DTMF), Wahlwiederholung**
+- Schalter in der Kopfzeile wie bei PhonerLite: **⏳ Anklopfen**, **🥸 Anonym** (wählt `*31#` vor externe Nummern), **🔔 Nicht stören**
+- **Kurzwahltasten** für beliebige Nummern und FRITZ!Box-Codes, z. B. `Annahme = *09`, `JK = **615`, `Umleitung Pia = *21*+4930…#`. Interne Nummern zeigen zusätzlich frei/besetzt an.
+- **HD-Telefonie (G.722)**, wenn die Gegenstelle es kann, sonst G.711
+- Sound-Optionen: Echo-Unterdrückung, Rauschunterdrückung, automatische Verstärkung
+- **Telefonbuch:** suchen, anlegen, Import (FRITZ!Box-XML, CSV, vCard, auch PhonerLite-Listen im Format „Nummer;Name“ mit `@fritz.box`), Export als CSV. Namen erscheinen bei eingehenden Anrufen; ☆ macht einen Kontakt zur Kurzwahltaste.
+- **Anrufliste** mit Auslösegrund wie im PhonerLite-Logbuch. Wird ein Anruf an einem anderen Telefon angenommen („Call completed elsewhere“), erscheint er als **„anderswo angenommen“** und zählt **nicht** als verpasst. Dazu Rückruf und „ins Telefonbuch übernehmen“.
 - **Nebenstellen-Übersicht:** Man sieht, welches DECT-Telefon gerade telefoniert und welcher Anruf gerade klingelt. Mit einem Klick ruft man intern an (`**610` …).
 - **Eigenes Fenster**, frei verschiebbar; die Größe wird gemerkt. Dazu ein **Mini-Fenster**, das immer im Vordergrund bleibt (Knopf ⧉).
 - Desktop-Benachrichtigung mit **Annehmen/Ablehnen**
@@ -32,6 +36,8 @@ Für die FRITZ!Box ist das Gateway ein ganz normales IP-Telefon.
 ## Einrichtung
 
 ### 1. IP-Telefon in der FRITZ!Box anlegen
+
+Am besten ein **neues** IP-Telefon anlegen und nicht die Zugangsdaten von PhonerLite (`jkpcphone`) mitbenutzen. So können beide parallel laufen, solange getestet wird.
 
 1. *Telefonie → Telefoniegeräte → Neues Gerät einrichten*
 2. *Telefon (mit und ohne Anrufbeantworter)* → *LAN/WLAN (IP-Telefon)*, Name z. B. „Browser-Telefon“.
@@ -93,7 +99,7 @@ Die Erweiterung kann auf mehreren PCs mit denselben Zugangsdaten laufen. Dann kl
 - Der FRITZ!Box-Callmonitor meldet nur **externe** Gespräche. Interne Gespräche zwischen zwei DECT-Telefonen zeigt er nicht als „besetzt“ an.
 - Die Konferenz wird im Browser gemischt. Fällt der PC aus, endet die Konferenz. Beim „Verbinden“ übernimmt dagegen das Gateway, und das Gespräch läuft ohne PC weiter.
 - Im LAN reicht `ws://`; die Sprache ist per WebRTC (DTLS-SRTP) trotzdem verschlüsselt. Von unterwegs nur über VPN zum Büro nutzen und die Ports **nicht** ins Internet freigeben.
-- Code für „Heranholen“: Falls `*09` an eurer FRITZ!Box anders lautet, lässt er sich in den Einstellungen ändern.
+- Die Codes `*09` (Heranholen) und `*31#` (Rufnummer unterdrücken) sind in den Einstellungen änderbar. Falls `*09` an eurer FRITZ!Box anders lautet, lässt er sich in den Einstellungen ändern.
 
 ## Aufbau
 
