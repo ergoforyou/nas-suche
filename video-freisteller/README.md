@@ -43,11 +43,20 @@ Der Export erfolgt als **WebM mit Transparenz**. Alles wird lokal auf dem eigene
 - **Farbsaum entfernen / Kantenfarben entmischen:** entfernt grünen Schimmer bzw. hellen Saum an Haaren und Kanten.
 - **Kanten feinjustieren** (gilt für beide Verfahren):
   - *An Bilddetails anpassen:* Die Kante folgt feinen Strukturen im Bild.
+  - *Aura entfernen* (Standard 0,4): entfernt den hellen oder farbigen Schleier um die Figur. Bei Bedarf höher stellen.
+    Bei sehr feinen, abstehenden Haaren eher niedriger.
   - *Schrumpfen/Erweitern:* in Pixeln.
   - *Weichzeichnen:* macht die Kante weicher.
   - *Alpha-Schwarz-/Weißpunkt:* Schleier wegnehmen bzw. fast deckende Stellen ganz deckend machen.
 - **Ansicht „Maske (Alpha)“:** Weiß ist deckend, Schwarz transparent, Grau halbtransparent. Damit lässt sich die Abstufung am besten beurteilen.
 - **Ansicht „Vorher | Nachher“** zeigt den direkten Vergleich. Als Hintergrund für die Vorschau gehen Schachbrett, Farben oder ein eigenes Bild.
+
+**Wenn eine „Aura“ oder ein Saum um die Figur bleibt**
+1. „Aura entfernen“ auf 0,6 bis 0,8 stellen.
+2. „Kante schrumpfen“ auf 1 bis 2 px stellen.
+3. In der Ansicht „Maske (Alpha)“ prüfen, ob um die Figur noch ein grauer Hof zu sehen ist. Wenn ja, den Alpha-Schwarzpunkt
+   etwas anheben (z. B. 0,1).
+4. Bei KI: „Kantenfarben bereinigen“ eingeschaltet lassen. Bei Farbe: „Kantenfarben entmischen“ eingeschaltet lassen.
 
 **Export (Strg+E)**
 

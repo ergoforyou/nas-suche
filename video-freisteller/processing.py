@@ -204,6 +204,7 @@ class KeySettings:
     choke: float = 0.0                   # px, + = Kante schrumpfen, - = erweitern
     feather: float = 0.0                 # px Weichzeichnung der Kante
     refine: bool = True                  # Kanten an Bilddetails anpassen
+    dehalo: float = 0.4                  # Aura/Schleier um die Figur entfernen 0..1
     alpha_low: float = 0.0               # Alpha-Schwarzpunkt 0..1
     alpha_high: float = 1.0              # Alpha-Weisspunkt 0..1
 
@@ -458,16 +459,40 @@ class Processor:
         out[..., 3] = np.round(alpha * 255.0)
         return out
 
+    @staticmethod
+    def _dehalo(alpha: np.ndarray, strength: float, sc: float) -> np.ndarray:
+        """Schwachen Schleier um die Figur entfernen.
+
+        1. Sehr geringe Deckung (Rauschen/Schimmer) wird ausgeblendet.
+        2. Alles, was weit von der deckenden Figur entfernt liegt, wird
+           durchsichtig (Reste im Hintergrund).
+        """
+        t = 0.25 * strength
+        a = np.clip((alpha - t) / (1.0 - t), 0.0, 1.0)
+        core = (alpha > 0.6).astype(np.uint8)
+        if core.any():
+            k = max(3, int(round((3 + 14 * (1.0 - strength)) * sc)))
+            ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1))
+            near = cv2.dilate(core, ker) > 0
+            a = np.where(near, a, 0.0)
+        return a.astype(np.float32)
+
     def _post_alpha(self, alpha: np.ndarray, rgb_u8: np.ndarray) -> np.ndarray:
         s, sc = self.s, self.px_scale
         if s.refine:
             guide = cv2.cvtColor(rgb_u8, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
             r = max(1, int(round(2 * sc)))
-            refined = _guided_filter(guide, alpha, r, 1e-4)
-            # Nur im Uebergangsbereich wirken lassen, Kerne bleiben unveraendert.
+            refined = np.clip(_guided_filter(guide, alpha, r, 1e-4), 0, 1)
+            # Nur schaerfen, nie nach aussen wachsen: aussen (alpha < 0.5) darf die
+            # Deckung nur sinken, innen nur steigen – sonst entsteht ein Schleier
+            # in der Farbe des alten Hintergrunds um die Figur.
+            refined = np.where(alpha < 0.5, np.minimum(refined, alpha),
+                               np.maximum(refined, alpha))
             edge = cv2.dilate(((alpha > 0.02) & (alpha < 0.98)).astype(np.uint8),
                               np.ones((2 * r + 1, 2 * r + 1), np.uint8))
-            alpha = np.where(edge > 0, np.clip(refined, 0, 1), alpha)
+            alpha = np.where(edge > 0, refined, alpha)
+        if s.dehalo > 0:
+            alpha = self._dehalo(alpha, s.dehalo, sc)
         choke = s.choke * sc
         if abs(choke) >= 0.5:
             k = int(round(abs(choke))) * 2 + 1
@@ -480,6 +505,39 @@ class Processor:
         if lo > 0 or hi < 1:
             alpha = (alpha - lo) / (hi - lo)
         return np.clip(alpha, 0.0, 1.0).astype(np.float32)
+
+
+def bleed_colors(rgba: np.ndarray) -> np.ndarray:
+    """Farben der Figur in die durchsichtigen Pixel hinein fortsetzen.
+
+    Unsichtbar, verhindert aber, dass VP9/H.264 (Farbe nur in halber
+    Aufloesung) die alte Hintergrundfarbe in die Kantenpixel mischt –
+    sonst entsteht ein farbiger Saum um die Figur.
+    """
+    a = rgba[..., 3].astype(np.float32) / 255.0
+    clear = a < 0.02
+    if not clear.any() or clear.all():
+        return rgba
+    # Push-Pull-Pyramide: vormultiplizierte Farbe + Alpha halbieren, bis alles
+    # gedeckt ist, dann von grob nach fein die Luecken auffuellen. Laufzeit O(n).
+    pm = rgba[..., :3].astype(np.float32) * a[..., None]
+    levels = [(pm, a)]
+    while min(levels[-1][1].shape) > 2:
+        p, q = levels[-1]
+        hh, ww = (q.shape[0] + 1) // 2, (q.shape[1] + 1) // 2
+        levels.append((cv2.resize(p, (ww, hh), interpolation=cv2.INTER_AREA),
+                       cv2.resize(q, (ww, hh), interpolation=cv2.INTER_AREA)))
+    color = None
+    for p, q in reversed(levels):
+        c = p / np.maximum(q, 1e-6)[..., None]
+        if color is not None:
+            up = cv2.resize(color, (q.shape[1], q.shape[0]), interpolation=cv2.INTER_LINEAR)
+            wgt = np.clip(q / 0.02, 0.0, 1.0)[..., None]
+            c = c * wgt + up * (1.0 - wgt)
+        color = c
+    out = rgba.copy()
+    out[..., :3][clear] = np.clip(np.round(color[clear]), 0, 255).astype(np.uint8)
+    return out
 
 
 def composite(rgba: np.ndarray, bg) -> np.ndarray:
@@ -647,7 +705,7 @@ def export(job: ExportJob, model_path: Path | None = None,
                     rgb = np.frombuffer(buf, np.uint8).reshape(h, w, 3)
                     rgba = proc(rgb, warmup=3 if first else 0)
                     first = False
-                    out = rgba if alpha_out else composite(rgba, job.bg_color)
+                    out = bleed_colors(rgba) if alpha_out else composite(rgba, job.bg_color)
                     encoder.stdin.write(out.tobytes())
                     frame_no += 1
                     if progress and frame_no % 5 == 0:

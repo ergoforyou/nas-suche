@@ -412,6 +412,10 @@ class MainWindow(QMainWindow):
         fe = QFormLayout(self.g_edge)
         self.ck_refine = QCheckBox("Kanten an Bilddetails anpassen (Haare)")
         fe.addRow(self.ck_refine)
+        self.s_dehalo = slider_row(0.0, 1.0, 0.4, 0.05, 2)
+        self.s_dehalo.setToolTip("Entfernt den hellen/farbigen Schleier („Aura“) um die Figur. "
+                                 "Höher = sauberere Kante, bei sehr feinen Haaren evtl. etwas weniger Detail.")
+        fe.addRow("Aura entfernen:", self.s_dehalo)
         self.s_choke = slider_row(-10.0, 10.0, 0.0, 0.5, 1, " px")
         self.s_choke.setToolTip("Positiv = Kante nach innen ziehen, negativ = erweitern.")
         fe.addRow("Kante schrumpfen:", self.s_choke)
@@ -486,7 +490,7 @@ class MainWindow(QMainWindow):
         splitter.setSizes([960, 480])
 
         # Alle Regler aktualisieren die Vorschau
-        for w in (self.s_detail, self.s_tol, self.s_soft, self.s_despill, self.s_choke,
+        for w in (self.s_dehalo, self.s_detail, self.s_tol, self.s_soft, self.s_despill, self.s_choke,
                   self.s_feather, self.s_lo, self.s_hi):
             w.spin.valueChanged.connect(self.settings_changed)
         for c in (self.ck_edgecol, self.ck_gpu, self.ck_unmix, self.ck_edge, self.ck_refine):
@@ -523,6 +527,7 @@ class MainWindow(QMainWindow):
             choke=self.s_choke.spin.value(),
             feather=self.s_feather.spin.value(),
             refine=self.ck_refine.isChecked(),
+            dehalo=self.s_dehalo.spin.value(),
             alpha_low=self.s_lo.spin.value(),
             alpha_high=self.s_hi.spin.value(),
         )
@@ -542,6 +547,7 @@ class MainWindow(QMainWindow):
         self.s_choke.spin.setValue(s.choke)
         self.s_feather.spin.setValue(s.feather)
         self.ck_refine.setChecked(s.refine)
+        self.s_dehalo.spin.setValue(s.dehalo)
         self.s_lo.spin.setValue(s.alpha_low)
         self.s_hi.spin.setValue(s.alpha_high)
 
@@ -612,6 +618,7 @@ class MainWindow(QMainWindow):
     def _reset_edges(self):
         d = P.KeySettings()
         self.ck_refine.setChecked(d.refine)
+        self.s_dehalo.spin.setValue(d.dehalo)
         self.s_choke.spin.setValue(d.choke)
         self.s_feather.spin.setValue(d.feather)
         self.s_lo.spin.setValue(d.alpha_low)
