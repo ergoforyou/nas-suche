@@ -535,15 +535,47 @@ const cam = await page.evaluate(async () => {
   window.__setPip(true);
   await new Promise((r) => setTimeout(r, 2500));
   const whole = a.rect.h;
-  a.cam.shot = 'oberkoerper';
-  a.cam.until = performance.now() + 1e6;
+  // Antwort kommt -> Kamera fährt heran; danach zurück zur ganzen Figur
+  window.__app.setMood('ruhig');
+  window.__app.avatarState.speaking = true;
   await new Promise((r) => setTimeout(r, 3000));
   const upper = a.rect.h;
+  window.__app.avatarState.speaking = false;
+  await new Promise((r) => setTimeout(r, 3500));
+  const after = a.rect.h;
   window.__setPip(false);
-  return { aspect: calls.at(-1), whole, upper };
+  return { aspect: calls.at(-1), whole, upper, after };
 });
 check(cam.aspect < 0.5, 'Bild-im-Bild-Fenster nach der sichtbaren Figur (leere Ränder zählen nicht)', JSON.stringify(cam));
-check(cam.upper > cam.whole * 1.25, 'Kamerafahrt zoomt auf den Oberkörper');
+check(cam.upper > cam.whole * 1.25 && Math.abs(cam.after - cam.whole) < cam.whole * 0.08, 'Kamera zoomt heran, wenn die Antwort kommt, und danach zurück', JSON.stringify(cam));
+// ---- Persona als .kiavatar exportieren (mit Video) und wieder importieren
+const exp = await page.evaluate(async (webmB64) => {
+  const av = window.__app.persona().avatar;
+  const bytes = Uint8Array.from(atob(webmB64), (c) => c.charCodeAt(0));
+  const url = await window.desktop.saveMedia(bytes, 'webm');
+  av.poses = [{ id: 'v1', name: 'Nicken', trigger: 'listen', video: url, cutMode: 'alpha', clip: { start: 0.5, end: 2 } }];
+  window.__app.persona().memory = [];
+  window.__savedBefore = window.__saved.length;
+  return { personas: window.__app.state.personas.length, name: window.__app.persona().name, image: av.image.slice(0, 40) };
+}, fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-alpha.webm')).toString('base64'));
+if (!(await page.isVisible('#tabs [data-tab=persona]'))) await page.click('#btnSettings');
+await page.click('#tabs [data-tab=persona]');
+await page.click('#personaExport');
+await page.waitForFunction(() => window.__saved.length > window.__savedBefore, null, { timeout: 15000 }).catch(() => {});
+const file = await page.evaluate(() => window.__saved.at(-1));
+check(/\.kiavatar$/.test(file?.name ?? '') && file.b64.length > 2000, 'Persona als .kiavatar exportiert (mit Video)', file?.name);
+const packPath = path.join(os.tmpdir(), 'ki-test.kiavatar');
+fs.writeFileSync(packPath, Buffer.from(file?.b64 ?? '', 'base64'));
+await page.click('#personaImport');
+await page.waitForSelector('#pickSheet');
+await page.setInputFiles('#pickSheet input[type=file]', packPath);
+await page.waitForFunction((n) => window.__app.state.personas.length > n, exp.personas, { timeout: 20000 }).catch(() => {});
+const imp = await page.evaluate(() => {
+  const p = window.__app.persona();
+  return { personas: window.__app.state.personas.length, name: p.name, image: p.avatar.image?.slice(0, 40), pose: p.avatar.poses?.[0] };
+});
+check(imp.personas === exp.personas + 1 && imp.name.startsWith(exp.name) && imp.image === exp.image, 'Persona importiert (Name, Bild)', JSON.stringify({ name: imp.name }));
+check(imp.pose?.video && /^blob:|^http/.test(imp.pose.video) && imp.pose.clip?.start === 0.5 && imp.pose.trigger === 'listen', 'Video-Pose samt Abschnitt und Anlass übernommen', JSON.stringify(imp.pose));
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

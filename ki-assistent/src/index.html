@@ -100,10 +100,12 @@
         </select>
       </label>
       <div class="row">
-        <button id="personaExport">Persona exportieren</button>
-        <button id="personaImport">Persona importieren</button>
-        <input id="personaImportFile" type="file" accept=".json,application/json" hidden />
+        <button id="personaExport">📤 Persona exportieren</button>
+        <button id="personaImport">📥 Persona importieren</button>
+        <input id="personaImportFile" type="file" accept=".kiavatar,.zip,.json" hidden />
       </div>
+      <p class="hint">Eine Datei (.kiavatar) mit Avatar, Posen, Videos, 3D-Figur, Stimme und Texten – zum Übertragen zwischen PC und Handy.
+        API-Schlüssel, Google-Verbindung und Gesprächsverlauf bleiben auf dem Gerät.</p>
       <button id="clearHistory" class="danger">Gesprächsverlauf löschen</button>
     </div>
 
@@ -124,7 +126,7 @@
             <input id="avPipColor" type="color" value="#1e2430" hidden />
           </div>
         </label>
-        <label class="check"><input id="avPipCamera" type="checkbox" /> Kamerafahrten: zwischendurch langsam auf Oberkörper oder Gesicht zoomen und zurück
+        <label class="check"><input id="avPipCamera" type="checkbox" /> Kamerafahrten: kommt die Antwort, zoomt das Bild langsam auf Oberkörper bzw. Gesicht, danach zurück zur ganzen Figur
           <span class="hint">(wirkt lebendiger; braucht gesetzte Augen/Mund)</span></label>
       </div>
       <label>Größe der freien Figur (Anteil der Bildschirmhöhe) <span id="avFloatSizeVal" class="hint"></span>

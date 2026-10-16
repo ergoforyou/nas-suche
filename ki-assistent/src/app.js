@@ -10,6 +10,7 @@ import { buildDepthMap, imageKey } from './parallax.js';
 import { detectFaceRig, markersFromRig } from './facerig.js';
 import { detectBodyRig } from './bodyrig.js';
 import { openMarkEditor } from './markeditor.js';
+import { packPersona, unpackPersona } from './personapack.js';
 import { debugVoice, synthesize, piperState } from './piper.js';
 import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
 import googleLib from '../google.js';
@@ -1754,17 +1755,20 @@ $('personaDelete').onclick = () => {
   applyPersona();
   fillSettings();
 };
-$('personaExport').onclick = () => {
-  const p = structuredClone(persona());
-  delete p.id;
-  // Das Gedächtnis ist privat und wird nicht mit exportiert
-  delete p.memory;
-  const blob = new Blob([JSON.stringify({ kiAssistentPersona: 1, ...p }, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${(p.name || 'persona').replace(/[^\w\-äöüÄÖÜß ]/g, '')}.persona.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+// Persona als eine Datei (.kiavatar) mit allen Bildern, Videos, Masken und der 3D-Figur – für PC und Handy
+$('personaExport').onclick = async () => {
+  const p = persona();
+  const withMemory = !!p.memory?.length && confirm('Auch das Gedächtnis (gelernte Fakten über dich) mit exportieren?\n\nOK = ja, Abbrechen = nein (empfohlen, wenn du die Datei weitergibst)');
+  const name = (p.name || 'Persona').replace(/[^\p{L}\p{N} _-]+/gu, '_');
+  try {
+    status('Persona wird gepackt …');
+    const bytes = await packPersona(p, { withMemory, version: APP_VERSION, onProgress: status });
+    if (desktop.saveFileAs) await desktop.saveFileAs(`${name}.kiavatar`, bytes);
+    else await desktop.exportSave(name, 'kiavatar', 'KI-Avatar (Persona)', bytes);
+    status(`Persona „${p.name}“ exportiert (${(bytes.length / 1e6).toFixed(1)} MB) – auf dem anderen Gerät unter ⚙ → Persona → „Persona importieren“ laden.`);
+  } catch (err) {
+    status(`Export fehlgeschlagen: ${err.message}`);
+  }
 };
 $('personaImport').onclick = () => $('personaImportFile').click();
 $('personaImportFile').onchange = async (e) => {
@@ -1772,11 +1776,15 @@ $('personaImportFile').onchange = async (e) => {
   e.target.value = '';
   if (!file) return;
   try {
-    const data = JSON.parse(await file.text());
-    if (!data.kiAssistentPersona) throw new Error('Keine gültige Persona-Datei');
-    delete data.kiAssistentPersona;
-    switchTo(migratePersona({ ...defaultPersona(), ...data, id: newId() }));
+    status('Persona wird übernommen …');
+    const data = await unpackPersona(new Uint8Array(await file.arrayBuffer()), (bytes, ext) => desktop.saveMedia(bytes, ext), { onProgress: status });
+    const p = migratePersona({ ...defaultPersona(), ...data, id: newId() });
+    if (state.personas.some((x) => x.name === p.name)) p.name += ' (importiert)';
+    p.memory ??= [];
+    switchTo(p);
+    status(`Persona „${p.name}“ übernommen – mit Avatar, Posen und Videos.`);
   } catch (err) {
+    status(`Import fehlgeschlagen: ${err.message}`);
     alert(`Import fehlgeschlagen: ${err.message}`);
   }
 };

@@ -1373,16 +1373,24 @@ export class Avatar {
    */
   cameraLayout(now, dt, W, H, fit) {
     const box = this.visibleBox();
-    const C = (this.cam ??= { shot: 'ganz', until: now + 6000, x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 });
-    if (this.camera !== false && now > C.until) {
-      const r = Math.random();
-      const prev = C.shot;
-      // wechselt nie zweimal hintereinander in denselben Ausschnitt
-      if (prev !== 'ganz') C.shot = 'ganz';
-      else C.shot = this.speaking && r < 0.35 ? 'gesicht' : 'oberkoerper';
-      C.until = now + (C.shot === 'ganz' ? 7000 + Math.random() * 7000 : 4000 + Math.random() * 4000);
-    }
-    if (this.camera === false) C.shot = 'ganz';
+    const C = (this.cam ??= { shot: 'ganz', until: now + 6000, x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1, talking: false });
+    // Kamera folgt dem Gespräch: Kommt die Antwort, fährt sie heran (bei starker Stimmung bis aufs Gesicht),
+    // während längerer Antworten wechselt sie zwischen Oberkörper und Gesicht, danach zurück zur ganzen Figur.
+    if (this.camera !== false) {
+      const strong = ['freudig', 'überrascht', 'traurig'].includes(this.moodCur?.name);
+      if (this.speaking && !C.talking) {
+        C.talking = true;
+        C.shot = strong ? 'gesicht' : 'oberkoerper';
+        C.until = now + 4000 + Math.random() * 3000;
+      } else if (!this.speaking && C.talking) {
+        C.talking = false;
+        C.shot = 'ganz';
+        C.until = now + 1e9; // in Ruhe bleibt die ganze Figur
+      } else if (this.speaking && now > C.until) {
+        C.shot = C.shot === 'gesicht' ? 'oberkoerper' : 'gesicht';
+        C.until = now + (C.shot === 'gesicht' ? 3000 + Math.random() * 2500 : 4000 + Math.random() * 3000);
+      }
+    } else C.shot = 'ganz';
     // Zielausschnitt (normiert auf das Grundbild)
     const cfg = this.layers?.[0]?.config ?? this.config ?? {};
     const eyes = cfg.eyes ?? [];
