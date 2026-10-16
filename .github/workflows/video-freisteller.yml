@@ -1,0 +1,69 @@
+name: Video-Freisteller (Windows-EXE)
+
+on:
+  push:
+    paths:
+      - "video-freisteller/**"
+      - ".github/workflows/video-freisteller.yml"
+    tags:
+      - "video-freisteller-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: video-freisteller
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python-Pakete installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: ffmpeg und KI-Modell laden
+        run: |
+          New-Item -ItemType Directory -Force ffmpeg, models | Out-Null
+          Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          Get-ChildItem ffmpeg_tmp -Recurse -Include ffmpeg.exe, ffprobe.exe | Copy-Item -Destination ffmpeg
+          Invoke-WebRequest "https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3_fp32.onnx" -OutFile models/rvm_mobilenetv3_fp32.onnx
+          ./ffmpeg/ffmpeg.exe -hide_banner -encoders | Select-String "libvpx-vp9|prores_ks|libx264|libopus"
+
+      - name: Selbsttest (Export mit Freistellung)
+        run: |
+          ./ffmpeg/ffmpeg.exe -loglevel error -y -f lavfi -i "color=c=0x00B140:s=320x240:d=2" -f lavfi -i "testsrc2=s=120x90:d=2" -f lavfi -i "sine=d=2" -filter_complex "[0][1]overlay=40:60" -shortest selftest.mp4
+          $env:PATH = "$PWD\ffmpeg;$env:PATH"
+          python -c "import processing as P; from pathlib import Path; i=P.probe('selftest.mp4'); [P.export(P.ExportJob(i, f'selftest_{m}.webm', [(0.2,1.5)], P.KeySettings(mode=m)), P.find_model()) for m in ('chroma','ai')]; print(P.probe('selftest_ai.webm'))"
+
+      - name: EXE bauen
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name VideoFreisteller `
+            --add-data "models;models" `
+            --add-binary "ffmpeg/ffmpeg.exe;ffmpeg" `
+            --add-binary "ffmpeg/ffprobe.exe;ffmpeg" `
+            --collect-binaries onnxruntime `
+            app.py
+          Copy-Item README.md dist/VideoFreisteller/LIESMICH.md
+          Compress-Archive -Path dist/VideoFreisteller -DestinationPath VideoFreisteller-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoFreisteller-Windows
+          path: video-freisteller/dist/VideoFreisteller
+
+      - name: Release veröffentlichen (bei Tag)
+        if: startsWith(github.ref, 'refs/tags/video-freisteller-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: video-freisteller/VideoFreisteller-Windows.zip

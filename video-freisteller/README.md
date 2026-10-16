@@ -1,0 +1,76 @@
+# Video-Freisteller
+
+Kleines Windows-Programm, mit dem man Videos **schneiden** und den **Hintergrund freistellen** kann.
+Der Export erfolgt als **WebM mit Transparenz**. Alles wird lokal auf dem eigenen Rechner berechnet, nichts wird hochgeladen.
+
+## Installation
+
+1. ZIP herunterladen (GitHub → *Actions* → „Video-Freisteller (Windows-EXE)“ → letzter Lauf → Artefakt
+   *VideoFreisteller-Windows*, oder unter *Releases*).
+2. Entpacken, z. B. nach `C:\Programme\VideoFreisteller`.
+3. `VideoFreisteller.exe` starten. Eine Installation ist nicht nötig. ffmpeg und das KI-Modell sind enthalten.
+
+> Windows SmartScreen kann beim ersten Start warnen, weil die EXE nicht signiert ist.
+> Dann auf „Weitere Informationen“ → „Trotzdem ausführen“ klicken.
+
+## Bedienung
+
+**Video laden:** Datei ins Fenster ziehen oder „Video öffnen…“ (Strg+O).
+
+**Schneiden**
+- Mit der Zeitleiste, den Pfeiltasten (←/→ = 1 Bild, Shift+←/→ = 1 Sekunde) oder der Leertaste (Abspielen) zur Stelle springen.
+- `I` setzt den Anfang, `O` setzt das Ende. Der gelbe Balken zeigt den aktuellen Bereich.
+- Ohne weitere Schritte wird nur der Bereich von Anfang bis Ende exportiert.
+- Für mehrere Stücke jeden Bereich mit „＋ Bereich zur Liste“ übernehmen. Die grünen Abschnitte werden in dieser
+  Reihenfolge aneinandergehängt. Ein Doppelklick auf einen Listeneintrag springt zu diesem Bereich.
+- Der Ton wird automatisch passend mitgeschnitten.
+
+**Freistellen**
+
+| Modus | Wofür |
+|---|---|
+| **KI – Person automatisch** (empfohlen) | Personen vor beliebigem Hintergrund, ohne Green-Screen. Arbeitet mit „Robust Video Matting“: weiche Haarkanten und kein Flackern zwischen den Bildern. |
+| **Farbe** | Green-Screen, Blue-Screen oder **weißer Hintergrund**. Die Farbe mit der Pipette direkt im Bild anklicken. |
+| **Nicht freistellen** | Nur schneiden bzw. umwandeln. |
+
+- **KI-Modell:** „Schnell“ ist eingebaut. „Höchste Qualität“ (ResNet50) wird beim ersten Auswählen einmalig geladen (~100 MB) und liefert noch feinere Kanten.
+- **Detailstufe:** Höhere Werte erfassen feinere Haare, rechnen aber langsamer. Bei Nahaufnahmen ist oft ein Wert unter 1 besser.
+- **Toleranz / Weicher Übergang** (Farbe): Die Toleranz legt fest, was komplett verschwindet. Der weiche Übergang bestimmt, wie breit die Abstufung zur vollen Deckung ist (fein graduierte Kante).
+- **Farbsaum entfernen / Kantenfarben entmischen:** entfernt grünen Schimmer bzw. hellen Saum an Haaren und Kanten.
+- **Kanten feinjustieren** (gilt für beide Verfahren):
+  - *An Bilddetails anpassen:* Die Kante folgt feinen Strukturen im Bild.
+  - *Schrumpfen/Erweitern:* in Pixeln.
+  - *Weichzeichnen:* macht die Kante weicher.
+  - *Alpha-Schwarz-/Weißpunkt:* Schleier wegnehmen bzw. fast deckende Stellen ganz deckend machen.
+- **Ansicht „Maske (Alpha)“:** Weiß ist deckend, Schwarz transparent, Grau halbtransparent. Damit lässt sich die Abstufung am besten beurteilen.
+- **Ansicht „Vorher | Nachher“** zeigt den direkten Vergleich. Als Hintergrund für die Vorschau gehen Schachbrett, Farben oder ein eigenes Bild.
+
+**Export (Strg+E)**
+
+| Format | Transparenz | Hinweis |
+|---|---|---|
+| WebM (VP9) | ja | für Web, Browser und Avatar-Einbindung |
+| MOV ProRes 4444 | ja | für Premiere, DaVinci Resolve, Final Cut |
+| MP4 (H.264) | nein | MP4 kann technisch keine Transparenz. Der Hintergrund wird mit einer wählbaren Farbe gefüllt. |
+
+Die Grafikkarte wird über DirectML genutzt, wenn eine vorhanden ist (NVIDIA, AMD oder Intel). Sonst rechnet der Prozessor.
+Im KI-Bereich steht, worauf gerade gerechnet wird.
+
+## Entwicklung
+
+```bash
+pip install -r requirements.txt
+python app.py
+```
+
+ffmpeg/ffprobe müssen im PATH liegen oder in `ffmpeg/`. Das KI-Modell gehört nach `models/` oder wird beim
+ersten Start automatisch geladen. Die EXE baut der GitHub-Workflow `.github/workflows/video-freisteller.yml`
+(PyInstaller auf `windows-latest`). Ein Tag `video-freisteller-v1.0` erzeugt zusätzlich ein Release mit der ZIP.
+
+## Lizenzen
+
+- Robust Video Matting (Modell): GPL-3.0, https://github.com/PeterL1n/RobustVideoMatting
+- ffmpeg (BtbN-Build): GPL
+- PySide6/Qt: LGPL
+
+Für die interne Nutzung ist das unproblematisch. Wird das Programm an Dritte weitergegeben, gelten die Bedingungen der GPL.
