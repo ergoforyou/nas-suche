@@ -389,6 +389,7 @@ const api = {
   pipSupported: () => !!window.KIPip?.supported?.(),
   pipSetEnabled: (on) => window.KIPip?.setEnabled?.(!!on),
   pipEnter: () => window.KIPip?.enter?.(),
+  pipSetAspect: (w, h) => window.KIPip?.setAspect?.(Math.round(w), Math.round(h)),
 };
 
 // Antwort des „Speichern unter …“-Dialogs (MainActivity.java)

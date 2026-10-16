@@ -97,6 +97,8 @@ const DEFAULT_SETTINGS = {
   handsFree: false,
   sensitivity: 0.015,
   pipOnLeave: true, // Android: beim Verlassen der App als Bild-im-Bild weiterlaufen
+  pipBg: 'dunkel', // Hintergrund im Bild-im-Bild-Fenster
+  pipBgColor: '#1e2430',
   bargeIn: true, // Live-Gespräch: dazwischenreden erlaubt
   moodTags: true, // Mimik: das Sprachmodell markiert seine Stimmung, die Figur zeigt sie
   googleUse: true, // Google Kalender & Aufgaben im Gespräch (sobald verbunden)
@@ -305,7 +307,10 @@ function applyVoice() {
 
 function applyAvatar() {
   const cfg = persona().avatar;
-  avatar.setConfig(cfg).catch((e) => status(e.message));
+  avatar
+    .setConfig(cfg)
+    .then(updatePipShape)
+    .catch((e) => status(e.message));
   if (floating.isOpen) floating.setConfig(cfg).catch((e) => status(e.message));
 }
 
@@ -1193,6 +1198,32 @@ $('avPip').onchange = (e) => {
   desktop.pipSetEnabled?.(e.target.checked);
 };
 $('avPipNow').onclick = () => desktop.pipEnter?.();
+
+/** Bild-im-Bild-Fenster in der Form der Figur (schmal und hoch statt 3:4) – so bleibt kaum Hintergrund. */
+function updatePipShape() {
+  if (!MOBILE || !desktop.pipSetAspect || !avatar.ready || !avatar.w || !avatar.h) return;
+  desktop.pipSetAspect(avatar.w * 1000 / avatar.h, 1000);
+}
+const pipBgStyle = () => ({ kind: state.settings.pipBg ?? 'dunkel', color: state.settings.pipBgColor });
+if (MOBILE) {
+  // im Bild-im-Bild: Figur füllt das Fenster, gewählter Hintergrund
+  const native = window.__setPip;
+  window.__setPip = (on) => {
+    avatar.pipFit = !!on;
+    avatar.bgStyle = on ? pipBgStyle() : null;
+    avatar.bg = null;
+    native?.(on);
+  };
+}
+$('avPipBg').onchange = (e) => {
+  state.settings.pipBg = e.target.value;
+  $('avPipColor').hidden = e.target.value !== 'farbe';
+  save();
+};
+$('avPipColor').oninput = (e) => {
+  state.settings.pipBgColor = e.target.value;
+  save();
+};
 $('btnPip').onclick = () => desktop.pipEnter?.();
 $('btnMin').onclick = () => desktop.minimize();
 $('btnClose').onclick = () => desktop.close();
@@ -1315,6 +1346,9 @@ function fillSettings() {
   $('sLang').value = ['german', 'english'].includes(s.sttLang) ? s.sttLang : 'persona';
   $('sHandsFree').checked = s.handsFree;
   $('avPip').checked = s.pipOnLeave;
+  $('avPipBg').value = s.pipBg ?? 'dunkel';
+  $('avPipColor').value = s.pipBgColor ?? '#1e2430';
+  $('avPipColor').hidden = (s.pipBg ?? 'dunkel') !== 'farbe';
   $('appVersion').textContent = `KI-Assistent ${APP_VERSION}${MOBILE ? ' (Android)' : ''}`;
   $('sEngineWrap').hidden = !desktop.transcribeCloud || LOCAL_ONLY;
   $('sEngine').value = s.sttEngine;
@@ -3711,6 +3745,7 @@ window.__app = {
   avatarState,
   setMood,
   persona: () => persona(),
+  updatePipShape: () => updatePipShape(),
   ensureRig: (opts) => ensureFaceRig(opts),
   tts,
   stt,

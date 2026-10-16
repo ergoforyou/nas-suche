@@ -113,6 +113,17 @@
         <label class="check"><input id="avPip" type="checkbox" /> Beim Verlassen der App als Bild-im-Bild weiterlaufen – die Figur
           schwebt über anderen Apps, frei verschiebbar und in der Größe änderbar (wie Videos bei YouTube)</label>
         <button id="avPipNow">⧉ Jetzt als Bild-im-Bild</button>
+        <label>Hintergrund im Bild-im-Bild <span class="hint">(das Fenster hat die Form der Figur; ganz durchsichtig erlaubt Android dort nicht)</span>
+          <div class="row">
+            <select id="avPipBg" style="flex:1">
+              <option value="dunkel">dunkel (wie in der App)</option>
+              <option value="hell">hell</option>
+              <option value="farbe">eigene Farbe</option>
+              <option value="unscharf">weichgezeichnet (Figur verschwommen dahinter)</option>
+            </select>
+            <input id="avPipColor" type="color" value="#1e2430" hidden />
+          </div>
+        </label>
       </div>
       <label>Größe der freien Figur (Anteil der Bildschirmhöhe) <span id="avFloatSizeVal" class="hint"></span>
         <input id="avFloatSize" type="range" min="0.15" max="1" step="0.01" /></label>

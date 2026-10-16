@@ -83,7 +83,7 @@ check(info.mobile, 'Android-Darstellung aktiv');
 check(/\d+\.\d+/.test(info.title ?? ''), 'Version in der Titelzeile', info.title);
 
 // 2) Bild-im-Bild-Schnittstelle aus MainActivity.java
-check(await run(`return !!window.KIPip?.supported?.()`), 'Bild-im-Bild verfügbar');
+check(await run(`return !!window.KIPip?.supported?.() && typeof window.KIPip?.setAspect === 'function'`), 'Bild-im-Bild verfügbar (mit Fensterform)');
 check(await run(`return typeof window.KIFiles?.saveAs === 'function' && typeof window.KIFiles?.pickTarget === 'function' && typeof window.KIFiles?.writeUri === 'function'`), '„Speichern unter …“ (auch Speicherort vorab) verfügbar');
 check(await run(`return typeof window.KIAuth?.listen === 'function' && typeof window.KIAuth?.open === 'function'`), 'Google-Anmeldung (Empfänger) verfügbar');
 

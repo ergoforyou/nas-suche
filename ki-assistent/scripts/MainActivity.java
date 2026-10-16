@@ -35,6 +35,8 @@ import javax.crypto.spec.GCMParameterSpec;
  */
 public class MainActivity extends BridgeActivity {
     private boolean pipEnabled = true;
+    private int pipW = 3;
+    private int pipH = 4;
 
     // ---- „Speichern unter …“: Android fragt nach Ordner und Dateiname (Downloads, Drive, …)
     private ActivityResultLauncher<String> createDoc;
@@ -221,7 +223,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     private PictureInPictureParams pipParams() {
-        PictureInPictureParams.Builder b = new PictureInPictureParams.Builder().setAspectRatio(new Rational(3, 4));
+        PictureInPictureParams.Builder b = new PictureInPictureParams.Builder().setAspectRatio(new Rational(pipW, pipH));
         if (Build.VERSION.SDK_INT >= 31) {
             b.setAutoEnterEnabled(pipEnabled);
             b.setSeamlessResizeEnabled(true);
@@ -258,6 +260,18 @@ public class MainActivity extends BridgeActivity {
             @JavascriptInterface
             public boolean supported() {
                 return Build.VERSION.SDK_INT >= 26;
+            }
+
+            /** Seitenverhältnis des Fensters = Form der Figur (Android erlaubt 1:2,39 bis 2,39:1). */
+            @JavascriptInterface
+            public void setAspect(int w, int h) {
+                if (w <= 0 || h <= 0) return;
+                double r = Math.max(1 / 2.38, Math.min(2.38, (double) w / h));
+                runOnUiThread(() -> {
+                    pipW = (int) Math.round(r * 1000);
+                    pipH = 1000;
+                    applyParams();
+                });
             }
         }, "KIPip");
         bridge.getWebView().addJavascriptInterface(new KeyVault(), "KIKeys");

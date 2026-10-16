@@ -1188,13 +1188,21 @@ export class Avatar {
     c.width = this.canvas.width;
     c.height = this.canvas.height;
     const g = c.getContext('2d');
+    // eigener Hintergrund (z. B. im Bild-im-Bild-Fenster): { kind: 'dunkel' | 'hell' | 'farbe' | 'unscharf', color }
+    const bs = this.bgStyle;
+    if (bs?.kind === 'hell' || bs?.kind === 'farbe') {
+      g.fillStyle = bs.kind === 'hell' ? '#f2f3f5' : bs.color || '#1e2430';
+      g.fillRect(0, 0, c.width, c.height);
+      this.bg = c;
+      return;
+    }
     // dezenter Verlauf, falls das Bild selbst transparent ist
     const grad = g.createLinearGradient(0, 0, 0, c.height);
     grad.addColorStop(0, '#26303f');
     grad.addColorStop(1, '#12161d');
     g.fillStyle = grad;
     g.fillRect(0, 0, c.width, c.height);
-    if (!this.hasAlpha) {
+    if (!this.hasAlpha || bs?.kind === 'unscharf') {
       const s = Math.max(c.width / this.w, c.height / this.h) * 1.1;
       g.filter = 'blur(24px) brightness(0.55) saturate(1.1)';
       g.drawImage(this.base, (c.width - this.w * s) / 2, (c.height - this.h * s) / 2, this.w * s, this.h * s);
@@ -1266,8 +1274,9 @@ export class Avatar {
     this.lean = (this.lean ?? 0) + (lean - (this.lean ?? 0)) * 0.05;
 
     // freischwebend etwas Rand lassen, damit beim Wiegen nichts abgeschnitten wird
-    const fit = Math.min(W / this.w, H / this.h) * (this.transparent ? 0.94 : 1);
-    const L = this.fitMode ? this.fitLayout(this.fitMode, W, H) : this.layout;
+    const fit = Math.min(W / this.w, H / this.h) * (this.transparent && !this.pipFit ? 0.94 : 1);
+    // Bild-im-Bild: Fenster hat die Form der Figur – Figur füllt es ganz aus
+    const L = this.pipFit ? this.fitLayout({ mode: 'ganz', align: 'mitte' }, W, H) : this.fitMode ? this.fitLayout(this.fitMode, W, H) : this.layout;
     this.fitPx = this.h * fit; // Figurhöhe in Gerätepixeln bei Maßstab 1
     const dw = this.w * fit * L.scale;
     const dh = this.h * fit * L.scale;
@@ -1298,7 +1307,7 @@ export class Avatar {
    * align: 'unten' | 'mitte' | 'oben'
    */
   fitLayout({ mode = 'ganz', align = 'mitte' } = {}, W = this.canvas.width, H = this.canvas.height) {
-    const base = Math.min(W / this.w, H / this.h) * (this.transparent ? 0.94 : 1);
+    const base = Math.min(W / this.w, H / this.h) * (this.transparent && !this.pipFit ? 0.94 : 1);
     const f = mode === 'fuellen' ? Math.max(W / this.w, H / this.h) : Math.min(W / this.w, H / this.h);
     const dh = this.h * f;
     const by = align === 'unten' ? H : align === 'oben' ? dh : (H + dh) / 2;

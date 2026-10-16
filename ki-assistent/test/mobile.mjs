@@ -486,6 +486,32 @@ check(firstReq?.tools?.some((t) => t.name === 'kalender_termine_lesen') && /Goog
 check(calReq?.auth === 'Bearer AT1' && /timeMin=2026-10-1[67]T/.test(decodeURIComponent(calReq.url)), 'Kalender mit Token und Zeitraum abgefragt', calReq?.url?.slice(0, 120));
 check(JSON.stringify(secondReq?.messages?.at(-1) ?? '').includes('Zahnarzt'), 'Ergebnis geht als tool_result zurück an Claude');
 check(/Zahnarzt/.test(await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].pop()?.textContent ?? '')), 'Antwort mit Termin im Chat');
+// ---- Bild-im-Bild: Fenster in Figurform, Figur füllt es, eigener Hintergrund
+await page.click('#closeSettings').catch(() => {});
+const pip = await page.evaluate(async () => {
+  const calls = [];
+  window.KIPip = { ...(window.KIPip ?? {}), setAspect: (w, h) => calls.push(w / h), supported: () => true, setEnabled() {}, enter() {} };
+  const av = window.__app.persona().avatar;
+  av.poses = [];
+  av.vrm = null;
+  await window.__app.avatar.setConfig(av);
+  window.__app.updatePipShape();
+  const a = window.__app.avatar;
+  const figAspect = a.w / a.h;
+  window.__app.state.settings.pipBg = 'farbe';
+  window.__app.state.settings.pipBgColor = '#ff0000';
+  window.__setPip(true);
+  await new Promise((r) => setTimeout(r, 400));
+  const r = a.rect;
+  const cw = a.canvas.clientWidth;
+  const ch = a.canvas.clientHeight;
+  const px = a.ctx.getImageData(2, 2, 1, 1).data;
+  window.__setPip(false);
+  return { aspect: calls.at(-1), figAspect, fillsW: r.w / cw, fillsH: r.h / ch, corner: [...px].slice(0, 3) };
+});
+check(Math.abs(pip.aspect - pip.figAspect) < 0.01, 'Bild-im-Bild-Fenster bekommt die Form der Figur', JSON.stringify(pip));
+check(Math.max(pip.fillsW, pip.fillsH) > 0.98, 'Figur füllt das Bild-im-Bild-Fenster aus');
+check(pip.corner[0] > 200 && pip.corner[1] < 40, 'Eigene Hintergrundfarbe im Bild-im-Bild');
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();
