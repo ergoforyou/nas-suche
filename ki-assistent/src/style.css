@@ -297,11 +297,17 @@ body.floating .stage { display: none; }
 
 /* Video-Werkzeug: Abschnitt wählen, Standbild übernehmen */
 #vtool { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
-#vtool .vt-box { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; width: min(560px, 96vw);
+#vtool .vt-box { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; width: min(760px, 96vw);
                  max-height: 96vh; overflow: auto; display: grid; gap: 8px; }
 #vtool h3 { margin: 0; font-size: 16px; }
-#vtool .vt-video { border-radius: 8px; overflow: hidden; display: flex; justify-content: center; max-height: 50vh; }
-#vtool video { max-width: 100%; max-height: 50vh; display: block; }
+#vtool .vt-views { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#vtool figure { margin: 0; min-width: 0; }
+#vtool figcaption { font-size: 12px; color: var(--muted); text-align: center; margin-top: 2px; }
+#vtool .vt-video { border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 38vh; }
+#vtool video, #vtool .vt-prev { max-width: 100%; max-height: 38vh; display: block; }
+#vtool .vt-cut label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+#vtool .vt-cut .vt-tolwrap { flex: 1; min-width: 180px; }
+#vtool .vt-cut .vt-tol { flex: 1; }
 #vtool .vt-pos { width: 100%; }
 #vtool .vt-time { font-size: 13px; color: var(--muted); }
 #vtool .row { display: flex; gap: 6px; }

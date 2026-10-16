@@ -458,7 +458,7 @@ document.addEventListener('pointercancel', endRange, true);
 
 /** –/+ neben einen Regler setzen (einmal je Regler). */
 function addRangeButtons(r) {
-  if (r.dataset.steps || r.closest('.range-step, #vtool, .b2v')) return;
+  if (r.dataset.steps || r.closest('.range-step, .b2v') || r.classList.contains('vt-pos')) return;
   r.dataset.steps = '1';
   const wrap = document.createElement('span');
   wrap.className = 'range-step';

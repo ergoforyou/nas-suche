@@ -354,10 +354,20 @@ await page.click('#poseAdd');
 await page.waitForSelector('#pickSheet');
 await page.setInputFiles('#pickSheet input[type=file]', path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-lang.webm'));
 const toolOpen = await page.waitForSelector('#vtool video', { timeout: 20000 }).then(() => true, () => false);
-check(toolOpen, 'Langes Video: Schnitt-Werkzeug öffnet sich automatisch');
+check(toolOpen, 'Langes Video: Schnitt-Werkzeug öffnet sich automatisch', await page.evaluate(() => document.querySelector('#status')?.textContent + ' | ' + JSON.stringify(window.__app.persona().avatar.poses.at(-1))));
 if (toolOpen) {
   await page.waitForFunction(() => document.querySelector('#vtool video').readyState >= 1);
   await page.evaluate(() => new Promise((r) => { const v = document.querySelector('#vtool video'); v.onseeked = r; v.currentTime = 1; }));
+  // Live-Vorschau der Freistellung: „Einfarbige Wand“ wählen -> Ecke durchsichtig, Figur sichtbar
+  await page.selectOption('#vtool .vt-mode', 'flood');
+  await page.waitForTimeout(800);
+  const pv = await page.evaluate(() => {
+    const c = document.querySelector('#vtool .vt-prev');
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const a = (fx, fy) => d[(Math.round(fy * (c.height - 1)) * c.width + Math.round(fx * (c.width - 1))) * 4 + 3];
+    return { w: c.width, corner: a(0.03, 0.03), body: a(0.5, 0.55), tolVisible: !document.querySelector('#vtool .vt-tolwrap').hidden };
+  });
+  check(pv.w > 0 && pv.corner < 30 && pv.body > 200 && pv.tolVisible, 'Live-Vorschau der Freistellung im Schnitt-Werkzeug', JSON.stringify(pv));
   await page.click('#vtool [data-act=two]');
   await page.click('#vtool [data-act=apply]');
   const cut = await page.evaluate(() => window.__app.persona().avatar.poses.at(-1).clip);

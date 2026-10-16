@@ -2250,9 +2250,14 @@ $('avFile').onchange = async (e) => {
     avatarChanged();
     previewEdited();
     // Langes Video: erst den gewünschten Teil wählen (KI-Freistellung danach nur für diesen Teil)
+    // Video einrichten: Teil wählen und Freistellung in der Vorschau prüfen, bevor gerechnet wird
     const dur = await videoDuration(av.video);
-    if (dur > 4) {
-      status(`Das Video ist ${fmtSec(dur)} lang – wähle den Teil, den die Figur zeigen soll.`);
+    if (av.cutMode !== 'alpha') {
+      status(
+        dur > 4
+          ? `Das Video ist ${fmtSec(dur)} lang – wähle den Teil, den die Figur zeigen soll, und prüfe die Freistellung in der Vorschau.`
+          : 'Prüfe die Freistellung in der Vorschau, dann „Abschnitt für diese Pose“.',
+      );
       openVideoTool(av, { onApply: () => av.cutMode === 'ai' && computeMaskFor(av) });
       return;
     }
@@ -2404,10 +2409,36 @@ async function videoDuration(url) {
 
 /** Hat das Video schon einen transparenten Hintergrund (z. B. WebM VP9 mit Alpha)? */
 async function videoHasAlpha(url) {
+  // Ein Bild kurz nach dem Anfang prüfen (das allererste ist beim Laden manchmal noch leer = scheinbar durchsichtig).
+  // Nur teilweise durchsichtig zählt: ganz leer heißt „noch nicht gezeichnet“, nicht „freigestellt“.
+  const v = document.createElement('video');
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = 'auto';
+  v.src = url;
   try {
-    return hasTransparency(await videoFirstFrame(url));
+    await new Promise((resolve, reject) => {
+      v.onloadeddata = resolve;
+      v.onerror = reject;
+    });
+    await new Promise((r) => {
+      v.onseeked = r;
+      v.currentTime = Math.min(0.2, (Number.isFinite(v.duration) ? v.duration : 1) / 2);
+    });
+    const c = document.createElement('canvas');
+    c.width = 96;
+    c.height = Math.max(2, Math.round((96 * v.videoHeight) / v.videoWidth));
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(v, 0, 0, c.width, c.height);
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    let clear = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < 250) clear++;
+    const share = clear / (d.length / 4);
+    return share > 0.02 && share < 0.98;
   } catch {
     return false;
+  } finally {
+    v.removeAttribute('src');
   }
 }
 
@@ -2722,7 +2753,20 @@ function openVideoTool(pose, { onApply } = {}) {
   box.innerHTML = `
     <div class="vt-box">
       <h3>Video: Abschnitt und Standbild</h3>
-      <div class="vt-video checker"><video playsinline muted preload="auto"></video></div>
+      <div class="vt-views">
+        <figure><div class="vt-video checker"><video playsinline muted preload="auto"></video></div><figcaption>Original</figcaption></figure>
+        <figure><div class="vt-video checker"><canvas class="vt-prev"></canvas></div><figcaption class="vt-prev-cap">Vorschau freigestellt</figcaption></figure>
+      </div>
+      <div class="row wrap vt-cut">
+        <label>Freistellen <select class="vt-mode">
+          <option value="ai">KI (beste Qualität)</option>
+          <option value="flood">Einfarbige Wand (z. B. weiß)</option>
+          <option value="color">Greenscreen</option>
+          <option value="alpha">schon freigestellt (Transparenz)</option>
+          <option value="none">nicht freistellen</option>
+        </select></label>
+        <label class="vt-tolwrap">Toleranz <input type="range" class="vt-tol" min="5" max="80" step="1" /></label>
+      </div>
       <input type="range" class="vt-pos" min="0" max="1" step="0.01" value="0" />
       <div class="vt-time"></div>
       <div class="row wrap">
@@ -2754,6 +2798,91 @@ function openVideoTool(pose, { onApply } = {}) {
   const sel = { ...(pose.clip ?? { start: 0, end: 0 }) };
   let dur = 0;
   v.src = pose.video;
+
+  // ---- Live-Vorschau der Freistellung für das aktuelle Bild (vor dem Übernehmen / Speichern)
+  const cut = { mode: pose.cutMode && pose.cutMode !== 'none' ? pose.cutMode : pose.cutMode ?? 'ai', tol: pose.keyTol ?? 30 };
+  const modeSel = q('.vt-mode');
+  const tolIn = q('.vt-tol');
+  const prev = q('.vt-prev');
+  const prevCap = q('.vt-prev-cap');
+  modeSel.value = cut.mode;
+  tolIn.value = String(cut.tol);
+  let prevLayer = null;
+  let prevJob = 0;
+  let prevTimer = null;
+  const showTol = () => (q('.vt-tolwrap').hidden = !['flood', 'color'].includes(cut.mode));
+  showTol();
+  async function renderPreview() {
+    const job = ++prevJob;
+    if (!v.videoWidth) return;
+    const t = v.currentTime;
+    if (cut.mode === 'ai') {
+      // KI: nur dieses eine Bild freistellen (dauert einen Moment)
+      prevCap.textContent = 'Vorschau freigestellt – KI rechnet …';
+      const s = Math.min(1, 480 / Math.max(v.videoWidth, v.videoHeight));
+      const w = Math.max(2, Math.round(v.videoWidth * s));
+      const h = Math.max(2, Math.round(v.videoHeight * s));
+      const tmp = document.createElement('canvas');
+      tmp.width = w;
+      tmp.height = h;
+      const tg = tmp.getContext('2d', { willReadFrequently: true });
+      tg.drawImage(v, 0, 0, w, h);
+      const img = tg.getImageData(0, 0, w, h);
+      try {
+        const rgba = await stt.removeBackground(img);
+        if (job !== prevJob) return;
+        for (let i = 3; i < img.data.length; i += 4) img.data[i] = rgba[i];
+        prev.width = w;
+        prev.height = h;
+        prev.getContext('2d').putImageData(img, 0, 0);
+        prevCap.textContent = 'Vorschau freigestellt (KI)';
+      } catch (e) {
+        if (job === prevJob) prevCap.textContent = `KI-Vorschau nicht möglich: ${e.message}`;
+      }
+      return;
+    }
+    // Farbverfahren: dieselbe Freistellung wie beim Abspielen der Pose
+    prevLayer ??= await avatar.createVideoLayer({ video: pose.video, cutMode: 'none', keyTol: cut.tol, loop: false });
+    if (job !== prevJob) return;
+    const L = prevLayer;
+    L.cutMode = cut.mode;
+    L.config.keyTol = cut.tol;
+    L.keyColor = null;
+    await new Promise((r) => {
+      if (Math.abs(L.video.currentTime - t) < 0.005) return r();
+      L.video.onseeked = r;
+      L.video.currentTime = t;
+    });
+    if (job !== prevJob) return;
+    L.lastVideoTime = -1;
+    L.buildVideoFrame();
+    prev.width = L.w;
+    prev.height = L.h;
+    prev.getContext('2d').drawImage(L.frame, 0, 0);
+    prevCap.textContent = cut.mode === 'none' ? 'Vorschau (nicht freigestellt)' : 'Vorschau freigestellt';
+  }
+  // kurz warten, bis sich Regler/Zeitleiste beruhigt haben (KI ist langsamer)
+  const schedulePreview = () => {
+    clearTimeout(prevTimer);
+    prevTimer = setTimeout(renderPreview, cut.mode === 'ai' ? 450 : 60);
+  };
+  modeSel.onchange = () => {
+    cut.mode = modeSel.value;
+    showTol();
+    schedulePreview();
+  };
+  tolIn.oninput = () => {
+    cut.tol = +tolIn.value;
+    schedulePreview();
+  };
+  // gewählte Freistellung in die Pose übernehmen (beim Übernehmen oder Speichern)
+  const commitCut = () => {
+    const changed = pose.cutMode !== cut.mode || (pose.keyTol ?? 30) !== cut.tol;
+    pose.cutMode = cut.mode;
+    pose.keyTol = cut.tol;
+    delete pose.key;
+    return changed;
+  };
   const showTime = () => {
     const clip = sel.end > sel.start + 0.2 ? `Abschnitt ${fmtSec(sel.start)} – ${fmtSec(sel.end)}` : 'ganzes Video';
     q('.vt-time').textContent = `${fmtSec(v.currentTime)} / ${fmtSec(dur)} · ${clip}`;
@@ -2776,7 +2905,12 @@ function openVideoTool(pose, { onApply } = {}) {
     if (!v.paused && sel.end > sel.start + 0.2 && v.currentTime >= sel.end) v.currentTime = sel.start; // Abschnitt in Schleife
     showTime();
   };
-  v.onseeked = showTime;
+  v.onseeked = () => {
+    showTime();
+    schedulePreview();
+  };
+  v.onloadeddata = schedulePreview;
+  v.onpause = schedulePreview;
   pos.oninput = () => {
     v.pause();
     v.currentTime = +pos.value;
@@ -2785,6 +2919,9 @@ function openVideoTool(pose, { onApply } = {}) {
   const close = () => {
     v.pause();
     v.removeAttribute('src');
+    clearTimeout(prevTimer);
+    prevJob++;
+    prevLayer?.video.removeAttribute('src');
     box.remove();
   };
   let applied = false;
@@ -2826,6 +2963,7 @@ function openVideoTool(pose, { onApply } = {}) {
       showTime();
     },
     apply: () => {
+      commitCut();
       const clip = clipOrNull();
       if (clip) pose.clip = clip;
       else delete pose.clip;
@@ -2858,7 +2996,8 @@ function openVideoTool(pose, { onApply } = {}) {
     bake: async () => {
       const clip = clipOrNull() ?? { start: 0, end: dur };
       if (clip.end - clip.start > 15) return (info.textContent = 'Bitte höchstens 15 Sekunden wählen (z. B. mit „2 s ab hier“).');
-      if (!pose.cutMode || pose.cutMode === 'none') pose.cutMode = 'ai';
+      commitCut();
+      if (pose.cutMode === 'none') pose.cutMode = 'ai';
       v.pause();
       box.querySelectorAll('button').forEach((b) => (b.disabled = true));
       try {
