@@ -21,7 +21,7 @@
       <button id="btnSettings" title="Einstellungen">⚙</button>
       <button id="btnPin" title="Immer im Vordergrund">📌</button>
       <button id="btnMin" title="Minimieren">–</button>
-      <button id="btnClose" title="Fenster schließen (bei freier Figur läuft der Assistent weiter)">✕</button>
+      <button id="btnClose" title="KI-Assistent beenden">✕</button>
       <button id="btnQuit" title="KI-Assistent komplett beenden">⏻</button>
     </div>
   </header>
@@ -125,6 +125,12 @@
 
     <div class="tab" data-tab="avatar" hidden>
       <label class="check desktop-only"><input id="avFloating" type="checkbox" /> Figur frei auf dem Desktop anzeigen</label>
+      <label class="desktop-only">Beim Schließen des Chatfensters (✕)
+        <select id="avCloseMode">
+          <option value="beenden">KI-Assistent ganz beenden – auch die freie Figur</option>
+          <option value="weiter">nur den Chat ausblenden – die freie Figur bleibt und hört weiter zu</option>
+        </select>
+      </label>
       <div class="pip-only">
         <label class="check"><input id="avPip" type="checkbox" /> Beim Verlassen der App als Bild-im-Bild weiterlaufen – die Figur
           schwebt über anderen Apps, frei verschiebbar und in der Größe änderbar (wie Videos bei YouTube)</label>

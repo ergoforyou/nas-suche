@@ -449,6 +449,9 @@ ipcMain.on('net:offline', (_e, on) => (offline = !!on));
 let win; // Chat-Fenster
 let avatarWin = null; // freischwebende Figur
 let quitting = false;
+// Chatfenster schließen: 'beenden' = alles aus (auch die freie Figur) | 'weiter' = Figur bleibt, Chat versteckt
+let closeMode = 'beenden';
+ipcMain.on('app:closeMode', (_e, mode) => (closeMode = mode === 'weiter' ? 'weiter' : 'beenden'));
 
 function createWindow() {
   const data = loadData();
@@ -475,10 +478,12 @@ function createWindow() {
 
   win.on('close', (e) => {
     patchData({ window: win.getBounds() });
-    // Bei freischwebender Figur wird das Chatfenster nur versteckt.
-    if (avatarWin && !avatarWin.isDestroyed() && !quitting) {
+    if (quitting) return;
+    // Bei freischwebender Figur: je nach Einstellung nur das Chatfenster verstecken oder alles beenden
+    if (avatarWin && !avatarWin.isDestroyed()) {
       e.preventDefault();
-      win.hide();
+      if (closeMode === 'weiter') win.hide();
+      else quitCompletely();
     }
   });
 

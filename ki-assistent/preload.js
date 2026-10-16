@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('desktop', {
   show: () => ipcRenderer.send('win:show'),
   setFullScreen: (on) => ipcRenderer.send('win:fullscreen', on),
   quit: () => ipcRenderer.send('app:quit'),
+  setCloseMode: (mode) => ipcRenderer.send('app:closeMode', mode),
   setAlwaysOnTop: (on) => ipcRenderer.send('win:alwaysOnTop', on),
   onCommand: (fn) => (commandHandler = fn),
   onAvatarCursor: (fn) => (cursorHandler = fn),

@@ -133,6 +133,7 @@ const DEFAULT_SETTINGS = {
   bubble: 'stumm', // Sprechblase: 'aus' | 'stumm' (nur ohne Ton) | 'immer'
   statusGlow: true, // farbiger Rand: hört zu (grün) / denkt (blau)
   greet: true, // beim Start begrüßen (Anlass „begrüßen“)
+  closeMode: 'beenden', // ✕ am Chatfenster: 'beenden' (alles) | 'weiter' (freie Figur bleibt)
   kbUse: true, // Firmenwissen im Gespräch nutzen (nur Bereich Dienstlich, sobald Dokumente da sind)
   dictClean: true, // Diktat: Satzzeichen/Füllwörter vom Sprachmodell glätten lassen
   dictPause: 1800, // Diktat endet nach so viel Stille (ms)
@@ -1361,6 +1362,12 @@ $('avPipColor').oninput = (e) => {
 $('btnPip').onclick = () => desktop.pipEnter?.();
 $('btnMin').onclick = () => desktop.minimize();
 $('btnClose').onclick = () => desktop.close();
+$('avCloseMode').onchange = (e) => {
+  state.settings.closeMode = e.target.value;
+  desktop.setCloseMode?.(e.target.value);
+  $('btnClose').title = e.target.value === 'weiter' ? 'Chat schließen (die freie Figur bleibt)' : 'KI-Assistent beenden';
+  save();
+};
 $('btnQuit').onclick = () => desktop.quit();
 $('btnPin').onclick = () => {
   state.settings.alwaysOnTop = !state.settings.alwaysOnTop;
@@ -1489,6 +1496,9 @@ function fillSettings() {
   $('phFloat').checked = !!s.floatOverlay;
   $('avTod').checked = s.todMood !== false;
   $('kbUse').checked = s.kbUse !== false;
+  $('avCloseMode').value = s.closeMode ?? 'beenden';
+  desktop.setCloseMode?.(s.closeMode ?? 'beenden');
+  $('btnClose').title = (s.closeMode ?? 'beenden') === 'weiter' ? 'Chat schließen (die freie Figur bleibt)' : 'KI-Assistent beenden';
   $('offDictClean').checked = s.dictClean !== false;
   $('offDictPause').value = String(s.dictPause ?? 1800);
   $('offReminders').checked = !!s.reminders;
@@ -4771,6 +4781,7 @@ init().then(() => {
   startPhoneFeatures();
   startOffice();
   loadKb();
+  desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);
   ensureFaceRig();
