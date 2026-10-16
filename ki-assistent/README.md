@@ -185,6 +185,15 @@ APK aufs Handy laden, öffnen, Installation aus dieser Quelle einmal erlauben.
 - Spracherkennung wahlweise in der Cloud (OpenAI, schnell) oder auf dem Gerät (Whisper, langsamer).
 - Avatar, 3D-Figur (VRM), Bewegungsbilder, lebendiges Gesicht, Live-Gespräch und Neuer Chat wie am PC.
 - Personas vom PC: dort „Persona exportieren“, auf dem Handy „Persona importieren“.
+- **Handy-Reiter** (⚙ → Handy): Widget, Kachel „KI sprechen“ in den Schnelleinstellungen, App als Standard-Assistent,
+  Verknüpfungen (lange aufs App-Symbol) – öffnet die App und hört sofort zu.
+- **Teilen → KI-Assistent** aus jeder App: Text/Link ins Eingabefeld, Fotos/PDFs als Anhang (Dateien nur mit Claude).
+- **📷 Foto** direkt im Chat aufnehmen und dazu fragen (große Fotos werden verkleinert).
+- **Ort** für Wetter, Verkehr & Co.: von Hand eintragen oder ungefähr vom Handy ermitteln (nur Ortsname).
+- **Erinnerungen** (nur wenn eingeschaltet): Google-Termine/-Aufgaben der nächsten 2 Tage als Benachrichtigung, auch bei
+  geschlossener App; bei offener App sagt die Figur sie an.
+- **Gespräch im Hintergrund** (nur wenn eingeschaltet): läuft bei ausgeschaltetem Bildschirm weiter, Headset-Taste = sprechen.
+- **Akku-Sparmodus**: Figur mit weniger Bildern pro Sekunde bei Energiesparmodus bzw. wenig Akku.
 - Nicht auf dem Handy: freie Figur über anderen Apps (geplant), Ausgabefenster, PDF-Export, Chatterbox.
 
 ## Entwickeln

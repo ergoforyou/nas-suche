@@ -288,6 +288,9 @@ body.floating .stage { display: none; }
 
 /* ---------- Android: Bild-im-Bild ---------- */
 .pip-only { display: none; }
+.mobile-only { display: none !important; }
+.mobile .mobile-only { display: revert !important; }
+.mobile button.mobile-only { display: inline-block !important; }
 .pip-ok .pip-only { display: revert; }
 .pip-ok button.pip-only { display: inline-block; }
 .pip .titlebar, .pip .chat, .pip .composer, .pip .status, .pip .attachments, .pip .drawer, .pip #pickSheet,

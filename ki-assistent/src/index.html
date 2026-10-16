@@ -39,6 +39,8 @@
   <footer class="composer">
     <button id="btnAttach" class="round" title="Datei anhängen – PDF, Bild, Text, Excel/Word/PowerPoint (oder Datei ins Fenster ziehen)" hidden>📎</button>
     <input id="fileAttach" type="file" multiple hidden />
+    <button id="btnCamera" class="round" title="Foto aufnehmen und dazu fragen" hidden>📷</button>
+    <input id="fileCamera" type="file" accept="image/*" capture="environment" hidden />
     <button id="btnLive" class="round" title="Live-Gespräch starten – einfach losreden, dazwischenreden erlaubt">📞</button>
     <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste)">🎤</button>
     <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
@@ -55,6 +57,7 @@
         <button data-tab="memory">Gedächtnis</button>
         <button data-tab="voice">Sprache</button>
         <button data-tab="conn">Verbindung</button>
+        <button data-tab="phone" class="mobile-only">Handy</button>
       </nav>
       <button id="btnCloseDrawer" class="icon" title="Schließen">✕</button>
     </div>
@@ -516,6 +519,13 @@
         <div id="cOpenaiInfo" class="hint"></div>
       </div>
 
+      <h3>Ort</h3>
+      <label>Mein Ort für Wetter, Verkehr &amp; Co. <input id="cPlace" type="text" placeholder="z. B. Hannover-List" autocomplete="off" /></label>
+      <label class="check mobile-only"><input id="cPlaceAuto" type="checkbox" /> Ungefähren Ort automatisch vom Handy ermitteln
+        <span class="hint">(nur Ortsname wie „List, Hannover“ – keine genauen Koordinaten; geht mit jeder Frage an den KI-Anbieter)</span></label>
+      <button id="cPlaceNow" class="mobile-only">📍 Ort jetzt ermitteln</button>
+      <div id="cPlaceInfo" class="hint"></div>
+
       <label>Gedächtnis (Nachrichten im Kontext) <input id="cHistory" type="number" min="2" max="100" /></label>
 
       <p class="hint" id="appVersion"></p>
@@ -526,6 +536,52 @@
         Gesprächstexte an den jeweiligen Anbieter gesendet.</p>
       <div id="cModels" class="hint"></div>
       <button id="cOpenModels">Modellordner öffnen</button>
+    </div>
+    <div class="tab" data-tab="phone" hidden>
+      <h3>Schnellstart</h3>
+      <p class="hint">So startest du ein Gespräch, ohne erst die App zu suchen – sie öffnet sich und hört sofort zu:</p>
+      <div class="row wrap">
+        <button id="phWidget">➕ Widget auf den Startbildschirm</button>
+        <button id="phTile">➕ Kachel „KI sprechen“</button>
+        <button id="phAssist">Als Standard-Assistent festlegen …</button>
+      </div>
+      <p class="hint">Standard-Assistent: In den Android-Einstellungen unter „Standard-Apps → Digitaler Assistent“ den
+        KI-Assistenten wählen; dann startet langes Drücken der Home- bzw. Ein/Aus-Taste (je nach Handy) das Gespräch.
+        Außerdem: lange auf das App-Symbol drücken → „Sprechen“ oder „Live-Gespräch“.</p>
+      <h3>Teilen</h3>
+      <p class="hint">In jeder App über „Teilen“ → <b>KI-Assistent</b> Texte, Links, Fotos oder PDFs schicken – sie landen
+        im Eingabefeld bzw. als Anhang, du ergänzt nur noch deine Frage. Dateien liest nur Claude.</p>
+      <h3>Erinnerungen</h3>
+      <label class="check"><input id="phReminders" type="checkbox" /> Termine und Aufgaben aus Google als Benachrichtigung –
+        auch wenn die App zu ist; bei offener App sagt die Figur sie an</label>
+      <label>Vorlauf bei Terminen
+        <select id="phLead">
+          <option value="5">5 Minuten</option>
+          <option value="10">10 Minuten</option>
+          <option value="15">15 Minuten</option>
+          <option value="30">30 Minuten</option>
+          <option value="60">1 Stunde</option>
+        </select>
+      </label>
+      <p class="hint">Braucht die Google-Verbindung (Verbindung → Google). Geplant werden die nächsten 2 Tage; neue Termine
+        kommen dazu, sobald die App wieder läuft. Ganztägige Termine um 8 Uhr, fällige Aufgaben um 9 Uhr.</p>
+      <div id="phRemInfo" class="hint"></div>
+      <h3>Gespräch im Hintergrund</h3>
+      <label class="check"><input id="phBgTalk" type="checkbox" /> Weiterreden bei ausgeschaltetem Bildschirm oder in anderen
+        Apps – z. B. mit Bluetooth-Headset oder im Auto</label>
+      <p class="hint">Solange eingeschaltet, zeigt Android eine Benachrichtigung („Beenden“ schaltet es ab). Headset-Taste:
+        einmal drücken = sprechen bzw. die Figur unterbrechen. Zusammen mit dem Live-Gespräch (📞) ganz ohne Hände.
+        Braucht etwas mehr Akku.</p>
+      <h3>Akku</h3>
+      <label>Akku-Sparmodus für die Figur
+        <select id="phPower">
+          <option value="auto">automatisch – bei Energiesparmodus oder unter 20 % Akku</option>
+          <option value="an">immer sparsam</option>
+          <option value="aus">aus – immer flüssig</option>
+        </select>
+      </label>
+      <p class="hint">Sparsam: Figur mit 15 statt bis zu 60 Bildern pro Sekunde; unter 10 % Akku fast still.</p>
+      <div id="phPowerInfo" class="hint"></div>
     </div>
   </div>
 

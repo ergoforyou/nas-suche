@@ -69,9 +69,14 @@ export class Avatar {
     this.active = true;
     new this.host.ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
+    this.maxFps = 0; // 0 = so flüssig wie möglich; Akku-Sparmodus setzt z. B. 15
+    let lastDraw = -1e9;
     const loop = (t) => {
       if (!this.active) return;
-      this.draw(t / 1000);
+      if (!this.maxFps || t - lastDraw >= 1000 / this.maxFps - 4) {
+        lastDraw = t;
+        this.draw(t / 1000);
+      }
       this.host.requestAnimationFrame(loop);
     };
     this.host.requestAnimationFrame(loop);

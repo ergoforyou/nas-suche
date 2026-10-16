@@ -576,6 +576,58 @@ const imp = await page.evaluate(() => {
 });
 check(imp.personas === exp.personas + 1 && imp.name.startsWith(exp.name) && imp.image === exp.image, 'Persona importiert (Name, Bild)', JSON.stringify({ name: imp.name }));
 check(imp.pose?.video && /^blob:|^http/.test(imp.pose.video) && imp.pose.clip?.start === 0.5 && imp.pose.trigger === 'listen', 'Video-Pose samt Abschnitt und Anlass übernommen', JSON.stringify(imp.pose));
+// ---- Handy: Ort für Wetter/Verkehr, Teilen aus anderen Apps, Erinnerungen, Akku-Sparmodus
+await page.route('https://www.googleapis.com/calendar/**', (route) => {
+  const t = new Date(Date.now() + 2 * 3600e3).toISOString();
+  route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ items: [{ id: 'e2', summary: 'Teammeeting', location: 'Büro', start: { dateTime: t }, end: { dateTime: t } }] }) });
+});
+await page.route('https://tasks.googleapis.com/**', (route) => {
+  const due = new Date(Date.now() + 24 * 3600e3).toISOString().slice(0, 10);
+  route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ items: [{ id: 'a1', title: 'Angebot schicken', due: `${due}T00:00:00.000Z`, status: 'needsAction' }] }) });
+});
+const phone = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = { tab: !!document.querySelector('#tabs [data-tab=phone]') && getComputedStyle(document.querySelector('#tabs [data-tab=phone]')).display !== 'none' };
+  app.state.settings.place = 'Hannover-List';
+  app.state.place = await app.currentPlace();
+  out.prompt = app.buildMessages()[0]?.content ?? '';
+  app.state.place = '';
+  app.state.settings.place = '';
+  // Android-Schnittstelle nachbilden
+  const events = [];
+  const planned = [];
+  window.KIDevice = {
+    takeIntents: () => JSON.stringify(events.splice(0)),
+    setReminders: (j) => planned.push(JSON.parse(j)),
+    power: () => JSON.stringify({ level: 8, charging: false, saver: false }),
+    notifyAllowed: () => true,
+    askNotify() {},
+    setBackground() {},
+  };
+  events.push({ action: 'share', subject: 'Artikel', text: 'https://example.org/bericht', files: [{ name: 'notiz.txt', mime: 'text/plain', data: btoa('Hallo Welt') }] });
+  await window.__kiIntent();
+  out.input = document.querySelector('#input').value;
+  out.chips = [...document.querySelectorAll('#attachments .chip')].map((c) => c.textContent).join(' ');
+  app.state.settings.reminders = true;
+  await app.syncReminders();
+  out.reminders = planned.at(-1);
+  app.state.settings.reminders = false;
+  app.checkPower();
+  out.fps = app.avatar.maxFps;
+  app.avatar.maxFps = 0;
+  delete window.KIDevice;
+  return out;
+});
+check(phone.tab, 'Reiter „Handy“ in den Einstellungen');
+check(/Hannover-List/.test(phone.prompt) && /Jetzt ist/.test(phone.prompt), 'Ort und Uhrzeit gehen mit der Frage mit');
+check(/Artikel/.test(phone.input) && /example\.org/.test(phone.input) && /notiz\.txt/.test(phone.chips), 'Geteilter Text und Datei kommen an', JSON.stringify({ input: phone.input, chips: phone.chips }));
+const rem = phone.reminders ?? [];
+check(
+  rem.some((r) => /Teammeeting/.test(r.text) && /Büro/.test(r.text) && Math.abs(r.at - (Date.now() + 2 * 3600e3 - 15 * 60e3)) < 60e3) && rem.some((r) => /Angebot/.test(r.text)),
+  'Erinnerungen für Termin (15 min vorher) und Aufgabe geplant',
+  JSON.stringify(rem),
+);
+check(phone.fps === 5, 'Akku-Sparmodus: bei 8 % Akku nur noch 5 Bilder/s', String(phone.fps));
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

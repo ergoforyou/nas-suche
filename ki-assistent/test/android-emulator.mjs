@@ -133,6 +133,42 @@ console.log('   Aufnahme:', JSON.stringify(rec));
 check(!!rec.mime && rec.stopped && rec.size > 200, 'Videoaufnahme (WebM) in der WebView möglich', JSON.stringify(rec));
 check(rec.corner === 0 && rec.center > 200, 'Aufgenommenes Video behält den transparenten Hintergrund', JSON.stringify(rec));
 
+// 4c) Handy-Funktionen: Teilen, Schnellstart, Erinnerungen, Hintergrund-Gespräch, Akku
+const FNS = ['takeIntents', 'power', 'placeName', 'setReminders', 'setBackground', 'pinWidget', 'addTile', 'assistantSettings'];
+check(await run(`return ${JSON.stringify(FNS)}.every((f) => typeof window.KIDevice?.[f] === 'function')`), 'Handy-Schnittstelle (KIDevice) vollständig');
+const pw = await run(`return JSON.parse(KIDevice.power())`);
+check(typeof pw.level === 'number' && pw.level >= 0, 'Akkustand lesbar', JSON.stringify(pw));
+await run(`window.__app.state.settings.speak = false; document.querySelector('#input').value = ''; return true`);
+adb('shell', 'am', 'start', '-a', 'android.intent.action.SEND', '-t', 'text/plain', '--es', 'android.intent.extra.TEXT', 'Geteilt-aus-Test', '-n', `${APP}/.MainActivity`);
+let shared = '';
+for (let i = 0; i < 20 && !shared.includes('Geteilt-aus-Test'); i++) {
+  await sleep(500);
+  shared = await run(`return document.querySelector('#input').value`);
+}
+check(shared.includes('Geteilt-aus-Test'), '„Teilen mit KI-Assistent“ kommt im Eingabefeld an', shared);
+adb('shell', 'am', 'start', '-n', `${APP}/.MainActivity`, '--es', 'ki_action', 'testaktion');
+let act = '';
+for (let i = 0; i < 20 && act !== 'testaktion'; i++) {
+  await sleep(500);
+  act = await run(`return window.__app.lastIntent ?? ''`);
+}
+check(act === 'testaktion', 'Schnellstart (Widget/Kachel/Verknüpfung) erreicht die Oberfläche', act);
+await run(`KIDevice.setReminders(JSON.stringify([{ key: 'test-' + Date.now(), at: Date.now() + 3000, title: 'Testerinnerung', text: 'Zahnarzt um 14 Uhr' }])); return true`);
+let notif = '';
+for (let i = 0; i < 20 && !notif.includes('Testerinnerung'); i++) {
+  await sleep(1000);
+  notif = adb('shell', 'dumpsys', 'notification', '--noredact');
+}
+check(notif.includes('Testerinnerung'), 'Erinnerung erscheint als Benachrichtigung');
+await run(`KIDevice.setReminders('[]'); KIDevice.setBackground(true); return true`);
+await sleep(2500);
+const svc = adb('shell', 'dumpsys', 'activity', 'services', APP);
+const bgOn = await run(`return KIDevice.backgroundRunning()`);
+check(svc.includes('KIConversationService') && bgOn, 'Gespräch im Hintergrund: Dienst läuft');
+await run(`KIDevice.setBackground(false); return true`);
+await sleep(1500);
+check(!(await run(`return KIDevice.backgroundRunning()`)), 'Hintergrund-Dienst lässt sich beenden');
+
 // 5) Keine Skriptfehler (auch nicht beim Start – die stehen im Systemprotokoll)
 const log = adb('logcat', '-d', '-s', 'Capacitor/Console:E', 'chromium:E');
 // nur unbehandelte Fehler zählen (Capacitor meldet z. B. beim Start harmlos „Error injecting safe area CSS“)

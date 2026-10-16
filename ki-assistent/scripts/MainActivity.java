@@ -1,6 +1,32 @@
 package de.ergoforyou.kiassistent;
 
+import android.Manifest;
 import android.app.PictureInPictureParams;
+import android.app.StatusBarManager;
+import android.appwidget.AppWidgetManager;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.graphics.drawable.Icon;
+import android.location.Address;
+import android.location.Geocoder;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
+import android.os.BatteryManager;
+import android.os.PowerManager;
+import android.provider.OpenableColumns;
+import android.provider.Settings;
+import android.view.KeyEvent;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import android.net.Uri;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -35,6 +61,12 @@ import javax.crypto.spec.GCMParameterSpec;
  */
 public class MainActivity extends BridgeActivity {
     private boolean pipEnabled = true;
+    /** die laufende Oberfläche (für Erinnerungen, die bei offener App angesagt werden) */
+    static WeakReference<MainActivity> current = new WeakReference<>(null);
+    boolean resumed;
+    // Ereignisse von außen (Teilen, Widget, Kachel, Assistent-Taste, Headset), bis die Oberfläche sie abholt
+    private final JSONArray pendingEvents = new JSONArray();
+    private MediaSession session;
     private int pipW = 3;
     private int pipH = 4;
 
@@ -67,6 +99,280 @@ public class MainActivity extends BridgeActivity {
             saveDone(true, uri.toString());
         } catch (Exception e) {
             saveDone(false, String.valueOf(e.getMessage()));
+        }
+    }
+
+
+    // ---- Ereignisse an die Oberfläche: sie holt sie mit KIDevice.takeIntents() ab
+    void pushEvent(JSONObject ev) {
+        synchronized (pendingEvents) {
+            pendingEvents.put(ev);
+        }
+        runJs("window.__kiIntent && window.__kiIntent()");
+    }
+
+    void pushAction(String action) {
+        try {
+            pushEvent(new JSONObject().put("action", action));
+        } catch (Exception ignored) {}
+    }
+
+    void runJs(String js) {
+        if (bridge == null) return;
+        bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(js, null));
+    }
+
+    private static final int SHARE_MAX = 30 * 1024 * 1024;
+
+    /** „Teilen mit KI-Assistent“: Text, Links und Dateien aus anderen Apps. */
+    private void readShared(Intent intent) {
+        try {
+            JSONObject ev = new JSONObject().put("action", "share");
+            CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+            if (text != null) ev.put("text", text.toString());
+            String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+            if (subject != null) ev.put("subject", subject);
+            List<Uri> uris = new ArrayList<>();
+            if (Intent.ACTION_SEND.equals(intent.getAction())) {
+                Uri u = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                if (u != null) uris.add(u);
+            } else {
+                ArrayList<Uri> list = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                if (list != null) uris.addAll(list);
+            }
+            if (uris.isEmpty() && intent.getClipData() != null && text == null) {
+                for (int i = 0; i < intent.getClipData().getItemCount(); i++) {
+                    Uri u = intent.getClipData().getItemAt(i).getUri();
+                    if (u != null) uris.add(u);
+                }
+            }
+            JSONArray files = new JSONArray();
+            for (Uri u : uris) {
+                if (files.length() >= 10) break;
+                JSONObject f = new JSONObject();
+                String name = "Datei";
+                long size = -1;
+                try (Cursor c = getContentResolver().query(u, null, null, null, null)) {
+                    if (c != null && c.moveToFirst()) {
+                        int n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                        int sz = c.getColumnIndex(OpenableColumns.SIZE);
+                        if (n >= 0 && c.getString(n) != null) name = c.getString(n);
+                        if (sz >= 0 && !c.isNull(sz)) size = c.getLong(sz);
+                    }
+                } catch (Exception ignored) {}
+                String mime = getContentResolver().getType(u);
+                if (mime == null) mime = intent.getType();
+                f.put("name", name).put("mime", mime == null ? "application/octet-stream" : mime);
+                if (size > SHARE_MAX) {
+                    f.put("tooBig", true);
+                } else {
+                    try (InputStream in = getContentResolver().openInputStream(u)) {
+                        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+                        byte[] chunk = new byte[65536];
+                        int r;
+                        while ((r = in.read(chunk)) > 0) {
+                            buf.write(chunk, 0, r);
+                            if (buf.size() > SHARE_MAX) break;
+                        }
+                        if (buf.size() > SHARE_MAX) f.put("tooBig", true);
+                        else f.put("data", Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP));
+                    }
+                }
+                files.put(f);
+            }
+            if (files.length() > 0) ev.put("files", files);
+            pushEvent(ev);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Teilen", e);
+            try {
+                pushEvent(new JSONObject().put("action", "share").put("error", String.valueOf(e.getMessage())));
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        if (Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            // Dateien im Hintergrund lesen (können groß sein)
+            final Intent copy = intent;
+            new Thread(() -> readShared(copy)).start();
+        } else if (Intent.ACTION_ASSIST.equals(action) || "android.intent.action.VOICE_COMMAND".equals(action)) {
+            pushAction("listen");
+        } else if (intent.hasExtra("ki_action")) {
+            pushAction(intent.getStringExtra("ki_action"));
+        } else {
+            return;
+        }
+        // nicht noch einmal auswerten (z. B. nach Drehen des Bildschirms)
+        setIntent(new Intent(this, MainActivity.class));
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleIntent(intent);
+    }
+
+    // ---- Gespräch im Hintergrund: Dienst mit Benachrichtigung hält Mikrofon und Ton aktiv, Headset-Taste = Sprechen
+    void setBackground(boolean on) {
+        Intent svc = new Intent(this, KIConversationService.class);
+        if (on) {
+            List<String> ask = new ArrayList<>();
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) ask.add(Manifest.permission.POST_NOTIFICATIONS);
+            if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) ask.add(Manifest.permission.BLUETOOTH_CONNECT);
+            if (!ask.isEmpty()) requestPermissions(ask.toArray(new String[0]), 4711);
+            try {
+                if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
+                else startService(svc);
+            } catch (Exception e) {
+                Log.w("KI-Assistent", "Hintergrund-Dienst", e);
+            }
+            if (session == null) {
+                session = new MediaSession(this, "KI-Assistent");
+                session.setCallback(new MediaSession.Callback() {
+                    @Override
+                    public boolean onMediaButtonEvent(Intent i) {
+                        KeyEvent k = i.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+                        if (k != null && k.getAction() == KeyEvent.ACTION_DOWN && k.getRepeatCount() == 0) {
+                            int c = k.getKeyCode();
+                            if (c == KeyEvent.KEYCODE_HEADSETHOOK || c == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || c == KeyEvent.KEYCODE_MEDIA_PLAY || c == KeyEvent.KEYCODE_MEDIA_PAUSE) {
+                                pushAction("talk");
+                                return true;
+                            }
+                        }
+                        return super.onMediaButtonEvent(i);
+                    }
+                });
+                session.setPlaybackState(new PlaybackState.Builder()
+                    .setActions(PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE)
+                    .setState(PlaybackState.STATE_PLAYING, 0, 1f)
+                    .build());
+            }
+            session.setActive(true);
+        } else {
+            stopService(svc);
+            if (session != null) {
+                session.setActive(false);
+                session.release();
+                session = null;
+            }
+        }
+    }
+
+    /** Schnittstelle für Teilen, Schnellstart, Standort-Namen, Erinnerungen, Hintergrund-Gespräch und Akku. */
+    public class Device {
+        @JavascriptInterface
+        public String takeIntents() {
+            synchronized (pendingEvents) {
+                String out = pendingEvents.toString();
+                while (pendingEvents.length() > 0) pendingEvents.remove(0);
+                return out;
+            }
+        }
+
+        /** Akku: {"level":0..100,"charging":bool,"saver":bool} */
+        @JavascriptInterface
+        public String power() {
+            try {
+                Intent b = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                int level = b == null ? -1 : b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                int scale = b == null ? 100 : b.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+                int plugged = b == null ? 0 : b.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                return new JSONObject()
+                    .put("level", level < 0 ? -1 : Math.round(level * 100f / Math.max(1, scale)))
+                    .put("charging", plugged != 0)
+                    .put("saver", pm != null && pm.isPowerSaveMode())
+                    .toString();
+            } catch (Exception e) {
+                return "{}";
+            }
+        }
+
+        /** Ortsname zu einer Position (über den Geocoder des Handys); "" wenn keiner verfügbar ist. */
+        @JavascriptInterface
+        public String placeName(double lat, double lon) {
+            try {
+                if (!Geocoder.isPresent()) return "";
+                List<Address> list = new Geocoder(MainActivity.this, Locale.GERMANY).getFromLocation(lat, lon, 1);
+                if (list == null || list.isEmpty()) return "";
+                Address a = list.get(0);
+                List<String> parts = new ArrayList<>();
+                if (a.getSubLocality() != null) parts.add(a.getSubLocality());
+                if (a.getLocality() != null) parts.add(a.getLocality());
+                else if (a.getSubAdminArea() != null) parts.add(a.getSubAdminArea());
+                if (a.getAdminArea() != null) parts.add(a.getAdminArea());
+                if (a.getCountryName() != null) parts.add(a.getCountryName());
+                return android.text.TextUtils.join(", ", parts);
+            } catch (Exception e) {
+                Log.w("KI-Assistent", "Ortsname", e);
+                return "";
+            }
+        }
+
+        /** Erinnerungen planen: [{"key","at"(ms),"title","text"}] – ersetzt die bisherige Liste. */
+        @JavascriptInterface
+        public void setReminders(String json) {
+            KIReminder.store(MainActivity.this, json);
+        }
+
+        @JavascriptInterface
+        public boolean notifyAllowed() {
+            return Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @JavascriptInterface
+        public void askNotify() {
+            if (Build.VERSION.SDK_INT >= 33) runOnUiThread(() -> requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 4712));
+        }
+
+        @JavascriptInterface
+        public void setBackground(boolean on) {
+            runOnUiThread(() -> MainActivity.this.setBackground(on));
+        }
+
+        @JavascriptInterface
+        public boolean backgroundRunning() {
+            return KIConversationService.running;
+        }
+
+        /** Widget auf den Startbildschirm legen (Android fragt nach). */
+        @JavascriptInterface
+        public boolean pinWidget() {
+            if (Build.VERSION.SDK_INT < 26) return false;
+            AppWidgetManager m = getSystemService(AppWidgetManager.class);
+            if (m == null || !m.isRequestPinAppWidgetSupported()) return false;
+            return m.requestPinAppWidget(new ComponentName(MainActivity.this, KIWidget.class), null, null);
+        }
+
+        /** Kachel „KI sprechen“ zu den Schnelleinstellungen hinzufügen (ab Android 13; sonst von Hand). */
+        @JavascriptInterface
+        public boolean addTile() {
+            if (Build.VERSION.SDK_INT < 33) return false;
+            runOnUiThread(() -> {
+                try {
+                    StatusBarManager sbm = getSystemService(StatusBarManager.class);
+                    sbm.requestAddTileService(new ComponentName(MainActivity.this, KITile.class), "KI sprechen",
+                        Icon.createWithResource(MainActivity.this, R.drawable.ic_ki_mic), getMainExecutor(), (r) -> {});
+                } catch (Exception e) {
+                    Log.w("KI-Assistent", "Kachel", e);
+                }
+            });
+            return true;
+        }
+
+        /** Einstellungen für den Standard-Assistenten öffnen. */
+        @JavascriptInterface
+        public void assistantSettings() {
+            runOnUiThread(() -> {
+                for (String a : new String[] { Settings.ACTION_VOICE_INPUT_SETTINGS, Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS, Settings.ACTION_SETTINGS }) {
+                    try {
+                        startActivity(new Intent(a));
+                        return;
+                    } catch (Exception ignored) {}
+                }
+            });
         }
     }
 
@@ -277,6 +583,31 @@ public class MainActivity extends BridgeActivity {
         bridge.getWebView().addJavascriptInterface(new KeyVault(), "KIKeys");
         bridge.getWebView().addJavascriptInterface(new FileSaver(), "KIFiles");
         bridge.getWebView().addJavascriptInterface(new Auth(), "KIAuth");
+        bridge.getWebView().addJavascriptInterface(new Device(), "KIDevice");
+        current = new WeakReference<>(this);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        resumed = true;
+        current = new WeakReference<>(this);
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        resumed = false;
+    }
+
+    @Override
+    public void onDestroy() {
+        if (session != null) {
+            session.release();
+            session = null;
+        }
+        stopService(new Intent(this, KIConversationService.class));
+        super.onDestroy();
     }
 
     // Android 8–11: beim Verlassen (Home-Taste, App-Wechsel) selbst auslösen; ab 12 macht das setAutoEnterEnabled

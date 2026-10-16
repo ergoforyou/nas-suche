@@ -121,6 +121,12 @@ const DEFAULT_SETTINGS = {
   cloudTtsModel: 'gpt-4o-mini-tts',
   claudeWeb: true, // Internetsuche (nur Claude)
   claudeFiles: true, // Dateien erstellen und bearbeiten (nur Claude)
+  place: '', // eigener Ort für Wetter, Verkehr & Co. (von Hand)
+  placeAuto: false, // Android: ungefähren Ort vom Handy ermitteln
+  reminders: false, // Android: Termine/Aufgaben als Benachrichtigung (nur wenn eingeschaltet)
+  reminderLead: 15, // Minuten vor dem Termin
+  bgTalk: false, // Android: Gespräch läuft im Hintergrund weiter (Bildschirm aus, Headset-Taste)
+  powerSave: 'auto', // Android: 'auto' | 'an' | 'aus' – Figur sparsamer bei wenig Akku
 };
 
 const CLAUDE_MODELS = [
@@ -147,6 +153,9 @@ const RULES = {
     now: (d, tz) =>
       `Jetzt ist ${d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz })}, ` +
       `${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: tz })} Uhr (${tz}).`,
+    place: (p) =>
+      `Der Nutzer befindet sich ungefähr hier: ${p}. Nutze das für ortsbezogene Fragen (Wetter, Verkehr und Staus, ` +
+      'Öffnungszeiten, „in der Nähe“), ohne den Ort ungefragt zu erwähnen.',
     web:
       'Du hast Internetzugang über die Werkzeuge web_search und web_fetch. Für aktuelle Dinge wie Wetter, Verkehr und ' +
       'Staus, Nachrichten, Öffnungszeiten oder Preise suche selbst im Internet, statt zu sagen, dass du das nicht ' +
@@ -166,6 +175,9 @@ const RULES = {
       'Use this knowledge naturally when relevant, without listing it.',
     now: (d, tz) =>
       `It is now ${d.toLocaleString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz })} (${tz}).`,
+    place: (p) =>
+      `The user is roughly here: ${p}. Use this for location-related questions (weather, traffic, opening hours, ` +
+      '"near me") without mentioning the place unprompted.',
     web:
       'You have internet access through the web_search and web_fetch tools. For current information such as weather, ' +
       'traffic, news, opening hours or prices, search the web yourself instead of saying you cannot look it up. If ' +
@@ -416,7 +428,7 @@ async function addAttachments(list) {
     status('Dateien anhängen geht mit Claude (⚙ → Verbindung → KI-Anbieter).');
     return;
   }
-  for (const f of list) {
+  for (let f of list) {
     if (f.size > ATTACH_MAX) {
       status(`„${f.name}“ ist zu groß (höchstens 30 MB).`);
       continue;
@@ -433,11 +445,30 @@ async function addAttachments(list) {
         continue;
       }
     }
+    if (/^image\/(png|jpeg|webp)$/.test(mime) && f.size > 3.5 * 1024 * 1024) {
+      // Handyfotos sind oft größer, als Claude annimmt (5 MB je Bild): verkleinern
+      try {
+        f = await shrinkImage(f);
+      } catch {}
+    }
     const key = newId();
     attachmentData.set(key, new Uint8Array(await f.arrayBuffer()));
-    pendingAttachments.push({ key, name: f.name, mime, size: f.size, ...(text ? { text: true } : {}) });
+    pendingAttachments.push({ key, name: f.name, mime: f.type || mime, size: f.size, ...(text ? { text: true } : {}) });
   }
   renderPending();
+}
+
+/** Großes Foto auf höchstens 2000 px Kantenlänge als JPEG verkleinern. */
+async function shrinkImage(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k);
+  c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close?.();
+  const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
+  return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
 }
 
 function renderPending() {
@@ -492,7 +523,8 @@ function buildMessages() {
   if (p.style !== 'frei') parts.push(r.lang);
   if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
   if (googleActive()) parts.push(googleLib.toolPrompt(new Date(), userTimeZone()));
-  else if (webActive()) parts.push(r.now(new Date(), userTimeZone()));
+  else if (webActive() || state.place) parts.push(r.now(new Date(), userTimeZone()));
+  if (state.place) parts.push(r.place(state.place));
   if (webActive()) parts.push(r.web);
   const sys = parts.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
@@ -714,6 +746,7 @@ async function send(text) {
     );
   }
 
+  state.place = await currentPlace();
   const id = newId();
   state.currentChatId = id;
   desktop.chat(
@@ -1180,6 +1213,17 @@ $('fileAttach').onchange = (e) => {
   addAttachments([...e.target.files]);
   e.target.value = '';
 };
+// Android: Foto aufnehmen und direkt fragen
+$('btnCamera').onclick = () => $('fileCamera').click();
+$('fileCamera').onchange = (e) => {
+  addAttachments([...e.target.files]).then(() => {
+    if (pendingAttachments.length && !input.value.trim()) {
+      input.placeholder = 'Frage zum Foto, z. B. „Was ist das?“';
+      input.focus();
+    }
+  });
+  e.target.value = '';
+};
 // Dateien ins Fenster ziehen (sonst würde Electron die Datei als Seite öffnen)
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => {
@@ -1371,6 +1415,12 @@ function fillSettings() {
   $('sLang').value = ['german', 'english'].includes(s.sttLang) ? s.sttLang : 'persona';
   $('sHandsFree').checked = s.handsFree;
   $('avPip').checked = s.pipOnLeave;
+  $('cPlace').value = s.place ?? '';
+  $('cPlaceAuto').checked = !!s.placeAuto;
+  $('phReminders').checked = !!s.reminders;
+  $('phLead').value = String(s.reminderLead ?? 15);
+  $('phBgTalk').checked = !!s.bgTalk;
+  $('phPower').value = s.powerSave ?? 'auto';
   $('avPipBg').value = s.pipBg ?? 'dunkel';
   $('avPipCamera').checked = s.pipCamera !== false;
   $('avPipColor').value = s.pipBgColor ?? '#1e2430';
@@ -3498,6 +3548,7 @@ function toggleProviderFields() {
   $('cOpenaiWrap').hidden = p !== 'openai';
   $('cCloudHint').hidden = p === 'lmstudio';
   $('btnAttach').hidden = p !== 'anthropic';
+  $('btnCamera').hidden = !MOBILE || p !== 'anthropic';
 }
 
 // ---------------------------------------------------------------- Google Kalender & Aufgaben
@@ -3693,6 +3744,7 @@ async function init() {
   state.history = data.history ?? {};
   applyEdition();
   if (!LOCAL_ONLY) $('btnAttach').hidden = state.settings.provider !== 'anthropic';
+  if (!LOCAL_ONLY) $('btnCamera').hidden = !MOBILE || state.settings.provider !== 'anthropic';
   desktop.setOffline(state.settings.offline);
 
   if (state.settings.stageHeight) {
@@ -3765,11 +3817,231 @@ function applyEdition() {
   for (const sel of ['#cProvider option:not([value="lmstudio"])', '#vEngine option[value="cloud"]']) {
     document.querySelectorAll(sel).forEach((o) => o.remove());
   }
-  for (const id of ['cKeysWrap', 'gWrap', 'cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap', 'btnAttach', 'fileAttach']) $(id)?.remove();
+  for (const id of ['cKeysWrap', 'gWrap', 'cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap', 'btnAttach', 'fileAttach', 'btnCamera', 'fileCamera']) $(id)?.remove();
   const prov = $('cProvider').closest('label');
   if (prov) prov.hidden = true;
   if (state.settings.provider !== 'lmstudio') state.settings.provider = 'lmstudio';
   for (const p of state.personas) if (p.voice?.engine === 'cloud') p.voice.engine = 'piper';
+}
+
+
+// ---------------------------------------------------------------- Ort (Wetter, Verkehr & Co.)
+// Nur ein ungefährer Ortsname geht mit der Anfrage an den KI-Anbieter, keine genauen Koordinaten.
+let placeCache = null;
+async function locatePhone() {
+  if (!navigator.geolocation) return '';
+  const pos = await new Promise((ok, fail) =>
+    navigator.geolocation.getCurrentPosition(ok, fail, { enableHighAccuracy: false, maximumAge: 15 * 60e3, timeout: 15000 }),
+  );
+  const { latitude: la, longitude: lo } = pos.coords;
+  let name = '';
+  try {
+    name = window.KIDevice?.placeName?.(la, lo) || '';
+  } catch {}
+  // ohne Ortsnamen-Dienst: auf ca. 10 km gerundet
+  return name || `Koordinaten ungefähr ${la.toFixed(1)}° N, ${lo.toFixed(1)}° O`;
+}
+async function refreshPlace({ force = false } = {}) {
+  if (!MOBILE || !state.settings.placeAuto) return null;
+  if (!force && placeCache && Date.now() - placeCache.at < 15 * 60e3) return placeCache.text;
+  try {
+    const text = await locatePhone();
+    if (text) placeCache = { text, at: Date.now() };
+  } catch (e) {
+    if (force) throw e;
+  }
+  return placeCache?.text ?? null;
+}
+async function currentPlace() {
+  if (MOBILE && state.settings.placeAuto) {
+    // höchstens 4 s warten – sonst den zuletzt bekannten bzw. eingetragenen Ort nehmen
+    const auto = await Promise.race([refreshPlace(), new Promise((ok) => setTimeout(() => ok(placeCache?.text ?? null), 4000))]);
+    if (auto) return auto;
+  }
+  return String(state.settings.place ?? '').trim();
+}
+const showPlaceInfo = (text) => ($('cPlaceInfo').textContent = text ?? '');
+$('cPlace').onchange = (e) => {
+  state.settings.place = e.target.value.trim();
+  save();
+};
+$('cPlaceAuto').onchange = async (e) => {
+  state.settings.placeAuto = e.target.checked;
+  save();
+  if (!e.target.checked) return showPlaceInfo('');
+  showPlaceInfo('Ort wird ermittelt …');
+  try {
+    showPlaceInfo(`Ungefährer Ort: ${await refreshPlace({ force: true })}`);
+  } catch (err) {
+    showPlaceInfo(`Ort nicht ermittelbar (${err.message || 'Standort aus?'}) – es gilt der eingetragene Ort.`);
+  }
+};
+$('cPlaceNow').onclick = () => $('cPlaceAuto').checked && $('cPlaceAuto').onchange({ target: $('cPlaceAuto') });
+
+// ---------------------------------------------------------------- Android: Teilen, Schnellstart, Headset
+const dev = () => (MOBILE ? window.KIDevice : null);
+const fromB64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+let intentsReady = false;
+async function handleIntents() {
+  if (!intentsReady) return;
+  let list = [];
+  try {
+    list = JSON.parse(dev()?.takeIntents?.() || '[]');
+  } catch {}
+  for (const ev of list) {
+    window.__app.lastIntent = ev.action;
+    if (ev.action === 'listen') {
+      $('drawer').hidden = true;
+      if (!stt.listening && !state.micActive) toggleMic();
+    } else if (ev.action === 'live') {
+      $('drawer').hidden = true;
+      if (!state.settings.handsFree) setHandsFree(true);
+    } else if (ev.action === 'talk') {
+      // Headset-Taste: spricht die Figur, verstummt sie; sonst sprechen bzw. Zuhören beenden
+      if (tts.speaking || state.busy) stopAll();
+      else toggleMic();
+    } else if (ev.action === 'background-off') {
+      setBgTalk(false);
+    } else if (ev.action === 'reminder') {
+      status(`⏰ ${ev.title}: ${ev.text}`);
+      if (state.settings.speak && !state.busy && !tts.speaking) tts.enqueue(`${ev.title}: ${ev.text}`);
+    } else if (ev.action === 'share') {
+      await receiveShare(ev);
+    }
+  }
+}
+window.__kiIntent = () => handleIntents();
+
+async function receiveShare(ev) {
+  $('drawer').hidden = true;
+  if (ev.error) return status(`Teilen fehlgeschlagen: ${ev.error}`);
+  const text = [ev.subject, ev.text].filter(Boolean).join('\n').trim();
+  if (text) {
+    input.value = input.value.trim() ? `${input.value.trim()}\n${text}` : text;
+    autoGrow();
+  }
+  const files = (ev.files ?? []).filter((f) => f.data).map((f) => new File([fromB64(f.data)], f.name, { type: f.mime }));
+  const tooBig = (ev.files ?? []).filter((f) => f.tooBig).map((f) => f.name);
+  if (files.length) {
+    if (attachAllowed()) await addAttachments(files);
+    else status('Geteilte Dateien kann nur Claude lesen (⚙ → Verbindung → KI-Anbieter).');
+  }
+  if (tooBig.length) status(`Zu groß (höchstens 30 MB): ${tooBig.join(', ')}`);
+  else if (files.length || text) status('Geteilt – schreib oder sag deine Frage dazu und sende ab.');
+  input.focus();
+}
+
+$('phWidget').onclick = () => {
+  if (!dev()?.pinWidget?.()) status('Widget von Hand hinzufügen: lange auf den Startbildschirm drücken → Widgets → KI-Assistent.');
+};
+$('phTile').onclick = () => {
+  if (!dev()?.addTile?.()) status('Kachel von Hand hinzufügen: Schnelleinstellungen ganz aufziehen → ✎ Bearbeiten → „KI sprechen“ nach oben ziehen.');
+};
+$('phAssist').onclick = () => dev()?.assistantSettings?.();
+
+// ---------------------------------------------------------------- Android: Gespräch im Hintergrund
+function setBgTalk(on) {
+  state.settings.bgTalk = on;
+  $('phBgTalk').checked = on;
+  save();
+  dev()?.setBackground?.(on);
+}
+$('phBgTalk').onchange = (e) => setBgTalk(e.target.checked);
+
+// ---------------------------------------------------------------- Android: Erinnerungen an Termine & Aufgaben
+// Nur wenn eingeschaltet: Die nächsten 2 Tage aus Google werden als Wecker auf dem Handy geplant (auch bei
+// geschlossener App). Neu eingetragene Termine kommen dazu, sobald die App das nächste Mal läuft.
+async function syncReminders() {
+  const d = dev();
+  if (!d?.setReminders) return;
+  if (!state.settings.reminders || !desktop.googleUpcoming) return d.setReminders('[]');
+  let up;
+  try {
+    up = await desktop.googleUpcoming({ timeZone: userTimeZone(), hours: 48 });
+  } catch (e) {
+    $('phRemInfo').textContent = `Google nicht erreichbar: ${e.message}`;
+    return;
+  }
+  if (!up) {
+    $('phRemInfo').textContent = 'Erst unter Verbindung mit Google verbinden.';
+    return d.setReminders('[]');
+  }
+  const lead = Number(state.settings.reminderLead) || 15;
+  const now = Date.now();
+  const hm = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const at = (date, h) => new Date(`${date}T${String(h).padStart(2, '0')}:00:00`).getTime();
+  const items = [];
+  for (const e of up.termine ?? []) {
+    if (!e.beginn) continue;
+    if (e.beginn.length > 10) {
+      const t = Date.parse(e.beginn);
+      items.push({ key: `t:${e.id}:${t}`, at: t - lead * 60e3, title: `Termin in ${lead} Minuten`, text: `${e.titel} um ${hm(t)} Uhr${e.ort ? ` – ${e.ort}` : ''}` });
+    } else {
+      items.push({ key: `g:${e.id}:${e.beginn}`, at: at(e.beginn, 8), title: 'Heute ganztägig', text: e.titel });
+    }
+  }
+  for (const t of up.aufgaben ?? []) {
+    if (!t.faellig || t.erledigt) continue;
+    items.push({ key: `a:${t.id}:${t.faellig}`, at: at(t.faellig, 9), title: 'Aufgabe heute fällig', text: t.titel });
+  }
+  const next = items.filter((i) => i.at > now).sort((a, b) => a.at - b.at).slice(0, 50);
+  d.setReminders(JSON.stringify(next));
+  $('phRemInfo').textContent = next.length
+    ? `Geplant: ${next.length} Erinnerung${next.length > 1 ? 'en' : ''}, nächste ${new Date(next[0].at).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} Uhr.`
+    : 'Keine anstehenden Termine oder Aufgaben in den nächsten 2 Tagen.';
+}
+$('phReminders').onchange = (e) => {
+  state.settings.reminders = e.target.checked;
+  save();
+  if (e.target.checked && dev() && !dev().notifyAllowed?.()) dev().askNotify?.();
+  if (!e.target.checked) $('phRemInfo').textContent = '';
+  syncReminders();
+};
+$('phLead').onchange = (e) => {
+  state.settings.reminderLead = Number(e.target.value);
+  save();
+  syncReminders();
+};
+
+// ---------------------------------------------------------------- Android: Akku-Sparmodus
+function checkPower() {
+  const d = dev();
+  if (!d?.power) return;
+  let p = {};
+  try {
+    p = JSON.parse(d.power());
+  } catch {}
+  const mode = state.settings.powerSave ?? 'auto';
+  const low = !p.charging && p.level >= 0 && p.level <= 20;
+  const critical = mode !== 'aus' && !p.charging && p.level >= 0 && p.level <= 10;
+  const on = mode === 'an' || (mode === 'auto' && (p.saver || low));
+  avatar.maxFps = critical ? 5 : on ? 15 : 0;
+  $('phPowerInfo').textContent =
+    p.level >= 0
+      ? `Akku ${p.level} %${p.charging ? ' (lädt)' : ''}${p.saver ? ', Energiesparmodus an' : ''} – Figur ${critical ? 'fast still (5 Bilder/s)' : on ? 'sparsam (15 Bilder/s)' : 'flüssig'}.`
+      : '';
+}
+$('phPower').onchange = (e) => {
+  state.settings.powerSave = e.target.value;
+  save();
+  checkPower();
+};
+
+function startPhoneFeatures() {
+  if (!MOBILE) return;
+  intentsReady = true;
+  handleIntents();
+  if (state.settings.bgTalk) dev()?.setBackground?.(true);
+  checkPower();
+  setInterval(checkPower, 30e3);
+  syncReminders();
+  setInterval(syncReminders, 15 * 60e3);
+  if (state.settings.placeAuto) refreshPlace().catch(() => {});
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    checkPower();
+    syncReminders();
+  });
 }
 
 // Für Fehlersuche und den automatischen Selbsttest
@@ -3793,11 +4065,16 @@ window.__app = {
   selfTest,
   computeVideoMask,
   outputReady: () => output.isOpen && !!output.win.document.getElementById('content'),
+  syncReminders: () => syncReminders(),
+  checkPower: () => checkPower(),
+  currentPlace: () => currentPlace(),
+  buildMessages: () => buildMessages(),
 };
 
 init().then(() => {
   if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
   refreshGoogle();
+  startPhoneFeatures();
   ensureFaceRig();
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
   if (!state.settings.offline && state.settings.handsFree) setTimeout(() => stt.warmup().catch(() => {}), 3000);

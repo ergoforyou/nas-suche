@@ -360,6 +360,16 @@ const api = {
 
   // ---- Google Kalender und Aufgaben
   googleStatus: () => google.status(),
+  /** Anstehende Termine und Aufgaben (für Erinnerungen auf dem Handy). null = nicht verbunden. */
+  googleUpcoming: async ({ timeZone: tz = timeZone(), hours = 48 } = {}) => {
+    if (!(await google.status()).connected) return null;
+    const local = (d) => d.toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T').slice(0, 16);
+    const now = new Date();
+    const ev = await googleLib.runTool(google, 'kalender_termine_lesen', { von: local(now), bis: local(new Date(+now + hours * 3600e3)) }, { timeZone: tz });
+    const ta = await googleLib.runTool(google, 'aufgaben_lesen', {}, { timeZone: tz });
+    const until = local(new Date(+now + hours * 3600e3)).slice(0, 10);
+    return { termine: ev.termine, aufgaben: (ta.aufgaben ?? []).filter((t) => t.faellig && t.faellig <= until) };
+  },
   googleDisconnect: () => google.disconnect(),
   googleConnect: async ({ clientId, clientSecret }) => {
     if (!String(clientId || '').includes('.apps.googleusercontent.com')) throw new Error('Bitte die Client-ID aus der Google Cloud Console eintragen.');
