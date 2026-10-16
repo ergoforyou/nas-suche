@@ -68,6 +68,10 @@ copyFiles(path.join(nm, '@diffusionstudio/piper-wasm/build'), path.join(dist, 'w
 
 // Gesichtserkennung (MediaPipe Face Landmarker, Apache-2.0): Laufzeit und Modell lokal mitliefern
 copyFiles(path.join(nm, '@mediapipe/tasks-vision/wasm'), path.join(dist, 'wasm/mediapipe'), (f) => /^vision_wasm_internal\.(js|wasm)$/.test(f));
+// PDF lesen (Firmenwissen): wird erst bei Bedarf geladen
+// als .js ablegen: nicht jeder Server (Android-Hülle, eigenes app://-Schema) kennt den Dateityp .mjs
+fs.mkdirSync(path.join(dist, 'wasm/pdf'), { recursive: true });
+for (const f of ['pdf.min', 'pdf.worker.min']) fs.copyFileSync(path.join(nm, `pdfjs-dist/build/${f}.mjs`), path.join(dist, `wasm/pdf/${f}.js`));
 fs.copyFileSync(path.join(root, 'assets/face_landmarker.task'), path.join(dist, 'wasm/mediapipe/face_landmarker.task'));
 // Körpererkennung für „3D-Figur aus Bildern“ (MediaPipe Pose Landmarker, Apache-2.0)
 fs.copyFileSync(path.join(root, 'assets/pose_landmarker_full.task'), path.join(dist, 'wasm/mediapipe/pose_landmarker_full.task'));

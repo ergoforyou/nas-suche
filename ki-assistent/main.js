@@ -34,6 +34,59 @@ app.setName(APP_NAME);
 app.setPath('userData', path.join(app.getPath('appData'), APP_NAME));
 ipcMain.on('app:edition', (e) => (e.returnValue = EDITION));
 
+// ---------------------------------------------------------------- Bereiche: Dienstlich / Privat
+// Jeder Bereich hat eigene Personas, Chats, Gedächtnis, Schlüssel und Google-Verbindung. Dienstlich liegt wie
+// bisher direkt im Datenordner, Privat in einem eigenen Unterordner. Medien (Videos) teilen sich beide.
+const areaFile = () => path.join(app.getPath('userData'), 'bereich.json');
+let AREA = 'dienstlich';
+try {
+  if (JSON.parse(fs.readFileSync(areaFile(), 'utf8')).bereich === 'privat') AREA = 'privat';
+} catch {}
+const areaDir = () => (AREA === 'privat' ? path.join(app.getPath('userData'), 'privat') : app.getPath('userData'));
+ipcMain.on('area:get', (e) => (e.returnValue = AREA));
+ipcMain.handle('area:set', (_e, name) => {
+  const next = name === 'privat' ? 'privat' : 'dienstlich';
+  fs.writeFileSync(areaFile(), JSON.stringify({ bereich: next }));
+  // sauberer Neustart: alle Daten, Schlüssel und Verbindungen des anderen Bereichs laden
+  setTimeout(() => {
+    app.relaunch();
+    app.exit(0);
+  }, 150);
+  return next;
+});
+// API-Schlüssel (Claude/OpenAI) aus Dienstlich übernehmen – ohne Google-Verbindung
+ipcMain.handle('area:copyKeys', () => {
+  if (AREA !== 'privat') return false;
+  let from = {};
+  try {
+    from = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'schluessel.json'), 'utf8'));
+  } catch {}
+  const to = readKeyFile();
+  for (const k of ['anthropic', 'openai']) if (from[k]) to[k] = from[k];
+  if (from.enc != null) to.enc = from.enc;
+  fs.mkdirSync(path.dirname(keyFile()), { recursive: true });
+  fs.writeFileSync(keyFile(), JSON.stringify(to));
+  return true;
+});
+
+// ---------------------------------------------------------------- Firmenwissen (nur Dienstlich)
+const kbFile = () => path.join(app.getPath('userData'), 'wissen.json');
+ipcMain.handle('kb:load', () => {
+  if (AREA !== 'dienstlich') return null;
+  try {
+    return JSON.parse(fs.readFileSync(kbFile(), 'utf8'));
+  } catch {
+    return { docs: [] };
+  }
+});
+ipcMain.handle('kb:save', (_e, kb) => {
+  if (AREA !== 'dienstlich') throw new Error('Firmenwissen gibt es nur im Bereich Dienstlich.');
+  const tmp = kbFile() + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(kb));
+  fs.renameSync(tmp, kbFile());
+  return true;
+});
+
 // Für die automatische Gesichtserkennung (FaceDetector) im Avatar-Editor.
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 
@@ -43,7 +96,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // ---------------------------------------------------------------- Datenspeicher
-const dataFile = () => path.join(app.getPath('userData'), 'daten.json');
+const dataFile = () => path.join(areaDir(), 'daten.json');
 
 function loadData() {
   try {
@@ -804,7 +857,7 @@ ipcMain.handle('lmstudio:prompts', () => {
 // ---------------------------------------------------------------- API-Schlüssel (Cloud-Anbieter)
 // Schlüssel werden mit der Verschlüsselung des Betriebssystems (Windows: DPAPI) gespeichert und
 // verlassen den Hauptprozess nie – die Oberfläche erfährt nur, ob einer hinterlegt ist.
-const keyFile = () => path.join(app.getPath('userData'), 'schluessel.json');
+const keyFile = () => path.join(areaDir(), 'schluessel.json');
 
 function readKeyFile() {
   try {

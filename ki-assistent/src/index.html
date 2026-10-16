@@ -12,6 +12,7 @@
   <header class="titlebar">
     <span class="title"><span id="titleName">KI-Assistent</span> <span id="titleVersion" class="version"></span></span>
     <div class="titlebar-buttons">
+      <button id="btnArea" title="Bereich wechseln (Dienstlich / Privat)">💼</button>
       <button id="btnPip" class="pip-only" title="Figur als Bild-im-Bild über anderen Apps">⧉</button>
       <button id="btnNewChat" title="Neuer Chat (Strg+N oder „Neuer Chat“ sagen) – Persona und Gedächtnis bleiben">🗨＋</button>
       <button id="btnFloat" title="Figur frei auf dem Desktop">🧍</button>
@@ -58,6 +59,7 @@
         <button data-tab="memory">Gedächtnis</button>
         <button data-tab="voice">Sprache</button>
         <button data-tab="conn">Verbindung</button>
+        <button data-tab="wissen" id="tabWissen">Wissen</button>
         <button data-tab="phone" class="mobile-only">Handy</button>
       </nav>
       <button id="btnCloseDrawer" class="icon" title="Schließen">✕</button>
@@ -551,6 +553,36 @@
       <div id="cModels" class="hint"></div>
       <button id="cOpenModels">Modellordner öffnen</button>
     </div>
+    <div class="tab" data-tab="wissen" hidden>
+      <h3>Bereich</h3>
+      <p class="hint" id="areaInfo"></p>
+      <div class="row wrap">
+        <button id="areaSwitch">Zu Privat wechseln</button>
+        <button id="areaCopyKeys" hidden>API-Schlüssel aus Dienstlich übernehmen</button>
+      </div>
+      <p class="hint">Dienstlich und Privat haben getrennte Personas, Chats, Gedächtnis, API-Schlüssel und Google-Verbindung.
+        Beide liegen nur auf diesem Gerät; Privates taucht nie im Firmenwissen oder in dienstlichen Exporten auf.
+        Beim Wechsel startet die App neu.</p>
+      <div id="kbWrap">
+        <h3>Firmenwissen</h3>
+        <label class="check"><input id="kbUse" type="checkbox" /> Firmenwissen im Gespräch nutzen</label>
+        <p class="hint">Eigene Dokumente – z. B. Preisliste, AGB, Leistungsbeschreibungen, Abläufe, häufige Fragen. Sie werden
+          auf diesem Gerät in Abschnitte zerlegt und durchsucht; zu einer Frage gehen nur die <b>passenden Abschnitte</b>
+          (höchstens 5) mit an den KI-Anbieter, nie die ganzen Dokumente. <b>Keine Kundendaten</b> aufnehmen – bei Zweifeln
+          bitte mit dem Datenschutzbeauftragten klären. Mit LM Studio (lokal) bleibt alles auf dem Rechner.</p>
+        <div class="row wrap">
+          <button id="kbAdd">➕ Dateien hinzufügen</button>
+          <button id="kbAddDir" class="desktop-only">📁 Ordner hinzufügen</button>
+        </div>
+        <input id="kbFiles" type="file" multiple hidden />
+        <input id="kbDir" type="file" webkitdirectory multiple hidden />
+        <div id="kbStatus" class="hint"></div>
+        <div id="kbList" class="kb-list"></div>
+        <label>Probe-Suche <input id="kbQuery" type="text" placeholder="z. B. Preis für Wartung" autocomplete="off" /></label>
+        <div id="kbHits" class="hint"></div>
+      </div>
+    </div>
+
     <div class="tab" data-tab="phone" hidden>
       <h3>Schnellstart</h3>
       <p class="hint">So startest du ein Gespräch, ohne erst die App zu suchen – sie öffnet sich und hört sofort zu:</p>

@@ -36,13 +36,19 @@ async function writeBytes(path, bytes, directory = Directory.Data) {
 const cleanName = (name) => String(name || 'Datei').split(/[\\/]/).pop().replace(/[:*?"<>|\x00-\x1f]+/g, '_').slice(0, 120) || 'Datei';
 
 let data = null;
+// Bereiche: Dienstlich (wie bisher) / Privat (eigene Daten und Schlüssel im Unterordner „privat/“)
+let AREA = 'dienstlich';
+try {
+  if (localStorage.getItem('ki-bereich') === 'privat') AREA = 'privat';
+} catch {}
+const areaPath = (p) => (AREA === 'privat' ? `privat/${p}` : p);
 // Schlüssel liegen verschlüsselt im App-Speicher: Der AES-Schlüssel dazu steckt im Android-Keystore
 // (Hardware-geschützt, lässt sich nicht auslesen oder kopieren). window.KIKeys kommt aus MainActivity.java.
 const vault = () => (window.KIKeys?.available?.() ? window.KIKeys : null);
 const PROVIDERS = ['anthropic', 'openai', 'google'];
 let keys = null;
 async function loadKeys() {
-  const file = (await readJson('schluessel.json')) ?? {};
+  const file = (await readJson(areaPath('schluessel.json'))) ?? {};
   const v = vault();
   if (!file.enc) {
     // ältere Versionen: Klartext – gleich verschlüsselt neu speichern
@@ -61,7 +67,7 @@ async function loadKeys() {
 }
 async function storeKeys(k) {
   const v = vault();
-  if (!v) return writeJson('schluessel.json', k);
+  if (!v) return writeJson(areaPath('schluessel.json'), k);
   const file = { enc: 1 };
   for (const p of PROVIDERS) {
     if (!k[p]) continue;
@@ -69,11 +75,11 @@ async function storeKeys(k) {
     if (!enc) throw new Error('Schlüssel konnte nicht verschlüsselt werden.');
     file[p] = enc;
   }
-  await writeJson('schluessel.json', file);
+  await writeJson(areaPath('schluessel.json'), file);
 }
 const getKeys = async () => (keys ??= await loadKeys());
 // für den Emulator-Test: Liegt die Schlüsseldatei wirklich verschlüsselt vor?
-window.__keyFile = () => readJson('schluessel.json');
+window.__keyFile = () => readJson(areaPath('schluessel.json'));
 
 // ---------------------------------------------------------------- Cloud-Anbieter
 const CLOUD_OPTS = { dangerouslyAllowBrowser: true, maxRetries: 3 };
@@ -153,10 +159,10 @@ const api = {
   platform: 'android',
 
   // ---- Daten
-  loadData: async () => (data = await readJson('daten.json')),
+  loadData: async () => (data = await readJson(areaPath('daten.json'))),
   saveData: async (patch) => {
     data = { ...(data ?? {}), ...patch };
-    await writeJson('daten.json', data);
+    await writeJson(areaPath('daten.json'), data);
   },
 
   // ---- Schlüssel (privater App-Speicher, mit dem Android-Keystore verschlüsselt)
@@ -359,6 +365,30 @@ const api = {
   onAvatarCursor: () => {},
 
   // ---- Google Kalender und Aufgaben
+  area: AREA,
+  areaSet: async (name) => {
+    try {
+      localStorage.setItem('ki-bereich', name === 'privat' ? 'privat' : 'dienstlich');
+    } catch {}
+    setTimeout(() => location.reload(), 150);
+    return name;
+  },
+  areaCopyKeys: async () => {
+    if (AREA !== 'privat') return false;
+    const from = (await readJson('schluessel.json')) ?? {};
+    const to = (await readJson(areaPath('schluessel.json'))) ?? {};
+    for (const k of ['anthropic', 'openai']) if (from[k]) to[k] = from[k];
+    if (from.enc) to.enc = from.enc;
+    await writeJson(areaPath('schluessel.json'), to);
+    keys = null;
+    return true;
+  },
+  kbLoad: async () => (AREA === 'dienstlich' ? ((await readJson('wissen.json')) ?? { docs: [] }) : null),
+  kbSave: async (kb) => {
+    if (AREA !== 'dienstlich') throw new Error('Firmenwissen gibt es nur im Bereich Dienstlich.');
+    await writeJson('wissen.json', kb);
+    return true;
+  },
   googleStatus: () => google.status(),
   /** Anstehende Termine und Aufgaben (für Erinnerungen auf dem Handy). null = nicht verbunden. */
   googleUpcoming: async ({ timeZone: tz = timeZone(), hours = 48 } = {}) => {

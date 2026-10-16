@@ -120,6 +120,14 @@ Antwort, nachdenken, **warten** (längere Antwort, Kalender), zuhören (auch auf
 **Erinnerung**. Mit ▶ neben einer Pose lässt sich ihr Anlass ausprobieren. Dazu (⚙ → Avatar → Lebendigkeit):
 Tageszeit, Begrüßung beim Start, Status-Leuchte, Sprechblase (z. B. im Büro ohne Ton).
 
+### Bereiche und Firmenwissen (Beta)
+
+- **Dienstlich / Privat** (💼/🏠 oben bzw. ⚙ → Wissen): getrennte Personas, Chats, Gedächtnis, API-Schlüssel und
+  Google-Verbindung; beide nur auf diesem Gerät. Wechsel startet die App neu.
+- **Firmenwissen** (nur Dienstlich): PDF, Word, Excel, PowerPoint, OpenDocument-Text und Textdateien aufnehmen. Sie werden
+  lokal in Abschnitte zerlegt und durchsucht; zu einer Frage gehen nur die passendsten Abschnitte (höchstens 5) an den
+  KI-Anbieter, unter der Antwort steht, welche Dokumente mitgegeben wurden. Keine Kundendaten aufnehmen.
+
 ### Gedächtnis
 
 Unter ⚙ → **Gedächtnis**: Nach jeder Antwort fragt die App das Modell in LM Studio kurz, welche Fakten dauerhaft

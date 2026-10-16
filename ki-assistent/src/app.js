@@ -1,4 +1,5 @@
 import { Avatar, avatarState, detectFace, loadImage, fireEvent, timeOfDayEnergy } from './avatar.js';
+import { extractText, chunkText, buildIndex, searchIndex, kbPrompt, KB_ACCEPT } from './wissen.js';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
@@ -132,6 +133,7 @@ const DEFAULT_SETTINGS = {
   bubble: 'stumm', // Sprechblase: 'aus' | 'stumm' (nur ohne Ton) | 'immer'
   statusGlow: true, // farbiger Rand: hört zu (grün) / denkt (blau)
   greet: true, // beim Start begrüßen (Anlass „begrüßen“)
+  kbUse: true, // Firmenwissen im Gespräch nutzen (nur Bereich Dienstlich, sobald Dokumente da sind)
 };
 
 const CLAUDE_MODELS = [
@@ -536,6 +538,7 @@ function buildMessages() {
   if (googleActive()) parts.push(googleLib.toolPrompt(new Date(), userTimeZone()));
   else if (webActive() || state.place) parts.push(r.now(new Date(), userTimeZone()));
   if (state.place) parts.push(r.place(state.place));
+  if (state.kbHits?.length) parts.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
   if (webActive()) parts.push(r.web);
   const sys = parts.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
@@ -737,6 +740,9 @@ async function send(text) {
     if (answer && sources.length) {
       answer += '\n\n**Quellen:**\n' + sources.map((q) => `- [${q.title.replace(/[[\]]/g, '')}](${q.url})`).join('\n');
     }
+    // Firmenwissen: zeigen, welche Dokumente (Abschnitte daraus) mitgegeben wurden – nicht vorgelesen
+    const kbDocs = [...new Set((state.kbHits ?? []).map((h) => h.doc.name))];
+    if (answer && kbDocs.length) answer += `\n\n📚 *Aus dem Firmenwissen mitgegeben: ${kbDocs.join(', ')}*`;
     if (answer || created.length) {
       const entry = { role: 'assistant', content: answer, ...(created.length ? { files: created } : {}) };
       fillBubble(bubble, 'assistant', answer);
@@ -767,6 +773,7 @@ async function send(text) {
   }
 
   state.place = await currentPlace();
+  state.kbHits = kbActive() ? searchIndex(kbIndex, text || attachments.map((a) => a.name).join(' '), 5) : [];
   const id = newId();
   state.currentChatId = id;
   desktop.chat(
@@ -1455,6 +1462,7 @@ function fillSettings() {
   $('phPower').value = s.powerSave ?? 'auto';
   $('phFloat').checked = !!s.floatOverlay;
   $('avTod').checked = s.todMood !== false;
+  $('kbUse').checked = s.kbUse !== false;
   $('avBubble').value = s.bubble ?? 'stumm';
   $('avGlow').checked = s.statusGlow !== false;
   $('avGreet').checked = s.greet !== false;
@@ -3914,6 +3922,126 @@ $('avGreet').onchange = (e) => {
   save();
 };
 
+// ---------------------------------------------------------------- Bereiche (Dienstlich / Privat) und Firmenwissen
+const AREA = desktop.area === 'privat' ? 'privat' : 'dienstlich';
+document.documentElement.classList.toggle('area-privat', AREA === 'privat');
+function refreshAreaUi() {
+  const priv = AREA === 'privat';
+  $('btnArea').textContent = priv ? '🏠' : '💼';
+  $('btnArea').title = priv ? 'Bereich: Privat – klicken für Dienstlich' : 'Bereich: Dienstlich – klicken für Privat';
+  $('btnArea').hidden = !desktop.areaSet;
+  $('areaInfo').textContent = `Aktueller Bereich: ${priv ? '🏠 Privat' : '💼 Dienstlich'}`;
+  $('areaSwitch').textContent = priv ? 'Zu Dienstlich wechseln' : 'Zu Privat wechseln';
+  $('areaCopyKeys').hidden = !priv || LOCAL_ONLY;
+  $('kbWrap').hidden = priv || !desktop.kbLoad;
+}
+async function switchArea() {
+  const to = AREA === 'privat' ? 'dienstlich' : 'privat';
+  if (!confirm(`Zum Bereich „${to === 'privat' ? 'Privat' : 'Dienstlich'}“ wechseln? Die App startet dafür neu.`)) return;
+  // sofort speichern (nicht verzögert), weil die App gleich neu startet
+  clearTimeout(saveTimer);
+  await desktop.saveData({ settings: state.settings, personas: state.personas, activeId: state.activeId, history: state.history });
+  await desktop.areaSet(to);
+}
+$('btnArea').onclick = switchArea;
+$('areaSwitch').onclick = switchArea;
+$('areaCopyKeys').onclick = async () => {
+  await desktop.areaCopyKeys?.();
+  refreshKeys();
+  status('API-Schlüssel aus Dienstlich übernommen.');
+};
+
+let kb = { docs: [] };
+let kbIndex = null;
+const kbActive = () => AREA === 'dienstlich' && state.settings.kbUse !== false && !!kbIndex?.n;
+async function loadKb() {
+  if (!desktop.kbLoad || AREA !== 'dienstlich') return;
+  try {
+    kb = (await desktop.kbLoad()) ?? { docs: [] };
+  } catch {
+    kb = { docs: [] };
+  }
+  kbIndex = buildIndex(kb);
+  renderKb();
+}
+function renderKb() {
+  const list = $('kbList');
+  list.innerHTML = '';
+  for (const d of kb.docs) {
+    const row = document.createElement('div');
+    row.className = 'kb-doc';
+    const name = document.createElement('span');
+    name.textContent = `📄 ${d.name}`;
+    name.title = d.name;
+    const info = document.createElement('small');
+    info.textContent = `${d.chunks.length} Abschnitte · ${new Date(d.added).toLocaleDateString('de-DE')}`;
+    const del = document.createElement('button');
+    del.textContent = '🗑';
+    del.title = 'Aus dem Firmenwissen entfernen';
+    del.onclick = async () => {
+      kb.docs = kb.docs.filter((x) => x !== d);
+      await saveKb();
+    };
+    row.append(name, info, del);
+    list.appendChild(row);
+  }
+  const n = kb.docs.reduce((a, d) => a + d.chunks.length, 0);
+  $('kbStatus').textContent = kb.docs.length ? `${kb.docs.length} Dokument(e), ${n} Abschnitte.` : 'Noch keine Dokumente.';
+}
+async function saveKb() {
+  await desktop.kbSave(kb);
+  kbIndex = buildIndex(kb);
+  renderKb();
+}
+async function addKbFiles(files) {
+  const ok = [];
+  const failed = [];
+  for (const [i, f] of files.entries()) {
+    $('kbStatus').textContent = `Lese ${i + 1}/${files.length}: ${f.name} …`;
+    try {
+      if (f.size > 50 * 1024 * 1024) throw new Error('größer als 50 MB');
+      const text = (await extractText(f)).trim();
+      if (text.length < 20) throw new Error('kein lesbarer Text (eingescannt?)');
+      const chunks = chunkText(text);
+      // gleiche Datei erneut hinzufügen = aktualisieren
+      kb.docs = kb.docs.filter((d) => d.name !== f.name);
+      kb.docs.push({ id: newId(), name: f.name, added: Date.now(), size: f.size, chunks });
+      ok.push(f.name);
+    } catch (e) {
+      failed.push(`${f.name} (${e.message})`);
+    }
+  }
+  await saveKb();
+  $('kbStatus').textContent =
+    `${ok.length} Dokument(e) aufgenommen.` + (failed.length ? ` Nicht lesbar: ${failed.join(', ')}` : '') + ` ${$('kbStatus').textContent}`;
+  return { ok, failed };
+}
+$('kbFiles').accept = KB_ACCEPT;
+$('kbAdd').onclick = () => $('kbFiles').click();
+$('kbAddDir').onclick = () => $('kbDir').click();
+$('kbFiles').onchange = (e) => {
+  addKbFiles([...e.target.files]);
+  e.target.value = '';
+};
+$('kbDir').onchange = (e) => {
+  const ext = new RegExp(`(${KB_ACCEPT.split(',').map((x) => x.replace('.', '\\.')).join('|')})$`, 'i');
+  addKbFiles([...e.target.files].filter((f) => ext.test(f.name)));
+  e.target.value = '';
+};
+$('kbUse').onchange = (e) => {
+  state.settings.kbUse = e.target.checked;
+  save();
+};
+$('kbQuery').oninput = () => {
+  const hits = searchIndex(kbIndex, $('kbQuery').value, 5);
+  $('kbHits').textContent = $('kbQuery').value.trim()
+    ? hits.length
+      ? hits.map((h) => `${h.doc.name} (Abschnitt ${h.i + 1}): „${h.text.slice(0, 90).replace(/\s+/g, ' ')} …“`).join('\n')
+      : 'Keine passenden Abschnitte.'
+    : '';
+};
+refreshAreaUi();
+
 // ---------------------------------------------------------------- Ort (Wetter, Verkehr & Co.)
 // Nur ein ungefährer Ortsname geht mit der Anfrage an den KI-Anbieter, keine genauen Koordinaten.
 let placeCache = null;
@@ -4221,6 +4349,9 @@ window.__app = {
   fireEvent,
   timeOfDayEnergy,
   showBubble: (t) => showBubble(t),
+  addKbFiles: (files) => addKbFiles(files),
+  kbSearch: (q) => searchIndex(kbIndex, q, 5),
+  area: AREA,
   checkPower: () => checkPower(),
   currentPlace: () => currentPlace(),
   buildMessages: () => buildMessages(),
@@ -4230,6 +4361,7 @@ init().then(() => {
   if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
   refreshGoogle();
   startPhoneFeatures();
+  loadKb();
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);
   ensureFaceRig();

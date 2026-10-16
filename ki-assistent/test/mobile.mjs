@@ -49,6 +49,29 @@ await page.route('https://api.anthropic.com/**', (route) => {
   route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream', 'access-control-allow-origin': '*' }, body: evs.map(ev).join('') });
 });
 
+/** Minimale PDF-Datei mit einer Textzeile (für den Firmenwissen-Test). */
+function makePdf(text) {
+  const esc = text.replace(/[()\\]/g, (c) => `\\${c}`);
+  const stream = `BT /F1 12 Tf 50 750 Td (${esc}) Tj ET`;
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let out = '%PDF-1.4\n';
+  const offs = [];
+  objs.forEach((o, i) => {
+    offs.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(out, 'latin1');
+}
+
 const check = (ok, label, detail = '') => {
   console.log(ok ? '✔' : '✘', label, detail);
   if (!ok) process.exitCode = 1;
@@ -664,6 +687,68 @@ check(
   JSON.stringify(rem),
 );
 check(phone.fps === 5, 'Akku-Sparmodus: bei 8 % Akku nur noch 5 Bilder/s', String(phone.fps));
+// ---- Firmenwissen: Word, PDF und Text aufnehmen, durchsuchen, passende Abschnitte gehen an Claude
+const { Document, Packer, Paragraph } = await import('docx');
+const docxB64 = (
+  await Packer.toBuffer(
+    new Document({ sections: [{ children: [new Paragraph('Allgemeine Geschäftsbedingungen'), new Paragraph('Die Zahlungsfrist beträgt 14 Tage netto ohne Abzug.')] }] }),
+  )
+).toString('base64');
+const pdfB64 = makePdf('Leistungsbeschreibung: Die Ergonomie-Beratung am Arbeitsplatz dauert 90 Minuten.').toString('base64');
+const kbRes = await page.evaluate(
+  async ({ docxB64, pdfB64 }) => {
+    const app = window.__app;
+    const b = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+    const files = [
+      new File(['Preisliste 2026\nWartung pro Stunde: 85 Euro netto\nAnfahrt pauschal: 30 Euro'], 'Preisliste.txt', { type: 'text/plain' }),
+      new File([b(docxB64)], 'AGB.docx'),
+      new File([b(pdfB64)], 'Leistungen.pdf', { type: 'application/pdf' }),
+    ];
+    const r = await app.addKbFiles(files);
+    const top = (q) => app.kbSearch(q)[0]?.doc.name;
+    return {
+      area: app.area,
+      added: r.ok,
+      failed: r.failed,
+      wartung: top('Was kostet die Wartung pro Stunde?'),
+      frist: top('Wie lange ist die Zahlungsfrist?'),
+      beratung: top('Wie lange dauert die Ergonomie-Beratung?'),
+      none: app.kbSearch('Wie wird das Wetter morgen in Hamburg').length,
+    };
+  },
+  { docxB64, pdfB64 },
+);
+check(kbRes.area === 'dienstlich' && kbRes.added.length === 3, 'Firmenwissen: Text, Word und PDF aufgenommen', JSON.stringify(kbRes));
+check(kbRes.wartung === 'Preisliste.txt' && kbRes.frist === 'AGB.docx' && kbRes.beratung === 'Leistungen.pdf', 'Firmenwissen: Suche findet das passende Dokument', JSON.stringify(kbRes));
+check(kbRes.none === 0, 'Firmenwissen: fremde Fragen bekommen keine Auszüge');
+const kbBefore = claudeRequests.length;
+const msgsBefore = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+await page.fill('#input', 'Was kostet die Wartung pro Stunde?');
+await page.click('#btnSend');
+await page
+  .waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !document.querySelector('.msg.assistant.typing'), msgsBefore, { timeout: 15000 })
+  .catch(() => {});
+const chatReq = claudeRequests.slice(kbBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Wartung pro Stunde'));
+const sys = JSON.stringify(chatReq?.system ?? '');
+check(!!chatReq && /internen Firmendokumenten/.test(sys) && /85 Euro/.test(sys) && !/Zahlungsfrist/.test(sys), 'Nur passende Abschnitte gehen an Claude', sys.slice(-200));
+const kbNote = await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? '');
+check(/Firmenwissen mitgegeben: Preisliste\.txt/.test(kbNote), 'Antwort zeigt, welches Dokument mitgegeben wurde', kbNote.slice(-80));
+// Bereich Privat: eigene Daten, kein Firmenwissen
+await page.evaluate(() => localStorage.setItem('ki-bereich', 'privat'));
+await page.reload();
+await page.waitForFunction(() => window.__app);
+const priv = await page.evaluate(async () => ({
+  area: window.__app.area,
+  cls: document.documentElement.classList.contains('area-privat'),
+  kb: await window.desktop.kbLoad(),
+  history: Object.values(window.__app.state.history ?? {}).flat().length,
+}));
+check(priv.area === 'privat' && priv.cls && priv.kb === null && priv.history === 0, 'Bereich Privat: getrennte Daten, kein Firmenwissen', JSON.stringify(priv));
+await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
+await page.reload();
+await page.waitForFunction(() => window.__app);
+const back = await page.evaluate(() => ({ area: window.__app.area, history: Object.values(window.__app.state.history ?? {}).flat().length }));
+check(back.area === 'dienstlich' && back.history > 0, 'Zurück in Dienstlich: alles wieder da', JSON.stringify(back));
 // ---- Sprechblase, wenn der Ton aus ist
 const bub = await page.evaluate(async () => {
   window.__app.state.settings.bubble = 'stumm';
