@@ -4255,6 +4255,62 @@ function addSaved(title, text, source = 'ki') {
   rebuildSaved();
   return { same: !!same, title: t };
 }
+/**
+ * Wissen von einem anderen Gerät oder aus einer Datei übernehmen: gleicher Titel = derselbe Eintrag, der neuere Stand
+ * gewinnt; nichts wird gelöscht.
+ */
+function mergeSaved(entries) {
+  const r = { neu: 0, aktualisiert: 0, gleich: 0 };
+  if (!Array.isArray(entries)) throw new Error('keine Wissens-Daten');
+  const stamp = (e) => e.updated ?? e.created ?? 0;
+  for (const e of entries) {
+    if (!e || typeof e.title !== 'string' || typeof e.text !== 'string' || !e.text.trim()) continue;
+    const mine = state.saved.find((x) => x.title === e.title);
+    if (!mine) {
+      state.saved.push({ id: newId(), title: e.title.slice(0, 140), text: e.text.slice(0, 20000), created: e.created ?? Date.now(), ...(e.updated ? { updated: e.updated } : {}), source: e.source ?? 'abgleich' });
+      r.neu++;
+    } else if (mine.text !== e.text && stamp(e) > stamp(mine)) {
+      Object.assign(mine, { text: e.text.slice(0, 20000), updated: stamp(e) });
+      r.aktualisiert++;
+    } else r.gleich++;
+  }
+  if (state.saved.length > SAVED_MAX) state.saved.splice(0, state.saved.length - SAVED_MAX);
+  if (r.neu || r.aktualisiert) {
+    saveSavedNow();
+    rebuildSaved();
+  }
+  return r;
+}
+$('savedExport').onclick = async () => {
+  if (!state.saved?.length) return status('Noch kein gespeichertes Wissen zum Exportieren.');
+  const area = AREA === 'privat' ? 'Privat' : 'Dienstlich';
+  const json = JSON.stringify({ typ: 'ki-wissen', version: 1, bereich: AREA, exportiert: Date.now(), eintraege: state.saved }, null, 1);
+  try {
+    const name = `Wissen-${area}-${new Date().toISOString().slice(0, 10)}`;
+    const bytes = new TextEncoder().encode(json);
+    // Handy: „Speichern unter“ (Ordner wählbar), PC: Speichern-Dialog
+    if (desktop.saveFileAs) await desktop.saveFileAs(`${name}.kiwissen`, bytes);
+    else await desktop.exportSave(name, 'kiwissen', 'KI-Wissen', bytes);
+    status(`Gespeichertes Wissen exportiert (${state.saved.length} Einträge).`);
+  } catch (e) {
+    status(`Export: ${e.message}`);
+  }
+};
+$('savedImport').onclick = () => $('savedImportFile').click();
+$('savedImportFile').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    const list = Array.isArray(d) ? d : d.eintraege;
+    if (d.bereich && d.bereich !== AREA && !confirm(`Die Datei stammt aus dem Bereich „${d.bereich === 'privat' ? 'Privat' : 'Dienstlich'}“. Trotzdem hier übernehmen?`)) return;
+    const r = mergeSaved(list);
+    status(`Wissen importiert – ${r.neu} neu, ${r.aktualisiert} aktualisiert, ${r.gleich} schon vorhanden.`);
+  } catch (err) {
+    status(`Import: ${err.message}`);
+  }
+};
 const fmtDate = (ms) => new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 function savedPrompt(hits) {
   const parts = hits.map((h, n) => `[${n + 1}] „${h.doc.name}“ (gespeichert am ${fmtDate(h.doc.entry.created)}):\n${h.text}`);
@@ -4301,7 +4357,7 @@ function appKnowledge() {
   if (MOBILE)
     lines.push(
       'Handy: Live-Gespräch 📞, Nur-Figur-Ansicht ⛶, schwebende Figur über anderen Apps (antippen = sprechen/stoppen, lange drücken = Menü), ' +
-        'Notizen („Merk dir … bis Samstag“), Fahrmodus, Abgleich mit dem PC über WLAN (⚙ → Handy, Bereich Privat).',
+        'Aktivierungswort (⚙ → Handy), Abgleich von Personas und gespeichertem Wissen mit dem PC über WLAN (⚙ → Handy, gleicher Bereich); im Bereich Privat außerdem Notizen („Merk dir … bis Samstag“) und Fahrmodus.',
     );
   else
     lines.push(
@@ -5286,7 +5342,7 @@ async function wakeLoop() {
   wakeRunning = true;
   logEv('WACHWORT', `an („${wakeWord()}“)`);
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-  while (PRIV && state.settings.wakeOn) {
+  while (MOBILE && state.settings.wakeOn) {
     if (state.micActive || state.busy || tts.speaking || state.settings.handsFree || state.dnd || state.transcribing) {
       await pause(600);
       continue;
@@ -5328,7 +5384,7 @@ async function wakeLoop() {
 function setWake(on) {
   state.settings.wakeOn = !!on;
   save();
-  if (on && PRIV) {
+  if (on && MOBILE) {
     // im Hintergrund weiterhören braucht den Vordergrund-Dienst
     if (!state.settings.bgTalk) setBgTalk(true);
     wakeLoop();
@@ -5382,7 +5438,12 @@ const b64ToBytes = async (b64) => new Uint8Array(await (await fetch(`data:applic
 // PC: Anfragen des Handys beantworten
 desktop.onSyncRequest?.(async (op, data) => {
   if (op === 'tool') return runAppTool(data?.name, data?.input ?? {});
-  if (AREA !== 'privat') throw new Error('nur im Bereich Privat');
+  if (op === 'wissenList') return state.saved ?? [];
+  if (op === 'wissenMerge') {
+    const r = mergeSaved(data);
+    status(`Abgleich: Wissen vom Handy übernommen – ${r.neu} neu, ${r.aktualisiert} aktualisiert.`);
+    return r;
+  }
   if (op === 'list') return state.personas.map((p) => ({ id: p.id, name: p.name, poses: p.avatar?.poses?.length ?? 0, quick: p.quick?.length ?? 0 }));
   if (op === 'export') {
     const p = state.personas.find((x) => x.id === data);
@@ -5453,6 +5514,13 @@ async function syncConnect() {
     return status(`Keine Verbindung: ${msg}`);
   }
   $('syncAddr').value = syncTarget.url.replace('http://', '');
+  // gleiche Bereiche, sonst würden dienstliche und private Daten vermischt
+  if (info.area && info.area !== AREA) {
+    syncTarget = null;
+    const name = (a) => (a === 'privat' ? 'Privat' : 'Dienstlich');
+    return status(`Der PC ist im Bereich ${name(info.area)}, das Handy in ${name(AREA)} – bitte auf beiden Geräten denselben Bereich wählen.`);
+  }
+  $('syncKnow').hidden = false;
   try {
     const list = await (await syncFetch('/personas')).json();
     const box = $('syncList');
@@ -5494,6 +5562,26 @@ $('syncSend').onclick = async () => {
     status(`Senden fehlgeschlagen: ${e.message}`);
   }
 };
+$('syncKnowGet').onclick = async () => {
+  if (!syncTarget) return;
+  status('Hole das gespeicherte Wissen vom PC …');
+  try {
+    const r = mergeSaved(await (await syncFetch('/wissen')).json());
+    status(`Wissen vom PC übernommen – ${r.neu} neu, ${r.aktualisiert} aktualisiert, ${r.gleich} schon vorhanden.`);
+  } catch (e) {
+    status(`Abgleich: ${e.message}`);
+  }
+};
+$('syncKnowSend').onclick = async () => {
+  if (!syncTarget) return;
+  status('Sende das gespeicherte Wissen an den PC …');
+  try {
+    const r = await (await syncFetch('/wissen', { method: 'POST', body: JSON.stringify(state.saved ?? []), headers: { 'content-type': 'application/json' } })).json();
+    status(`Wissen am PC übernommen – ${r.neu} neu, ${r.aktualisiert} aktualisiert.`);
+  } catch (e) {
+    status(`Senden fehlgeschlagen: ${e.message}`);
+  }
+};
 // QR-Code mit der Handykamera lesen (Barcode-Erkennung der WebView)
 $('syncScan').onclick = () => $('syncScanFile').click();
 $('syncScanFile').onchange = async (e) => {
@@ -5514,8 +5602,8 @@ $('syncScanFile').onchange = async (e) => {
   }
 };
 function refreshSyncUi() {
-  $('syncPcWrap').hidden = MOBILE || AREA !== 'privat' || !desktop.syncStart;
-  $('syncPhoneWrap').hidden = !PRIV;
+  $('syncPcWrap').hidden = MOBILE || !desktop.syncStart;
+  $('syncPhoneWrap').hidden = !MOBILE;
 }
 
 
@@ -5696,6 +5784,13 @@ $('privRtVoice').onchange = (e) => {
 function refreshPriv() {
   $('privWrap').hidden = !PRIV;
   $('privHint').hidden = !MOBILE || PRIV;
+  // Aktivierungswort gibt es in beiden Bereichen (je Bereich eigene Einstellung)
+  if (MOBILE) {
+    $('privWakeOn').checked = !!state.settings.wakeOn;
+    $('privWakeWord').value = state.settings.wakeWord || '';
+    $('privWakeWord').placeholder = persona().name || 'Max';
+    if (state.settings.wakeOn) wakeLoop();
+  }
   if (!PRIV) return;
   renderNotes();
   fillCars();
@@ -5703,9 +5798,6 @@ function refreshPriv() {
   const vs = $('privRtVoice');
   if (!vs.options.length) for (const v of RT_VOICES) vs.add(new Option(v[0].toUpperCase() + v.slice(1), v));
   vs.value = RT_VOICES.includes(state.settings.rtVoice) ? state.settings.rtVoice : 'marin';
-  $('privWakeOn').checked = !!state.settings.wakeOn;
-  $('privWakeWord').value = state.settings.wakeWord || '';
-  $('privWakeWord').placeholder = persona().name || 'Max';
   $('privNotifyOn').checked = !!state.settings.notifyOn;
   const apps = state.settings.notifyApps ?? ['com.whatsapp', 'org.thoughtcrime.securesms', 'com.google.android.apps.messaging', 'com.samsung.android.messaging'];
   const box = $('privNotifyApps');
@@ -5727,7 +5819,6 @@ function refreshPriv() {
     box.append(l);
   }
   syncNotify();
-  if (state.settings.wakeOn) wakeLoop();
 }
 $('privWakeOn').onchange = (e) => setWake(e.target.checked);
 $('privWakeWord').onchange = (e) => {

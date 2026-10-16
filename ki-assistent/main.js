@@ -290,7 +290,6 @@ function stopSync() {
 }
 ipcMain.handle('sync:stop', () => stopSync());
 ipcMain.handle('sync:start', async () => {
-  if (AREA !== 'privat') throw new Error('Der Abgleich mit dem Handy ist vorerst nur im Bereich Privat möglich.');
   stopSync();
   const http = require('node:http');
   syncCode = String(Math.floor(100000 + Math.random() * 900000));
@@ -310,6 +309,22 @@ ipcMain.handle('sync:start', async () => {
       if (req.method === 'GET' && url.pathname === '/persona') {
         const b64 = await askRenderer('export', url.searchParams.get('id'));
         return res.writeHead(200, { ...cors, 'Content-Type': 'application/zip' }).end(Buffer.from(b64, 'base64'));
+      }
+      // gespeichertes Wissen: holen (alle Einträge) und senden (zusammenführen, nichts wird gelöscht)
+      if (req.method === 'GET' && url.pathname === '/wissen') {
+        const list = await askRenderer('wissenList');
+        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(list));
+      }
+      if (req.method === 'POST' && url.pathname === '/wissen') {
+        const chunks = [];
+        let size = 0;
+        for await (const c of req) {
+          size += c.length;
+          if (size > 50 * 1024 * 1024) throw new Error('zu groß');
+          chunks.push(c);
+        }
+        const r = await askRenderer('wissenMerge', JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(r));
       }
       if (req.method === 'POST' && url.pathname === '/persona') {
         const chunks = [];

@@ -584,9 +584,9 @@
         Beim Wechsel startet die App neu.</p>
       <div id="syncPcWrap" hidden>
         <h3>Mit dem Handy abgleichen</h3>
-        <p class="hint">Personas samt Avatar, Posen und Schnellbefehlen direkt zwischen PC und Handy übertragen – im eigenen WLAN,
-          ohne Cloud. Auf dem Handy (Bereich Privat): ⚙ → Handy → „Mit dem PC abgleichen“. Windows fragt beim ersten Mal
-          eventuell, ob der KI-Assistent im privaten Netzwerk erreichbar sein darf – bitte erlauben.</p>
+        <p class="hint">Personas samt Avatar, Posen und Schnellbefehlen sowie das gespeicherte Wissen direkt zwischen PC und Handy
+          übertragen – im eigenen WLAN, ohne Cloud. Auf dem Handy im <b>gleichen Bereich</b>: ⚙ → Handy → „Mit dem PC abgleichen“.
+          Windows fragt beim ersten Mal eventuell, ob der KI-Assistent im privaten Netzwerk erreichbar sein darf – bitte erlauben.</p>
         <button id="syncPcStart">📶 Mit Handy abgleichen</button>
         <div id="syncPcBox" hidden>
           <div id="syncPcQr" style="width:180px;height:180px;background:#fff;border-radius:8px"></div>
@@ -599,6 +599,11 @@
         <p class="hint">Hier legt die KI auf Wunsch Rechercheergebnisse und Wichtiges ab – sag z. B. „Speicher das Ergebnis“ oder
           „Leg das unter Urlaubsplanung ab“. Passende Einträge bekommt sie bei späteren Fragen automatisch mit. Liegt nur auf
           diesem Gerät, getrennt nach Bereich.</p>
+        <div class="row wrap">
+          <button id="savedExport">📤 Wissen exportieren</button>
+          <button id="savedImport">📥 Wissen importieren</button>
+        </div>
+        <input id="savedImportFile" type="file" accept=".kiwissen,.json" hidden />
         <div id="savedCount" class="hint"></div>
         <div id="savedList" class="kb-list"></div>
       </div>
@@ -731,6 +736,37 @@
       <p class="hint">Sparsam: Figur mit 15 statt bis zu 60 Bildern pro Sekunde; unter 10 % Akku fast still.</p>
       <div id="phPowerInfo" class="hint"></div>
       <p id="privHint" class="hint" hidden>Weitere Funktionen – Notizen („Merk dir …“), Fahrmodus, Fehlerprotokoll – gibt es vorerst im Bereich 🏠 Privat.</p>
+      <div id="phShared" class="mobile-only">
+        <h3>Aktivierungswort <span class="beta-badge">Beta</span></h3>
+        <label class="check"><input id="privWakeOn" type="checkbox" /> Auf das Aktivierungswort hören – dann ohne Knopf sprechen</label>
+        <label>Aktivierungswort <input id="privWakeWord" type="text" autocomplete="off" /></label>
+        <p class="hint">Z. B. „Max, wie wird das Wetter morgen?“ – oder nur „Max“, dann hört die Figur zu. Erkannt wird auf dem Handy
+          (Whisper, einmaliger Download); vorher geht nichts nach außen. Ähnlich Klingendes zählt mit (Max/Maks). Hört auch im
+          Hintergrund, braucht dafür „Gespräch im Hintergrund“ und etwas mehr Akku.</p>
+        <button id="privWakeTest">Probe …</button>
+        <div id="syncPhoneWrap">
+          <h3>Mit dem PC abgleichen <span class="beta-badge">Beta</span></h3>
+          <p class="hint">Am PC im <b>gleichen Bereich</b> (Dienstlich oder Privat) unter ⚙ → Wissen „Mit Handy abgleichen“ öffnen,
+            dann hier den QR-Code fotografieren oder Adresse und Code eintippen. Beide Geräte im selben WLAN; die Daten gehen
+            direkt, ohne Cloud. Übertragen werden Personas und das gespeicherte Wissen – kein Gedächtnis, keine Chats, keine
+            Schlüssel und kein Firmenwissen.</p>
+          <div class="row wrap">
+            <button id="syncScan">📷 QR-Code scannen</button>
+          </div>
+          <input id="syncScanFile" type="file" accept="image/*" capture="environment" hidden />
+          <div class="row">
+            <input id="syncAddr" type="text" placeholder="Adresse, z. B. 192.168.1.20:52000" autocomplete="off" style="flex:2" />
+            <input id="syncCode" type="text" inputmode="numeric" placeholder="Code" autocomplete="off" style="flex:1" />
+            <button id="syncConnect">Verbinden</button>
+          </div>
+          <div id="syncList" class="kb-list"></div>
+          <button id="syncSend" hidden>⬆ Aktuelle Persona an den PC senden</button>
+          <div id="syncKnow" class="row wrap" hidden>
+            <button id="syncKnowGet">⬇ Wissen vom PC holen</button>
+            <button id="syncKnowSend">⬆ Wissen an den PC senden</button>
+          </div>
+        </div>
+      </div>
       <div id="privWrap" hidden>
         <h3>Notizen <span class="beta-badge">Privat</span></h3>
         <p class="hint">Sag oder schreib „<b>Merk dir:</b> Reifen wechseln bis Samstag“ – oder tippe im Widget auf 📝 und sprich.
@@ -758,13 +794,6 @@
           <button id="privRealtime">🎙 Echtzeit-Gespräch starten</button>
           <select id="privRtVoice" title="Stimme"></select>
         </div>
-        <h3>Aktivierungswort <span class="beta-badge">Privat</span></h3>
-        <label class="check"><input id="privWakeOn" type="checkbox" /> Auf das Aktivierungswort hören – dann ohne Knopf sprechen</label>
-        <label>Aktivierungswort <input id="privWakeWord" type="text" autocomplete="off" /></label>
-        <p class="hint">Z. B. „Max, wie wird das Wetter morgen?“ – oder nur „Max“, dann hört die Figur zu. Erkannt wird auf dem Handy
-          (Whisper, einmaliger Download); vorher geht nichts nach außen. Ähnlich Klingendes zählt mit (Max/Maks). Hört auch im
-          Hintergrund, braucht dafür „Gespräch im Hintergrund“ und etwas mehr Akku.</p>
-        <button id="privWakeTest">Probe …</button>
         <h3>Nachrichten vorlesen <span class="beta-badge">Privat</span></h3>
         <label class="check"><input id="privNotifyOn" type="checkbox" /> Neue Nachrichten dieser Apps vorlesen (mit der Stimme auf dem Gerät – nichts geht an einen Cloud-Dienst)</label>
         <div id="privNotifyApps" class="row wrap"></div>
@@ -774,22 +803,6 @@
         <p class="hint">In der schwebenden Figur lange drücken → „🖼 Bildschirm fragen“: Android fragt jedes Mal nach, dann geht genau
           ein Bildschirmfoto mit der Frage an Claude. Nichts wird gespeichert.</p>
         <button id="privScreen">So geht's</button>
-        <div id="syncPhoneWrap">
-          <h3>Mit dem PC abgleichen <span class="beta-badge">Privat</span></h3>
-          <p class="hint">Am PC im Bereich Privat unter ⚙ → Wissen „Mit Handy abgleichen“ öffnen, dann hier den QR-Code
-            fotografieren oder Adresse und Code eintippen. Beide Geräte im selben WLAN; die Daten gehen direkt, ohne Cloud.</p>
-          <div class="row wrap">
-            <button id="syncScan">📷 QR-Code scannen</button>
-          </div>
-          <input id="syncScanFile" type="file" accept="image/*" capture="environment" hidden />
-          <div class="row">
-            <input id="syncAddr" type="text" placeholder="Adresse, z. B. 192.168.1.20:52000" autocomplete="off" style="flex:2" />
-            <input id="syncCode" type="text" inputmode="numeric" placeholder="Code" autocomplete="off" style="flex:1" />
-            <button id="syncConnect">Verbinden</button>
-          </div>
-          <div id="syncList" class="kb-list"></div>
-          <button id="syncSend" hidden>⬆ Aktuelle Persona an den PC senden</button>
-        </div>
         <h3>Problem melden</h3>
         <p class="hint">Speichert die letzten Ereignisse der App als Textdatei – ohne Gesprächsinhalte und ohne Schlüssel. Die Datei
           schickst du mir, dann sehe ich, was auf deinem Handy schiefgelaufen ist.</p>

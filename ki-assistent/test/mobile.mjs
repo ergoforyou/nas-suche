@@ -979,13 +979,26 @@ check(/Anna.*WhatsApp.*Bin um 7 da/.test(wake.st), 'Nachricht wird angesagt', wa
 // Abgleich mit dem PC im WLAN (PC nachgebildet): verbinden, Persona holen, Persona senden
 
 const received = [];
+const pcWissen = [{ title: 'Vom PC: Wallbox-Angebote', text: 'Drei Angebote verglichen: A 1.290 €, B 1.450 €, C 1.180 € (inkl. Montage).', created: Date.now() - 5000 }];
+let wissenIn = null;
+let pcArea = 'privat';
 const pcPack = Buffer.from(file?.b64 ?? '', 'base64');
 const pc = http.createServer((req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-ki-code, content-type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
   if (req.method === 'OPTIONS') return res.writeHead(204, cors).end();
   if (req.headers['x-ki-code'] !== '123456') return res.writeHead(403, cors).end();
   const u = new URL(req.url, 'http://x');
-  if (u.pathname === '/info') return res.writeHead(200, cors).end(JSON.stringify({ name: 'KI-Assistent Cloud Beta', area: 'privat' }));
+  if (u.pathname === '/info') return res.writeHead(200, cors).end(JSON.stringify({ name: 'KI-Assistent Cloud Beta', area: pcArea }));
+  if (u.pathname === '/wissen' && req.method === 'GET') return res.writeHead(200, cors).end(JSON.stringify(pcWissen));
+  if (u.pathname === '/wissen' && req.method === 'POST') {
+    const parts = [];
+    req.on('data', (c) => parts.push(c));
+    req.on('end', () => {
+      wissenIn = JSON.parse(Buffer.concat(parts).toString('utf8'));
+      res.writeHead(200, cors).end(JSON.stringify({ neu: wissenIn.length, aktualisiert: 0, gleich: 0 }));
+    });
+    return;
+  }
   if (u.pathname === '/personas') return res.writeHead(200, cors).end(JSON.stringify([{ id: 'p1', name: 'Vom PC', poses: 1, quick: 2 }]));
   if (u.pathname === '/persona' && req.method === 'GET') return res.writeHead(200, cors).end(pcPack);
   if (u.pathname === '/persona' && req.method === 'POST') {
@@ -1016,6 +1029,29 @@ await page.waitForFunction((n) => window.__app.state.personas.length > n, before
 await page.evaluate(() => document.querySelector('#syncSend')?.click());
 await page.waitForTimeout(3000);
 const after2 = await page.evaluate(() => window.__app.state.personas.length);
+// gespeichertes Wissen holen und senden (Handy und PC im gleichen Bereich)
+const knowRes = await page.evaluate(async () => {
+  await window.__app.runAppTool('wissen_speichern', { titel: 'Vom Handy: Notiz', inhalt: 'Reifen beim Händler am Montag abholen, Auftrag 4711.' });
+  const before = window.__app.state.saved.length;
+  document.querySelector('#syncKnowGet').click();
+  await new Promise((r) => setTimeout(r, 800));
+  const got = window.__app.state.saved.some((e) => e.title === 'Vom PC: Wallbox-Angebote');
+  document.querySelector('#syncKnowGet').click(); // zweimal holen: nichts doppelt
+  await new Promise((r) => setTimeout(r, 800));
+  const twice = window.__app.state.saved.filter((e) => e.title === 'Vom PC: Wallbox-Angebote').length;
+  document.querySelector('#syncKnowSend').click();
+  await new Promise((r) => setTimeout(r, 800));
+  return { before, got, twice, visible: !document.querySelector('#syncKnow').hidden };
+});
+check(knowRes.got && knowRes.twice === 1 && knowRes.visible && Array.isArray(wissenIn) && wissenIn.some((e) => e.title === 'Vom Handy: Notiz'), 'Abgleich: gespeichertes Wissen vom PC geholt (ohne Doppelte) und an den PC gesendet', JSON.stringify({ ...knowRes, sent: wissenIn?.length }));
+// PC in einem anderen Bereich: kein Abgleich (dienstlich und privat bleiben getrennt)
+pcArea = 'dienstlich';
+const mismatch = await page.evaluate(async () => {
+  document.querySelector('#syncConnect').click();
+  await new Promise((r) => setTimeout(r, 1200));
+  return document.querySelector('#status').textContent;
+});
+check(/denselben Bereich/.test(mismatch), 'Abgleich: PC im anderen Bereich wird abgelehnt', mismatch);
 pc.close();
 check(after2 === before2 + 1, 'Abgleich: Persona vom PC übers WLAN geholt', `${before2} → ${after2}`);
 check(received[0] > 1000, 'Abgleich: Persona an den PC gesendet', JSON.stringify(received));
@@ -1082,6 +1118,35 @@ await page.reload();
 await page.waitForFunction(() => window.__app);
 const back = await page.evaluate(() => ({ area: window.__app.area, history: Object.values(window.__app.state.history ?? {}).flat().length }));
 check(back.area === 'dienstlich' && back.history > 0, 'Zurück in Dienstlich: alles wieder da', JSON.stringify(back));
+// Dienstlich: Aktivierungswort und WLAN-Abgleich sind da, die Privat-Extras nicht
+const dienst = await page.evaluate(() => {
+  document.getElementById('btnSettings').click();
+  document.querySelector('[data-tab=phone]').click();
+  const vis = (id) => !!document.getElementById(id)?.offsetParent;
+  const out = { wake: vis('privWakeOn'), sync: vis('syncConnect'), notes: vis('privNotes') };
+  document.getElementById('btnCloseDrawer')?.click();
+  return out;
+});
+check(dienst.wake && dienst.sync && !dienst.notes, 'Dienstlich: Aktivierungswort und WLAN-Abgleich verfügbar (Privat-Extras nicht)', JSON.stringify(dienst));
+// Wissen per Datei: Export (Datei wird gesichert) und Import (zusammenführen)
+// „Speichern unter“ der Android-App nachbilden (nach dem Neuladen ist die frühere Nachbildung weg)
+await page.evaluate(() => {
+  window.__saved = [];
+  window.KIFiles = { saveAs: (id, name, b64) => { window.__saved.push({ name, b64 }); setTimeout(() => window.__kiSaveDone(id, true, 'content://test'), 50); } };
+});
+const expBefore = 0;
+await page.evaluate(() => window.__app.runAppTool('wissen_speichern', { titel: 'Export-Test', inhalt: 'Ein Eintrag, der in die Exportdatei gehört.' }));
+await page.evaluate(() => document.getElementById('savedExport').click());
+await page.waitForTimeout(500);
+const expFiles = await page.evaluate((n) => (window.__saved ?? []).slice(n).map((f) => f.name), expBefore);
+await page.setInputFiles('#savedImportFile', {
+  name: 'Wissen.kiwissen',
+  mimeType: 'application/json',
+  buffer: Buffer.from(JSON.stringify({ typ: 'ki-wissen', version: 1, bereich: 'dienstlich', eintraege: [{ title: 'Aus Datei', text: 'Importierter Inhalt mit genug Text.', created: 1 }] })),
+});
+await page.waitForTimeout(500);
+const impOk = await page.evaluate(() => window.__app.state.saved.some((e) => e.title === 'Aus Datei'));
+check(expFiles.some((n) => /kiwissen$/.test(n)) && impOk, 'Wissen als Datei exportiert und wieder importiert', JSON.stringify({ expFiles, impOk }));
 // ---- Schnellbefehle: Beispiele einfügen, Knopf über dem Eingabefeld nimmt den Text mit
 if (!(await page.isVisible('#tabs [data-tab=buero]'))) await page.click('#btnSettings');
 await page.click('#tabs [data-tab=buero]');
