@@ -376,12 +376,16 @@ class MainWindow(QMainWindow):
         self.b_pick.setToolTip("Danach in die Vorschau auf den Hintergrund klicken")
         self.b_pick.toggled.connect(self._pick_toggled)
         crow.addWidget(self.b_pick)
+        b_auto = QPushButton("Auto (Bildrand)")
+        b_auto.setToolTip("Häufigste Farbe am Bildrand als Hintergrundfarbe übernehmen")
+        b_auto.clicked.connect(self._auto_color)
+        crow.addWidget(b_auto)
         crow.addStretch(1)
         fc.addRow("Hintergrundfarbe:", crow)
         qrow = QHBoxLayout()
         for name, c in (("Grün", (0, 177, 64)), ("Blau", (0, 71, 187)), ("Weiß", (255, 255, 255))):
             b = QPushButton(name)
-            b.clicked.connect(lambda _=False, c=c: self._set_key_color(c))
+            b.clicked.connect(lambda _=False, c=c, n=name: self._quick_color(c, n == "Weiß"))
             qrow.addWidget(b)
         fc.addRow("Schnellwahl:", qrow)
         self.s_tol = slider_row(0.0, 1.0, 0.22, 0.01, 3)
@@ -396,6 +400,11 @@ class MainWindow(QMainWindow):
         fc.addRow("Farbsaum entfernen:", self.s_despill)
         self.ck_unmix = QCheckBox("Kantenfarben vom Hintergrund entmischen")
         fc.addRow(self.ck_unmix)
+        self.ck_edge = QCheckBox("Nur vom Bildrand aus entfernen (weißes Hemd vor weißer Wand bleibt)")
+        self.ck_edge.setToolTip("Entfernt nur Hintergrund, der mit dem Bildrand verbunden ist. "
+                                "Große, gleichmäßige Lücken (z. B. zwischen Arm und Körper) "
+                                "werden trotzdem entfernt.")
+        fc.addRow(self.ck_edge)
         pv.addWidget(self.g_chroma)
 
         # Kanten
@@ -480,7 +489,7 @@ class MainWindow(QMainWindow):
         for w in (self.s_detail, self.s_tol, self.s_soft, self.s_despill, self.s_choke,
                   self.s_feather, self.s_lo, self.s_hi):
             w.spin.valueChanged.connect(self.settings_changed)
-        for c in (self.ck_edgecol, self.ck_gpu, self.ck_unmix, self.ck_refine):
+        for c in (self.ck_edgecol, self.ck_gpu, self.ck_unmix, self.ck_edge, self.ck_refine):
             c.toggled.connect(self.settings_changed)
 
         for key, fn in (("Space", self.toggle_play), ("I", self.set_in), ("O", self.set_out),
@@ -506,6 +515,7 @@ class MainWindow(QMainWindow):
             softness=self.s_soft.spin.value(),
             despill=self.s_despill.spin.value(),
             unmix=self.ck_unmix.isChecked(),
+            from_edge=self.ck_edge.isChecked(),
             ai_quality=self.cb_aiq.currentData(),
             ai_detail=self.s_detail.spin.value(),
             ai_edge_colors=self.ck_edgecol.isChecked(),
@@ -525,6 +535,7 @@ class MainWindow(QMainWindow):
         self.s_soft.spin.setValue(s.softness)
         self.s_despill.spin.setValue(s.despill)
         self.ck_unmix.setChecked(s.unmix)
+        self.ck_edge.setChecked(s.from_edge)
         self.s_detail.spin.setValue(s.ai_detail)
         self.ck_edgecol.setChecked(s.ai_edge_colors)
         self.ck_gpu.setChecked(s.use_gpu)
@@ -627,6 +638,15 @@ class MainWindow(QMainWindow):
         c = QColorDialog.getColor(QColor(*self.mp4_bg), self, "Hintergrund für MP4")
         if c.isValid():
             self._set_mp4bg((c.red(), c.green(), c.blue()))
+
+    def _quick_color(self, c, white):
+        # Weiße Wand: nur zusammenhängend vom Rand aus, sonst verschwinden helle Stellen im Motiv
+        self.ck_edge.setChecked(white)
+        self._set_key_color(c)
+
+    def _auto_color(self):
+        if self.cur_rgb is not None:
+            self._set_key_color(P.border_color(self.cur_rgb))
 
     def _pick_toggled(self, on):
         self.preview.pick_mode = on

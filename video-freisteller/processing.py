@@ -196,6 +196,7 @@ class KeySettings:
     softness: float = 0.18               # Breite des Uebergangs (Graduierung)
     despill: float = 0.8                 # Farbsaum entfernen 0..1
     unmix: bool = True                   # Kantenfarben vom Hintergrund entmischen
+    from_edge: bool = False              # nur vom Bildrand aus zusammenhaengende Flaechen
     ai_quality: str = "schnell"          # "schnell" | "hoch"
     ai_detail: float = 1.0               # 0.5..2 – Aufloesung des KI-Netzes
     ai_edge_colors: bool = True          # Kantenfarben aus KI-Vordergrund
@@ -286,6 +287,8 @@ class ChromaKeyer:
         dist /= 0.75 if not self.neutral else 0.6
         soft = max(s.softness, 1e-3)
         alpha = _smoothstep((dist - s.tolerance) / soft).astype(np.float32)
+        if s.from_edge:
+            alpha = self._connected_only(alpha, dist, y)
 
         if s.unmix:
             # Mischfarbe C = a*F + (1-a)*K  ->  F = (C - (1-a)*K) / a
@@ -303,6 +306,51 @@ class ChromaKeyer:
             cr = cr - amt * self.kdir[1]
             rgb = np.clip(_ycbcr_to_rgb(y, cb, cr), 0.0, 1.0)
         return rgb, alpha
+
+    def _connected_only(self, alpha, dist, luma):
+        """Nur Hintergrund entfernen, der mit dem Bildrand verbunden ist.
+
+        Wie im KI-Assistenten (cutout.js): ein weisses Hemd vor weisser Wand
+        bleibt erhalten. Eingeschlossene Flaechen (zwischen Arm und Koerper)
+        zaehlen nur als Hintergrund, wenn sie gross, sehr nah an der
+        Hintergrundfarbe und gleichmaessig sind – Stoff hat Falten und Schatten.
+        """
+        h, w = alpha.shape
+        cand = (alpha < 0.5).astype(np.uint8)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(cand, connectivity=4)
+        if n <= 1:
+            return alpha
+        border = np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))
+        is_bg = np.zeros(n, bool)
+        is_bg[border] = True
+        is_bg[0] = False  # Label 0 = Vordergrund-Kandidaten
+        inner = np.flatnonzero(~is_bg[1:]) + 1
+        min_size = max(150, int(w * h * 0.0015))
+        inner = inner[stats[inner, cv2.CC_STAT_AREA] >= min_size]
+        if inner.size:
+            idx = labels.ravel()
+            cnt = np.bincount(idx, minlength=n).astype(np.float64)
+            sum_d = np.bincount(idx, weights=dist.ravel(), minlength=n)
+            l = luma.ravel().astype(np.float64)
+            sum_l = np.bincount(idx, weights=l, minlength=n)
+            sum_l2 = np.bincount(idx, weights=l * l, minlength=n)
+            mean_d = sum_d[inner] / cnt[inner]
+            std_l = np.sqrt(np.maximum(0, sum_l2[inner] / cnt[inner] - (sum_l[inner] / cnt[inner]) ** 2))
+            ok = (mean_d <= self.s.tolerance * 0.6) & (std_l <= 14 / 255)
+            is_bg[inner[ok]] = True
+        bg = is_bg[labels]
+        # weicher Saum nur direkt am entfernten Hintergrund
+        r = max(2, int(round(max(h, w) / 400)))
+        near = cv2.dilate(bg.astype(np.uint8), np.ones((2 * r + 1, 2 * r + 1), np.uint8)) > 0
+        return np.where(bg | near, alpha, 1.0).astype(np.float32)
+
+
+def border_color(rgb_u8: np.ndarray) -> tuple:
+    """Haeufigste (grob quantisierte) Farbe am Bildrand = Hintergrundfarbe."""
+    edge = np.concatenate([rgb_u8[0], rgb_u8[-1], rgb_u8[:, 0], rgb_u8[:, -1]]).astype(np.int32)
+    keys = (edge[:, 0] >> 4) << 8 | (edge[:, 1] >> 4) << 4 | (edge[:, 2] >> 4)
+    best = np.bincount(keys).argmax()
+    return tuple(int(round(c)) for c in edge[keys == best].mean(axis=0))
 
 
 class AIMatter:

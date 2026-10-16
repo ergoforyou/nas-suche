@@ -36,6 +36,10 @@ Der Export erfolgt als **WebM mit Transparenz**. Alles wird lokal auf dem eigene
 - **KI-Modell:** „Schnell“ ist eingebaut. „Höchste Qualität“ (ResNet50) wird beim ersten Auswählen einmalig geladen (~100 MB) und liefert noch feinere Kanten.
 - **Detailstufe:** Höhere Werte erfassen feinere Haare, rechnen aber langsamer. Bei Nahaufnahmen ist oft ein Wert unter 1 besser.
 - **Toleranz / Weicher Übergang** (Farbe): Die Toleranz legt fest, was komplett verschwindet. Der weiche Übergang bestimmt, wie breit die Abstufung zur vollen Deckung ist (fein graduierte Kante).
+- **Auto (Bildrand):** übernimmt die häufigste Farbe am Bildrand als Hintergrundfarbe, wie im KI-Assistenten.
+- **Nur vom Bildrand aus entfernen** (wird bei „Weiß“ automatisch eingeschaltet): Es verschwindet nur Hintergrund, der mit dem
+  Rand verbunden ist. Ein weißes Hemd vor weißer Wand bleibt also erhalten. Große, gleichmäßige Lücken, z. B. zwischen Arm
+  und Körper, werden trotzdem entfernt.
 - **Farbsaum entfernen / Kantenfarben entmischen:** entfernt grünen Schimmer bzw. hellen Saum an Haaren und Kanten.
 - **Kanten feinjustieren** (gilt für beide Verfahren):
   - *An Bilddetails anpassen:* Die Kante folgt feinen Strukturen im Bild.
@@ -49,7 +53,7 @@ Der Export erfolgt als **WebM mit Transparenz**. Alles wird lokal auf dem eigene
 
 | Format | Transparenz | Hinweis |
 |---|---|---|
-| WebM (VP9) | ja | für Web, Browser und Avatar-Einbindung |
+| WebM (VP9) | ja | für Web und Browser. Im KI-Assistenten als Avatar-Video direkt nutzbar (Freistellen: „Video ist schon freigestellt“). |
 | MOV ProRes 4444 | ja | für Premiere, DaVinci Resolve, Final Cut |
 | MP4 (H.264) | nein | MP4 kann technisch keine Transparenz. Der Hintergrund wird mit einer wählbaren Farbe gefüllt. |
 
