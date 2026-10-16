@@ -42,7 +42,29 @@ function toCanvas(img, w, h, doc = document) {
 
 /** Gemeinsamer Zustand, damit Chatfenster und freischwebende Figur synchron sind. */
 // mood/moodAt: Stimmung aus der Antwort; viseme: Mundöffnung je Laut (null = unbekannt); voice: Mikrofonpegel (≥ 1 = Sprache)
-export const avatarState = { level: 0, speaking: false, thinking: false, listening: false, shape: 0, mood: null, moodAt: 0, viseme: null, voice: 0 };
+export const avatarState = {
+  level: 0, speaking: false, thinking: false, listening: false, shape: 0, mood: null, moodAt: 0, viseme: null, voice: 0,
+  // kurze Anlässe (begrüßen, verabschieden, verstanden, Fehler, geschafft, Erinnerung): { name, at, until }
+  event: null,
+  // worauf gewartet wird: 'tool' (Internet, Datei) | 'calendar' (Kalender/Aufgaben) | null
+  wait: null,
+  // Tageszeit beeinflusst die Lebhaftigkeit (morgens munter, abends ruhiger)
+  timeOfDay: true,
+};
+
+/** Kurzen Anlass auslösen – passende Posen haben dann Vorrang. */
+export function fireEvent(name, ms = 3000) {
+  const now = performance.now();
+  avatarState.event = { name, at: now, until: now + ms };
+}
+
+/** Lebhaftigkeit je nach Tageszeit (1 = normal). */
+export function timeOfDayEnergy(h = new Date().getHours()) {
+  if (h >= 6 && h < 10) return 1.1;
+  if (h >= 18 && h < 22) return 0.88;
+  if (h >= 22 || h < 6) return 0.75;
+  return 1;
+}
 
 export class Avatar {
   /**
@@ -608,6 +630,14 @@ export class Avatar {
     this.forcePose = index;
   }
 
+  /** Für den Editor: einen Anlass ein paar Sekunden lang durchspielen (zeigt, welche Posen dann drankommen). */
+  simulateTrigger(trigger, ms = 6000) {
+    const now = performance.now();
+    this.forcePose = null;
+    this.simulate = trigger ? { t: trigger, until: now + ms } : null;
+    this.poseUntil = 0;
+  }
+
   switchPose(i, now) {
     if (i === this.current) return;
     this.prev = this.current;
@@ -662,6 +692,17 @@ export class Avatar {
     }
     if (n < 2) return this.switchPose(0, now);
     const base = this.speaking ? 'speak' : this.thinking ? 'think' : this.listening ? 'listen' : 'idle';
+    // Zeitpunkte für „lange warten“ und „gelangweilt“
+    if (this.thinking && !this.wasThinking) this.thinkStart = now;
+    this.wasThinking = this.thinking;
+    this.lastBusy ??= now;
+    if (base !== 'idle') this.lastBusy = now;
+    const ev = this.state.event && now < this.state.event.until ? this.state.event : null;
+    const sim = this.simulate && now < this.simulate.until ? this.simulate : null;
+    if (!sim && this.simulate) {
+      this.simulate = null;
+      this.poseUntil = 0;
+    }
     // Beginn einer Antwort merken (für Posen „am Anfang einer Antwort“)
     if (this.speaking && !this.wasSpeaking) this.speakStart = now;
     this.wasSpeaking = this.speaking;
@@ -675,9 +716,20 @@ export class Avatar {
       // Nutzer spricht gerade (oder eben noch): aufmerksam zuhören
       const L = this.listen;
       if (L?.talking || now - (L?.quietSince || 0) < 1500) prefs.push('listen:talk');
+      const mood = this.moodCur?.name;
+      if (mood && mood !== 'ruhig') prefs.push(`listen:${mood}`);
+    } else if (base === 'think') {
+      // Warten: Kalender, Internet/Datei oder einfach länger als 3 s
+      if (this.state.wait === 'calendar') prefs.push('think:calendar');
+      if (this.state.wait || now - (this.thinkStart ?? now) > 3000) prefs.push('think:long');
+    } else if (now - this.lastBusy > 5 * 60e3) {
+      prefs.push('idle:bored');
     }
     if (base !== 'speak') this.startPlayed = false;
     prefs.push(base);
+    // kurze Anlässe gehen allem anderen vor; die Editor-Probe ersetzt alles
+    if (ev) prefs.unshift(`event:${ev.name}`);
+    if (sim) prefs.splice(0, prefs.length, sim.t);
     const byTrigger = (t) => {
       const out = [];
       for (let i = 1; i < n; i++) if ((this.layers[i].config.trigger ?? 'speak') === t) out.push(i);
@@ -693,6 +745,12 @@ export class Avatar {
       }
     }
     if (st === 'start') this.startPlayed = true;
+    const oneShot = !!sim || st.startsWith('event:');
+    // neuer Anlass mit passender Pose: sofort zeigen
+    if (ev && st === `event:${ev.name}` && this.evSeen !== ev.at) {
+      this.evSeen = ev.at;
+      this.poseUntil = 0;
+    }
     // Wechsel des Grundzustands (sprechen, nachdenken, zuhören, Ruhe) sofort zeigen; feinere Wechsel
     // (Stimmung, aufmerksam zuhören) erst, wenn die aktuelle Pose ihre Zeit gehabt hat
     if (base !== this.poseBase) {
@@ -714,9 +772,12 @@ export class Avatar {
     };
     let next = 0;
     let hold;
-    if (st === 'idle') {
-      // meist das Grundbild, ab und zu eine Ruhe-Pose
-      if (this.current === 0 && cand.length && Math.random() < 0.45) {
+    if (oneShot) {
+      next = nextOf(cand);
+      hold = sim ? Math.max(1500, sim.until - now) : Math.max(1500, ev.until - now);
+    } else if (base === 'idle') {
+      // meist das Grundbild, ab und zu eine Ruhe-Pose (gelangweilt: öfter)
+      if (this.current === 0 && cand.length && Math.random() < (st === 'idle:bored' ? 0.8 : 0.45)) {
         next = nextOf(cand);
         hold = rnd(2500, 5500);
       } else hold = rnd(5000, 12000);
@@ -916,7 +977,12 @@ export class Avatar {
       M.side = Math.random() < 0.5 ? -1 : 1;
     }
     const k = Math.min(1, dt / 450);
-    for (const key of Object.keys(MOODS.ruhig)) M[key] += (target[key] - M[key]) * k;
+    // Tageszeit: nur die Lebhaftigkeit (Kopfbewegung, Gesten), einmal pro Minute neu bestimmt
+    if (!this.todAt || now - this.todAt > 60e3) {
+      this.todAt = now;
+      this.tod = st.timeOfDay === false ? 1 : timeOfDayEnergy();
+    }
+    for (const key of Object.keys(MOODS.ruhig)) M[key] += ((key === 'energy' ? target[key] * this.tod : target[key]) - M[key]) * k;
     return M;
   }
 

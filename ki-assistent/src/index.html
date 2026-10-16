@@ -26,6 +26,7 @@
 
   <section class="stage" id="stage">
     <canvas id="avatar"></canvas>
+    <div class="speech-bubble" id="speechBubble" hidden></div>
     <div class="state-badge" id="stateBadge" hidden></div>
     <div class="resize-handle" id="stageResize" title="Größe ändern"></div>
   </section>
@@ -132,6 +133,19 @@
         <label class="check"><input id="avPipCamera" type="checkbox" /> Kamerafahrten: kommt die Antwort, zoomt das Bild langsam auf Oberkörper bzw. Gesicht, danach zurück zur ganzen Figur
           <span class="hint">(wirkt lebendiger; braucht gesetzte Augen/Mund)</span></label>
       </div>
+      <h3>Lebendigkeit</h3>
+      <label class="check"><input id="avTod" type="checkbox" /> Tageszeit: morgens munterer, abends ruhiger</label>
+      <label class="check"><input id="avGreet" type="checkbox" /> Beim Start begrüßen <span class="hint">(mit Posen für „begrüßen“)</span></label>
+      <label class="check"><input id="avGlow" type="checkbox" /> Status-Leuchte am Rand: grün = hört zu, blau = denkt nach</label>
+      <label>Sprechblase neben der Figur
+        <select id="avBubble">
+          <option value="stumm">nur wenn der Ton aus ist (Büro)</option>
+          <option value="immer">immer</option>
+          <option value="aus">nie</option>
+        </select>
+      </label>
+      <p class="hint">Mehr Anlässe für Posen und Videos: warten, begrüßen, verabschieden, verstanden, geschafft, Entschuldigung,
+        Erinnerung, gelangweilt … (Auswahl je Pose unten). Mit ▶ neben einer Pose lässt sich ihr Anlass ausprobieren.</p>
       <label>Größe der freien Figur (Anteil der Bildschirmhöhe) <span id="avFloatSizeVal" class="hint"></span>
         <input id="avFloatSize" type="range" min="0.15" max="1" step="0.01" /></label>
       <p class="hint">Freischwebend: Figur anklicken zeigt einen Rahmen – ziehen verschiebt, Ecken, Mausrad oder die

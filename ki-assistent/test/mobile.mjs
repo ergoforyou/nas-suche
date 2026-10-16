@@ -358,6 +358,42 @@ const moodPose = await page.evaluate(async () => {
   return { target, hit };
 });
 check(moodPose.target > 0 && moodPose.hit, 'Pose für „beim Sprechen – fröhlich“ wird gezeigt', JSON.stringify(moodPose));
+// Neue Anlässe: kurzer Anlass (geschafft), längeres Warten, Probe im Editor
+const events = await page.evaluate(async () => {
+  const app = window.__app;
+  const av = app.persona().avatar;
+  const vids = av.poses.filter((p) => p.video);
+  const trig = ['event:success', 'think:long', 'idle:bored'];
+  vids.forEach((p, i) => (p.trigger = trig[i % trig.length]));
+  await app.avatar.setConfig(av);
+  app.avatar.previewPose(null);
+  const idx = (t) => app.avatar.layers.findIndex((L) => L.config?.trigger === t);
+  const wait = async (cond, ms = 6000) => {
+    for (let t = 0; t < ms / 100; t++) {
+      if (cond()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  };
+  const out = {};
+  app.fireEvent('success', 3000);
+  out.success = await wait(() => app.avatar.current === idx('event:success'), 2500);
+  await new Promise((r) => setTimeout(r, 3500));
+  app.avatarState.thinking = true;
+  app.avatarState.wait = 'tool';
+  out.long = await wait(() => app.avatar.current === idx('think:long'), 3000);
+  app.avatarState.thinking = false;
+  app.avatarState.wait = null;
+  app.avatar.simulateTrigger('idle:bored', 3000);
+  out.probe = await wait(() => app.avatar.current === idx('idle:bored'), 2500);
+  app.avatar.simulateTrigger(null);
+  out.tod = app.timeOfDayEnergy(8) > 1 && app.timeOfDayEnergy(23) < 1;
+  return out;
+});
+check(events.success, 'Anlass „geschafft“ zeigt seine Pose sofort', JSON.stringify(events));
+check(events.long, 'Längeres Warten (Internet/Datei) hat eigene Pose', JSON.stringify(events));
+check(events.probe, 'Anlass-Probe im Editor zeigt die passende Pose', JSON.stringify(events));
+check(events.tod, 'Tageszeit: morgens munterer, abends ruhiger');
 // ---- Langes Video: Schnitt-Werkzeug öffnet sich gleich nach dem Hochladen, „2 s ab hier“ schneidet
 await page.click('#poseAdd');
 await page.waitForSelector('#pickSheet');
@@ -628,6 +664,14 @@ check(
   JSON.stringify(rem),
 );
 check(phone.fps === 5, 'Akku-Sparmodus: bei 8 % Akku nur noch 5 Bilder/s', String(phone.fps));
+// ---- Sprechblase, wenn der Ton aus ist
+const bub = await page.evaluate(async () => {
+  window.__app.state.settings.bubble = 'stumm';
+  window.__app.showBubble('Das ist ein Test der Sprechblase.');
+  const b = document.querySelector('#speechBubble');
+  return { shown: !b.hidden, text: b.textContent };
+});
+check(bub.shown && /Sprechblase/.test(bub.text), 'Sprechblase neben der Figur', JSON.stringify(bub));
 // ---- Beta: schwebende Figur – nur die Figur, Hintergrund durchsichtig
 const fl = await page.evaluate(async () => {
   window.__setFloat(true);

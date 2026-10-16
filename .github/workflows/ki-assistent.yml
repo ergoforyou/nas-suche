@@ -105,9 +105,10 @@ jobs:
 
   windows:
     name: Windows-Programm bauen
-    # Beta-Linie: nur die Android-App ändert sich – Windows-Pakete kommen aus dem normalen Zweig
-    if: ${{ !contains(github.ref, 'ki-assistent-beta') }}
     runs-on: windows-latest
+    env:
+      # Beta-Linie: nur die Cloud-Ausgabe, als eigenes Programm „KI-Assistent Cloud Beta“ (eigener Datenordner)
+      BETA: ${{ contains(github.ref, 'ki-assistent-beta') && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -124,6 +125,7 @@ jobs:
         env:
           KI_EDITION: lokal
       - name: Lokale Ausgabe bauen
+        if: env.BETA != '1'
         shell: bash
         run: >
           npx electron-builder --win portable nsis --publish never
@@ -134,6 +136,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Cloud-Ausgabe bauen
+        if: env.BETA != '1'
         shell: bash
         run: >
           npx electron-builder --win portable nsis --publish never
@@ -143,10 +146,24 @@ jobs:
           '-c.portable.artifactName=KI-Assistent-Cloud-${version}-portable.${ext}'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Cloud-Beta bauen
+        if: env.BETA == '1'
+        shell: bash
+        run: >
+          npx electron-builder --win portable nsis --publish never
+          -c.extraMetadata.edition=cloud -c.extraMetadata.kanal=beta
+          '-c.productName=KI-Assistent Cloud Beta' -c.appId=de.ergoforyou.kiassistent.cloud.beta
+          -c.directories.output=release/cloud
+          '-c.nsis.artifactName=KI-Assistent-Cloud-Beta-${version}-Setup.${ext}'
+          '-c.portable.artifactName=KI-Assistent-Cloud-Beta-${version}-portable.${ext}'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Paketinhalt prüfen
         shell: bash
-        run: node test/check-package.mjs lokal && node test/check-package.mjs cloud
+        run: |
+          if [ "$BETA" = "1" ]; then node test/check-package.mjs cloud; else node test/check-package.mjs lokal && node test/check-package.mjs cloud; fi
       - uses: actions/upload-artifact@v4
+        if: env.BETA != '1'
         with:
           name: KI-Assistent-lokal
           path: |
@@ -155,7 +172,7 @@ jobs:
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: KI-Assistent-Cloud
+          name: ${{ env.BETA == '1' && 'KI-Assistent-Cloud-Beta' || 'KI-Assistent-Cloud' }}
           path: |
             ki-assistent/release/cloud/*.exe
             ki-assistent/tts-server/*

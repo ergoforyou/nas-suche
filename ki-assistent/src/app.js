@@ -1,4 +1,4 @@
-import { Avatar, avatarState, detectFace, loadImage } from './avatar.js';
+import { Avatar, avatarState, detectFace, loadImage, fireEvent, timeOfDayEnergy } from './avatar.js';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
@@ -128,6 +128,10 @@ const DEFAULT_SETTINGS = {
   bgTalk: false, // Android: Gespräch läuft im Hintergrund weiter (Bildschirm aus, Headset-Taste)
   powerSave: 'auto', // Android: 'auto' | 'an' | 'aus' – Figur sparsamer bei wenig Akku
   floatOverlay: false, // Android (Beta): Figur schwebt beim Verlassen der App frei über anderen Apps
+  todMood: true, // Tageszeit: morgens munterer, abends ruhiger
+  bubble: 'stumm', // Sprechblase: 'aus' | 'stumm' (nur ohne Ton) | 'immer'
+  statusGlow: true, // farbiger Rand: hört zu (grün) / denkt (blau)
+  greet: true, // beim Start begrüßen (Anlass „begrüßen“)
 };
 
 const CLAUDE_MODELS = [
@@ -251,7 +255,10 @@ const tts = new SpeechOutput({
 });
 tts.onShape = (v) => (avatarState.shape = avatarState.shape * 0.5 + v * 0.5);
 tts.onViseme = (v) => (avatarState.viseme = v);
-tts.onItem = (meta) => meta?.mood && setMood(meta.mood);
+tts.onItem = (meta) => {
+  if (meta?.mood) setMood(meta.mood);
+  if (meta?.text && state.settings.bubble === 'immer') showBubble(meta.text);
+};
 
 /** Stimmung der Figur setzen (aus der Antwort); sie klingt nach dem Sprechen von selbst ab. */
 function setMood(name) {
@@ -508,6 +515,9 @@ function updateBadge() {
   b.textContent = text;
   b.hidden = !text;
   avatarState.listening = stt.listening;
+  const glow = state.settings.statusGlow !== false;
+  $('stage').classList.toggle('glow-listen', glow && (stt.listening || !!state.hearing));
+  $('stage').classList.toggle('glow-think', glow && !stt.listening && (avatarState.thinking || !!state.transcribing));
   floating.setBadge(text, stt.listening);
   $('btnMic').classList.toggle('listening', stt.listening);
   $('btnMic').classList.toggle('busy', !!state.transcribing);
@@ -676,6 +686,9 @@ async function send(text) {
   let answer = '';
   let sources = [];
   const created = [];
+  // Anlässe für die Figur: verabschieden, geschafft
+  let byePending = FAREWELL.test(text);
+  let wrote = false;
   const think = new ThinkFilter();
   const moods = new MoodFilter(); // Stimmungsmarken wie [freudig] steuern die Mimik und werden entfernt
   let guessed = null;
@@ -684,9 +697,12 @@ async function send(text) {
   const splitter = new SentenceSplitter((s) => {
     // Hält sich das Modell nicht an die Marken, wird die Stimmung aus dem Satz erraten
     const mood = moods.tagged ? moods.current : (guessed = guessMood(s) ?? guessed);
-    if (!speak) return mood && setMood(mood);
+    if (!speak) {
+      if (state.settings.bubble !== 'aus') showBubble(s);
+      return mood && setMood(mood);
+    }
     state.spoken = (state.spoken + ' ' + s).slice(-1500); // für den Echo-Filter im Live-Gespräch
-    tts.enqueue(s, { mood });
+    tts.enqueue(s, { mood, text: s });
   });
   const filter = (text) => {
     const before = moods.current;
@@ -707,6 +723,9 @@ async function send(text) {
 
   const finish = (error) => {
     clearTimeout(renderTimer);
+    avatarState.wait = null;
+    if (error) fireEvent('error', 4000);
+    else if (created.length || wrote) fireEvent('success', 3500);
     const rest = filter(think.flush()) + moods.flush();
     answer += rest;
     splitter.push(rest);
@@ -767,12 +786,23 @@ async function send(text) {
         if (state.timing && !state.timing.answer) state.timing.answer = performance.now();
         if (avatarState.thinking && visible.trim()) {
           avatarState.thinking = false;
+          avatarState.wait = null;
           updateBadge();
+          if (byePending) {
+            byePending = false;
+            fireEvent('bye', 5000);
+          }
         }
         answer += visible;
         splitter.push(visible);
         renderTimer ??= setTimeout(render, 60);
-      } else if (ev.type === 'status') status(ev.payload);
+      } else if (ev.type === 'status') {
+        status(ev.payload);
+        // worauf die Figur wartet: Kalender/Aufgaben oder Internet/Datei
+        const s = String(ev.payload);
+        avatarState.wait = /^(📅|✅)/u.test(s) ? 'calendar' : /^(🔎|🌐|🛠)/u.test(s) ? 'tool' : avatarState.wait;
+        if (/trägt|ändert|löscht|legt .* an|hakt/.test(s)) wrote = true;
+      }
       else if (ev.type === 'sources') sources = ev.payload;
       else if (ev.type === 'file') {
         created.push(ev.payload);
@@ -1064,6 +1094,7 @@ async function listenOnce({ handsFree = false } = {}) {
       return;
     }
     if (handsFree && duringSpeech && isEcho(text)) return;
+    fireEvent('ack', 1500);
     if (interrupted) await waitIdle(2500);
     await send(text);
   } catch (e) {
@@ -1423,6 +1454,11 @@ function fillSettings() {
   $('phBgTalk').checked = !!s.bgTalk;
   $('phPower').value = s.powerSave ?? 'auto';
   $('phFloat').checked = !!s.floatOverlay;
+  $('avTod').checked = s.todMood !== false;
+  $('avBubble').value = s.bubble ?? 'stumm';
+  $('avGlow').checked = s.statusGlow !== false;
+  $('avGreet').checked = s.greet !== false;
+  avatarState.timeOfDay = s.todMood !== false;
   $('avPipBg').value = s.pipBg ?? 'dunkel';
   $('avPipCamera').checked = s.pipCamera !== false;
   $('avPipColor').value = s.pipBgColor ?? '#1e2430';
@@ -2647,7 +2683,18 @@ const TRIGGERS = [
   ['think', 'beim Nachdenken'],
   ['listen', 'beim Zuhören'],
   ['listen:talk', 'aufmerksam zuhören, während ich rede'],
+  ['listen:freudig', 'zuhören – fröhliche Stimmung'],
+  ['listen:ernst', 'zuhören – ernste Stimmung'],
+  ['think:long', 'warten – längere Antwort (Internet, Datei, > 3 s)'],
+  ['think:calendar', 'warten – schaut in Kalender/Aufgaben'],
   ['idle', 'in Ruhe, ab und zu'],
+  ['idle:bored', 'gelangweilt / dösen (nach 5 min Ruhe)'],
+  ['event:greet', 'begrüßen (beim Start)'],
+  ['event:bye', 'verabschieden („tschüss“, „bis später“)'],
+  ['event:ack', 'verstanden – kurz nicken (nachdem ich gesprochen habe)'],
+  ['event:success', 'geschafft – freuen (Datei fertig, Termin eingetragen)'],
+  ['event:error', 'Entschuldigung (etwas hat nicht geklappt)'],
+  ['event:reminder', 'Erinnerung ansagen (Termin, Aufgabe)'],
 ];
 
 function setEditIndex(i) {
@@ -2721,7 +2768,14 @@ function renderPoseList() {
       setEditIndex(editIndex === i ? -1 : editIndex > i ? editIndex - 1 : editIndex);
       avatarChanged();
     };
-    row.append(img, name, trig, edit, del);
+    const test = document.createElement('button');
+    test.textContent = '▶';
+    test.title = 'Anlass testen: ein paar Sekunden so tun, als wäre dieser Anlass (zeigt, welche Posen drankommen)';
+    test.onclick = () => {
+      avatar.simulateTrigger(pose.trigger ?? 'speak', 6000);
+      status(`Probe: „${(TRIGGERS.find(([v]) => v === (pose.trigger ?? 'speak')) ?? [, ''])[1]}“ – 6 Sekunden`);
+    };
+    row.append(img, name, trig, test, edit, del);
     list.appendChild(row);
     if (pose.video) {
       const opts = document.createElement('div');
@@ -3827,6 +3881,39 @@ function applyEdition() {
 }
 
 
+// ---------------------------------------------------------------- Lebendigkeit: Sprechblase, Begrüßung, Einstellungen
+const FAREWELL = /(?<!\p{L})(tschüss|tschüs|ciao|bis später|bis morgen|bis bald|auf wiedersehen|gute nacht|schönen feierabend|bye)(?!\p{L})/iu;
+let bubbleTimer = null;
+/** Satz als Sprechblase neben der Figur (praktisch im Büro mit ausgeschaltetem Ton). */
+function showBubble(text) {
+  const b = $('speechBubble');
+  if (!b || !text?.trim()) return;
+  b.textContent = text.trim().length > 160 ? `${text.trim().slice(0, 157)} …` : text.trim();
+  b.hidden = false;
+  b.classList.remove('fade');
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => b.classList.add('fade'), 2500 + Math.min(6000, text.length * 55));
+  setTimeout(() => b.classList.contains('fade') && (b.hidden = true), 3200 + Math.min(6000, text.length * 55));
+}
+$('avTod').onchange = (e) => {
+  state.settings.todMood = e.target.checked;
+  avatarState.timeOfDay = e.target.checked;
+  save();
+};
+$('avBubble').onchange = (e) => {
+  state.settings.bubble = e.target.value;
+  save();
+};
+$('avGlow').onchange = (e) => {
+  state.settings.statusGlow = e.target.checked;
+  save();
+  updateBadge();
+};
+$('avGreet').onchange = (e) => {
+  state.settings.greet = e.target.checked;
+  save();
+};
+
 // ---------------------------------------------------------------- Ort (Wetter, Verkehr & Co.)
 // Nur ein ungefährer Ortsname geht mit der Anfrage an den KI-Anbieter, keine genauen Koordinaten.
 let placeCache = null;
@@ -3905,6 +3992,7 @@ async function handleIntents() {
     } else if (ev.action === 'background-off') {
       setBgTalk(false);
     } else if (ev.action === 'reminder') {
+      fireEvent('reminder', 6000);
       status(`⏰ ${ev.title}: ${ev.text}`);
       if (state.settings.speak && !state.busy && !tts.speaking) tts.enqueue(`${ev.title}: ${ev.text}`);
     } else if (ev.action === 'share') {
@@ -4130,6 +4218,9 @@ window.__app = {
   computeVideoMask,
   outputReady: () => output.isOpen && !!output.win.document.getElementById('content'),
   syncReminders: () => syncReminders(),
+  fireEvent,
+  timeOfDayEnergy,
+  showBubble: (t) => showBubble(t),
   checkPower: () => checkPower(),
   currentPlace: () => currentPlace(),
   buildMessages: () => buildMessages(),
@@ -4139,6 +4230,8 @@ init().then(() => {
   if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
   refreshGoogle();
   startPhoneFeatures();
+  // Begrüßen, sobald die Figur steht
+  if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);
   ensureFaceRig();
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
   if (!state.settings.offline && state.settings.handsFree) setTimeout(() => stt.warmup().catch(() => {}), 3000);

@@ -27,7 +27,9 @@ const SMOKE = process.argv.includes('--smoke-test');
 //  - "cloud": zusätzlich Claude, ChatGPT und OpenAI-Stimme
 // Jede Ausgabe hat ihren eigenen Datenordner (Personas, Bilder, Videos, Gedächtnis).
 const EDITION = process.env.KI_EDITION || require('./package.json').edition || 'cloud';
-const APP_NAME = EDITION === 'lokal' ? 'KI-Assistent' : 'KI-Assistent Cloud';
+// Beta-Linie (nur Cloud): eigener Name und damit eigener Datenordner – läuft neben der normalen Ausgabe
+const BETA = require('./package.json').kanal === 'beta';
+const APP_NAME = (EDITION === 'lokal' ? 'KI-Assistent' : 'KI-Assistent Cloud') + (BETA ? ' Beta' : '');
 app.setName(APP_NAME);
 app.setPath('userData', path.join(app.getPath('appData'), APP_NAME));
 ipcMain.on('app:edition', (e) => (e.returnValue = EDITION));

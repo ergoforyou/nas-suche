@@ -114,6 +114,12 @@ möglichst mit gleichem Bildausschnitt. Für jede Pose festlegen, wann sie ersch
 Zuhören oder ab und zu in Ruhe. Die App blendet weich über; Mund, Blinzeln und Kopfbewegung laufen in jeder Pose
 weiter. Mund und Augen werden vom Grundbild übernommen und können pro Pose (✎) korrigiert werden.
 
+**Anlässe** (je Pose wählbar, mehrere Posen je Anlass wechseln sich ab): sprechen (auch je Stimmung), Anfang einer
+Antwort, nachdenken, **warten** (längere Antwort, Kalender), zuhören (auch aufmerksam bzw. je Stimmung), Ruhe,
+**gelangweilt** (nach 5 min), **begrüßen**, **verabschieden**, **verstanden**, **geschafft**, **Entschuldigung**,
+**Erinnerung**. Mit ▶ neben einer Pose lässt sich ihr Anlass ausprobieren. Dazu (⚙ → Avatar → Lebendigkeit):
+Tageszeit, Begrüßung beim Start, Status-Leuchte, Sprechblase (z. B. im Büro ohne Ton).
+
 ### Gedächtnis
 
 Unter ⚙ → **Gedächtnis**: Nach jeder Antwort fragt die App das Modell in LM Studio kurz, welche Fakten dauerhaft
