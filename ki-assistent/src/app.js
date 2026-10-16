@@ -2363,6 +2363,26 @@ async function videoFirstFrame(url) {
   return c;
 }
 
+/**
+ * Mit dem Browser aufgenommene WebM-Videos haben oft keine Längenangabe (Dauer = unendlich).
+ * Kurz ans Ende springen lässt den Browser die Länge ermitteln.
+ */
+async function ensureDuration(v) {
+  if (Number.isFinite(v.duration)) return v.duration;
+  await new Promise((resolve) => {
+    const done = () => {
+      v.removeEventListener('durationchange', check);
+      resolve();
+    };
+    const check = () => Number.isFinite(v.duration) && done();
+    v.addEventListener('durationchange', check);
+    setTimeout(done, 3000);
+    v.currentTime = 1e9;
+  });
+  v.currentTime = 0;
+  return Number.isFinite(v.duration) ? v.duration : 0;
+}
+
 /** Länge eines Videos in Sekunden (0, wenn unbekannt). */
 async function videoDuration(url) {
   const v = document.createElement('video');
@@ -2374,7 +2394,7 @@ async function videoDuration(url) {
       v.onloadedmetadata = resolve;
       v.onerror = reject;
     });
-    return Number.isFinite(v.duration) ? v.duration : 0;
+    return await ensureDuration(v);
   } catch {
     return 0;
   } finally {
@@ -2624,6 +2644,70 @@ $('poseAdd').onclick = () => {
 };
 $('poseEditMain').onclick = () => setEditIndex(-1);
 
+/**
+ * Abschnitt einer Video-Pose freistellen und als WebM mit transparentem Hintergrund aufnehmen.
+ * Freigestellt wird mit der Art der Pose (KI, einfarbige Wand, Greenscreen); bei KI wird die Maske für den
+ * Abschnitt vorher berechnet. Die Bilder werden erst vorbereitet und dann im richtigen Takt aufgenommen.
+ */
+async function bakeTransparentVideo(pose, clip, say) {
+  if (pose.cutMode === 'ai') {
+    const covers = pose.mask && pose.clip && Math.abs(pose.clip.start - clip.start) < 0.05 && Math.abs(pose.clip.end - clip.end) < 0.05;
+    if (!covers) {
+      pose.clip = clip;
+      say('KI stellt den Abschnitt frei …');
+      await computeMaskFor(pose);
+      if (!pose.mask) throw new Error('KI-Freistellung fehlgeschlagen');
+    }
+  }
+  const L = await avatar.createVideoLayer({ ...pose, clip: null, loop: false });
+  const fps = 25;
+  const n = Math.max(1, Math.round((clip.end - clip.start) * fps));
+  const frames = [];
+  const seek = (t) =>
+    new Promise((r) => {
+      L.video.onseeked = r;
+      L.video.currentTime = t;
+    });
+  L.video.pause();
+  for (let i = 0; i < n; i++) {
+    await seek(Math.min(clip.end - 0.01, clip.start + i / fps));
+    L.lastVideoTime = -1;
+    L.buildVideoFrame();
+    frames.push(await createImageBitmap(L.frame));
+    if (i % 5 === 0) say(`Bilder vorbereiten … ${i + 1} / ${n}`);
+  }
+  L.video.removeAttribute('src');
+  // Aufnahme im echten Takt (MediaRecorder nimmt in Echtzeit auf)
+  const c = document.createElement('canvas');
+  c.width = L.w;
+  c.height = L.h;
+  const g = c.getContext('2d');
+  const stream = c.captureStream(0);
+  const track = stream.getVideoTracks()[0];
+  const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8'].find((m) => MediaRecorder.isTypeSupported(m));
+  if (!mime) throw new Error('Dieses Gerät kann keine WebM-Videos aufnehmen');
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4e6 });
+  const chunks = [];
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  rec.start(250);
+  const t0 = performance.now();
+  for (let i = 0; i < frames.length; i++) {
+    const due = t0 + (i * 1000) / fps;
+    await new Promise((r) => setTimeout(r, Math.max(0, due - performance.now())));
+    g.clearRect(0, 0, c.width, c.height);
+    g.drawImage(frames[i], 0, 0);
+    track.requestFrame();
+    if (i % 5 === 0) say(`Video wird gespeichert … ${Math.round(((i + 1) / frames.length) * 100)} %`);
+  }
+  await new Promise((r) => setTimeout(r, 1000 / fps));
+  await new Promise((r) => {
+    rec.onstop = r;
+    rec.stop();
+  });
+  frames.forEach((f) => f.close());
+  return new Uint8Array(await new Blob(chunks, { type: 'video/webm' }).arrayBuffer());
+}
+
 const fmtSec = (t) => `${(+t).toFixed(1).replace('.', ',')} s`;
 
 /**
@@ -2656,6 +2740,9 @@ function openVideoTool(pose, { onApply } = {}) {
         <button data-act="newpose">＋ Abschnitt als neue Pose</button>
         <button data-act="still">📷 Dieses Bild als Grundbild</button>
       </div>
+      <div class="row wrap">
+        <button data-act="bake">✨ Freigestellt speichern (Video mit transparentem Hintergrund)</button>
+      </div>
       <p class="hint vt-info">Tipp: Aus einer längeren Aufnahme mehrere kurze Abschnitte als eigene Posen anlegen – z. B. „sprechen“, „nachdenken“, „zuhören“.</p>
       <button data-act="close">Schließen</button>
     </div>`;
@@ -2678,8 +2765,8 @@ function openVideoTool(pose, { onApply } = {}) {
       pos.style.background = `linear-gradient(to right, var(--border) ${a}%, var(--accent) ${a}%, var(--accent) ${b}%, var(--border) ${b}%)`;
     }
   };
-  v.onloadedmetadata = () => {
-    dur = v.duration || 0;
+  v.onloadedmetadata = async () => {
+    dur = await ensureDuration(v);
     pos.max = String(dur);
     if (!(sel.end > sel.start)) Object.assign(sel, { start: 0, end: dur });
     v.currentTime = sel.start;
@@ -2767,6 +2854,45 @@ function openVideoTool(pose, { onApply } = {}) {
       applyAvatar();
       renderPoseList();
       info.textContent = `Neue Pose „${copy.name}“ angelegt (gleiches Video, eigener Abschnitt). Auslöser in der Posen-Liste wählen.`;
+    },
+    bake: async () => {
+      const clip = clipOrNull() ?? { start: 0, end: dur };
+      if (clip.end - clip.start > 15) return (info.textContent = 'Bitte höchstens 15 Sekunden wählen (z. B. mit „2 s ab hier“).');
+      if (!pose.cutMode || pose.cutMode === 'none') pose.cutMode = 'ai';
+      v.pause();
+      box.querySelectorAll('button').forEach((b) => (b.disabled = true));
+      try {
+        const bytes = await bakeTransparentVideo(pose, clip, (t) => (info.textContent = t));
+        // Pose nutzt ab jetzt das fertig freigestellte Video (kein Freistellen mehr beim Abspielen)
+        const others = (persona().avatar.poses ?? []).filter((p) => p !== pose);
+        const oldVideo = pose.video;
+        const oldMask = pose.mask;
+        pose.video = await desktop.saveMedia(bytes, 'webm');
+        pose.cutMode = 'alpha';
+        pose.mask = null;
+        delete pose.clip;
+        delete pose.key;
+        if (oldVideo && !others.some((p) => p.video === oldVideo)) desktop.deleteMedia(oldVideo);
+        if (oldMask && !others.some((p) => p.mask === oldMask)) desktop.deleteMedia(oldMask);
+        save();
+        applyAvatar();
+        renderPoseList();
+        // zusätzlich als Datei sichern (z. B. für andere Personas oder den PC)
+        const name = `${(pose.name || 'Pose').replace(/[^\p{L}\p{N} _-]+/gu, '_')}-freigestellt.webm`;
+        if (desktop.saveFileAs) await desktop.saveFileAs(name, bytes);
+        else {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(new Blob([bytes], { type: 'video/webm' }));
+          a.download = name;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        }
+        close();
+        status('Freigestelltes Video gespeichert – die Pose nutzt es jetzt direkt.');
+      } catch (e) {
+        info.textContent = `Freistellen nicht möglich: ${e.message}`;
+        box.querySelectorAll('button').forEach((b) => (b.disabled = false));
+      }
     },
     still: async () => {
       if (!confirm('Dieses Videobild als neues Grundbild verwenden? Mund und Augen werden danach neu gesetzt.')) return;

@@ -363,6 +363,37 @@ if (toolOpen) {
   const cut = await page.evaluate(() => window.__app.persona().avatar.poses.at(-1).clip);
   check(cut && Math.abs(cut.start - 1) < 0.06 && Math.abs(cut.end - 3) < 0.06, 'Video auf 2 Sekunden geschnitten', JSON.stringify(cut));
 }
+// ---- Abschnitt gleich freigestellt speichern (weißer Hintergrund -> WebM mit Transparenz)
+await page.evaluate(() => {
+  const p = window.__app.persona().avatar.poses.at(-1);
+  p.cutMode = 'flood'; // einfarbige Wand (ohne KI-Download prüfbar)
+  p.keyTol = 30;
+});
+await page.locator('.pose-opts button', { hasText: '✂' }).last().click();
+await page.waitForSelector('#vtool video');
+await page.waitForFunction(() => document.querySelector('#vtool video').readyState >= 1);
+const savedBefore = await page.evaluate(() => window.__saved?.length ?? 0);
+const videoBefore = await page.evaluate(() => window.__app.persona().avatar.poses.at(-1).video);
+await page.click('#vtool [data-act=bake]');
+await page.waitForFunction((v) => window.__app.persona().avatar.poses.at(-1).video !== v, videoBefore, { timeout: 60000 }).catch(() => {});
+const baked = await page.evaluate(async (n) => {
+  const p = window.__app.persona().avatar.poses.at(-1);
+  const v = document.createElement('video');
+  v.muted = true;
+  v.src = p.video;
+  await new Promise((r) => (v.onloadeddata = r));
+  await new Promise((r) => { v.onseeked = r; v.currentTime = 0.5; });
+  const c = document.createElement('canvas');
+  c.width = v.videoWidth;
+  c.height = v.videoHeight;
+  const g = c.getContext('2d');
+  g.drawImage(v, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  const a = (fx, fy) => d[(Math.round(fy * (c.height - 1)) * c.width + Math.round(fx * (c.width - 1))) * 4 + 3];
+  return { cutMode: p.cutMode, clip: p.clip ?? null, wall: a(0.03, 0.03), body: a(0.5, 0.55), file: window.__saved?.slice(n).map((f) => f.name) };
+}, savedBefore);
+check(baked.cutMode === 'alpha' && baked.wall < 30 && baked.body > 200 && !baked.clip, 'Abschnitt als freigestelltes Video gespeichert (Hintergrund durchsichtig)', JSON.stringify(baked));
+check(/freigestellt\.webm$/.test(baked.file?.[0] ?? ''), 'Freigestelltes Video auch als Datei gesichert', JSON.stringify(baked.file));
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();
