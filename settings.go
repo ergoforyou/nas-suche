@@ -223,7 +223,7 @@ func (a *App) showSettings() {
 								"im Ordner oben ab. Alle anderen PCs laden ihn nur noch herunter – in wenigen Sekunden."),
 							note("Wichtig: Auf dem erstellenden PC die Suchordner als Netzwerkpfad (\\\\DiskStation\\…) eintragen,\n" +
 								"damit die Pfade auf allen PCs passen – oder überall dieselben Laufwerksbuchstaben verwenden."),
-							note("Tipp: Eine Datei NasSuche.json neben der EXE gibt diese Einstellungen für alle Kollegen vor."),
+							note("Feld leer lassen = jeder PC arbeitet unabhängig mit eigenem Index (empfohlen)."),
 							VSpacer{},
 						},
 					},
@@ -271,9 +271,9 @@ func (a *App) showSettings() {
 									}},
 									HSpacer{},
 								}},
-								note("Speichert Suchordner, Netzlaufwerke, feste Ordner (z. B. Digitale Eingänge), Startordner\n" +
-									"und gemeinsamen Index als NasSuche.json neben die EXE.\n" +
-									"Wer die EXE von dort startet und noch nichts eingestellt hat, übernimmt alles automatisch."),
+								note("Speichert Suchordner, Netzlaufwerke, feste Ordner (z. B. Digitale Eingänge) und Startordner\n" +
+									"als NasSuche.json – zum Weitergeben, z. B. per E-Mail. Liegt sie beim ersten Start neben\n" +
+									"der NasSuche.exe eines Kollegen, ist dort alles eingerichtet. Jeder PC arbeitet danach unabhängig."),
 							}},
 							VSpacer{ColumnSpan: 2},
 						},
@@ -391,7 +391,7 @@ func (c *Config) learnDrives() bool {
 // exportDefaults schreibt eine Vorgabe-Datei NasSuche.json (neben die EXE oder an einen gewählten Ort).
 func exportDefaults(owner walk.Form, c *Config) {
 	fd := &walk.FileDialog{
-		Title:          "Vorgabe für alle Kollegen speichern (neben die NasSuche.exe)",
+		Title:          "Einstellungen als Vorgabe für Kollegen speichern",
 		Filter:         "Vorgabe (NasSuche.json)|NasSuche.json",
 		InitialDirPath: exeDir(),
 		FilePath:       filepath.Join(exeDir(), "NasSuche.json"),
@@ -409,8 +409,9 @@ func exportDefaults(owner walk.Form, c *Config) {
 		walk.MsgBox(owner, brandProduct, "Konnte nicht gespeichert werden:\n"+err.Error(), walk.MsgBoxIconError)
 		return
 	}
-	msg := "Gespeichert: " + path + "\n\nLegen Sie die NasSuche.exe in denselben Ordner (z. B. auf dem NAS). " +
-		"Kollegen starten sie von dort – Suchordner und Netzlaufwerke sind dann schon eingerichtet."
+	msg := "Gespeichert: " + path + "\n\nDie Datei an Kollegen weitergeben (z. B. per E-Mail). Jeder legt sie auf seinem " +
+		"eigenen PC neben die NasSuche.exe, bevor er das Programm zum ersten Mal startet – Suchordner und " +
+		"Netzlaufwerke sind dann schon eingerichtet. Jeder PC arbeitet danach unabhängig."
 	for _, f := range c.Folders {
 		if len(f) >= 2 && f[1] == ':' {
 			msg += "\n\nHinweis: Laufwerksbuchstaben (z. B. " + f[:2] + ") werden bei den Kollegen automatisch " +

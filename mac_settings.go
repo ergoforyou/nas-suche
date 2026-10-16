@@ -120,7 +120,7 @@ func (a *MacApp) showSettings() {
 		container.NewHBox(widget.NewButton("Als Vorgabe speichern …", a.exportDefaults),
 			widget.NewButton("Vorgabe laden …", func() { a.importDefaults(func() { dlg.Hide() }) })),
 		widget.NewLabel("Speichert Suchordner, NAS-Freigaben, feste Ordner und Startordner als NasSuche.json.\n"+
-			"Liegt die Datei neben der App (z. B. im selben NAS-Ordner), übernehmen Kollegen sie beim ersten Start."),
+			"Weitergeben z. B. per E-Mail – Kollegen übernehmen sie mit „Vorgabe laden …“ auf ihrem eigenen Mac."),
 	)
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Suchordner & NAS", container.NewVScroll(form)),

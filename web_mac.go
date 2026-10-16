@@ -181,8 +181,8 @@ func (a *MacApp) exportDefaults() {
 			return
 		}
 		dialog.ShowInformation("Vorgabe gespeichert", "Gespeichert als "+w.URI().Path()+
-			"\n\nKollegen: Datei neben die App legen (z. B. im selben NAS-Ordner) oder in den Einstellungen\n"+
-			"„Vorgabe laden …“ wählen.", a.w)
+			"\n\nDie Datei an Kollegen weitergeben (z. B. per E-Mail). Sie wählen auf ihrem Mac in den Einstellungen\n"+
+			"„Vorgabe laden …“ – danach arbeitet jeder Mac unabhängig mit eigenem Index.", a.w)
 	}, a.w)
 	d.SetFileName("NasSuche.json")
 	d.Show()

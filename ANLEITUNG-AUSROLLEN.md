@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Jeder Arbeitsplatz bekommt zwei Teile: das Programm NAS-Suche (Windows oder Mac) und einmalig die Browser-Erweiterung. Das Programm sucht, verschiebt und spricht mit dem NAS; der Browser ist nur die Oberfläche. Pro Arbeitsplatz dauert das Einrichten etwa 5 Minuten.
+Jeder Arbeitsplatz bekommt das Programm NAS-Suche **lokal auf den eigenen Rechner** (Windows oder Mac) und einmalig die Browser-Erweiterung. Jeder Rechner hat seine eigenen Einstellungen und seinen eigenen Suchindex – kein zentraler Programmordner, keine gemeinsame Anmeldung, kein gemeinsamer Index auf dem NAS. Gesucht wird im lokalen Index, das NAS wird dabei nicht belastet. Pro Arbeitsplatz dauert das Einrichten etwa 5 Minuten.
 
 | Teil | Windows | Mac |
 | --- | --- | --- |
@@ -14,34 +14,46 @@ Jeder Arbeitsplatz bekommt zwei Teile: das Programm NAS-Suche (Windows oder Mac)
 
 Reihenfolge je Arbeitsplatz:
 
-1. NAS-Freigabe erreichbar machen (Netzlaufwerk bzw. smb://).
-2. Programm installieren und einmal starten.
-3. Suchordner prüfen (bei Vorgabe-Datei schon eingetragen).
+1. Programmdatei auf den eigenen Rechner kopieren – nicht auf dem NAS ablegen und nicht von dort starten.
+2. Programm starten, NAS-Freigabe und Suchordner eintragen.
+3. Erstes Einlesen abwarten (einige Minuten) – am besten nicht an allen Rechnern gleichzeitig.
 4. Browser-Erweiterung laden und das Symbol anheften.
 5. Probe: im Browser suchen, eine Datei in einen anderen Ordner ziehen.
 
-## Vorbereitung durch den Admin
+## Dateien verteilen – jeder installiert für sich
 
-Einmal einen Ordner auf dem NAS anlegen, der alles enthält; dann braucht kein Kollege eigene Einstellungen.
+Die Programmdateien gehen direkt an die Kollegen – per E-Mail, USB-Stick oder Download-Link, nicht über einen gemeinsamen Ordner auf dem NAS. Jeder legt das Programm auf seinen eigenen Rechner.
 
-1. Auf dem NAS einen Ordner anlegen, z. B. `\\DiskStation\Daten\_NasSuche` (Mac: `smb://DiskStation/Daten/_NasSuche`).
-2. Hineinlegen:
-   - `NasSuche.exe` (Windows)
-   - `NasSuche-Mac.zip` entpackt, also `ERGOFORYOU NAS-Suche.app` (Mac)
-   - optional `NasSuche-Portable.zip` (USB-Stick)
-3. **Vorgabe für Windows erstellen:** An einem eingerichteten PC *Einstellungen → Allgemein → „Als Vorgabe für alle Kollegen speichern …“*. Das legt `NasSuche.json` neben die EXE (Suchordner, Netzlaufwerke, feste Ordner wie „Digitale Eingänge“, Startordner, gemeinsamer Index).
-4. **Vorgabe für Mac erstellen:** An einem eingerichteten Mac *Einstellungen → Browser & Kollegen → „Als Vorgabe speichern …“* und als `NasSuche.json` in den NAS-Ordner speichern, am besten in einen Unterordner `Mac`. Mac und Windows brauchen getrennte Vorgaben, weil die Pfade anders aussehen (`Z:\Kunden` gegenüber `/Volumes/Daten/Kunden`).
-5. **Gemeinsamer Index (empfohlen ab 3 Arbeitsplätzen):** An genau einem Windows-PC *Einstellungen → Gemeinsamer Index* den NAS-Ordner wählen und „Dieser PC erstellt den gemeinsamen Index“ anhaken. Alle anderen laden den fertigen Index in Sekunden statt das NAS selbst einzulesen.
+| Datei | Für | Ablage auf dem eigenen Rechner |
+| --- | --- | --- |
+| NasSuche.exe | Windows | z. B. Dokumente\ERGOFORYOU (keine Administratorrechte nötig) |
+| NasSuche-Mac.zip | Mac | entpackt im Ordner Programme |
+| NasSuche-Portable.zip | USB-Stick (optional) | auf dem Stick |
+| Anleitung-NAS-Suche-Ausrollen.pdf | alle | – |
+
+- **Einstellungen:** Jeder trägt NAS-Freigabe und Suchordner selbst ein (Abschnitte Windows bzw. Mac).
+- **Abkürzung, optional:** Ein eingerichteter Rechner kann seine Einstellungen als Datei `NasSuche.json` speichern und per E-Mail weitergeben – Windows: *Einstellungen → Allgemein → „Als Vorgabe … speichern“*, Mac: *Einstellungen → Browser & Kollegen → „Als Vorgabe speichern …“*. Windows: Datei vor dem ersten Start neben die `NasSuche.exe` legen; Mac: *„Vorgabe laden …“*. Danach ist jeder Rechner unabhängig, es bleibt keine Verbindung untereinander.
+- **Gemeinsamer Index:** nicht verwenden – unter *Einstellungen → Gemeinsamer Index* (Windows) bleibt das Feld leer.
 
 Kennwörter speichert das Programm nicht. Windows fragt sie einmal ab („Anmeldedaten speichern“), der Mac legt sie im Schlüsselbund ab.
 
+## Netzlast gering halten
+
+Die Suche läuft komplett auf dem eigenen Rechner und belastet das NAS nicht. Das NAS wird nur beim Einlesen gelesen – und dann nur Ordner- und Dateinamen, keine Dateiinhalte. Damit bleibt die Gigabit-Leitung frei, auch wenn viele parallel arbeiten:
+
+- **Nur die nötigen Bereiche** als Suchordner eintragen, z. B. Kunden und Digitale Eingänge statt der ganzen Freigabe.
+- **Erstes Einlesen staffeln:** nicht alle Rechner zur selben Zeit einrichten.
+- **Seltener automatisch aktualisieren:** *Einstellungen → „Index automatisch aktualisieren alle … Stunden“* auf 8–12 setzen (Standard 4). Geöffnete Ordner zeigen neue Dateien trotzdem sofort, weil die Ordneransicht live vom NAS liest.
+- **Windows sanfter einlesen lassen:** *Einstellungen → Allgemein → „Gleichzeitige Zugriffe beim Einlesen“* auf 4 senken (Standard 16) – dauert etwas länger, belastet das NAS weniger.
+- **Nach dem Umräumen auf dem NAS:** geänderte Pfade in den Suchordnern anpassen, dann einmal **Aktualisieren (F5)**. Was man über die NAS-Suche selbst verschiebt oder umbenennt, kennt der Index sofort.
+
 ## Windows-PC einrichten
 
-1. `NasSuche.exe` vom NAS-Ordner auf den PC kopieren, z. B. nach `C:\Programme\ERGOFORYOU\` (oder direkt vom NAS starten).
+1. `NasSuche.exe` auf den eigenen PC kopieren, z. B. nach `Dokumente\ERGOFORYOU\`. Nicht vom NAS starten.
 2. Doppelklick. Erscheint „Der Computer wurde durch Windows geschützt“: **Weitere Informationen → Trotzdem ausführen** (nur beim ersten Mal).
-3. Lag eine `NasSuche.json` neben der EXE, sind Suchordner und Netzlaufwerke schon eingetragen. Sonst *Einstellungen → Suchordner* bzw. *Netzlaufwerke* ausfüllen.
+3. *Einstellungen → Netzlaufwerke*: das NAS-Laufwerk eintragen (z. B. `Z:` → `\\DiskStation\Daten`). *Einstellungen → Suchordner*: nur die nötigen Bereiche, z. B. `Z:\Kunden` und `Z:\Digitale Eingänge`. (Liegt eine weitergegebene `NasSuche.json` neben der EXE, ist das schon eingetragen.)
 4. Fragt Windows nach Benutzer und Kennwort für das NAS: eingeben und „Anmeldedaten speichern“ anhaken.
-5. *Einstellungen → Allgemein → „Mit Windows starten“* anhaken.
+5. *Einstellungen → Allgemein*: „Mit Windows starten“ anhaken; „Index automatisch aktualisieren“ auf 8–12 Stunden.
 6. Weiter mit der Browser-Erweiterung (unten).
 
 Portabel vom USB-Stick: `NasSuche-Portable.zip` entpacken, Ordner auf den Stick, `NasSuche.exe` starten. Einstellungen und Index liegen dann auf dem Stick, auf dem PC wird nichts eingetragen.
@@ -50,13 +62,14 @@ Portabel vom USB-Stick: `NasSuche-Portable.zip` entpacken, Ordner auf den Stick,
 
 Läuft ab macOS 11 auf Apple-Chip (M1–M4) und Intel; pro Mac etwa 5 Minuten.
 
-1. `NasSuche-Mac.zip` doppelklicken und **„ERGOFORYOU NAS-Suche“ in den Ordner „Programme“ ziehen.**
+1. `NasSuche-Mac.zip` doppelklicken und **„ERGOFORYOU NAS-Suche“ in den Ordner „Programme“ ziehen** – auf dem eigenen Mac, nicht auf dem NAS.
 2. **Erster Start:** Rechtsklick auf die App → **Öffnen** → „Öffnen“ bestätigen. Klappt das nicht: *Systemeinstellungen → Datenschutz & Sicherheit → „Dennoch öffnen“*. Nur beim ersten Mal nötig.
-3. **Vorgabe übernehmen:** *Einstellungen → Browser & Kollegen → „Vorgabe laden …“* und die `NasSuche.json` aus dem NAS-Ordner `Mac` wählen. Ohne Vorgabe: *Suchordner & NAS* ausfüllen, z. B. NAS-Freigabe `smb://DiskStation/Daten` und Suchordner `/Volumes/Daten`.
+3. **Einstellungen → Suchordner & NAS:** NAS-Freigabe eintragen (z. B. `smb://DiskStation/Daten`) und nur die nötigen Bereiche als Suchordner (z. B. `/Volumes/Daten/Kunden`, `/Volumes/Daten/Digitale Eingänge` – siehe nächster Abschnitt). Wer eine `NasSuche.json` per E-Mail bekommen hat: *Browser & Kollegen → „Vorgabe laden …“*.
 4. **NAS-Kennwort:** macOS fragt einmal nach Benutzer und Kennwort – „Im Schlüsselbund sichern“ anhaken.
 5. **Zugriff erlauben:** Fragt macOS „… möchte auf Dateien auf einem Netzwerkvolume zugreifen“, auf **Erlauben** klicken. Kommt die Frage für „Google Chrome“ bzw. „Opera“, dort ebenfalls erlauben.
 6. **Im Hintergrund starten:** *Einstellungen → Browser & Kollegen → „Beim Anmelden im Hintergrund starten“* anhaken und speichern. macOS meldet einmal „Hintergrundobjekt hinzugefügt“ – das ist richtig.
-7. Weiter mit der Browser-Erweiterung (unten).
+7. *Suchordner & NAS → „Index automatisch aktualisieren alle … Stunden“* auf 8–12 setzen.
+8. Weiter mit der Browser-Erweiterung (unten).
 
 Test: im Finder **⌘K** drücken und `smb://DiskStation/Daten` verbinden. Klappt das, findet auch die Suche das NAS.
 
@@ -74,7 +87,7 @@ Trifft zu, wenn der Mac nur eine Freigabe verbindet (z. B. `smb://DiskStation/Da
 6. Die NAS-Suche macht daraus automatisch `/Volumes/Daten/Kunden` und `/Volumes/Daten/Digitale Eingänge` und trägt die Freigabe zum Verbinden ein. **Speichern** – das erste Einlesen dauert je nach Größe einige Minuten, danach ist die Suche sofort da.
 7. **Feste Ordner anlegen:** In der Suche *Ordner ▾ → „Ordner auswählen und anzeigen …“* → `Digitale Eingänge` → *Ordner ▾ → „Angezeigten Ordner als festen Ordner merken …“*. Ebenso für `Kunden`. Im Browser erscheinen sie zusätzlich unter **Schnellzugriff**.
 8. Optional: *Ordner ▾ → „Angezeigten Ordner beim Start links öffnen“* für die Digitalen Eingänge, rechts die Kunden-Suche.
-9. **Für alle Kollegen übernehmen:** *Einstellungen → Browser & Kollegen → „Als Vorgabe speichern …“* → `NasSuche.json` in den NAS-Ordner `_NasSuche/Mac`. Kollegen wählen auf ihrem Mac *„Vorgabe laden …“* – Freigabe, Suchordner und feste Ordner sind dann identisch eingerichtet.
+9. Optional für Kollegen: *Einstellungen → Browser & Kollegen → „Als Vorgabe speichern …“* und die `NasSuche.json` per E-Mail weitergeben. Der Kollege wählt auf seinem Mac *„Vorgabe laden …“* – danach hat er dieselbe Einrichtung, aber mit eigenem Programm und eigenem Index.
 
 | Eintrag | Beispiel | Wirkung |
 | --- | --- | --- |
@@ -111,9 +124,9 @@ Zum Ziehen in Webseiten: Am bequemsten zwei Tabs nebeneinander (geteilte Ansicht
 
 Eine neue Version ersetzt nur die Programmdatei; Einstellungen, Index und Erweiterung bleiben.
 
-- **Windows:** neue `NasSuche.exe` über die alte kopieren (bzw. im NAS-Ordner austauschen) und starten. Die neue Version beendet die alte selbst.
+- **Windows:** neue `NasSuche.exe` (per E-Mail oder Stick) über die alte auf dem eigenen PC kopieren und starten. Die neue Version beendet die alte selbst.
 - **Mac:** App beenden (Menüleisten-Symbol → Beenden), neue App in *Programme* ersetzen, einmal per Rechtsklick → Öffnen starten.
-- **Browser-Erweiterung:** Das Programm legt beim Start die passende Erweiterung in denselben Ordner. Im Browser auf der Erweiterungsseite bei „ERGOFORYOU NAS-Suche“ einmal auf **Neu laden** (Kreispfeil) klicken. Offene Webseiten danach einmal neu laden (F5), damit das Hineinziehen wieder geht.
+- **Browser-Erweiterung:** Das Programm legt beim Start die passende Erweiterung in denselben Ordner wie bisher. Im Browser auf der Erweiterungsseite bei „ERGOFORYOU NAS-Suche“ einmal auf **Neu laden** (Kreispfeil) klicken. Offene Webseiten danach einmal neu laden (F5), damit das Hineinziehen wieder geht.
 
 ## Fehlerbehebung
 
