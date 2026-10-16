@@ -801,6 +801,46 @@ const wake = await page.evaluate(() => {
 });
 check(wake.a?.rest === 'wie wird das wetter morgen' && wake.b === null && wake.c?.rest === '', 'Aktivierungswort (frei wählbar, ähnlich klingend) erkannt, Frage danach übernommen', JSON.stringify(wake));
 check(/Anna.*WhatsApp.*Bin um 7 da/.test(wake.st), 'Nachricht wird angesagt', wake.st);
+// Abgleich mit dem PC im WLAN (PC nachgebildet): verbinden, Persona holen, Persona senden
+
+const received = [];
+const pcPack = Buffer.from(file?.b64 ?? '', 'base64');
+const pc = http.createServer((req, res) => {
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-ki-code, content-type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
+  if (req.method === 'OPTIONS') return res.writeHead(204, cors).end();
+  if (req.headers['x-ki-code'] !== '123456') return res.writeHead(403, cors).end();
+  const u = new URL(req.url, 'http://x');
+  if (u.pathname === '/info') return res.writeHead(200, cors).end(JSON.stringify({ name: 'KI-Assistent Cloud Beta', area: 'privat' }));
+  if (u.pathname === '/personas') return res.writeHead(200, cors).end(JSON.stringify([{ id: 'p1', name: 'Vom PC', poses: 1, quick: 2 }]));
+  if (u.pathname === '/persona' && req.method === 'GET') return res.writeHead(200, cors).end(pcPack);
+  if (u.pathname === '/persona' && req.method === 'POST') {
+    const parts = [];
+    req.on('data', (c) => parts.push(c));
+    req.on('end', () => {
+      received.push(Buffer.concat(parts).length);
+      res.writeHead(200, cors).end(JSON.stringify({ name: 'Max (am PC)' }));
+    });
+    return;
+  }
+  res.writeHead(404, cors).end();
+});
+await new Promise((r) => pc.listen(0, '127.0.0.1', r));
+const pcUrl = `127.0.0.1:${pc.address().port}`;
+const before2 = await page.evaluate(() => window.__app.state.personas.length);
+await page.evaluate(({ pcUrl }) => {
+  document.querySelector('#syncAddr').value = pcUrl;
+  document.querySelector('#syncCode').value = '123456';
+  document.querySelector('#syncConnect').click();
+}, { pcUrl });
+await page.waitForFunction(() => document.querySelectorAll('#syncList button').length > 0, null, { timeout: 10000 }).catch(() => {});
+await page.evaluate(() => document.querySelector('#syncList button')?.click());
+await page.waitForFunction((n) => window.__app.state.personas.length > n, before2, { timeout: 20000 }).catch(() => {});
+await page.evaluate(() => document.querySelector('#syncSend')?.click());
+await page.waitForTimeout(3000);
+const after2 = await page.evaluate(() => window.__app.state.personas.length);
+pc.close();
+check(after2 === before2 + 1, 'Abgleich: Persona vom PC übers WLAN geholt', `${before2} → ${after2}`);
+check(received[0] > 1000, 'Abgleich: Persona an den PC gesendet', JSON.stringify(received));
 check(privF.drive.full && privF.drive.live && privF.drive.prompt && !privF.after.full && !privF.after.live, 'Fahrmodus: Nur-Figur, Live, kurze Antworten – und wieder aus', JSON.stringify(privF.drive));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();

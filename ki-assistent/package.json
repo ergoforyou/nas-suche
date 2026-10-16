@@ -1,7 +1,7 @@
 {
   "name": "ki-assistent",
   "productName": "KI-Assistent",
-  "version": "1.26.0-beta.11",
+  "version": "1.26.0-beta.12",
   "description": "Lokaler Desktop-Assistent mit Avatar, Spracherkennung und Sprachausgabe für LM Studio",
   "main": "main.js",
   "author": "ergoforyou",
@@ -35,6 +35,7 @@
     "onnxruntime-web": "1.18.0",
     "pdfjs-dist": "5.7.284",
     "playwright": "1.56.1",
+    "qrcode-generator": "1.4.4",
     "three": "^0.186.1"
   },
   "build": {

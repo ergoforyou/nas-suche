@@ -12,6 +12,7 @@ import { detectFaceRig, markersFromRig } from './facerig.js';
 import { detectBodyRig, bodyHandles } from './bodyrig.js';
 import { openMarkEditor } from './markeditor.js';
 import { packPersona, unpackPersona } from './personapack.js';
+import qrcode from 'qrcode-generator';
 import { debugVoice, synthesize, piperState } from './piper.js';
 import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
 import googleLib from '../google.js';
@@ -1952,18 +1953,23 @@ $('personaImportFile').onchange = async (e) => {
   e.target.value = '';
   if (!file) return;
   try {
-    status('Persona wird übernommen …');
-    const data = await unpackPersona(new Uint8Array(await file.arrayBuffer()), (bytes, ext) => desktop.saveMedia(bytes, ext), { onProgress: status });
-    const p = migratePersona({ ...defaultPersona(), ...data, id: newId() });
-    if (state.personas.some((x) => x.name === p.name)) p.name += ' (importiert)';
-    p.memory ??= [];
-    switchTo(p);
-    status(`Persona „${p.name}“ übernommen – mit Avatar, Posen und Videos.`);
+    await importPersonaBytes(new Uint8Array(await file.arrayBuffer()));
   } catch (err) {
     status(`Import fehlgeschlagen: ${err.message}`);
     alert(`Import fehlgeschlagen: ${err.message}`);
   }
 };
+/** Persona aus einem .kiavatar-Paket übernehmen (Datei oder Abgleich im WLAN). */
+async function importPersonaBytes(bytes) {
+  status('Persona wird übernommen …');
+  const data = await unpackPersona(bytes, (b, ext) => desktop.saveMedia(b, ext), { onProgress: status });
+  const p = migratePersona({ ...defaultPersona(), ...data, id: newId() });
+  if (state.personas.some((x) => x.name === p.name)) p.name += ' (importiert)';
+  p.memory ??= [];
+  switchTo(p);
+  status(`Persona „${p.name}“ übernommen – mit Avatar, Posen und Videos.`);
+  return p.name;
+}
 $('clearHistory').onclick = () => {
   if (!confirm('Gesprächsverlauf dieser Persona löschen?')) return;
   stopAll();
@@ -5089,6 +5095,126 @@ async function askAboutScreen(b64) {
   state.screenQuestion = null;
 }
 
+
+// ---- Abgleich PC ↔ Handy im WLAN (nur Bereich Privat): Personas samt Avatar, Posen und Schnellbefehlen
+const toB64 = (bytes) =>
+  new Promise((ok) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(String(fr.result).split(',')[1] ?? '');
+    fr.readAsDataURL(new Blob([bytes]));
+  });
+const b64ToBytes = async (b64) => new Uint8Array(await (await fetch(`data:application/octet-stream;base64,${b64}`)).arrayBuffer());
+// PC: Anfragen des Handys beantworten
+desktop.onSyncRequest?.(async (op, data) => {
+  if (AREA !== 'privat') throw new Error('nur im Bereich Privat');
+  if (op === 'list') return state.personas.map((p) => ({ id: p.id, name: p.name, poses: p.avatar?.poses?.length ?? 0, quick: p.quick?.length ?? 0 }));
+  if (op === 'export') {
+    const p = state.personas.find((x) => x.id === data);
+    if (!p) throw new Error('Persona nicht gefunden');
+    status(`Abgleich: „${p.name}“ geht ans Handy …`);
+    return toB64(await packPersona(p, { withMemory: false, version: APP_VERSION }));
+  }
+  if (op === 'import') return importPersonaBytes(await b64ToBytes(data));
+  throw new Error('unbekannt');
+});
+$('syncPcStart').onclick = async () => {
+  try {
+    const { url, code } = await desktop.syncStart();
+    const qr = qrcode(0, 'M');
+    qr.addData(`KI-ABGLEICH ${url} ${code}`);
+    qr.make();
+    $('syncPcQr').innerHTML = qr.createSvgTag({ cellSize: 5, margin: 3, scalable: true });
+    $('syncPcInfo').textContent = `Adresse: ${url} · Code: ${code} (gültig 10 Minuten)`;
+    $('syncPcBox').hidden = false;
+    $('syncPcStart').hidden = true;
+  } catch (e) {
+    status(`Abgleich: ${e.message}`);
+  }
+};
+$('syncPcStop').onclick = async () => {
+  await desktop.syncStop?.();
+  $('syncPcBox').hidden = true;
+  $('syncPcStart').hidden = false;
+};
+
+// Handy: mit dem PC verbinden, Personas holen oder senden
+let syncTarget = null;
+async function syncFetch(path, opts = {}) {
+  const r = await fetch(`${syncTarget.url}${path}`, { ...opts, headers: { 'x-ki-code': syncTarget.code, ...(opts.headers ?? {}) } });
+  if (!r.ok) throw new Error(r.status === 403 ? 'Code falsch' : `${r.status} ${await r.text()}`);
+  return r;
+}
+async function syncConnect() {
+  const url = $('syncAddr').value.trim().replace(/\/+$/, '');
+  const code = $('syncCode').value.trim();
+  if (!url || !code) return status('Bitte Adresse und Code vom PC eintragen (oder QR-Code scannen).');
+  syncTarget = { url: /^https?:/.test(url) ? url : `http://${url}`, code };
+  try {
+    const info = await (await syncFetch('/info')).json();
+    const list = await (await syncFetch('/personas')).json();
+    const box = $('syncList');
+    box.innerHTML = '';
+    for (const p of list) {
+      const row = document.createElement('div');
+      row.className = 'kb-doc';
+      const t = document.createElement('span');
+      t.textContent = `${p.name} · ${p.poses} Posen${p.quick ? ` · ${p.quick} Schnellbefehle` : ''}`;
+      const get = document.createElement('button');
+      get.textContent = '⬇ Holen';
+      get.onclick = async () => {
+        status(`Hole „${p.name}“ vom PC …`);
+        try {
+          await importPersonaBytes(new Uint8Array(await (await syncFetch(`/persona?id=${encodeURIComponent(p.id)}`)).arrayBuffer()));
+        } catch (e) {
+          status(`Abgleich: ${e.message}`);
+        }
+      };
+      row.append(t, get);
+      box.append(row);
+    }
+    $('syncSend').hidden = false;
+    status(`Verbunden mit ${info.name} – ${list.length} Persona(s).`);
+  } catch (e) {
+    status(`Keine Verbindung zum PC (${e.message}) – gleiches WLAN? Abgleich-Fenster am PC offen?`);
+  }
+}
+$('syncConnect').onclick = syncConnect;
+$('syncSend').onclick = async () => {
+  if (!syncTarget) return;
+  const p = persona();
+  status(`Sende „${p.name}“ an den PC …`);
+  try {
+    const bytes = await packPersona(p, { withMemory: false, version: APP_VERSION });
+    const r = await (await syncFetch('/persona', { method: 'POST', body: bytes, headers: { 'content-type': 'application/zip' } })).json();
+    status(`Am PC übernommen als „${r.name}“.`);
+  } catch (e) {
+    status(`Senden fehlgeschlagen: ${e.message}`);
+  }
+};
+// QR-Code mit der Handykamera lesen (Barcode-Erkennung der WebView)
+$('syncScan').onclick = () => $('syncScanFile').click();
+$('syncScanFile').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    if (!('BarcodeDetector' in window)) throw new Error('QR-Erkennung wird hier nicht unterstützt – bitte Adresse und Code eintippen');
+    const codes = await new window.BarcodeDetector({ formats: ['qr_code'] }).detect(await createImageBitmap(f));
+    const m = codes.map((c) => c.rawValue).find((v) => /^KI-ABGLEICH /.test(v));
+    if (!m) throw new Error('kein Abgleich-Code im Bild');
+    const [, url, code] = m.split(' ');
+    $('syncAddr').value = url;
+    $('syncCode').value = code;
+    syncConnect();
+  } catch (err) {
+    status(`QR-Code: ${err.message}`);
+  }
+};
+function refreshSyncUi() {
+  $('syncPcWrap').hidden = MOBILE || AREA !== 'privat' || !desktop.syncStart;
+  $('syncPhoneWrap').hidden = !PRIV;
+}
+
 function refreshPriv() {
   $('privWrap').hidden = !PRIV;
   $('privHint').hidden = !MOBILE || PRIV;
@@ -5214,6 +5340,7 @@ init().then(() => {
   startPhoneFeatures();
   startOffice();
   loadKb();
+  refreshSyncUi();
   desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);

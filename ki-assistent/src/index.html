@@ -577,6 +577,18 @@
       <p class="hint">Dienstlich und Privat haben getrennte Personas, Chats, Gedächtnis, API-Schlüssel und Google-Verbindung.
         Beide liegen nur auf diesem Gerät; Privates taucht nie im Firmenwissen oder in dienstlichen Exporten auf.
         Beim Wechsel startet die App neu.</p>
+      <div id="syncPcWrap" hidden>
+        <h3>Mit dem Handy abgleichen</h3>
+        <p class="hint">Personas samt Avatar, Posen und Schnellbefehlen direkt zwischen PC und Handy übertragen – im eigenen WLAN,
+          ohne Cloud. Auf dem Handy (Bereich Privat): ⚙ → Handy → „Mit dem PC abgleichen“. Windows fragt beim ersten Mal
+          eventuell, ob der KI-Assistent im privaten Netzwerk erreichbar sein darf – bitte erlauben.</p>
+        <button id="syncPcStart">📶 Mit Handy abgleichen</button>
+        <div id="syncPcBox" hidden>
+          <div id="syncPcQr" style="width:180px;height:180px;background:#fff;border-radius:8px"></div>
+          <div id="syncPcInfo" class="hint"></div>
+          <button id="syncPcStop">Beenden</button>
+        </div>
+      </div>
       <div id="kbWrap">
         <h3>Firmenwissen</h3>
         <label class="check"><input id="kbUse" type="checkbox" /> Firmenwissen im Gespräch nutzen</label>
@@ -740,6 +752,22 @@
         <p class="hint">In der schwebenden Figur lange drücken → „🖼 Bildschirm fragen“: Android fragt jedes Mal nach, dann geht genau
           ein Bildschirmfoto mit der Frage an Claude. Nichts wird gespeichert.</p>
         <button id="privScreen">So geht's</button>
+        <div id="syncPhoneWrap">
+          <h3>Mit dem PC abgleichen <span class="beta-badge">Privat</span></h3>
+          <p class="hint">Am PC im Bereich Privat unter ⚙ → Wissen „Mit Handy abgleichen“ öffnen, dann hier den QR-Code
+            fotografieren oder Adresse und Code eintippen. Beide Geräte im selben WLAN; die Daten gehen direkt, ohne Cloud.</p>
+          <div class="row wrap">
+            <button id="syncScan">📷 QR-Code scannen</button>
+          </div>
+          <input id="syncScanFile" type="file" accept="image/*" capture="environment" hidden />
+          <div class="row">
+            <input id="syncAddr" type="text" placeholder="Adresse, z. B. 192.168.1.20:52000" autocomplete="off" style="flex:2" />
+            <input id="syncCode" type="text" inputmode="numeric" placeholder="Code" autocomplete="off" style="flex:1" />
+            <button id="syncConnect">Verbinden</button>
+          </div>
+          <div id="syncList" class="kb-list"></div>
+          <button id="syncSend" hidden>⬆ Aktuelle Persona an den PC senden</button>
+        </div>
         <h3>Problem melden</h3>
         <p class="hint">Speichert die letzten Ereignisse der App als Textdatei – ohne Gesprächsinhalte und ohne Schlüssel. Die Datei
           schickst du mir, dann sehe ich, was auf deinem Handy schiefgelaufen ist.</p>

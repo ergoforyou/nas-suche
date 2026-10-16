@@ -194,6 +194,86 @@ ipcMain.handle('office:avatarVisible', (_e, on) => {
   if (avatarWin && !avatarWin.isDestroyed()) on ? avatarWin.showInactive() : avatarWin.hide();
 });
 
+// ---------------------------------------------------------------- Abgleich mit dem Handy im WLAN (nur Bereich Privat)
+// Kleiner Server im eigenen Netz, nur solange das Abgleich-Fenster offen ist (höchstens 10 Minuten), geschützt mit
+// einem zufälligen Code. Personas (mit Avatar, Posen, Schnellbefehlen) gehen direkt hin und her – ohne Cloud.
+let syncServer = null;
+let syncCode = '';
+let syncTimer = null;
+const syncWaiters = new Map();
+ipcMain.on('sync:res', (_e, { rid, ok, result, error }) => {
+  syncWaiters.get(rid)?.(ok ? { result } : { error });
+  syncWaiters.delete(rid);
+});
+function askRenderer(op, data) {
+  return new Promise((resolve, reject) => {
+    const rid = Math.random().toString(36).slice(2);
+    const t = setTimeout(() => {
+      syncWaiters.delete(rid);
+      reject(new Error('Zeitüberschreitung'));
+    }, 120000);
+    syncWaiters.set(rid, (r) => {
+      clearTimeout(t);
+      r.error ? reject(new Error(r.error)) : resolve(r.result);
+    });
+    win.webContents.send('sync:req', { rid, op, data });
+  });
+}
+function lanAddress() {
+  const all = Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal);
+  const pref = all.find((i) => /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))/.test(i.address));
+  return (pref ?? all[0])?.address ?? '127.0.0.1';
+}
+function stopSync() {
+  clearTimeout(syncTimer);
+  syncServer?.close();
+  syncServer = null;
+  syncCode = '';
+}
+ipcMain.handle('sync:stop', () => stopSync());
+ipcMain.handle('sync:start', async () => {
+  if (AREA !== 'privat') throw new Error('Der Abgleich mit dem Handy ist vorerst nur im Bereich Privat möglich.');
+  stopSync();
+  const http = require('node:http');
+  syncCode = String(Math.floor(100000 + Math.random() * 900000));
+  syncServer = http.createServer(async (req, res) => {
+    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-ki-code, content-type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
+    if (req.method === 'OPTIONS') return res.writeHead(204, cors).end();
+    if (req.headers['x-ki-code'] !== syncCode) return res.writeHead(403, cors).end('Code falsch');
+    try {
+      const url = new URL(req.url, 'http://x');
+      if (req.method === 'GET' && url.pathname === '/info') {
+        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify({ name: APP_NAME, area: AREA }));
+      }
+      if (req.method === 'GET' && url.pathname === '/personas') {
+        const list = await askRenderer('list');
+        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(list));
+      }
+      if (req.method === 'GET' && url.pathname === '/persona') {
+        const b64 = await askRenderer('export', url.searchParams.get('id'));
+        return res.writeHead(200, { ...cors, 'Content-Type': 'application/zip' }).end(Buffer.from(b64, 'base64'));
+      }
+      if (req.method === 'POST' && url.pathname === '/persona') {
+        const chunks = [];
+        let size = 0;
+        for await (const c of req) {
+          size += c.length;
+          if (size > 500 * 1024 * 1024) throw new Error('zu groß');
+          chunks.push(c);
+        }
+        const name = await askRenderer('import', Buffer.concat(chunks).toString('base64'));
+        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify({ name }));
+      }
+      res.writeHead(404, cors).end();
+    } catch (e) {
+      res.writeHead(500, cors).end(String(e.message));
+    }
+  });
+  await new Promise((ok, fail) => syncServer.listen(0, '0.0.0.0', ok).on('error', fail));
+  syncTimer = setTimeout(stopSync, 10 * 60e3);
+  return { url: `http://${lanAddress()}:${syncServer.address().port}`, code: syncCode };
+});
+
 // ---------------------------------------------------------------- Firmenwissen (nur Dienstlich)
 const kbFile = () => path.join(app.getPath('userData'), 'wissen.json');
 ipcMain.handle('kb:load', () => {

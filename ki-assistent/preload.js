@@ -5,6 +5,15 @@ ipcRenderer.on('llm:event', (_e, msg) => listeners.get(msg.id)?.(msg));
 
 let commandHandler = () => {};
 ipcRenderer.on('cmd', (_e, cmd, data) => commandHandler(cmd, data));
+let syncHandler = null;
+ipcRenderer.on('sync:req', async (_e, { rid, op, data }) => {
+  try {
+    if (!syncHandler) throw new Error('nicht bereit');
+    ipcRenderer.send('sync:res', { rid, ok: true, result: await syncHandler(op, data) });
+  } catch (e) {
+    ipcRenderer.send('sync:res', { rid, ok: false, error: String(e?.message ?? e) });
+  }
+});
 let cursorHandler = () => {};
 ipcRenderer.on('avatar:cursor', (_e, p) => cursorHandler(p));
 
@@ -15,6 +24,9 @@ contextBridge.exposeInMainWorld('desktop', {
   areaCopyKeys: () => ipcRenderer.invoke('area:copyKeys'),
   kbLoad: () => ipcRenderer.invoke('kb:load'),
   kbSave: (kb) => ipcRenderer.invoke('kb:save', kb),
+  syncStart: () => ipcRenderer.invoke('sync:start'),
+  syncStop: () => ipcRenderer.invoke('sync:stop'),
+  onSyncRequest: (fn) => (syncHandler = fn),
   officePaste: (opts) => ipcRenderer.invoke('office:paste', opts),
   officeCopy: (text) => ipcRenderer.invoke('office:copy', text),
   officeForeground: () => ipcRenderer.invoke('office:foreground'),
