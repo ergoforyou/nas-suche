@@ -31,7 +31,7 @@ import (
 const (
 	appName = "EML zu PDF"
 	exeName = "EML-zu-PDF.exe"
-	version = "1.2.0"
+	version = "1.3.0"
 )
 
 var (
@@ -43,10 +43,13 @@ var (
 func logf(format string, args ...any) { logger.Printf(format, args...) }
 
 func setupDataDir() {
-	if runtime.GOOS == "windows" {
+	home, _ := os.UserHomeDir()
+	switch runtime.GOOS {
+	case "windows":
 		dataDir = filepath.Join(os.Getenv("LOCALAPPDATA"), appName)
-	} else {
-		home, _ := os.UserHomeDir()
+	case "darwin":
+		dataDir = filepath.Join(home, "Library", "Application Support", appName)
+	default:
 		dataDir = filepath.Join(home, ".eml2pdf")
 	}
 	os.MkdirAll(filepath.Join(dataDir, "warteschlange"), 0o755)
@@ -92,6 +95,9 @@ func main() {
 		case "--zielordner":
 			changeFolder = true
 		default:
+			if strings.HasPrefix(a, "-psn_") { // ältere macOS-Versionen hängen das beim Start an
+				continue
+			}
 			files = append(files, a)
 		}
 	}
@@ -118,21 +124,10 @@ func main() {
 	case len(files) > 0:
 		os.Exit(convertBatch(files, outDir))
 	default:
-		if runtime.GOOS == "windows" && !isInstalledCopy() {
+		if !isInstalledCopy() {
 			installApp()
 		} else {
-			target := outDir
-			if target == "" {
-				target = "(neben der jeweiligen .eml-Datei)"
-			}
-			if askYesNo(appName+" "+version, "So geht's:\n\n.eml-Dateien im Explorer markieren → Rechtsklick → „In PDF umwandeln“.\n"+
-				"(Windows 11: zuerst „Weitere Optionen anzeigen“ oder Umschalt + Rechtsklick)\n\n"+
-				"Die PDFs werden gespeichert in:\n"+target+"\n\n"+
-				"Möchten Sie den Zielordner ändern?") {
-				if dir, ok := askOutputFolder(); ok {
-					showInfo(appName, "Die PDFs werden ab jetzt hier gespeichert:\n\n"+dir)
-				}
-			}
+			mainMenu(outDir)
 		}
 	}
 }
@@ -251,17 +246,17 @@ func convertBatch(files []string, outDir string) int {
 	if !quiet {
 		var msg strings.Builder
 		fmt.Fprintf(&msg, "%d E-Mail(s) umgewandelt – je eine PDF-Datei mit allen Anlagen.", mails)
+		folder := ""
 		if len(folders) == 1 {
 			for f := range folders {
+				folder = f
 				fmt.Fprintf(&msg, "\n\nGespeichert in:\n%s", f)
 			}
 		}
 		if len(errs) > 0 {
 			msg.WriteString("\n\nBitte prüfen:\n" + strings.Join(errs, "\n"))
-			showWarning(appName, msg.String())
-		} else {
-			showInfo(appName, msg.String())
 		}
+		showResult(appName, msg.String(), folder, len(errs) > 0)
 	}
 	if len(errs) > 0 {
 		return 1

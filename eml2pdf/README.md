@@ -1,6 +1,8 @@
 # EML zu PDF
 
-Ein kleines Windows-Programm (eine einzige Datei, **kein Python, keine Zusatzsoftware**):
+Für **Windows** (`dist/EML-zu-PDF.exe`) und **Mac** (`dist/EML-zu-PDF-Mac.zip`, siehe [Mac](#mac)).
+
+Ein kleines Programm (eine einzige Datei, **kein Python, keine Zusatzsoftware**):
 `.eml`-Dateien markieren → Rechtsklick → **„In PDF umwandeln“**.
 
 Pro E-Mail entsteht **eine PDF-Datei**: vorne die E-Mail, dahinter alle Anlagen als weitere Seiten
@@ -61,9 +63,42 @@ Robustheit:
 
 Protokoll bei Problemen: `%LOCALAPPDATA%\EML zu PDF\protokoll.txt` (in die Explorer-Adresszeile einfügen).
 
+## Mac
+
+Läuft auf macOS 12 (Monterey) oder neuer, mit Apple-Chip (M1–M4) und Intel.
+
+**Installation**
+1. [`dist/EML-zu-PDF-Mac.zip`](dist/EML-zu-PDF-Mac.zip) herunterladen und doppelklicken → es entsteht „EML zu PDF“.
+2. „EML zu PDF“ doppelklicken. Beim **ersten Mal** blockiert macOS das Programm, weil es nicht über den
+   App Store bzw. mit einem kostenpflichtigen Apple-Zertifikat kommt:
+   - Meldung mit „Fertig“ schließen.
+   - **Systemeinstellungen → Datenschutz & Sicherheit** → ganz unten bei „EML zu PDF“ auf **„Dennoch öffnen“** klicken,
+     mit Passwort/Touch ID bestätigen und nochmals „Öffnen“.
+   - (macOS 14 und älter: alternativ Rechtsklick auf das Programm → „Öffnen“ → „Öffnen“.)
+3. „Ja“ zur Installation, **Zielordner** wählen (Vorschlag `Downloads/E-Mails als PDF`) und die Frage nach der
+   Automatik beantworten. Bei „Ja“ fragt macOS einmal nach dem Zugriff auf „Downloads“ → **Erlauben**.
+
+Das Programm installiert sich nach `Programme` im Benutzerordner (`~/Applications`), ohne Admin-Rechte.
+Die heruntergeladene Datei kann danach gelöscht werden.
+
+**Bedienung:** `.eml` im Finder markieren → Rechtsklick → **Schnellaktionen → „In PDF umwandeln“**.
+Fehlt der Eintrag: Systemeinstellungen → Allgemein → Anmeldeobjekte & Erweiterungen → Finder → „In PDF umwandeln“ einschalten.
+Am Ende kommt eine Meldung mit Knopf **„Ordner öffnen“**.
+
+**Zielordner ändern / Deinstallieren:** „EML zu PDF“ in `~/Applications` öffnen → entsprechender Knopf.
+
+**Word-/Excel-/PowerPoint-Anlagen** wandelt auf dem Mac das kostenlose [LibreOffice](https://de.libreoffice.org/download/download/) um.
+Ohne LibreOffice werden diese Anlagen separat im Zielordner abgelegt (und gemeldet). Für das schönere E-Mail-Layout
+wird Google Chrome (oder Edge/Chromium/Brave) benutzt, sonst der eingebaute PDF-Erzeuger.
+
+Protokoll bei Problemen: `~/Library/Application Support/EML zu PDF/protokoll.txt`
+(im Finder: Gehe zu → Gehe zum Ordner … → Pfad einfügen).
+
 ## Für Entwickler
 
-Go-Programm, eingebettete Schrift: DejaVu Sans (freie Lizenz, siehe `fonts/LICENSE.txt`). Bauen (geht auch unter Linux/macOS): `./build.sh` → `dist/EML-zu-PDF.exe`.
+Go-Programm, eingebettete Schrift: DejaVu Sans (freie Lizenz, siehe `fonts/LICENSE.txt`). Bauen (geht auch unter Linux/macOS):
+`./build.sh` → `dist/EML-zu-PDF.exe`, `./build-mac.sh` → `dist/EML-zu-PDF-Mac.zip`
+(benötigt `makefat` und `rcodesign`, siehe Kopf von `build-mac.sh`).
 
 ```
 EML-zu-PDF.exe DATEI.eml [...] [--ziel ORDNER] [--still]

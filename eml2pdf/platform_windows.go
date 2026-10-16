@@ -36,6 +36,13 @@ func messageBox(title, text string, flags uint32) int32 {
 
 func showInfo(title, text string)    { messageBox(title, text, windows.MB_OK|windows.MB_ICONINFORMATION) }
 func showWarning(title, text string) { messageBox(title, text, windows.MB_OK|windows.MB_ICONWARNING) }
+func showResult(title, text, folder string, warning bool) {
+	if warning {
+		showWarning(title, text)
+	} else {
+		showInfo(title, text)
+	}
+}
 func askYesNo(title, text string) bool {
 	return messageBox(title, text, windows.MB_YESNO|windows.MB_ICONQUESTION) == 6 // IDYES
 }
@@ -251,5 +258,21 @@ func createShortcut(lnk, target, args, description string) {
 		"EML_LNK="+lnk, "EML_TARGET="+target, "EML_ARGS="+args, "EML_DESC="+description)
 	if err != nil {
 		logf("Verknüpfung nicht angelegt: %v", err)
+	}
+}
+
+// mainMenu erscheint, wenn das installierte Programm ohne Dateien gestartet wird.
+func mainMenu(outDir string) {
+	target := outDir
+	if target == "" {
+		target = "(neben der jeweiligen .eml-Datei)"
+	}
+	if askYesNo(appName+" "+version, "So geht's:\n\n.eml-Dateien im Explorer markieren → Rechtsklick → „In PDF umwandeln“.\n"+
+		"(Windows 11: zuerst „Weitere Optionen anzeigen“ oder Umschalt + Rechtsklick)\n\n"+
+		"Die PDFs werden gespeichert in:\n"+target+"\n\n"+
+		"Möchten Sie den Zielordner ändern?") {
+		if dir, ok := askOutputFolder(); ok {
+			showInfo(appName, "Die PDFs werden ab jetzt hier gespeichert:\n\n"+dir)
+		}
 	}
 }

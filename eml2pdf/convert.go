@@ -110,6 +110,21 @@ func findBrowser() string {
 			}
 		}
 	}
+	if runtime.GOOS == "darwin" {
+		home, _ := os.UserHomeDir()
+		for _, base := range []string{"/Applications", filepath.Join(home, "Applications")} {
+			for _, rel := range []string{
+				"Google Chrome.app/Contents/MacOS/Google Chrome",
+				"Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+				"Chromium.app/Contents/MacOS/Chromium",
+				"Brave Browser.app/Contents/MacOS/Brave Browser",
+			} {
+				if p := filepath.Join(base, rel); fileExists(p) {
+					return p
+				}
+			}
+		}
+	}
 	for _, name := range []string{"msedge", "google-chrome", "chromium", "chromium-browser"} {
 		if p, err := exec.LookPath(name); err == nil {
 			return p
@@ -129,12 +144,12 @@ var browserBroken bool
 
 func htmlToPDF(htmlFile, pdfFile string) error {
 	if browserBroken {
-		return errors.New("Edge steht nicht zur Verfügung")
+		return errors.New("Browser (Edge/Chrome) steht nicht zur Verfügung")
 	}
 	browser := findBrowser()
 	if browser == "" {
 		browserBroken = true
-		return errors.New("Microsoft Edge wurde nicht gefunden")
+		return errors.New("kein Browser (Edge/Chrome) gefunden")
 	}
 	abs, _ := filepath.Abs(htmlFile)
 	fileURL := (&url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(abs), "/")}).String()
@@ -409,6 +424,14 @@ func officeToPDF(src, pdf, ext string) error {
 
 func libreOfficeToPDF(src, pdf string) error {
 	soffice, _ := exec.LookPath("soffice")
+	if soffice == "" && runtime.GOOS == "darwin" {
+		home, _ := os.UserHomeDir()
+		for _, base := range []string{"/Applications", filepath.Join(home, "Applications")} {
+			if p := filepath.Join(base, "LibreOffice.app/Contents/MacOS/soffice"); fileExists(p) {
+				soffice = p
+			}
+		}
+	}
 	if soffice == "" && runtime.GOOS == "windows" {
 		for _, base := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
 			if p := filepath.Join(base, `LibreOffice\program\soffice.exe`); base != "" && fileExists(p) {
@@ -417,7 +440,7 @@ func libreOfficeToPDF(src, pdf string) error {
 		}
 	}
 	if soffice == "" {
-		return errors.New("weder Microsoft Office noch LibreOffice gefunden")
+		return errors.New("Word/Excel-Datei: LibreOffice ist nicht installiert (kostenlos unter libreoffice.org)")
 	}
 	out, err := os.MkdirTemp("", "eml2pdf-lo")
 	if err != nil {
