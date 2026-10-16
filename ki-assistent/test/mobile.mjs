@@ -187,7 +187,13 @@ check(/^Fertig/.test(made) && (await page.evaluate(() => !!window.__app.persona(
 // VRM speichern („Speichern unter …“ der Android-App, hier nachgebildet) und wieder laden
 await page.evaluate(() => {
   window.__saved = [];
-  window.KIFiles = { saveAs: (id, name, b64) => { window.__saved.push({ name, b64 }); setTimeout(() => window.__kiSaveDone(id, true, 'content://test'), 50); } };
+  window.__picked = [];
+  window.KIFiles = {
+    saveAs: (id, name, b64) => { window.__saved.push({ name, b64 }); setTimeout(() => window.__kiSaveDone(id, true, 'content://test'), 50); },
+    // Speicherort vorab wählen, später schreiben (wie der Android-Dialog „Speichern unter …“)
+    pickTarget: (id, name) => { window.__picked.push({ name, t: performance.now() }); setTimeout(() => window.__kiSaveDone(id, true, 'content://test/' + name), 50); },
+    writeUri: (uri, b64) => { window.__saved.push({ name: decodeURIComponent(uri.split('/').pop()), b64, t: performance.now() }); return ''; },
+  };
 });
 await page.click('.b2v [data-act=save]');
 await page.waitForFunction(() => /Gespeichert|nicht möglich/.test(document.querySelector('.b2v-status').textContent), null, { timeout: 10000 }).catch(() => {});
@@ -407,6 +413,8 @@ const baked = await page.evaluate(async (n) => {
 }, savedBefore);
 check(baked.cutMode === 'alpha' && baked.wall < 30 && baked.body > 200 && !baked.clip, 'Abschnitt als freigestelltes Video gespeichert (Hintergrund durchsichtig)', JSON.stringify(baked));
 check(/freigestellt\.webm$/.test(baked.file?.[0] ?? ''), 'Freigestelltes Video auch als Datei gesichert', JSON.stringify(baked.file));
+const order = await page.evaluate(() => ({ picked: window.__picked.at(-1)?.t, written: window.__saved.at(-1)?.t }));
+check(order.picked && order.written && order.picked < order.written, 'Speicherort wird vor dem Freistellen abgefragt');
 // Abbrechen während des Speicherns: Fenster schließt sich, Pose bleibt unverändert
 await page.locator('.pose-opts button', { hasText: '✂' }).last().click();
 await page.waitForSelector('#vtool video');
@@ -414,7 +422,9 @@ await page.waitForFunction(() => document.querySelector('#vtool video').readySta
 await page.selectOption('#vtool .vt-mode', 'flood');
 const poseBefore = await page.evaluate(() => JSON.stringify(window.__app.persona().avatar.poses.at(-1)));
 await page.click('#vtool [data-act=bake]');
-const cancelBtn = await page.evaluate(() => ({ text: document.querySelector('#vtool [data-act=close]').textContent, enabled: !document.querySelector('#vtool [data-act=close]').disabled }));
+await page.waitForTimeout(300);
+const cancelBtn = await page.evaluate(() => ({ text: document.querySelector('#vtool [data-act=close]').textContent, enabled: !document.querySelector('#vtool [data-act=close]').disabled, bar: !document.querySelector('#vtool .vt-progress').hidden }));
+check(cancelBtn.bar, 'Fortschrittsbalken beim Freistellen sichtbar');
 await page.click('#vtool [data-act=close]');
 await page.waitForTimeout(1500);
 const afterCancel = await page.evaluate(() => ({ open: !!document.querySelector('#vtool'), pose: JSON.stringify(window.__app.persona().avatar.poses.at(-1)) }));

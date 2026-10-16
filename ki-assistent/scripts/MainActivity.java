@@ -55,6 +55,11 @@ public class MainActivity extends BridgeActivity {
             saveDone(false, "abgebrochen");
             return;
         }
+        if (pendingBytes == null) {
+            // nur Speicherort gewählt (Datei wird später mit writeUri geschrieben)
+            saveDone(true, uri.toString());
+            return;
+        }
         try (OutputStream out = getContentResolver().openOutputStream(uri)) {
             out.write(pendingBytes);
             saveDone(true, uri.toString());
@@ -130,6 +135,32 @@ public class MainActivity extends BridgeActivity {
                     saveDone(false, String.valueOf(e.getMessage()));
                 }
             });
+        }
+
+        /** Nur den Speicherort wählen lassen (vor einer längeren Berechnung); Antwort wie bei saveAs. */
+        @JavascriptInterface
+        public void pickTarget(String id, String name) {
+            runOnUiThread(() -> {
+                if (pendingId != null) saveDone(false, "abgebrochen");
+                pendingId = id;
+                pendingBytes = null;
+                try {
+                    createDoc.launch(name);
+                } catch (Exception e) {
+                    saveDone(false, String.valueOf(e.getMessage()));
+                }
+            });
+        }
+
+        /** In einen vorher gewählten Speicherort schreiben. Liefert "" oder eine Fehlermeldung. */
+        @JavascriptInterface
+        public String writeUri(String uri, String base64) {
+            try (OutputStream out = getContentResolver().openOutputStream(Uri.parse(uri), "wt")) {
+                out.write(Base64.decode(base64, Base64.DEFAULT));
+                return "";
+            } catch (Exception e) {
+                return String.valueOf(e.getMessage());
+            }
         }
     }
 

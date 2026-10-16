@@ -314,6 +314,27 @@ const api = {
       window.KIFiles.saveAs(id, clean, toBase64(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)));
     });
   },
+  /** Speicherort vorab wählen (vor längerer Berechnung): { target } oder { cancelled }. Ohne Dialog: Teilen am Ende. */
+  pickSaveTarget: async (name) => {
+    const clean = cleanName(name);
+    if (!window.KIFiles?.pickTarget) return { target: { share: clean } };
+    const id = String(Date.now() + Math.random());
+    const r = await new Promise((resolve) => {
+      saveWaiters.set(id, resolve);
+      window.KIFiles.pickTarget(id, clean);
+    });
+    return r.ok ? { target: { uri: r.message } } : { cancelled: true, message: r.message };
+  },
+  writeSaveTarget: async (target, bytes) => {
+    const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (target?.uri) {
+      const err = window.KIFiles.writeUri(target.uri, toBase64(b));
+      if (err) throw new Error(err);
+      return;
+    }
+    const uri = await writeBytes(target?.share ?? 'Datei', b, Directory.Cache);
+    await Share.share({ title: target?.share, files: [uri] }).catch(() => {});
+  },
   exportSave: async (name, ext, _label, bytes) => {
     const uri = await writeBytes(`${cleanName(name)}.${ext}`, bytes, Directory.Cache);
     await Share.share({ title: name, files: [uri] }).catch(() => {});

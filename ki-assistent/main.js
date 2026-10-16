@@ -77,6 +77,22 @@ async function askSavePath(name, ext, label) {
   return canceled ? null : filePath;
 }
 
+// Speicherort vorab wählen (z. B. vor dem Freistellen eines Videos), später hineinschreiben.
+// Geschrieben wird nur an Pfade, die der Nutzer gerade selbst im Dialog gewählt hat.
+const pickedTargets = new Set();
+ipcMain.handle('file:pickTarget', async (_e, { name }) => {
+  const ext = path.extname(name).slice(1) || 'bin';
+  const file = await askSavePath(path.basename(name, path.extname(name)), ext, ext.toUpperCase());
+  if (!file) return { cancelled: true };
+  pickedTargets.add(file);
+  return { target: { path: file } };
+});
+ipcMain.handle('file:writeTarget', async (_e, { target, bytes }) => {
+  if (!pickedTargets.has(target?.path)) throw new Error('Speicherort nicht gewählt');
+  pickedTargets.delete(target.path);
+  fs.writeFileSync(target.path, Buffer.from(bytes));
+});
+
 ipcMain.handle('export:save', async (_e, { name, ext, label, bytes }) => {
   const file = await askSavePath(name, ext, label);
   if (!file) return null;

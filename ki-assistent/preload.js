@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('desktop', {
   anthropicModels: () => ipcRenderer.invoke('anthropic:models'),
   ttsCloudSpeak: (opts) => ipcRenderer.invoke('tts:cloud:speak', opts),
   transcribeCloud: (audio, language, model) => ipcRenderer.invoke('stt:cloud', { audio, language, model }),
+  pickSaveTarget: (name) => ipcRenderer.invoke('file:pickTarget', { name }),
+  writeSaveTarget: (target, bytes) => ipcRenderer.invoke('file:writeTarget', { target, bytes }),
   googleStatus: () => ipcRenderer.invoke('google:status'),
   googleConnect: (opts) => ipcRenderer.invoke('google:connect', opts),
   googleDisconnect: () => ipcRenderer.invoke('google:disconnect'),

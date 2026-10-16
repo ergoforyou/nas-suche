@@ -2459,7 +2459,7 @@ async function isGreenScreen(url) {
 }
 
 /** Video einmal Bild für Bild per KI freistellen und die Masken speichern. */
-async function computeMaskFor(pose, { say = status, shouldStop } = {}) {
+async function computeMaskFor(pose, { say = status, shouldStop, onFrac } = {}) {
   try {
     say('Video wird per KI freigestellt … (beim ersten Mal wird das KI-Modell geladen)');
     const t0 = performance.now();
@@ -2470,7 +2470,10 @@ async function computeMaskFor(pose, { say = status, shouldStop } = {}) {
           // Fortschritt des Modell-Downloads (nur beim ersten Mal)
           if (p?.status === 'progress' && p.total) say(`KI-Modell wird geladen … ${Math.round((p.loaded / p.total) * 100)} %`);
         }),
-      (done, total) => say(`Video wird per KI freigestellt … ${done} / ${total} Bilder`),
+      (done, total) => {
+        say(`Video wird per KI freigestellt … ${done} / ${total} Bilder`);
+        onFrac?.(done / total);
+      },
       // nur der gewählte Abschnitt – bei langen Videos viel schneller
       { ...(pose.clip ? { start: pose.clip.start, end: pose.clip.end } : {}), ...(shouldStop ? { shouldStop } : {}) },
     );
@@ -2691,16 +2694,20 @@ $('poseEditMain').onclick = () => setEditIndex(-1);
  * Freigestellt wird mit der Art der Pose (KI, einfarbige Wand, Greenscreen); bei KI wird die Maske für den
  * Abschnitt vorher berechnet. Die Bilder werden erst vorbereitet und dann im richtigen Takt aufgenommen.
  */
-async function bakeTransparentVideo(pose, clip, say, shouldStop = () => false) {
+async function bakeTransparentVideo(pose, clip, say, shouldStop = () => false, setFrac = () => {}) {
   const stopCheck = () => {
     if (shouldStop()) throw new Error('abgebrochen');
   };
+  // Anteile am Gesamtfortschritt: KI-Freistellung (falls nötig), Bilder vorbereiten, Aufnahme
+  const ai = pose.cutMode === 'ai';
+  const [pA, pB] = ai ? [0.6, 0.8] : [0, 0.4];
+  setFrac(0);
   if (pose.cutMode === 'ai') {
     const covers = pose.mask && pose.clip && Math.abs(pose.clip.start - clip.start) < 0.05 && Math.abs(pose.clip.end - clip.end) < 0.05;
     if (!covers) {
       pose.clip = clip;
       const before = pose.mask;
-      await computeMaskFor(pose, { say, shouldStop });
+      await computeMaskFor(pose, { say, shouldStop, onFrac: (f) => setFrac(f * pA) });
       stopCheck();
       if (!pose.mask || pose.mask === before) throw new Error('KI-Freistellung fehlgeschlagen – „Einfarbige Wand“ versuchen');
     }
@@ -2717,6 +2724,7 @@ async function bakeTransparentVideo(pose, clip, say, shouldStop = () => false) {
     L.lastVideoTime = -1;
     L.buildVideoFrame();
     frames.push(await createImageBitmap(L.frame));
+    setFrac(pA + ((i + 1) / n) * (pB - pA));
     if (i % 5 === 0) say(`Bilder vorbereiten … ${i + 1} / ${n}`);
   }
   L.video.removeAttribute('src');
@@ -2745,7 +2753,8 @@ async function bakeTransparentVideo(pose, clip, say, shouldStop = () => false) {
     g.clearRect(0, 0, c.width, c.height);
     g.drawImage(frames[i], 0, 0);
     track.requestFrame();
-    if (i % 5 === 0) say(`Video wird gespeichert … ${Math.round(((i + 1) / frames.length) * 100)} %`);
+    setFrac(pB + ((i + 1) / frames.length) * (1 - pB) * 0.98);
+    if (i % 5 === 0) say(`Video wird aufgenommen … ${Math.round(((i + 1) / frames.length) * 100)} %`);
   }
   await new Promise((r) => setTimeout(r, 1000 / fps));
   // Aufnahme beenden – mit Sicherheitsnetz, falls das Gerät das Ende nicht meldet
@@ -2810,6 +2819,7 @@ function openVideoTool(pose, { onApply } = {}) {
       <div class="row wrap">
         <button data-act="bake">✨ Freigestellt speichern (Video mit transparentem Hintergrund)</button>
       </div>
+      <div class="vt-progress" hidden><progress max="1" value="0"></progress><span class="vt-pct">0 %</span></div>
       <p class="hint vt-info">Tipp: Aus einer längeren Aufnahme mehrere kurze Abschnitte als eigene Posen anlegen – z. B. „sprechen“, „nachdenken“, „zuhören“.</p>
       <button data-act="close">Schließen</button>
     </div>`;
@@ -3024,6 +3034,19 @@ function openVideoTool(pose, { onApply } = {}) {
     bake: async () => {
       const clip = clipOrNull() ?? { start: 0, end: dur };
       if (clip.end - clip.start > 15) return (info.textContent = 'Bitte höchstens 15 Sekunden wählen (z. B. mit „2 s ab hier“).');
+      // Zuerst fragen, wohin die Datei soll – dann ohne Unterbrechung rechnen
+      const fileName = `${(pose.name || 'Pose').replace(/[^\p{L}\p{N} _-]+/gu, '_')}-freigestellt.webm`;
+      let target = null;
+      if (desktop.pickSaveTarget) {
+        info.textContent = 'Wohin soll das Video gespeichert werden?';
+        const r = await desktop.pickSaveTarget(fileName).catch((e) => ({ cancelled: true, message: e.message }));
+        if (r?.cancelled) {
+          if (!confirm('Keinen Speicherort gewählt. Trotzdem freistellen? (Die Pose nutzt das Video dann nur in der App.)')) {
+            info.textContent = 'Abgebrochen.';
+            return;
+          }
+        } else target = r.target;
+      }
       const before = { cutMode: pose.cutMode, keyTol: pose.keyTol, clip: pose.clip, mask: pose.mask };
       commitCut();
       if (pose.cutMode === 'none') pose.cutMode = 'ai';
@@ -3032,8 +3055,15 @@ function openVideoTool(pose, { onApply } = {}) {
       box.querySelectorAll('button:not([data-act=close])').forEach((b) => (b.disabled = true));
       q('[data-act=close]').textContent = 'Abbrechen';
       baking = true;
+      const bar = q('.vt-progress');
+      bar.hidden = false;
+      const setFrac = (f) => {
+        bar.querySelector('progress').value = f;
+        bar.querySelector('.vt-pct').textContent = `${Math.round(f * 100)} %`;
+      };
       try {
-        const bytes = await bakeTransparentVideo(pose, clip, (t) => (info.textContent = t), () => !baking);
+        const bytes = await bakeTransparentVideo(pose, clip, (t) => (info.textContent = t), () => !baking, setFrac);
+        setFrac(1);
         // Pose nutzt ab jetzt das fertig freigestellte Video (kein Freistellen mehr beim Abspielen)
         const others = (persona().avatar.poses ?? []).filter((p) => p !== pose);
         const oldVideo = pose.video;
@@ -3048,15 +3078,13 @@ function openVideoTool(pose, { onApply } = {}) {
         save();
         applyAvatar();
         renderPoseList();
-        // zusätzlich als Datei sichern (z. B. für andere Personas oder den PC)
-        const name = `${(pose.name || 'Pose').replace(/[^\p{L}\p{N} _-]+/gu, '_')}-freigestellt.webm`;
-        if (desktop.saveFileAs) await desktop.saveFileAs(name, bytes);
-        else {
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(new Blob([bytes], { type: 'video/webm' }));
-          a.download = name;
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        // zusätzlich als Datei an den vorher gewählten Ort (z. B. für andere Personas oder den PC)
+        if (target) {
+          try {
+            await desktop.writeSaveTarget(target, bytes);
+          } catch (e) {
+            status(`Datei konnte nicht gespeichert werden: ${e.message} – die Pose nutzt das Video trotzdem.`);
+          }
         }
         baking = false;
         close();
@@ -3068,6 +3096,7 @@ function openVideoTool(pose, { onApply } = {}) {
         Object.assign(pose, before);
         if (!before.clip) delete pose.clip;
         save();
+        bar.hidden = true;
         if (stopped) return;
         info.textContent = `Freistellen nicht möglich: ${e.message}`;
         box.querySelectorAll('button').forEach((b) => (b.disabled = false));
