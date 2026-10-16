@@ -366,3 +366,24 @@ body.floating .stage { display: none; }
 #vtool .vt-progress { display: flex; align-items: center; gap: 8px; }
 #vtool .vt-progress progress { flex: 1; height: 14px; accent-color: var(--accent); }
 #vtool .vt-pct { font-size: 13px; min-width: 42px; text-align: right; }
+
+/* Kostenzähler in der Titelleiste */
+.cost-chip { -webkit-app-region: no-drag; margin: 0 auto 0 8px; background: var(--panel-2); border: 1px solid var(--border, #323743);
+             color: inherit; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; cursor: pointer; opacity: .85; }
+.cost-chip:hover { opacity: 1; }
+.cost-chip[hidden] { display: none; }
+.cost-pop { position: absolute; top: 40px; left: 10px; z-index: 50; width: min(340px, calc(100vw - 20px)); -webkit-app-region: no-drag;
+            background: var(--panel, #1b1f27); border: 1px solid var(--border, #323743); border-radius: 12px; padding: 12px 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.45); font-size: 13px; }
+.cost-pop[hidden] { display: none; }
+.cost-pop table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+.cost-pop td { padding: 3px 0; }
+.cost-pop td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.cost-pop .sub td { padding-left: 12px; opacity: .8; font-size: 12px; }
+.cost-pop .hint { font-size: 11.5px; opacity: .75; margin: 6px 0; }
+.cost-pop .row { display: flex; gap: 8px; justify-content: flex-end; }
+.titlebar { position: relative; }
+
+.saved-doc { flex-direction: column; align-items: stretch; }
+.saved-doc .row { align-items: center; gap: 6px; }
+.saved-body { margin-top: 6px; padding: 8px; background: var(--panel-2); border-radius: 8px; font-size: 13px; max-height: 320px; overflow: auto; }

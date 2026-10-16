@@ -16,6 +16,8 @@ import qrcode from 'qrcode-generator';
 import { debugVoice, synthesize, piperState } from './piper.js';
 import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
 import googleLib from '../google.js';
+import { CostMeter, fmtUsd, priceOf } from './kosten.js';
+import appToolsLib from '../apptools.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
@@ -26,6 +28,62 @@ document.getElementById('titleVersion').textContent = APP_VERSION ? `v${APP_VERS
 // "lokal" = Ausgabe ganz ohne Cloud-Funktionen, "cloud" = mit Claude/ChatGPT/OpenAI-Stimme
 const EDITION = desktop.edition ?? 'cloud';
 const LOCAL_ONLY = EDITION === 'lokal';
+// Kostenzähler (geschätzt nach Listenpreisen), je Bereich getrennt
+const costs = new CostMeter(desktop.area === 'privat' ? 'privat' : 'dienstlich');
+/** Kostenanzeige in der Titelleiste: heute · Monat (Handy: nur heute). */
+function renderCostChip() {
+  const el = document.getElementById('btnCost');
+  if (!el) return;
+  el.hidden = LOCAL_ONLY;
+  const s = costs.summary();
+  el.textContent = MOBILE ? `💲 ${fmtUsd(s.today)}` : `💲 heute ${fmtUsd(s.today)} · Monat ${fmtUsd(s.month)}`;
+  if (!document.getElementById('costPop')?.hidden) renderCostPop();
+}
+function renderCostPop() {
+  const pop = document.getElementById('costPop');
+  const s = costs.summary();
+  const area = desktop.area === 'privat' ? 'Privat' : 'Dienstlich';
+  const services = Object.entries(s.byService)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<tr class="sub"><td>${k}</td><td>${fmtUsd(v)}</td></tr>`)
+    .join('');
+  pop.innerHTML = `
+    <b>API-Kosten – Bereich ${area}</b>
+    <table>
+      <tr><td>Heute</td><td>${fmtUsd(s.today)}</td></tr>
+      <tr><td>Gestern</td><td>${fmtUsd(s.yesterday)}</td></tr>
+      <tr><td>Dieser Monat</td><td><b>${fmtUsd(s.month)}</b></td></tr>
+      ${services}
+      <tr><td>Letzter Monat</td><td>${fmtUsd(s.lastMonth)}</td></tr>
+    </table>
+    ${s.unpriced ? `<p class="hint">${s.unpriced} Anfrage(n) mit einem Modell ohne bekannten Preis sind nicht enthalten.</p>` : ''}
+    <p class="hint">Schätzung nach Listenpreisen in US-Dollar (Stand Okt. 2026), nur von diesem Gerät. Die genaue Abrechnung
+      siehst du im Konto bei Anthropic bzw. OpenAI.</p>
+    <div class="row"><button data-act="reset">Zurücksetzen</button><button data-act="close">Schließen</button></div>`;
+  pop.querySelector('[data-act=close]').onclick = () => (pop.hidden = true);
+  pop.querySelector('[data-act=reset]').onclick = () => {
+    if (confirm('Kostenzähler für diesen Bereich auf null setzen?')) costs.reset();
+  };
+}
+document.getElementById('btnCost')?.addEventListener('click', () => {
+  const pop = document.getElementById('costPop');
+  pop.hidden = !pop.hidden;
+  if (!pop.hidden) renderCostPop();
+});
+costs.onChange(renderCostChip);
+// Tageswechsel: Anzeige ab und zu auffrischen
+setInterval(renderCostChip, 60e3);
+renderCostChip();
+/** Chat-Anfrage; der gemeldete Verbrauch geht in den Kostenzähler. */
+function chatRequest(req, onEvent) {
+  return desktop.chat(req, (ev) => {
+    if (ev.type === 'usage') {
+      if (ev.payload) costs.add(ev.payload);
+      return;
+    }
+    onEvent(ev);
+  });
+}
 
 // ---------------------------------------------------------------- Daten
 const DEFAULT_AVATAR = {
@@ -267,6 +325,7 @@ const tts = new SpeechOutput({
     }
   },
 });
+tts.onUsage = (u) => costs.add(u);
 tts.onShape = (v) => (avatarState.shape = avatarState.shape * 0.5 + v * 0.5);
 tts.onViseme = (v) => (avatarState.viseme = v);
 tts.onItem = (meta) => {
@@ -291,6 +350,9 @@ const stt = new SpeechInput({
 // Figur im Chatfenster: anklicken = Rahmen zum Verschieben/Skalieren, Doppelklick = sprechen
 new RubberBand($('stage'), avatar, {
   kind: 'layout',
+  // Handy: Antippen = sprechen/stoppen, langes Drücken = Rahmen zum Anpassen
+  tapToTalk: MOBILE,
+  onTap: () => talkOrStop(),
   onActivate: () => toggleMic(),
   onChange: (layout) => {
     persona().avatar.stage = { ...layout };
@@ -328,6 +390,11 @@ function setVrmYaw(yaw, persist = true) {
 
 const floating = new FloatingAvatar({
   onActivate: () => toggleMic(),
+  onLive: () => {
+    setHandsFree(!state.settings.handsFree);
+    syncFullCtl();
+  },
+  onStop: () => stopAll(),
   onRotate: (yaw, key) => (key === 'turnYaw' ? setTurnYaw(yaw) : setVrmYaw(yaw)),
   onClosed: () => setFloating(false, { fromWindow: true }),
 });
@@ -552,6 +619,8 @@ function buildMessages() {
   else if (webActive() || state.place) parts.push(r.now(new Date(), userTimeZone()));
   if (state.place) parts.push(r.place(state.place));
   if (state.kbHits?.length) parts.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
+  if (state.savedHits?.length) parts.push(savedPrompt(state.savedHits));
+  if (p.style !== 'frei') parts.push(appKnowledge());
   if (state.drive) parts.push(r.drive);
   if (webActive()) parts.push(r.web);
   const sys = parts.filter(Boolean).join('\n\n');
@@ -795,9 +864,10 @@ async function send(text) {
 
   state.place = await currentPlace();
   state.kbHits = kbActive() ? searchIndex(kbIndex, text || attachments.map((a) => a.name).join(' '), 5) : [];
+  state.savedHits = savedIndex?.n ? searchIndex(savedIndex, text, 3) : [];
   const id = newId();
   state.currentChatId = id;
-  desktop.chat(
+  chatRequest(
     {
       id,
       ...llmParams(model),
@@ -805,6 +875,7 @@ async function send(text) {
         ? { web: state.settings.claudeWeb, files: state.settings.claudeFiles, conversation: `${persona().id}:${chatSerial}` }
         : {}),
       ...(googleActive() ? { google: true, timeZone: userTimeZone() } : {}),
+      ...(appToolsActive() ? { appTools: true } : {}),
       messages: buildMessages(),
     },
     (ev) => {
@@ -895,7 +966,7 @@ async function learn(p, question, answer) {
   state.learnId = id;
   const raw = await new Promise((resolve) => {
     let out = '';
-    desktop.chat(
+    chatRequest(
       {
         id,
         ...llmParams(model),
@@ -1054,7 +1125,9 @@ async function transcribeWithFallback(audio) {
     const keys = await desktop.keyStatus().catch(() => ({}));
     if (keys.openai) {
       try {
-        return await desktop.transcribeCloud(audio, stt.language, state.settings.sttCloudModel);
+        const text = await desktop.transcribeCloud(audio, stt.language, state.settings.sttCloudModel);
+        costs.add({ kind: 'stt', model: state.settings.sttCloudModel || 'gpt-4o-transcribe', seconds: audio.length / 16000 });
+        return text;
       } catch (e) {
         status(`Cloud-Spracherkennung: ${e.message} – nutze Whisper auf dem Gerät.`);
       }
@@ -1174,10 +1247,12 @@ function setHandsFree(on) {
   state.settings.handsFree = on;
   $('sHandsFree').checked = on;
   $('btnLive').classList.toggle('active', on);
-  $('btnLive').title = on ? 'Live-Gespräch beenden' : 'Live-Gespräch starten – einfach losreden, dazwischenreden erlaubt';
+  $('btnLive').title = on
+    ? 'Live-Gespräch beenden (überall: Strg+Alt+L)'
+    : 'Live-Gespräch starten – einfach losreden, dazwischenreden erlaubt (überall: Strg+Alt+L)';
   if (on) {
     status('Live-Gespräch läuft – sprich einfach. Zum Beenden 📞 erneut drücken.');
-    stt.warmup(progressStatus('Spracherkennung')).then(() => status(''));
+    stt.warmup(progressStatus('Spracherkennung')).then(() => status(''), (e) => status(`Spracherkennung: ${e.message}`));
   }
   save();
   if (on) maybeListenHandsFree();
@@ -1204,6 +1279,11 @@ function progressStatus(label) {
   };
 }
 
+/** Spricht die Figur (oder arbeitet sie noch), verstummt sie; sonst sprechen bzw. Zuhören beenden. */
+function talkOrStop() {
+  if (tts.speaking || state.busy) stopAll();
+  else toggleMic();
+}
 function toggleMic() {
   // wartet nur auf das Aktivierungswort: abbrechen und richtig zuhören
   if (state.wakeListening) {
@@ -1268,6 +1348,11 @@ setInterval(() => {
 
 desktop.onCommand((cmd, data) => {
   if (cmd === 'mic') toggleMic();
+  if (cmd === 'live') {
+    setHandsFree(!state.settings.handsFree);
+    syncFullCtl();
+  }
+  if (cmd === 'stop') stopAll();
   if (cmd === 'textaction') openTextAction(data);
   if (cmd === 'dictate') dictate(data);
   if (cmd === 'output') openOutput();
@@ -2766,6 +2851,7 @@ const TRIGGERS = [
   ['listen:ernst', 'zuhören – ernste Stimmung'],
   ['think:long', 'warten – längere Antwort (Internet, Datei, > 3 s)'],
   ['think:calendar', 'warten – schaut in Kalender/Aufgaben'],
+  ['rest', 'Ruhe – statt Grundbild, läuft dauernd (1–2 kurze Videos im Wechsel)'],
   ['idle', 'in Ruhe, ab und zu'],
   ['idle:bored', 'gelangweilt / dösen (nach 5 min Ruhe)'],
   ['event:greet', 'begrüßen (beim Start)'],
@@ -3918,6 +4004,8 @@ async function init() {
   state.activeId = data.activeId ?? state.personas[0].id;
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;
   state.history = data.history ?? {};
+  state.saved = Array.isArray(data.wissen) ? data.wissen : [];
+  rebuildSaved();
   applyEdition();
   if (!LOCAL_ONLY) $('btnAttach').hidden = state.settings.provider !== 'anthropic';
   if (!LOCAL_ONLY) $('btnCamera').hidden = !MOBILE || state.settings.provider !== 'anthropic';
@@ -4056,10 +4144,16 @@ function setStageFull(on) {
 function syncFullCtl() {
   $('fullLive').classList.toggle('on', !!state.settings.handsFree);
   $('fullMic').classList.toggle('listening', !!stt.listening);
+  $('fullStop').hidden = !(tts.speaking || state.busy);
+  floating.setControls?.({ live: !!state.settings.handsFree, speaking: !!(tts.speaking || state.busy) });
 }
 $('btnStageFull').onclick = () => setStageFull(!document.documentElement.classList.contains('stage-full'));
 $('fullExit').onclick = () => setStageFull(false);
 $('fullMic').onclick = () => toggleMic();
+$('fullStop').onclick = () => {
+  stopAll();
+  syncFullCtl();
+};
 $('fullLive').onclick = () => {
   setHandsFree(!state.settings.handsFree);
   syncFullCtl();
@@ -4133,6 +4227,125 @@ $('areaCopyKeys').onclick = async () => {
   refreshKeys();
   status('API-Schlüssel aus Dienstlich übernommen.');
 };
+
+// ---------------------------------------------------------------- Gespeichertes Wissen (je Bereich)
+// Die KI legt hier auf Wunsch Rechercheergebnisse und Wichtiges ab (Werkzeug wissen_speichern); passende Einträge gehen
+// bei späteren Fragen automatisch mit. Liegt in den Daten des Bereichs auf diesem Gerät.
+let savedIndex = null;
+const SAVED_MAX = 500;
+const appToolsActive = () => !LOCAL_ONLY && (state.settings.provider === 'anthropic' || state.settings.provider === 'openai');
+function rebuildSaved() {
+  savedIndex = buildIndex({ docs: (state.saved ?? []).map((e) => ({ name: e.title, entry: e, chunks: chunkText(e.text, 1600) })) });
+  renderSaved();
+}
+function saveSavedNow() {
+  desktop.saveData({ wissen: state.saved });
+}
+function addSaved(title, text, source = 'ki') {
+  const t = String(title ?? '').trim().slice(0, 140) || 'Ohne Titel';
+  const body = String(text ?? '').trim().slice(0, 20000);
+  if (body.length < 10) throw new Error('Inhalt fehlt oder ist zu kurz');
+  const same = state.saved.find((e) => e.title === t);
+  if (same) Object.assign(same, { text: body, updated: Date.now() });
+  else state.saved.push({ id: newId(), title: t, text: body, created: Date.now(), source });
+  if (state.saved.length > SAVED_MAX) state.saved.splice(0, state.saved.length - SAVED_MAX);
+  saveSavedNow();
+  rebuildSaved();
+  return { same: !!same, title: t };
+}
+const fmtDate = (ms) => new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+function savedPrompt(hits) {
+  const parts = hits.map((h, n) => `[${n + 1}] „${h.doc.name}“ (gespeichert am ${fmtDate(h.doc.entry.created)}):\n${h.text}`);
+  return (
+    'Aus dem gespeicherten Wissen des Nutzers (früher von dir oder ihm abgelegt) – nutze es, wenn es passt, und sag ' +
+    'kurz, dass es aus dem gespeicherten Wissen stammt:\n\n' +
+    parts.join('\n\n')
+  );
+}
+/** Werkzeug-Aufruf der KI (läuft hier in der Oberfläche). */
+async function runAppTool(name, input) {
+  if (name === 'wissen_speichern') {
+    const r = addSaved(input.titel, input.inhalt);
+    fireEvent('success', 2500);
+    status(`💾 Im Wissen gespeichert: „${r.title}“`);
+    return { gespeichert: true, titel: r.title, aktualisiert: r.same, eintraege: state.saved.length };
+  }
+  if (name === 'wissen_suchen') {
+    const q = String(input.suchbegriff ?? '').trim();
+    if (!q) return { eintraege: state.saved.slice(-10).reverse().map((e) => ({ titel: e.title, datum: fmtDate(e.created) })) };
+    const hits = savedIndex?.n ? searchIndex(savedIndex, q, 5) : [];
+    const seen = new Set();
+    return {
+      treffer: hits
+        .filter((h) => !seen.has(h.doc.entry.id) && seen.add(h.doc.entry.id))
+        .map((h) => ({ titel: h.doc.name, datum: fmtDate(h.doc.entry.created), inhalt: h.doc.entry.text.slice(0, 6000) })),
+    };
+  }
+  throw new Error(`Unbekanntes Werkzeug ${name}`);
+}
+/** Kurzes Grundwissen über diese App – damit die Figur Fragen zur Bedienung beantworten und ihre Möglichkeiten nutzen kann. */
+function appKnowledge() {
+  const lines = [
+    'Über dich und diese App (KI-Assistent, Version ' + APP_VERSION + '): Du bist eine Figur (Avatar) mit Stimme in einer App am PC und auf dem Android-Handy.',
+    'Bereiche: „Dienstlich“ und „Privat“ (Knopf 💼/🏠 oben) – getrennte Chats, Gedächtnis und Google-Verbindung; Personas und API-Schlüssel kommen beim Wechsel mit.',
+    'Gedächtnis: kurze Fakten über den Nutzer lernst du automatisch (⚙ → Gedächtnis).',
+  ];
+  if (appToolsActive())
+    lines.push(
+      'Gespeichertes Wissen: Mit dem Werkzeug wissen_speichern legst du Rechercheergebnisse, Zusammenfassungen und Wichtiges dauerhaft ab ' +
+        '(⚙ → Wissen); wissen_suchen findet sie wieder. Speichere, wenn der Nutzer darum bittet, und biete es nach längeren Recherchen kurz an.',
+    );
+  if (AREA === 'dienstlich') lines.push('Firmenwissen (nur Dienstlich): eigene Dokumente wie Preislisten oder AGB, passende Abschnitte bekommst du automatisch.');
+  if (MOBILE)
+    lines.push(
+      'Handy: Live-Gespräch 📞, Nur-Figur-Ansicht ⛶, schwebende Figur über anderen Apps (antippen = sprechen/stoppen, lange drücken = Menü), ' +
+        'Notizen („Merk dir … bis Samstag“), Fahrmodus, Abgleich mit dem PC über WLAN (⚙ → Handy, Bereich Privat).',
+    );
+  else
+    lines.push(
+      'PC: Strg+Alt+Leertaste = zuhören, Strg+Alt+L = Live-Gespräch an/aus, Strg+Alt+S = Sprachausgabe stoppen, Strg+Alt+K = markierten Text bearbeiten, ' +
+        'Strg+Alt+D = Diktat in jede App; die Figur kann frei auf dem Desktop stehen (🧍), 📄 öffnet das Ausgabefenster.',
+    );
+  lines.push('Oben im Fenster zeigt 💲 die geschätzten API-Kosten (heute/Monat). Einstellungen über ⚙.');
+  return lines.join('\n');
+}
+function renderSaved() {
+  const box = document.getElementById('savedList');
+  if (!box) return;
+  box.innerHTML = '';
+  $('savedCount').textContent = state.saved?.length ? `${state.saved.length} Einträge` : 'Noch nichts gespeichert – sag z. B. „Speicher das Ergebnis“.';
+  for (const e of [...(state.saved ?? [])].reverse()) {
+    const row = document.createElement('div');
+    row.className = 'kb-doc saved-doc';
+    const head = document.createElement('div');
+    head.className = 'row';
+    const t = document.createElement('span');
+    t.textContent = `${e.title} · ${fmtDate(e.updated ?? e.created)}`;
+    t.style.flex = '1';
+    const show = document.createElement('button');
+    show.textContent = '👁';
+    show.title = 'Anzeigen';
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.title = 'Löschen';
+    const body = document.createElement('div');
+    body.className = 'saved-body md';
+    body.hidden = true;
+    show.onclick = () => {
+      body.hidden = !body.hidden;
+      if (!body.hidden && !body.innerHTML) body.innerHTML = renderMarkdown(e.text);
+    };
+    del.onclick = () => {
+      if (!confirm(`„${e.title}“ aus dem gespeicherten Wissen löschen?`)) return;
+      state.saved = state.saved.filter((x) => x.id !== e.id);
+      saveSavedNow();
+      rebuildSaved();
+    };
+    head.append(t, show, del);
+    row.append(head, body);
+    box.append(row);
+  }
+}
 
 let kb = { docs: [] };
 let kbIndex = null;
@@ -4246,7 +4459,7 @@ async function askOnce(system, user, onDelta) {
   const id = newId();
   return new Promise((resolve, reject) => {
     let out = '';
-    desktop.chat({ id, ...llmParams(model), messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }, (ev) => {
+    chatRequest({ id, ...llmParams(model), messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }, (ev) => {
       if (ev.type === 'delta') {
         out += ev.payload;
         onDelta?.(out.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').replace(/^\s*\[[a-zäöüß]+\]\s*/i, ''));
@@ -4655,9 +4868,8 @@ async function handleIntents() {
       $('drawer').hidden = true;
       if (!state.settings.handsFree) setHandsFree(true);
     } else if (ev.action === 'talk') {
-      // Headset-Taste: spricht die Figur, verstummt sie; sonst sprechen bzw. Zuhören beenden
-      if (tts.speaking || state.busy) stopAll();
-      else toggleMic();
+      // Headset-Taste / schwebende Figur: spricht die Figur, verstummt sie; sonst sprechen bzw. Zuhören beenden
+      talkOrStop();
     } else if (ev.action === 'background-off') {
       setBgTalk(false);
     } else if (ev.action === 'reminder') {
@@ -5167,6 +5379,7 @@ const toB64 = (bytes) =>
 const b64ToBytes = async (b64) => new Uint8Array(await (await fetch(`data:application/octet-stream;base64,${b64}`)).arrayBuffer());
 // PC: Anfragen des Handys beantworten
 desktop.onSyncRequest?.(async (op, data) => {
+  if (op === 'tool') return runAppTool(data?.name, data?.input ?? {});
   if (AREA !== 'privat') throw new Error('nur im Bereich Privat');
   if (op === 'list') return state.personas.map((p) => ({ id: p.id, name: p.name, poses: p.avatar?.poses?.length ?? 0, quick: p.quick?.length ?? 0 }));
   if (op === 'export') {
@@ -5359,6 +5572,21 @@ async function startRealtime() {
     };
     const dc = pc.createDataChannel('oai-events');
     rt.dc = dc;
+    // Werkzeuge der App (Wissen speichern/suchen) auch im Echtzeit-Gespräch
+    dc.onopen = () => {
+      try {
+        dc.send(
+          JSON.stringify({
+            type: 'session.update',
+            session: {
+              type: 'realtime',
+              tools: appToolsLib.APP_TOOLS.map((d) => ({ type: 'function', name: d.name, description: d.description, parameters: d.input_schema })),
+              tool_choice: 'auto',
+            },
+          }),
+        );
+      } catch {}
+    };
     dc.onmessage = (m) => {
       let ev;
       try {
@@ -5367,6 +5595,20 @@ async function startRealtime() {
         return;
       }
       const t = ev.type ?? '';
+      if (t === 'response.function_call_arguments.done' && ev.call_id) {
+        (async () => {
+          let output;
+          try {
+            output = await runAppTool(ev.name, JSON.parse(ev.arguments || '{}'));
+          } catch (e) {
+            output = { fehler: e.message };
+          }
+          if (!rt?.dc || rt.dc.readyState !== 'open') return;
+          rt.dc.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: ev.call_id, output: JSON.stringify(output) } }));
+          rt.dc.send(JSON.stringify({ type: 'response.create' }));
+        })();
+        return;
+      }
       if (t === 'input_audio_buffer.speech_started') {
         avatarState.listening = true;
         fireEvent('ack', 800);
@@ -5384,6 +5626,21 @@ async function startRealtime() {
         fillBubble(rt.bot, 'assistant', rt.botText);
         $('chat').scrollTop = $('chat').scrollHeight;
       } else if (/response\.(output_)?audio_transcript\.done$/.test(t) || t === 'response.done') {
+        const u = t === 'response.done' ? ev.response?.usage : null;
+        if (u) {
+          const i = u.input_token_details ?? {};
+          const o = u.output_token_details ?? {};
+          const cached = i.cached_tokens ?? 0;
+          const audioIn = i.audio_tokens ?? 0;
+          costs.add({
+            kind: 'realtime',
+            audioIn: Math.max(0, audioIn - (i.cached_tokens_details?.audio_tokens ?? 0)),
+            textIn: Math.max(0, (i.text_tokens ?? (u.input_tokens ?? 0) - audioIn) - (i.cached_tokens_details?.text_tokens ?? 0)),
+            cached,
+            audioOut: o.audio_tokens ?? 0,
+            textOut: o.text_tokens ?? Math.max(0, (u.output_tokens ?? 0) - (o.audio_tokens ?? 0)),
+          });
+        }
         if (rt.bot && rt.botText.trim()) {
           history().push({ role: 'assistant', content: rt.botText.trim() });
           save();
@@ -5517,6 +5774,11 @@ function startPhoneFeatures() {
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
   carryPersonas,
+  runAppTool,
+  appKnowledge,
+  buildMessages,
+  costs,
+  priceOf,
   edition: EDITION,
   avatar,
   avatarState,

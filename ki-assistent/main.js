@@ -19,7 +19,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
-const { friendlyCloudError, chatAnthropic, chatOpenAI, transcribeOpenAI } = require('./cloud.js');
+const { friendlyCloudError, chatAnthropic, chatOpenAI, transcribeOpenAI, appTools, mergeTools } = require('./cloud.js');
 
 const DIST = path.join(__dirname, 'dist');
 const SMOKE = process.argv.includes('--smoke-test');
@@ -769,6 +769,16 @@ function runSmokeTest() {
       await new Promise((r) => setTimeout(r, 2500));
       if (!avatarWin) return fail('Avatar-Fenster nicht geöffnet');
       if (!(await js('!!window.__app.floatingReady()'))) return fail('Avatar-Fenster nicht bereit');
+      // Knöpfe an der freien Figur: Live an/aus schaltet wirklich um (und wieder zurück)
+      const live0 = await js('!!window.__app.state.settings.handsFree');
+      const hasCtl = await avatarWin.webContents.executeJavaScript("!!document.getElementById('ctlLive') && !!document.getElementById('ctlStop')");
+      await avatarWin.webContents.executeJavaScript("document.getElementById('ctlLive').click()");
+      await new Promise((r) => setTimeout(r, 400));
+      const live1 = await js('!!window.__app.state.settings.handsFree');
+      await avatarWin.webContents.executeJavaScript("document.getElementById('ctlLive').click()");
+      await new Promise((r) => setTimeout(r, 400));
+      console.log('Figur-Knöpfe:', hasCtl, '| Live', live0, '->', live1);
+      if (!hasCtl || live1 === live0) return fail('Knöpfe an der freien Figur');
       // Größe ändern (wie Mausrad/Eckanfasser) muss das Fenster wirklich vergrößern
       const before = avatarWin.getBounds();
       ipcMain.emit('avatar:resize', null, { factor: 1.25 });
@@ -869,6 +879,14 @@ app.whenReady().then(() => {
 
   // Systemweites Tastenkürzel zum Sprechen – auch wenn das Fenster nicht im Vordergrund ist.
   globalShortcut.register('Control+Alt+Space', () => win?.webContents.send('cmd', 'mic'));
+  // Live-Gespräch an/aus und Sprachausgabe stoppen – auch aus anderen Apps heraus
+  for (const [keys, cmd] of [['Control+Alt+L', 'live'], ['Control+Alt+S', 'stop']]) {
+    try {
+      globalShortcut.register(keys, () => win?.webContents.send('cmd', cmd));
+    } catch (e) {
+      console.warn('Tastenkürzel', keys, e);
+    }
+  }
   // Büro: markierten Text bearbeiten (Strg+Alt+K) und Diktat in die aktive App (Strg+Alt+D)
   globalShortcut.register('Control+Alt+K', async () => {
     const sel = await grabSelection();
@@ -1052,7 +1070,9 @@ ipcMain.on('avatar:menu', (_e, { listening }) => {
         ]
       : [];
   Menu.buildFromTemplate([
-    { label: listening ? 'Zuhören beenden' : 'Zuhören (Doppelklick)', click: send('mic') },
+    { label: listening ? 'Zuhören beenden' : 'Zuhören (Doppelklick)', accelerator: 'Control+Alt+Space', click: send('mic') },
+    { label: 'Live-Gespräch an/aus', accelerator: 'Control+Alt+L', click: send('live') },
+    { label: 'Sprachausgabe stoppen', accelerator: 'Control+Alt+S', click: send('stop') },
     { label: 'Chat öffnen', click: () => (win.show(), win.focus()) },
     { label: 'Ausgabefenster', click: send('output') },
     ...screenMenu,
@@ -1510,7 +1530,7 @@ ipcMain.handle('file:open', async (_e, file) => {
   return shell.openPath(resolved);
 });
 
-ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, messages, temperature, effort, web, files, conversation, google: useGoogle, timeZone }) => {
+ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, messages, temperature, effort, web, files, conversation, google: useGoogle, timeZone, appTools: useApp }) => {
   const ctrl = new AbortController();
   running.set(id, ctrl);
   const send = (type, payload) => {
@@ -1525,7 +1545,7 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
     const name = provider === 'anthropic' ? 'Claude' : 'ChatGPT';
     try {
       if (provider === 'anthropic') {
-        const clientTools = useGoogle ? await googleTools(timeZone) : null;
+        const clientTools = mergeTools(useGoogle ? await googleTools(timeZone) : null, useApp ? appTools((name, input) => askRenderer('tool', { name, input })) : null);
         const ctx = { containers: claudeContainers, uploads: claudeUploads, saveFile: saveCreatedFile, clientTools };
         const req = { model, messages, effort, web, files, conversation };
         try {
@@ -1539,7 +1559,7 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
         }
       }
       else {
-        const clientTools = useGoogle ? await googleTools(timeZone) : null;
+        const clientTools = mergeTools(useGoogle ? await googleTools(timeZone) : null, useApp ? appTools((name, input) => askRenderer('tool', { name, input })) : null);
         await chatOpenAI(openaiClient().client, { model, messages, effort }, send, ctrl.signal, { clientTools });
       }
     } catch (err) {

@@ -7,7 +7,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const edition = process.argv[2] || 'cloud';
 const archive = path.join(root, 'release', edition, 'win-unpacked', 'resources', 'app.asar');
 const files = asar.listPackage(archive).map((f) => f.replace(/\\/g, '/'));
-const needed = ['/cloud.js', '/google.js', '/main.js', '/node_modules/@anthropic-ai/sdk/package.json', '/node_modules/openai/package.json'];
+const needed = ['/cloud.js', '/apptools.js', '/google.js', '/main.js', '/node_modules/@anthropic-ai/sdk/package.json', '/node_modules/openai/package.json'];
 const missing = needed.filter((n) => !files.includes(n));
 if (missing.length) {
   console.error('Fehlt im Programm:', missing.join(', '));

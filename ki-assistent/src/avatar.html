@@ -15,10 +15,23 @@
     }
     .pill.listening { border-color: #e0605b; }
     .pill[hidden] { display: none; }
+    /* Knöpfe an der Figur: erscheinen, wenn die Maus auf der Figur ist */
+    .ctl { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; gap: 8px;
+           opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 6; }
+    .ctl.show { opacity: 1; pointer-events: auto; }
+    .ctl button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); cursor: pointer;
+                  background: rgba(16,20,28,.82); color: #fff; font-size: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    .ctl button:hover { background: rgba(61,123,224,.9); }
+    .ctl button.on { background: #3d7be0; }
+    .ctl button[hidden] { display: none; }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <div id="pill" class="pill" hidden></div>
+  <div id="ctl" class="ctl">
+    <button id="ctlLive" title="Live-Gespräch an/aus (Strg+Alt+L)">📞</button>
+    <button id="ctlStop" title="Sprachausgabe stoppen (Strg+Alt+S)" hidden>⏹</button>
+  </div>
 </body>
 </html>

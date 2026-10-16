@@ -11,8 +11,10 @@
 <body>
   <header class="titlebar">
     <span class="title"><span id="titleName">KI-Assistent</span> <span id="titleVersion" class="version"></span></span>
+    <button id="btnCost" class="cost-chip" hidden title="Geschätzte API-Kosten (Claude/OpenAI) heute · dieser Monat – Klick für Details"></button>
+    <div id="costPop" class="cost-pop" hidden></div>
     <div class="titlebar-buttons">
-      <button id="btnStageFull" title="Nur die Figur – groß, mit Mikrofon (Esc oder ✕ zurück)">⛶</button>
+      <button id="btnStageFull" title="Nur die Figur – groß, mit Mikrofon (zurück: Esc oder ✕)">⛶</button>
       <button id="btnArea" title="Bereich wechseln (Dienstlich / Privat)">💼</button>
       <button id="btnPip" class="pip-only" title="Figur als Bild-im-Bild über anderen Apps">⧉</button>
       <button id="btnNewChat" title="Neuer Chat (Strg+N oder „Neuer Chat“ sagen) – Persona und Gedächtnis bleiben">🗨＋</button>
@@ -30,8 +32,9 @@
     <canvas id="avatar"></canvas>
     <div class="speech-bubble" id="speechBubble" hidden></div>
     <div class="full-ctl" id="fullCtl">
-      <button id="fullMic" title="Sprechen">🎤</button>
-      <button id="fullLive" title="Live-Gespräch an/aus">📞</button>
+      <button id="fullMic" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste)">🎤</button>
+      <button id="fullLive" title="Live-Gespräch an/aus (überall: Strg+Alt+L)">📞</button>
+      <button id="fullStop" title="Sprachausgabe stoppen (Esc, überall: Strg+Alt+S)" hidden>⏹</button>
       <button id="fullExit" title="Zurück zur ganzen App (Esc)">✕</button>
     </div>
     <div class="state-badge" id="stateBadge" hidden></div>
@@ -50,11 +53,11 @@
     <input id="fileAttach" type="file" multiple hidden />
     <button id="btnCamera" class="round" title="Foto aufnehmen und dazu fragen" hidden>📷</button>
     <input id="fileCamera" type="file" accept="image/*" capture="environment" hidden />
-    <button id="btnLive" class="round" title="Live-Gespräch starten – einfach losreden, dazwischenreden erlaubt">📞</button>
+    <button id="btnLive" class="round" title="Live-Gespräch an/aus – einfach losreden, dazwischenreden erlaubt (überall: Strg+Alt+L)">📞</button>
     <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste)">🎤</button>
     <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
     <button id="btnSend" class="round primary" title="Senden">➤</button>
-    <button id="btnStop" class="round" title="Stopp" hidden>■</button>
+    <button id="btnStop" class="round" title="Stopp – Antwort und Sprachausgabe anhalten (Esc, überall: Strg+Alt+S)" hidden>■</button>
   </footer>
 
   <!-- Einstellungen -->
@@ -590,6 +593,14 @@
           <div id="syncPcInfo" class="hint"></div>
           <button id="syncPcStop">Beenden</button>
         </div>
+      </div>
+      <div id="savedWrap">
+        <h3>💾 Gespeichertes Wissen</h3>
+        <p class="hint">Hier legt die KI auf Wunsch Rechercheergebnisse und Wichtiges ab – sag z. B. „Speicher das Ergebnis“ oder
+          „Leg das unter Urlaubsplanung ab“. Passende Einträge bekommt sie bei späteren Fragen automatisch mit. Liegt nur auf
+          diesem Gerät, getrennt nach Bereich.</p>
+        <div id="savedCount" class="hint"></div>
+        <div id="savedList" class="kb-list"></div>
       </div>
       <div id="kbWrap">
         <h3>Firmenwissen</h3>

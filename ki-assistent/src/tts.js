@@ -151,6 +151,7 @@ export class SpeechOutput {
     this.onShape = () => {}; // Mundform: -1 rund (o/u) … +1 breit (e/i), aus Lauten oder dem Klangspektrum
     this.onViseme = () => {}; // Mundöffnung je Laut (0 = Lippen zu bei m/b/p … 1 = weit offen), null = unbekannt
     this.onItem = () => {}; // ein Satz beginnt (mit den beim Einreihen übergebenen Zusatzdaten)
+    this.onUsage = () => {}; // Cloud-Stimme: Verbrauch (für den Kostenzähler)
     this.onSpeakingChange = onSpeakingChange ?? (() => {});
     this.onStatus = onStatus ?? (() => {});
     this.engine = 'piper';
@@ -236,6 +237,7 @@ export class SpeechOutput {
       });
       this.ctx ??= new AudioContext();
       const buf = await this.ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+      this.onUsage({ kind: 'tts', model: c.model, seconds: buf.duration, chars: text.length });
       return { audio: buf.getChannelData(0), sampleRate: buf.sampleRate };
     })();
     return run;

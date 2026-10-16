@@ -26,8 +26,10 @@ export function openChild(url, name) {
 }
 
 export class FloatingAvatar {
-  constructor({ onActivate, onClosed, onRotate }) {
+  constructor({ onActivate, onClosed, onRotate, onLive, onStop }) {
     this.onRotate = onRotate;
+    this.onLive = onLive;
+    this.onStop = onStop;
     this.onActivate = onActivate;
     this.onClosed = onClosed;
     this.win = null;
@@ -45,6 +47,10 @@ export class FloatingAvatar {
     const doc = w.document;
     this.avatar = new Avatar(doc.getElementById('c'), { transparent: true });
     this.pill = doc.getElementById('pill');
+    this.ctl = doc.getElementById('ctl');
+    doc.getElementById('ctlLive').onclick = () => this.onLive?.();
+    doc.getElementById('ctlStop').onclick = () => this.onStop?.();
+    if (this.lastControls) this.setControls(this.lastControls);
     await this.setConfig(config);
     this.attachMouse(doc);
     // Schließen (z. B. Alt+F4) erkennen
@@ -75,6 +81,29 @@ export class FloatingAvatar {
     this.avatar = null;
   }
 
+  /** Knöpfe an der Figur: Live an/aus, Stopp (nur während sie spricht). */
+  setControls({ live, speaking }) {
+    this.lastControls = { live, speaking };
+    if (!this.ctl) return;
+    const doc = this.ctl.ownerDocument;
+    doc.getElementById('ctlLive').classList.toggle('on', live);
+    doc.getElementById('ctlStop').hidden = !speaking;
+  }
+
+  /** Knöpfe zeigen, solange die Maus auf der Figur oder den Knöpfen ist (danach kurz nachlaufen). */
+  showControls(on) {
+    if (!this.ctl) return;
+    clearTimeout(this.ctlTimer);
+    if (on) this.ctl.classList.add('show');
+    else this.ctlTimer = setTimeout(() => this.ctl?.classList.remove('show'), 1500);
+  }
+
+  overControls(x, y) {
+    if (!this.ctl?.classList.contains('show')) return false;
+    const r = this.ctl.getBoundingClientRect();
+    return x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6;
+  }
+
   setBadge(text, listening) {
     if (!this.pill) return;
     this.pill.textContent = text;
@@ -99,16 +128,30 @@ export class FloatingAvatar {
       onRotate: (yaw, key) => this.onRotate?.(yaw, key),
       onSelect: (on) => setIgnore(!on && true),
     });
+    const hover = (x, y) => {
+      const onFig = this.avatar.hitTest(x, y);
+      const onCtl = this.overControls(x, y);
+      this.showControls(onFig || onCtl);
+      return onFig || onCtl;
+    };
     doc.addEventListener('mousemove', (e) => {
+      const over = hover(e.clientX, e.clientY);
       if (this.band.selected) return setIgnore(false);
-      setIgnore(!this.avatar.hitTest(e.clientX, e.clientY));
+      setIgnore(!over);
     });
-    doc.addEventListener('mouseleave', () => !this.band.selected && setIgnore(true));
+    doc.addEventListener('mouseleave', () => {
+      this.showControls(false);
+      if (!this.band.selected) setIgnore(true);
+    });
     // Mausposition vom Hauptprozess (funktioniert auch, wenn Windows keine Mausbewegungen weiterreicht)
     desktop.onAvatarCursor?.(({ inside, x, y }) => {
       if (!this.avatar) return;
-      if (!inside) return !this.band.selected && setIgnore(true);
-      setIgnore(!(this.band.selected || this.avatar.hitTest(x, y)));
+      if (!inside) {
+        this.showControls(false);
+        return !this.band.selected && setIgnore(true);
+      }
+      const over = hover(x, y);
+      setIgnore(!(this.band.selected || over));
     });
     doc.addEventListener(
       'wheel',

@@ -10,7 +10,10 @@ import OpenAI from 'openai';
 import cloud from '../../cloud.js';
 import googleLib from '../../google.js';
 
-const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI } = cloud;
+const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI, appTools, mergeTools } = cloud;
+// Rückkanal für Werkzeuge der App (laufen in der Oberfläche)
+let uiHandler = null;
+const uiTools = () => appTools((name, input) => (uiHandler ? uiHandler('tool', { name, input }) : Promise.reject(new Error('nicht bereit'))));
 
 // ---------------------------------------------------------------- Dateien im App-Speicher
 async function readJson(path) {
@@ -223,7 +226,7 @@ const api = {
 
   // ---- Chat
   chat: (req, onEvent) => {
-    const { id, provider = 'anthropic', baseUrl, model, messages, temperature, effort, web, files, conversation, google: useGoogle } = req;
+    const { id, provider = 'anthropic', baseUrl, model, messages, temperature, effort, web, files, conversation, google: useGoogle, appTools: useApp } = req;
     const ctrl = new AbortController();
     running.set(id, ctrl);
     const send = (type, payload) => onEvent({ id, type, payload });
@@ -234,10 +237,10 @@ const api = {
             containers,
             uploads,
             saveFile: saveCreatedFile,
-            clientTools: useGoogle ? await googleTools() : null,
+            clientTools: mergeTools(useGoogle ? await googleTools() : null, useApp ? uiTools() : null),
           });
         } else if (provider === 'openai') {
-          await chatOpenAI(await openaiClient(), { model, messages, effort }, send, ctrl.signal, { clientTools: useGoogle ? await googleTools() : null });
+          await chatOpenAI(await openaiClient(), { model, messages, effort }, send, ctrl.signal, { clientTools: mergeTools(useGoogle ? await googleTools() : null, useApp ? uiTools() : null) });
         } else {
           const res = await fetch(apiUrl(baseUrl, '/v1/chat/completions'), {
             method: 'POST',
@@ -431,6 +434,7 @@ const api = {
 
   // ---- Google Kalender und Aufgaben
   area: AREA,
+  onSyncRequest: (fn) => (uiHandler = fn),
   areaLoad: async (name) => readJson(name === 'privat' ? 'privat/daten.json' : 'daten.json'),
   areaSet: async (name, patch) => {
     const next = name === 'privat' ? 'privat' : 'dienstlich';

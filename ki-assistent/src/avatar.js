@@ -685,9 +685,21 @@ export class Avatar {
       if (curL?.isVideo && this.videoEnded(curL)) this.restartVideo(curL);
       return;
     }
-    // Einmal abgespielte Videos kehren danach zum Grundbild zurück
+    // Ruhe-Videos (Anlass „rest“) ersetzen in Ruhe das Grundbild: laufen dauernd, mehrere im Wechsel.
+    // Beim Sprechen bleibt das Grundbild (dort sitzt die Lippenbewegung).
+    const rest = [];
+    for (let i = 1; i < n; i++) if (this.layers[i].config.trigger === 'rest') rest.push(i);
+    const isRest = (i) => rest.includes(i);
+    const nextRest = () => (rest.length ? rest[(this.restK = ((this.restK ?? -1) + 1) % rest.length)] : 0);
+    const home = () => (this.speaking || !rest.length ? 0 : isRest(this.current) ? this.current : nextRest());
+    const isHome = (i) => i === 0 || isRest(i);
+    // Einmal abgespielte Videos kehren danach zum Grundbild (bzw. Ruhe-Video) zurück
     if (curL?.isVideo && this.videoEnded(curL) && !curL.config.loop) {
-      this.switchPose(0, now);
+      if (!this.speaking && rest.length) {
+        const h = nextRest();
+        if (h === this.current) this.restartVideo(curL);
+        else this.switchPose(h, now);
+      } else this.switchPose(0, now);
       // beim Nachdenken/Zuhören gleich das nächste Video, sonst etwas Pause mit dem Grundbild
       const lasting = this.thinking || this.listening;
       this.poseUntil = now + (lasting ? 400 + Math.random() * 1100 : 2500 + Math.random() * 4000);
@@ -779,17 +791,20 @@ export class Avatar {
       next = nextOf(cand);
       hold = sim ? Math.max(1500, sim.until - now) : Math.max(1500, ev.until - now);
     } else if (base === 'idle') {
-      // meist das Grundbild, ab und zu eine Ruhe-Pose (gelangweilt: öfter)
-      if (this.current === 0 && cand.length && Math.random() < (st === 'idle:bored' ? 0.8 : 0.45)) {
+      // meist das Grundbild (oder Ruhe-Video), ab und zu eine Ruhe-Pose (gelangweilt: öfter)
+      if (isHome(this.current) && cand.length && Math.random() < (st === 'idle:bored' ? 0.8 : 0.45)) {
         next = nextOf(cand);
         hold = rnd(2500, 5500);
-      } else hold = rnd(5000, 12000);
+      } else {
+        next = home();
+        hold = rnd(5000, 12000);
+      }
     } else if (base === 'speak') {
       // beim Sprechen: Grundbild (mit Lippenbewegung) und Sprech-Posen im Wechsel
       next = cand.length && (this.current === 0 || st === 'start') ? nextOf(cand) : 0;
       hold = next === 0 ? rnd(1800, 3500) : rnd(2200, 4500);
     } else {
-      next = nextOf(cand);
+      next = cand.length ? nextOf(cand) : home();
       // mehrere Posen: nach einer Weile zur nächsten wechseln; eine einzige bleibt, solange der Zustand anhält
       hold = cand.length > 1 ? rnd(5000, 9000) : 1e9;
     }
@@ -1474,9 +1489,9 @@ export class Avatar {
     let t = { ...box };
     if (C.shot !== 'ganz' && eyeY != null) {
       const face = Math.max(0.04, (mouthY - eyeY) * 2.6); // Gesichtshöhe (normiert)
-      // Oberkörper: vom Scheitel bis etwa zur Hüfte (ca. 4,6 Gesichtshöhen) – nie enger
-      const h = Math.min(bh, face * 4.6);
-      const y0 = Math.max(box.y0, eyeY - face * 0.9);
+      // Oberkörper: mindestens zwei Drittel der Figur (höchstens 1,5-fach vergrößert), vom Scheitel abwärts – nie enger
+      const h = Math.min(bh, Math.max(face * 4.6, bh * (2 / 3)));
+      const y0 = Math.max(box.y0, Math.min(eyeY - face * 0.9, box.y1 - h));
       // Breite passend zum Fenster, um die Gesichtsmitte
       const w = Math.min(1, (h * this.h * (W / H)) / this.w);
       const x0 = Math.min(Math.max(0, faceX - w / 2), 1 - w);

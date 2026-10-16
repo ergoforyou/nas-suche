@@ -106,6 +106,7 @@ export class RubberBand {
     // Zwei Finger: zoomen (wie bei Fotos)
     this.touches = new Map();
     canvas.addEventListener('dblclick', (e) => {
+      if (opts.tapToTalk) return; // Handy: einfaches Antippen spricht bzw. stoppt schon
       const p = this.local(e);
       if (this.avatar.hitTest(p.x, p.y)) opts.onActivate?.();
     });
@@ -192,6 +193,9 @@ export class RubberBand {
       return this.pinchStart();
     }
     if (!this.avatar.hitTest(p.x, p.y)) return this.select(false);
+    // Handy: Antippen = sprechen bzw. Sprachausgabe stoppen; der Rahmen zum Verschieben/Vergrößern erst nach
+    // langem Drücken (sonst landete man beim Stoppen ständig im Rahmen mit den Größen-Knöpfen)
+    if (this.opts.tapToTalk && !this.selected && e.pointerType !== 'mouse') return this.tapOrHold(e);
     // 3D-Figur: Umschalttaste + Ziehen dreht die Figur
     if (e.shiftKey && (this.avatar.layers?.[0]?.isVrm || this.avatar.parallax)) return this.rotateStart(e);
     this.select(true);
@@ -245,6 +249,37 @@ export class RubberBand {
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', up);
+  }
+
+  tapOrHold(e) {
+    const canvas = this.avatar.canvas;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moved = false;
+    const done = () => {
+      clearTimeout(timer);
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup', up);
+      canvas.removeEventListener('pointercancel', cancel);
+    };
+    const timer = setTimeout(() => {
+      done();
+      if (moved) return;
+      this.win.navigator.vibrate?.(15);
+      this.select(true);
+    }, 550);
+    const move = (ev) => {
+      if (ev.pointerId === e.pointerId && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 12) moved = true;
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      done();
+      if (!moved) this.opts.onTap?.();
+    };
+    const cancel = () => done();
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', cancel);
   }
 
   /** Zwei-Finger-Zoom: Abstand der Finger ändert die Größe, die Mitte zwischen ihnen verschiebt. */

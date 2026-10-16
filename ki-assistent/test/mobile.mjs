@@ -81,12 +81,42 @@ await page.waitForFunction(() => window.__app, null, { timeout: 30000 });
 check((await page.evaluate(() => window.__app.edition)) === 'mobile', 'Android-Ausgabe aktiv');
 check((await page.evaluate(() => window.__app.state.settings.provider)) === 'anthropic', 'Claude ist Standard');
 check(!(await page.isVisible('#btnFloat')) && !(await page.isVisible('#btnClose')), 'Desktop-Knöpfe ausgeblendet');
+// Kostenzähler: Preise (Listenpreise) und Anzeige in der Titelleiste
+const price = await page.evaluate(() => {
+  const P = window.__app.priceOf;
+  return {
+    sonnet: P({ kind: 'chat', model: 'claude-sonnet-5-5', in: 1e6, out: 1e6 }),
+    haiku: P({ kind: 'chat', model: 'claude-haiku-5-5', in: 50000, out: 50000, searches: 3 }),
+    haikuBig: P({ kind: 'chat', model: 'claude-haiku-5-5', in: 200000, out: 0 }),
+    cache: P({ kind: 'chat', model: 'claude-opus-5-5', cacheRead: 1e6, cacheWrite: 1e6 }),
+    stt: P({ kind: 'stt', model: 'gpt-4o-transcribe', seconds: 120 }),
+    tts: P({ kind: 'tts', model: 'gpt-4o-mini-tts', seconds: 60 }),
+    rt: P({ kind: 'realtime', audioIn: 1e6, audioOut: 1e6 }),
+    unknown: P({ kind: 'chat', model: 'irgendwas', in: 10, out: 10 }),
+  };
+});
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+check(
+  near(price.sonnet, 12) && near(price.haiku, 0.005 + 0.025 + 0.03) && near(price.haikuBig, 0.1) && near(price.cache, 0.2 + 5) && near(price.stt, 0.012) && near(price.tts, 0.015) && near(price.rt, 96) && price.unknown === null,
+  'Kostenzähler: Preise je Dienst richtig gerechnet',
+  JSON.stringify(price),
+);
 check((await page.isVisible('#btnLive')) && (await page.isVisible('#btnMic')), 'Live-Gespräch und Mikrofon sichtbar');
 await page.evaluate(() => window.desktop.setKey('anthropic', 'sk-ant-test'));
 await page.fill('#input', 'Hallo');
 await page.click('#btnSend');
 await page.waitForFunction(() => /Hallo vom Handy/.test(document.querySelector('.msg.assistant:last-child')?.textContent ?? ''), null, { timeout: 15000 });
 check(request?.headers['anthropic-dangerous-direct-browser-access'] === 'true', 'Claude direkt aus der App angefragt', request?.body?.model);
+await page.waitForTimeout(300);
+const costUi = await page.evaluate(() => {
+  const s = window.__app.costs.summary();
+  document.getElementById('btnCost').click();
+  const pop = document.getElementById('costPop');
+  const out = { today: s.today, chip: document.getElementById('btnCost').textContent, chipVisible: !document.getElementById('btnCost').hidden, pop: !pop.hidden && /Dieser Monat/.test(pop.textContent) };
+  document.getElementById('btnCost').click();
+  return out;
+});
+check(costUi.today > 0 && costUi.chipVisible && /\$/.test(costUi.chip) && costUi.pop, 'Kostenzähler: Claude-Anfrage gezählt, Anzeige und Details', JSON.stringify(costUi));
 check(!(await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].some((m) => m.textContent.includes('[freudig]')))), 'Stimmungsmarke nicht sichtbar');
 check(/freudig/.test(JSON.stringify(request?.body?.system ?? '')), 'Stimmungsmarken im Systemprompt angefordert');
 check(
@@ -152,6 +182,34 @@ await page.evaluate(() => document.getElementById('btnCloseDrawer').click());
 await page.click('#closeSettings').catch(() => {});
 await page.keyboard.press('Escape').catch(() => {});
 const stageBox = await page.locator('#stage').boundingBox();
+// Finger: kurzes Antippen stoppt die Sprachausgabe (kein Rahmen), langes Drücken öffnet den Rahmen
+const tapRes = await page.evaluate(async () => {
+  const a = window.__app.avatar;
+  const r = a.rect;
+  const c = a.canvas.getBoundingClientRect();
+  const o = { clientX: c.left + r.x + r.w / 2, clientY: c.top + r.y + r.h / 2, button: 0, pointerId: 9, bubbles: true, pointerType: 'touch' };
+  const t = window.__app.tts;
+  const origStop = t.stop.bind(t);
+  let stopped = 0;
+  t.stop = () => {
+    stopped++;
+    origStop();
+  };
+  window.__app.state.busy = true;
+  a.canvas.dispatchEvent(new PointerEvent('pointerdown', o));
+  await new Promise((r2) => setTimeout(r2, 120));
+  a.canvas.dispatchEvent(new PointerEvent('pointerup', o));
+  window.__app.state.busy = false;
+  const frameAfterTap = !document.querySelector('.rb').hidden;
+  t.stop = origStop;
+  a.canvas.dispatchEvent(new PointerEvent('pointerdown', { ...o, pointerId: 10 }));
+  await new Promise((r2) => setTimeout(r2, 750));
+  a.canvas.dispatchEvent(new PointerEvent('pointerup', { ...o, pointerId: 10 }));
+  const frameAfterHold = !document.querySelector('.rb').hidden;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  return { stopped, frameAfterTap, frameAfterHold };
+});
+check(tapRes.stopped > 0 && !tapRes.frameAfterTap && tapRes.frameAfterHold, 'Handy: Figur antippen stoppt die Sprache (kein Rahmen), langes Drücken öffnet den Rahmen', JSON.stringify(tapRes));
 await page.evaluate(() => {
   const a = window.__app.avatar;
   const r = a.rect;
@@ -375,6 +433,35 @@ const rotation = await page.evaluate(async () => {
   return { seen: [...seen], videos: window.__app.avatar.layers.filter((L) => L.isVideo).length };
 });
 check(rotation.videos >= 2 && rotation.seen.length >= 2, 'Mehrere Videos desselben Anlasses laufen abwechselnd', JSON.stringify(rotation));
+// Ruhe-Videos statt Grundbild: in Ruhe laufen sie dauernd im Wechsel, beim Sprechen kommt das Grundbild (Lippen)
+const restRes = await page.evaluate(async () => {
+  const av = window.__app.persona().avatar;
+  const vids = av.poses.filter((p) => p.video);
+  const saved = vids.map((p) => p.trigger);
+  vids.slice(0, 2).forEach((p) => (p.trigger = 'rest'));
+  vids.slice(2).forEach((p) => (p.trigger = 'think'));
+  await window.__app.avatar.setConfig(av);
+  window.__app.avatar.previewPose(null);
+  const A = window.__app.avatar;
+  const S = window.__app.avatarState;
+  S.thinking = S.listening = S.speaking = false;
+  const seen = new Set();
+  let base = 0;
+  await new Promise((r) => setTimeout(r, 800));
+  for (let t = 0; t < 50; t++) {
+    await new Promise((r) => setTimeout(r, 200));
+    if (A.current === 0) base++;
+    else if (A.layers[A.current]?.config.trigger === 'rest') seen.add(A.current);
+  }
+  S.speaking = true;
+  await new Promise((r) => setTimeout(r, 800));
+  const speakCur = A.current;
+  S.speaking = false;
+  vids.forEach((p, i) => (p.trigger = saved[i]));
+  await A.setConfig(av);
+  return { seen: [...seen], base, speakCur };
+});
+check(restRes.seen.length === 2 && restRes.base <= 2 && restRes.speakCur === 0, 'Ruhe-Videos statt Grundbild: laufen im Wechsel, beim Sprechen Grundbild', JSON.stringify(restRes));
 // Stimmung als Anlass: fröhliche Pose beim fröhlichen Sprechen
 const moodPose = await page.evaluate(async () => {
   const av = window.__app.persona().avatar;
@@ -624,7 +711,7 @@ const cam = await page.evaluate(async () => {
 });
 check(cam.aspect < 0.5, 'Bild-im-Bild-Fenster nach der sichtbaren Figur (leere Ränder zählen nicht)', JSON.stringify(cam));
 // höchstens bis zur Hüfte (die Test-Figur ist ein Brustbild – also nur wenig näher, nie aufs Gesicht)
-check(cam.upper > cam.whole * 1.02 && cam.upper < cam.whole * 1.6 && Math.abs(cam.after - cam.whole) < cam.whole * 0.08, 'Kamera fährt auf den Oberkörper (nicht aufs Gesicht) und danach zurück', JSON.stringify(cam));
+check(cam.upper > cam.whole * 1.02 && cam.upper <= cam.whole * 1.52 && Math.abs(cam.after - cam.whole) < cam.whole * 0.08, 'Kamera fährt höchstens auf zwei Drittel der Figur (Oberkörper) und danach zurück', JSON.stringify(cam));
 // ---- Persona als .kiavatar exportieren (mit Video) und wieder importieren
 const exp = await page.evaluate(async (webmB64) => {
   const av = window.__app.persona().avatar;
@@ -751,6 +838,26 @@ const sys = JSON.stringify(chatReq?.system ?? '');
 check(!!chatReq && /internen Firmendokumenten/.test(sys) && /85 Euro/.test(sys) && !/Zahlungsfrist/.test(sys), 'Nur passende Abschnitte gehen an Claude', sys.slice(-200));
 const kbNote = await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? '');
 check(/Firmenwissen mitgegeben: Preisliste\.txt/.test(kbNote), 'Antwort zeigt, welches Dokument mitgegeben wurde', kbNote.slice(-80));
+// Gespeichertes Wissen: Claude bekommt die Werkzeuge und das App-Grundwissen; Speichern/Suchen über das Werkzeug
+const toolNames = (chatReq?.tools ?? []).map((t) => t.name);
+check(toolNames.includes('wissen_speichern') && toolNames.includes('wissen_suchen') && /Über dich und diese App/.test(sys) && /wissen_speichern/.test(sys), 'Claude kennt die App und kann Wissen speichern (Werkzeuge im Auftrag)', JSON.stringify(toolNames));
+const savedRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const r = await app.runAppTool('wissen_speichern', { titel: 'Wallbox-Recherche', inhalt: 'Förderung für die Wallbox: KfW 442 bis 10.200 Euro, Antrag vor dem Kauf stellen. Quelle: kfw.de' });
+  const found = await app.runAppTool('wissen_suchen', { suchbegriff: 'Wallbox Förderung' });
+  const list = document.querySelectorAll('#savedList .saved-doc').length;
+  return { r, found: found.treffer?.[0]?.titel, list };
+});
+check(savedRes.r.gespeichert && savedRes.found === 'Wallbox-Recherche' && savedRes.list >= 1, 'Gespeichertes Wissen: speichern, finden, in der Liste', JSON.stringify(savedRes));
+const svBefore = claudeRequests.length;
+const svMsgs = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+await page.fill('#input', 'Wie war das nochmal mit der Förderung für die Wallbox?');
+await page.click('#btnSend');
+await page
+  .waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !document.querySelector('.msg.assistant.typing'), svMsgs, { timeout: 15000 })
+  .catch(() => {});
+const svReq = claudeRequests.slice(svBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Wallbox'));
+check(/gespeicherten Wissen/.test(JSON.stringify(svReq?.system ?? '')) && /KfW 442/.test(JSON.stringify(svReq?.system ?? '')), 'Gespeichertes Wissen geht bei passender Frage automatisch mit', JSON.stringify(svReq?.system ?? '').slice(-160));
 // Bereich Privat: eigene Daten, kein Firmenwissen – Claude-/OpenAI-Schlüssel kommen beim Wechsel mit
 const keysBefore = await page.evaluate(async () => {
   const k = (await window.__keyFile()) ?? {};

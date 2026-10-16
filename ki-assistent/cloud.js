@@ -195,6 +195,9 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
   const all = [];
   let wroteText = false;
   let final;
+  // Verbrauch über alle Runden zusammenzählen (für den Kostenzähler)
+  const use = { kind: 'chat', provider: 'anthropic', model, in: 0, out: 0, cacheRead: 0, cacheWrite: 0, searches: 0 };
+  const sendUse = () => send('usage', use);
   // Serverwerkzeuge können pausieren (pause_turn) – dann mit dem bisherigen Verlauf fortsetzen.
   // Eigene Werkzeuge (tool_use): hier ausführen und das Ergebnis zurückgeben.
   for (let round = 0; round < 10; round++) {
@@ -220,6 +223,14 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
     }
     final = await stream.finalMessage();
     all.push(...final.content);
+    const u = final.usage ?? {};
+    use.in += u.input_tokens ?? 0;
+    use.out += u.output_tokens ?? 0;
+    use.cacheRead += u.cache_read_input_tokens ?? 0;
+    use.cacheWrite += u.cache_creation_input_tokens ?? 0;
+    use.searches += u.server_tool_use?.web_search_requests ?? 0;
+    // bei automatischer Umleitung auf ein anderes Claude-Modell zählt das tatsächlich genutzte
+    if (/^claude-/.test(final.model ?? '')) use.model = final.model;
     if (final.container?.id && conversation) ctx.containers?.set(conversation, final.container.id);
     if (final.stop_reason === 'tool_use' && own) {
       const results = [];
@@ -242,6 +253,7 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
     params.messages = [...params.messages, { role: 'assistant', content: final.content }];
     if (final.container?.id) params.container = { ...params.container, id: final.container.id };
   }
+  sendUse();
   if (final.stop_reason === 'refusal') {
     send('error', 'Claude hat diese Anfrage abgelehnt. Bitte anders formulieren.');
     return;
@@ -269,6 +281,7 @@ async function chatOpenAI(client, { model, messages, effort }, send, signal, ctx
     model,
     messages: messages.map(({ role, content }) => ({ role, content })),
     stream: true,
+    stream_options: { include_usage: true },
     ...(own?.defs?.length
       ? { tools: own.defs.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })) }
       : {}),
@@ -285,11 +298,18 @@ async function chatOpenAI(client, { model, messages, effort }, send, signal, ctx
       return client.chat.completions.create(params, { signal });
     }
   };
+  const use = { kind: 'chat', provider: 'openai', model, in: 0, out: 0, cacheRead: 0 };
   for (let round = 0; round < 8; round++) {
     const stream = await open();
     const calls = [];
     let text = '';
     for await (const chunk of stream) {
+      if (chunk.usage) {
+        const cached = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
+        use.in += (chunk.usage.prompt_tokens ?? 0) - cached;
+        use.cacheRead += cached;
+        use.out += chunk.usage.completion_tokens ?? 0;
+      }
       const d = chunk.choices?.[0]?.delta;
       if (d?.content) {
         text += d.content;
@@ -321,6 +341,7 @@ async function chatOpenAI(client, { model, messages, effort }, send, signal, ctx
     }
     if (text) send('delta', '\n\n');
   }
+  send('usage', use);
   send('done');
 }
 
@@ -358,4 +379,27 @@ async function transcribeOpenAI(client, toFile, audio, { language, model } = {})
   return String(res.text ?? '').trim();
 }
 
-module.exports = { toWav, transcribeOpenAI, friendlyCloudError, toClaudeMessages, claudeTools, createdFileIds, citedSources, chatAnthropic, chatOpenAI };
+const { APP_TOOLS, APP_TOOL_STATUS } = require('./apptools.js');
+/** App-Werkzeuge; run führt den Aufruf in der Oberfläche aus. */
+function appTools(run) {
+  return { defs: APP_TOOLS, status: APP_TOOL_STATUS, run };
+}
+/** Mehrere Werkzeug-Sätze (z. B. Google + App) zu einem zusammenfassen. */
+function mergeTools(...sets) {
+  const list = sets.filter((t) => t?.defs?.length);
+  if (!list.length) return null;
+  return {
+    defs: list.flatMap((t) => t.defs),
+    status: Object.assign({}, ...list.map((t) => t.status ?? {})),
+    run: (name, input) => {
+      const owner = list.find((t) => t.defs.some((d) => d.name === name));
+      if (!owner) throw new Error(`Unbekanntes Werkzeug ${name}`);
+      return owner.run(name, input);
+    },
+  };
+}
+
+module.exports = {
+  APP_TOOLS,
+  appTools,
+  mergeTools, toWav, transcribeOpenAI, friendlyCloudError, toClaudeMessages, claudeTools, createdFileIds, citedSources, chatAnthropic, chatOpenAI };
