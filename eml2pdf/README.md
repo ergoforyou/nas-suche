@@ -67,6 +67,8 @@ Protokoll bei Problemen: `%LOCALAPPDATA%\EML zu PDF\protokoll.txt` (in die Explo
 
 Läuft auf macOS 12 (Monterey) oder neuer, mit Apple-Chip (M1–M4) und Intel.
 
+Bebilderte Anleitung für Mac-Nutzer: [`dist/EML-zu-PDF-Mac-Anleitung.pdf`](dist/EML-zu-PDF-Mac-Anleitung.pdf)
+
 **Installation**
 1. [`dist/EML-zu-PDF-Mac.zip`](dist/EML-zu-PDF-Mac.zip) herunterladen und doppelklicken → es entsteht „EML zu PDF“.
 2. „EML zu PDF“ doppelklicken. Beim **ersten Mal** blockiert macOS das Programm, weil es nicht über den

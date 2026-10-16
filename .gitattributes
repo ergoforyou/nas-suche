@@ -2,3 +2,4 @@
 *.syso binary
 *.zip binary
 *.icns binary
+*.pdf binary

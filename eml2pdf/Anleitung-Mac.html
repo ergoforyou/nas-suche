@@ -1,0 +1,553 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><title>EML zu PDF für Mac</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: eine ruhige Lesespalte, Schritte als nummerierte Folge, jedes Bild als „Bildschirm“-Tafel */
+:root{
+  --bg:#f7f7f8; --surface:#ffffff; --fg:#1b1c20; --muted:#5b5f6b; --line:#dfe1e6;
+  --accent:#c8261e; --accent-soft:#fbe9e7; --tip:#e8f1fb; --tip-line:#2f6fb5; --warn:#fff4e0; --warn-line:#b26a00;
+  --screen:#e9eaee;
+  --font-body:"Atkinson Hyperlegible",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141518; --surface:#1d1f24; --fg:#ecedf0; --muted:#a6aab5; --line:#33363e;
+  --accent:#ff6b5e; --accent-soft:#3a1d1b; --tip:#16263a; --tip-line:#6aa7ec; --warn:#33270f; --warn-line:#e0a242;
+  --screen:#2a2c33; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141518; --surface:#1d1f24; --fg:#ecedf0; --muted:#a6aab5; --line:#33363e;
+  --accent:#ff6b5e; --accent-soft:#3a1d1b; --tip:#16263a; --tip-line:#6aa7ec; --warn:#33270f; --warn-line:#e0a242;
+  --screen:#2a2c33; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:17px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+.wrap{max-width:760px;margin:0 auto}
+header.top{padding-block:48px 28px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
+header.top img{width:80px;height:80px}
+h1{font-size:2.1rem;line-height:1.15;margin:0;text-wrap:balance}
+.lead{margin:6px 0 0;color:var(--muted);font-size:1.08rem}
+h2{font-size:1.5rem;margin:56px 0 8px;text-wrap:balance;padding-top:20px;border-top:2px solid var(--fg)}
+h2 .part{display:block;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:4px}
+h3{font-size:1.15rem;margin:0 0 6px;text-wrap:balance}
+p{margin:0 0 12px}
+code,.path{font-family:var(--font-mono);font-size:.88em;background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:1px 6px;overflow-wrap:anywhere}
+kbd{font-family:var(--font-body);font-size:.85em;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 6px;background:var(--surface)}
+.btnname{font-weight:700;white-space:nowrap}
+.box{border-radius:10px;padding:14px 16px;margin:16px 0;border-left:4px solid}
+.box p:last-child,.box ul:last-child{margin-bottom:0}
+.box.tip{background:var(--tip);border-color:var(--tip-line)}
+.box.warn{background:var(--warn);border-color:var(--warn-line)}
+.box.need{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent)}
+.box strong.h{display:block;margin-bottom:4px}
+ul{padding-left:1.2em;margin:0 0 12px}
+li{margin-bottom:4px}
+ol.steps{list-style:none;padding:0;margin:20px 0 0;counter-reset:s;display:grid;gap:30px}
+ol.steps>li{counter-increment:s;display:grid;grid-template-columns:44px minmax(0,1fr);gap:14px}
+ol.steps>li::before{content:counter(s);width:40px;height:40px;border-radius:50%;background:var(--accent);color:#fff;
+  font-weight:700;font-size:1.1rem;display:grid;place-items:center}
+:root[data-theme="dark"] ol.steps>li::before{color:#1b0b09}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) ol.steps>li::before{color:#1b0b09}}
+figure{margin:14px 0 4px;background:var(--screen);border-radius:12px;padding:14px;overflow-x:auto}
+figure svg{display:block;width:100%;height:auto;min-width:300px}
+figcaption{font-size:.85rem;color:var(--muted);margin-top:8px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.note-schematic{font-size:.9rem;color:var(--muted)}
+.cheat{background:var(--surface);border:2px solid var(--fg);border-radius:12px;padding:18px 20px;margin-top:20px}
+.cheat dl{display:grid;grid-template-columns:minmax(0,11em) minmax(0,1fr);gap:8px 16px;margin:0}
+.cheat dt{font-weight:700}
+.cheat dd{margin:0}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:10px 0}
+details summary{cursor:pointer;font-weight:700}
+details[open] summary{margin-bottom:8px}
+summary:focus-visible,a:focus-visible{outline:3px solid var(--tip-line);outline-offset:2px}
+a{color:var(--tip-line)}
+@media (max-width:520px){
+  body{font-size:16px}
+  h1{font-size:1.7rem}
+  header.top{grid-template-columns:1fr}
+  .cheat dl{grid-template-columns:1fr}
+  .cheat dd{margin-bottom:8px}
+}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <img src="data:image/png;base64,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" alt="Programmsymbol EML zu PDF: Briefumschlag mit rotem PDF-Etikett">
+  <div>
+    <h1>EML zu PDF für den Mac</h1>
+    <p class="lead">Schritt-für-Schritt-Anleitung: einmal einrichten, danach jede E-Mail mit zwei Klicks als PDF ablegen.</p>
+  </div>
+</header>
+
+<p>Das Programm macht aus einer gespeicherten E-Mail (Dateiendung <code>.eml</code>) <strong>eine einzige PDF-Datei</strong>. Vorne steht die E-Mail mit Absender, Datum und Text, dahinter folgen alle Anlagen als weitere Seiten. Die fertige PDF landet in einem Ordner Ihrer Wahl. Der Dateiname beginnt mit dem Datum der Mail, gefolgt vom Betreff, zum Beispiel <code>2026-10-13 Rechnung 4711.pdf</code>.</p>
+
+<div class="box need">
+  <strong class="h">Das brauchen Sie</strong>
+  <ul>
+    <li>einen Mac mit macOS 12 (Monterey) oder neuer, egal ob mit Apple-Chip oder Intel</li>
+    <li>die Datei <code>EML-zu-PDF-Mac.zip</code></li>
+    <li>das Passwort, mit dem Sie sich am Mac anmelden</li>
+    <li>etwa 5 Minuten</li>
+  </ul>
+</div>
+
+<p class="note-schematic">Zu den Bildern: Die Fenster sind nachgezeichnet, keine echten Bildschirmfotos. Je nach macOS-Version sehen Farben und Anordnung leicht anders aus. Die Beschriftungen und Knöpfe heißen aber so wie hier gezeigt. Rot umrandet ist immer die Stelle, auf die Sie klicken.</p>
+
+<!-- ============================================================ TEIL 1 -->
+<h2><span class="part">Teil 1</span>Einmalig einrichten</h2>
+
+<ol class="steps">
+
+<li><div>
+<h3>ZIP-Datei auspacken</h3>
+<p>Öffnen Sie den Ordner <strong>Downloads</strong>: im Dock auf das blau-weiße Gesicht (<strong>Finder</strong>) klicken, dann links in der Seitenleiste auf <strong>Downloads</strong>. Doppelklicken Sie dort auf <code>EML-zu-PDF-Mac.zip</code>. Daneben erscheint das Programm <strong>EML zu PDF</strong> mit dem Briefumschlag-Symbol.</p>
+<figure>
+<svg viewBox="0 0 640 300" role="img" aria-label="Finder-Fenster Downloads mit der ZIP-Datei und dem ausgepackten Programm EML zu PDF">
+  <rect x="1" y="1" width="638" height="298" rx="12" fill="#ffffff" stroke="#c9cbd1"/>
+  <path d="M1 13a12 12 0 0 1 12-12h614a12 12 0 0 1 12 12v39H1z" fill="#f2f2f4"/>
+  <line x1="1" y1="52" x2="639" y2="52" stroke="#dcdde1"/>
+  <circle cx="22" cy="24" r="6" fill="#ff5f57"/><circle cx="42" cy="24" r="6" fill="#febc2e"/><circle cx="62" cy="24" r="6" fill="#28c840"/>
+  <text x="200" y="30" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="15" font-weight="700" fill="#1d1d1f">Downloads</text>
+  <rect x="1" y="52" width="160" height="247" fill="#eeeff2"/>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" fill="#1d1d1f">
+    <text x="16" y="76" font-size="11" font-weight="700" fill="#8a8d96">Favoriten</text>
+    <text x="24" y="100">Zuletzt benutzt</text>
+    <text x="24" y="124">Programme</text>
+    <text x="24" y="148">Schreibtisch</text>
+    <text x="24" y="172">Dokumente</text>
+    <rect x="10" y="182" width="142" height="24" rx="6" fill="#d5d7dd"/>
+    <text x="24" y="199" font-weight="700">Downloads</text>
+  </g>
+  <!-- ZIP -->
+  <g transform="translate(205,85)">
+    <rect x="18" y="0" width="64" height="80" rx="6" fill="#f4f4f6" stroke="#b8bbc3"/>
+    <rect x="44" y="6" width="12" height="40" fill="#9aa0ab"/>
+    <rect x="44" y="12" width="6" height="5" fill="#f4f4f6"/><rect x="50" y="22" width="6" height="5" fill="#f4f4f6"/><rect x="44" y="32" width="6" height="5" fill="#f4f4f6"/>
+    <rect x="40" y="46" width="20" height="14" rx="3" fill="#9aa0ab"/>
+    <text x="50" y="104" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12" fill="#1d1d1f">EML-zu-PDF-</text>
+    <text x="50" y="119" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12" fill="#1d1d1f">Mac.zip</text>
+    <rect x="-2" y="-12" width="104" height="142" rx="10" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+    <circle cx="100" cy="-10" r="13" fill="#c8261e"/><text x="100" y="-5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#fff">1</text>
+  </g>
+  <!-- App -->
+  <g transform="translate(380,85)">
+    <image href="data:image/png;base64,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" x="10" y="0" width="80" height="80"/>
+    <text x="50" y="104" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12" fill="#1d1d1f">EML zu PDF</text>
+    <rect x="-2" y="-12" width="104" height="142" rx="10" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+    <circle cx="100" cy="-10" r="13" fill="#c8261e"/><text x="100" y="-5" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#fff">2</text>
+  </g>
+  <text x="400" y="270" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12" fill="#6e717a">① doppelklicken → ② erscheint</text>
+</svg>
+<figcaption>Finder → Downloads. Nach dem Doppelklick auf die ZIP-Datei liegt daneben das Programm.</figcaption>
+</figure>
+</div></li>
+
+<li><div>
+<h3>Programm öffnen – der Mac blockiert es beim ersten Mal</h3>
+<p>Doppelklicken Sie auf <strong>EML zu PDF</strong>. Weil das Programm nicht aus dem App Store kommt, zeigt der Mac beim ersten Mal eine Warnung. Das ist normal. Klicken Sie auf <span class="btnname">Fertig</span>, <strong>nicht</strong> auf „In den Papierkorb legen“.</p>
+<figure>
+<svg viewBox="0 0 640 300" role="img" aria-label="macOS-Warnung: EML zu PDF wurde nicht geöffnet, Knopf Fertig markiert">
+  <rect x="150" y="10" width="340" height="280" rx="14" fill="#f6f6f7" stroke="#c9cbd1"/>
+  <image href="data:image/png;base64,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" x="288" y="28" width="64" height="64"/>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" fill="#1d1d1f" text-anchor="middle">
+    <text x="320" y="118" font-size="14" font-weight="700">„EML zu PDF“ wurde nicht geöffnet</text>
+    <text x="320" y="142" font-size="11.5">Apple konnte nicht überprüfen, ob „EML zu PDF“</text>
+    <text x="320" y="158" font-size="11.5">frei von Schadsoftware ist, die deinen Mac</text>
+    <text x="320" y="174" font-size="11.5">schädigen oder deine Privatsphäre gefährden könnte.</text>
+  </g>
+  <rect x="172" y="200" width="296" height="30" rx="7" fill="#007aff"/>
+  <text x="320" y="220" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#fff">Fertig</text>
+  <rect x="172" y="240" width="296" height="30" rx="7" fill="#e3e4e8"/>
+  <text x="320" y="260" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" fill="#1d1d1f">In den Papierkorb legen</text>
+  <rect x="164" y="193" width="312" height="44" rx="11" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+  <circle cx="478" cy="195" r="13" fill="#c8261e"/><text x="478" y="200" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#fff">!</text>
+</svg>
+<figcaption>Die Warnung beim ersten Start. Bei älteren macOS-Versionen heißt sie „kann nicht geöffnet werden, da Apple nicht nach Schadsoftware suchen kann“.</figcaption>
+</figure>
+<div class="box tip"><strong class="h">Warum diese Warnung?</strong><p>Apple lässt Programme ohne Warnung nur durch, wenn sie über ein kostenpflichtiges Apple-Entwicklerkonto geprüft wurden. Das ist hier nicht der Fall. Das Programm ist trotzdem harmlos: Es arbeitet nur auf Ihrem Mac und schickt nichts ins Internet.</p></div>
+</div></li>
+
+<li><div>
+<h3>In den Systemeinstellungen freigeben</h3>
+<p>Klicken Sie oben links auf das <strong>Apfel-Symbol</strong> → <strong>Systemeinstellungen …</strong> Wählen Sie links <strong>Datenschutz &amp; Sicherheit</strong> und scrollen Sie rechts ganz nach unten bis zum Abschnitt <strong>Sicherheit</strong>. Dort steht „„EML zu PDF“ wurde blockiert …“. Klicken Sie auf <span class="btnname">Dennoch öffnen</span>.</p>
+<figure>
+<svg viewBox="0 0 640 330" role="img" aria-label="Systemeinstellungen, Datenschutz und Sicherheit, Knopf Dennoch öffnen markiert">
+  <rect x="1" y="1" width="638" height="328" rx="12" fill="#ffffff" stroke="#c9cbd1"/>
+  <rect x="1" y="1" width="190" height="328" rx="12" fill="#eeeff2"/>
+  <rect x="180" y="1" width="12" height="328" fill="#eeeff2"/>
+  <circle cx="22" cy="22" r="6" fill="#ff5f57"/><circle cx="42" cy="22" r="6" fill="#febc2e"/><circle cx="62" cy="22" r="6" fill="#28c840"/>
+  <rect x="14" y="42" width="164" height="24" rx="6" fill="#e0e1e6"/>
+  <text x="26" y="58" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12" fill="#8a8d96">Suchen</text>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">
+    <text x="26" y="92">WLAN</text><text x="26" y="114">Bluetooth</text><text x="26" y="136">Netzwerk</text>
+    <text x="26" y="166">Allgemein</text><text x="26" y="188">Erscheinungsbild</text><text x="26" y="210">Bedienungshilfen</text>
+    <text x="26" y="240">Mitteilungen</text>
+    <rect x="12" y="254" width="168" height="24" rx="6" fill="#007aff"/>
+    <text x="26" y="271" fill="#fff" font-weight="700">Datenschutz &amp; Sicherheit</text>
+    <text x="26" y="302">Touch ID &amp; Passwort</text>
+  </g>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" fill="#1d1d1f">
+    <text x="214" y="34" font-size="15" font-weight="700">Datenschutz &amp; Sicherheit</text>
+    <text x="214" y="74" font-size="11" font-weight="700" fill="#8a8d96">… weiter unten …</text>
+    <text x="214" y="112" font-size="14" font-weight="700">Sicherheit</text>
+    <rect x="210" y="124" width="410" height="70" rx="9" fill="#f4f4f6"/>
+    <text x="224" y="148" font-size="12.5">Apps erlauben von</text>
+    <text x="606" y="148" font-size="12.5" text-anchor="end" fill="#555">App Store &amp; bekannte Entwickler ⌄</text>
+    <line x1="224" y1="160" x2="606" y2="160" stroke="#e1e2e6"/>
+    <text x="224" y="182" font-size="12" fill="#444">„EML zu PDF“ wurde blockiert, um deinen Mac zu schützen.</text>
+    <rect x="210" y="200" width="410" height="48" rx="9" fill="#f4f4f6"/>
+    <rect x="500" y="210" width="108" height="28" rx="7" fill="#ffffff" stroke="#c9cbd1"/>
+    <text x="554" y="229" font-size="12.5" text-anchor="middle">Dennoch öffnen</text>
+  </g>
+  <rect x="492" y="203" width="124" height="42" rx="11" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+  <circle cx="618" cy="204" r="13" fill="#c8261e"/><text x="618" y="209" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#fff">!</text>
+</svg>
+<figcaption>Systemeinstellungen → Datenschutz &amp; Sicherheit → ganz nach unten scrollen. Der Knopf erscheint nur etwa eine Stunde lang nach dem Öffnungsversuch.</figcaption>
+</figure>
+<p>Danach fragt der Mac noch einmal nach. Klicken Sie wieder auf <span class="btnname">Dennoch öffnen</span> und geben Sie Ihr Mac-Passwort ein oder bestätigen Sie mit Touch ID.</p>
+<div class="box tip"><strong class="h">Älteres macOS (14 Sonoma oder früher)?</strong><p>Dort geht es auch kürzer: Mit gedrückter <kbd>ctrl</kbd>-Taste auf <strong>EML zu PDF</strong> klicken, <strong>Öffnen</strong> wählen und in der Nachfrage noch einmal <strong>Öffnen</strong> klicken.</p></div>
+</div></li>
+
+<li><div>
+<h3>Installation bestätigen</h3>
+<p>Jetzt startet das Programm und fragt, ob es sich installieren soll. Klicken Sie auf <span class="btnname">Ja</span>. Es kopiert sich dabei in Ihren persönlichen Programme-Ordner. Ein Administrator-Passwort ist dafür nicht nötig.</p>
+<figure>
+<svg viewBox="0 0 640 260" role="img" aria-label="Dialog EML zu PDF installieren mit den Knöpfen Nein und Ja">
+  <rect x="120" y="10" width="400" height="240" rx="14" fill="#f6f6f7" stroke="#c9cbd1"/>
+  <image href="data:image/png;base64,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" x="140" y="30" width="56" height="56"/>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" fill="#1d1d1f">
+    <text x="212" y="50" font-size="13.5" font-weight="700">EML zu PDF installieren</text>
+    <text x="212" y="74" font-size="12">EML zu PDF 1.3.0 jetzt installieren?</text>
+    <text x="212" y="102" font-size="12">Danach: .eml-Dateien im Finder markieren →</text>
+    <text x="212" y="118" font-size="12">Rechtsklick → Schnellaktionen → „In PDF umwandeln“.</text>
+    <text x="212" y="146" font-size="12">Pro E-Mail entsteht eine PDF-Datei – die</text>
+    <text x="212" y="162" font-size="12">Anlagen werden hinten angehängt.</text>
+  </g>
+  <rect x="320" y="200" width="88" height="28" rx="7" fill="#e3e4e8"/>
+  <text x="364" y="219" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" fill="#1d1d1f">Nein</text>
+  <rect x="416" y="200" width="88" height="28" rx="7" fill="#007aff"/>
+  <text x="460" y="219" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#fff">Ja</text>
+  <rect x="409" y="193" width="102" height="42" rx="11" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+</svg>
+</figure>
+</div></li>
+
+<li><div>
+<h3>Zielordner für die PDFs festlegen</h3>
+<p>Es öffnet sich ein Fenster zur Ordnerauswahl. Vorgeschlagen ist der Ordner <strong>E-Mails als PDF</strong> im Ordner Downloads. Wenn Ihnen der recht ist, klicken Sie einfach auf <span class="btnname">Auswählen</span>.</p>
+<p>Lieber einen anderen Ordner, zum Beispiel unter Dokumente? Dann links den gewünschten Ort anklicken. Mit <span class="btnname">Neuer Ordner</span> unten links können Sie dort einen neuen Ordner anlegen. Danach auf <span class="btnname">Auswählen</span> klicken.</p>
+<figure>
+<svg viewBox="0 0 640 320" role="img" aria-label="Ordnerauswahl mit dem Ordner E-Mails als PDF und den Knöpfen Neuer Ordner, Abbrechen, Auswählen">
+  <rect x="1" y="1" width="638" height="318" rx="12" fill="#ffffff" stroke="#c9cbd1"/>
+  <text x="320" y="28" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12" fill="#1d1d1f">Ordner für die fertigen PDFs auswählen …</text>
+  <line x1="1" y1="44" x2="639" y2="44" stroke="#dcdde1"/>
+  <rect x="1" y="44" width="150" height="220" fill="#eeeff2"/>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">
+    <text x="14" y="68" font-size="11" font-weight="700" fill="#8a8d96">Favoriten</text>
+    <text x="22" y="92">Programme</text><text x="22" y="116">Schreibtisch</text><text x="22" y="140">Dokumente</text>
+    <rect x="8" y="150" width="136" height="24" rx="6" fill="#d5d7dd"/><text x="22" y="167" font-weight="700">Downloads</text>
+  </g>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">
+    <text x="170" y="68" font-size="11" fill="#8a8d96">Downloads</text>
+    <rect x="164" y="78" width="462" height="24" rx="5" fill="#007aff"/>
+    <rect x="174" y="84" width="16" height="12" rx="2" fill="#7fc0ff"/>
+    <text x="198" y="95" fill="#fff" font-weight="700">E-Mails als PDF</text>
+    <rect x="174" y="110" width="16" height="12" rx="2" fill="#7fb8ef"/><text x="198" y="121" fill="#9a9da5">EML-zu-PDF-Mac.zip</text>
+  </g>
+  <line x1="1" y1="264" x2="639" y2="264" stroke="#dcdde1"/>
+  <rect x="16" y="278" width="110" height="28" rx="7" fill="#ffffff" stroke="#c9cbd1"/>
+  <text x="71" y="297" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">Neuer Ordner</text>
+  <rect x="420" y="278" width="96" height="28" rx="7" fill="#ffffff" stroke="#c9cbd1"/>
+  <text x="468" y="297" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">Abbrechen</text>
+  <rect x="526" y="278" width="96" height="28" rx="7" fill="#007aff"/>
+  <text x="574" y="297" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#fff">Auswählen</text>
+  <rect x="519" y="271" width="110" height="42" rx="11" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+  <rect x="9" y="271" width="124" height="42" rx="11" fill="none" stroke="#2f6fb5" stroke-width="2" stroke-dasharray="4 4"/>
+  <text x="140" y="297" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="11" fill="#2f6fb5">optional</text>
+</svg>
+<figcaption>Rot: bestätigen. Blau gestrichelt: nur nötig, wenn Sie einen neuen Ordner anlegen wollen.</figcaption>
+</figure>
+</div></li>
+
+<li><div>
+<h3>Automatik ein- oder ausschalten</h3>
+<p>Danach fragt das Programm, ob es den Downloads-Ordner <strong>automatisch überwachen</strong> soll.</p>
+<ul>
+  <li><span class="btnname">Ja</span>: Jede neu heruntergeladene <code>.eml</code> wird nach wenigen Sekunden ohne Klick umgewandelt. Empfohlen, wenn Sie Mails meist aus dem Browser herunterladen.</li>
+  <li><span class="btnname">Nein</span>: Sie wandeln nur per Rechtsklick um (Teil 2).</li>
+</ul>
+<p>Bei <strong>Ja</strong> kündigt das Programm an, dass macOS gleich um Erlaubnis fragt. Klicken Sie dort auf <span class="btnname">OK</span> und in der folgenden Mac-Abfrage auf <span class="btnname">Erlauben</span>.</p>
+<div class="pair">
+<figure>
+<svg viewBox="0 0 320 230" role="img" aria-label="Frage nach automatischer Überwachung mit Nein und Ja">
+  <rect x="6" y="6" width="308" height="218" rx="14" fill="#f6f6f7" stroke="#c9cbd1"/>
+  <image href="data:image/png;base64,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" x="22" y="22" width="42" height="42"/>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" fill="#1d1d1f" font-size="11.5">
+    <text x="76" y="38" font-weight="700" font-size="12.5">EML zu PDF</text>
+    <text x="76" y="60">Soll zusätzlich der Downloads-</text>
+    <text x="76" y="76">Ordner automatisch überwacht</text>
+    <text x="76" y="92">werden?</text>
+    <text x="76" y="116" fill="#555">Dann wird jede neu heruntergeladene</text>
+    <text x="76" y="131" fill="#555">.eml ohne Klick sofort umgewandelt.</text>
+  </g>
+  <rect x="140" y="180" width="76" height="28" rx="7" fill="#e3e4e8"/><text x="178" y="199" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">Nein</text>
+  <rect x="224" y="180" width="76" height="28" rx="7" fill="#007aff"/><text x="262" y="199" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#fff">Ja</text>
+</svg>
+<figcaption>Die Frage nach der Automatik</figcaption>
+</figure>
+<figure>
+<svg viewBox="0 0 320 230" role="img" aria-label="macOS-Abfrage: EML zu PDF möchte auf den Ordner Downloads zugreifen, Knopf Erlauben markiert">
+  <rect x="6" y="6" width="308" height="218" rx="14" fill="#f6f6f7" stroke="#c9cbd1"/>
+  <rect x="140" y="20" width="40" height="32" rx="6" fill="#6cb4f5"/><rect x="140" y="16" width="18" height="8" rx="3" fill="#6cb4f5"/>
+  <path d="M160 28v14m-6-6 6 6 6-6" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" fill="#1d1d1f" text-anchor="middle">
+    <text x="160" y="78" font-size="12" font-weight="700">„EML zu PDF“ möchte auf Dateien in</text>
+    <text x="160" y="94" font-size="12" font-weight="700">deinem Ordner „Downloads“ zugreifen.</text>
+    <text x="160" y="118" font-size="10.5" fill="#555">Damit neu heruntergeladene E-Mails (.eml)</text>
+    <text x="160" y="132" font-size="10.5" fill="#555">automatisch in PDF umgewandelt werden.</text>
+  </g>
+  <rect x="22" y="180" width="130" height="28" rx="7" fill="#e3e4e8"/><text x="87" y="199" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">Nicht erlauben</text>
+  <rect x="168" y="180" width="130" height="28" rx="7" fill="#007aff"/><text x="233" y="199" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#fff">Erlauben</text>
+  <rect x="161" y="173" width="144" height="42" rx="11" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+</svg>
+<figcaption>Die Abfrage von macOS (ältere Versionen: Knopf „OK“)</figcaption>
+</figure>
+</div>
+<p>Möglicherweise erscheint oben rechts kurz die Mitteilung <strong>„Hintergrundobjekt hinzugefügt“</strong>. Das ist die Automatik und völlig in Ordnung, Sie müssen nichts tun.</p>
+</div></li>
+
+<li><div>
+<h3>Fertig</h3>
+<p>Zum Schluss fasst eine Meldung zusammen, was eingerichtet wurde und wo die PDFs gespeichert werden. Hat das Programm kein LibreOffice gefunden, steht dort zusätzlich ein Hinweis (siehe Teil 3). Klicken Sie auf <span class="btnname">OK</span>.</p>
+<p>Die heruntergeladene ZIP-Datei und das Programm im Ordner Downloads können Sie jetzt in den Papierkorb legen. Das installierte Programm liegt an einem anderen Ort.</p>
+</div></li>
+
+</ol>
+
+<!-- ============================================================ TEIL 2 -->
+<h2><span class="part">Teil 2</span>Im Alltag benutzen</h2>
+
+<h3>So bekommen Sie eine E-Mail als .eml-Datei</h3>
+<ul>
+  <li><strong>Webmail im Browser</strong> (z. B. Chrome): In der geöffneten Mail über das Drei-Punkte-Menü <strong>„Herunterladen“</strong> oder <strong>„Original herunterladen“</strong> wählen. Die Datei landet in <strong>Downloads</strong>.</li>
+  <li><strong>Apple Mail</strong>: Die Mail aus der Liste mit der Maus auf den Schreibtisch oder in einen Finder-Ordner ziehen.</li>
+  <li><strong>Outlook für Mac</strong>: genauso, die Mail einfach in einen Finder-Ordner ziehen.</li>
+</ul>
+<p>Ist die Automatik eingeschaltet und liegt die Datei in Downloads, sind Sie schon fertig: Nach wenigen Sekunden steht die PDF im Zielordner. Sonst geht es per Rechtsklick weiter.</p>
+
+<ol class="steps">
+<li><div>
+<h3>Rechtsklick → Schnellaktionen → „In PDF umwandeln“</h3>
+<p>Klicken Sie im Finder mit der rechten Maustaste auf die <code>.eml</code>-Datei. Auf dem Trackpad klicken Sie dafür mit zwei Fingern, oder Sie halten <kbd>ctrl</kbd> gedrückt und klicken. Fahren Sie im Menü unten auf <strong>Schnellaktionen</strong> und wählen Sie <strong>In PDF umwandeln</strong>.</p>
+<p>Mehrere Mails auf einmal: vorher alle markieren, mit gedrückter <kbd>⌘</kbd>-Taste nacheinander anklicken. Dann wie oben.</p>
+<figure>
+<svg viewBox="0 0 640 400" role="img" aria-label="Rechtsklick-Menü im Finder: Schnellaktionen, darin In PDF umwandeln markiert">
+  <rect x="1" y="1" width="638" height="398" rx="12" fill="#ffffff" stroke="#c9cbd1"/>
+  <path d="M1 13a12 12 0 0 1 12-12h614a12 12 0 0 1 12 12v39H1z" fill="#f2f2f4"/>
+  <circle cx="22" cy="24" r="6" fill="#ff5f57"/><circle cx="42" cy="24" r="6" fill="#febc2e"/><circle cx="62" cy="24" r="6" fill="#28c840"/>
+  <text x="96" y="30" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="15" font-weight="700" fill="#1d1d1f">Downloads</text>
+  <line x1="1" y1="52" x2="639" y2="52" stroke="#dcdde1"/>
+  <g transform="translate(30,70)">
+    <rect x="6" y="0" width="52" height="64" rx="5" fill="#ffffff" stroke="#9aa0ab"/>
+    <rect x="14" y="14" width="36" height="24" rx="2" fill="none" stroke="#5a8fd8" stroke-width="2"/>
+    <path d="M14 15l18 13 18-13" fill="none" stroke="#5a8fd8" stroke-width="2"/>
+    <rect x="-8" y="72" width="80" height="34" rx="5" fill="#007aff"/>
+    <text x="32" y="86" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="11" fill="#fff">Rechnung</text>
+    <text x="32" y="100" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="11" fill="#fff">4711.eml</text>
+  </g>
+  <!-- Kontextmenü -->
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">
+    <rect x="110" y="96" width="250" height="292" rx="9" fill="#f7f7f8" stroke="#c9cbd1"/>
+    <text x="126" y="118">Öffnen</text>
+    <text x="126" y="140">Öffnen mit</text><text x="344" y="140" text-anchor="end" fill="#888">›</text>
+    <text x="126" y="162">In den Papierkorb legen</text>
+    <line x1="120" y1="172" x2="350" y2="172" stroke="#dcdde1"/>
+    <text x="126" y="192">Informationen</text>
+    <text x="126" y="214">Umbenennen</text>
+    <text x="126" y="236">„Rechnung 4711.eml“ komprimieren</text>
+    <text x="126" y="258">Duplizieren</text>
+    <line x1="120" y1="268" x2="350" y2="268" stroke="#dcdde1"/>
+    <text x="126" y="288">Kopieren</text>
+    <text x="126" y="310">Teilen …</text>
+    <line x1="120" y1="320" x2="350" y2="320" stroke="#dcdde1"/>
+    <text x="126" y="340">Tags …</text>
+    <rect x="116" y="352" width="238" height="24" rx="5" fill="#007aff"/>
+    <text x="126" y="369" fill="#fff" font-weight="700">Schnellaktionen</text><text x="344" y="369" text-anchor="end" fill="#fff">›</text>
+    <!-- Untermenü -->
+    <rect x="362" y="340" width="200" height="54" rx="9" fill="#f7f7f8" stroke="#c9cbd1"/>
+    <rect x="368" y="346" width="188" height="24" rx="5" fill="#007aff"/>
+    <text x="380" y="363" fill="#fff" font-weight="700">In PDF umwandeln</text>
+    <text x="380" y="386" fill="#555">Anpassen …</text>
+  </g>
+  <rect x="108" y="346" width="252" height="36" rx="9" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+  <circle cx="108" cy="364" r="12" fill="#c8261e"/><text x="108" y="369" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#fff">1</text>
+  <rect x="362" y="341" width="198" height="34" rx="9" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+  <circle cx="566" cy="352" r="12" fill="#c8261e"/><text x="566" y="357" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#fff">2</text>
+</svg>
+<figcaption>① „Schnellaktionen“ steht ganz unten im Menü, ② darin „In PDF umwandeln“.</figcaption>
+</figure>
+</div></li>
+
+<li><div>
+<h3>Ergebnis ansehen</h3>
+<p>Nach ein paar Sekunden erscheint eine Meldung. Mit <span class="btnname">Ordner öffnen</span> springen Sie direkt zum Zielordner mit der fertigen PDF.</p>
+<figure>
+<svg viewBox="0 0 640 250" role="img" aria-label="Abschlussmeldung mit den Knöpfen Ordner öffnen und OK">
+  <rect x="110" y="10" width="420" height="230" rx="14" fill="#f6f6f7" stroke="#c9cbd1"/>
+  <image href="data:image/png;base64,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" x="130" y="30" width="56" height="56"/>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" fill="#1d1d1f">
+    <text x="202" y="50" font-size="13.5" font-weight="700">EML zu PDF</text>
+    <text x="202" y="76" font-size="12">1 E-Mail(s) umgewandelt – je eine PDF-Datei</text>
+    <text x="202" y="92" font-size="12">mit allen Anlagen.</text>
+    <text x="202" y="120" font-size="12">Gespeichert in:</text>
+    <text x="202" y="136" font-size="12" fill="#444">/Users/ihrname/Downloads/E-Mails als PDF</text>
+  </g>
+  <rect x="300" y="190" width="120" height="28" rx="7" fill="#e3e4e8"/>
+  <text x="360" y="209" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" fill="#1d1d1f">Ordner öffnen</text>
+  <rect x="428" y="190" width="80" height="28" rx="7" fill="#007aff"/>
+  <text x="468" y="209" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#fff">OK</text>
+  <rect x="293" y="183" width="134" height="42" rx="11" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="7 5"/>
+</svg>
+</figure>
+<p>Steht in der Meldung zusätzlich <strong>„Bitte prüfen“</strong>, ließ sich eine Anlage nicht in die PDF übernehmen. Das betrifft etwa ZIP-Dateien oder Dokumente mit Passwort. Diese Anlage liegt dann als eigene Datei direkt neben der PDF, und in der PDF steht bei den Anlagen „(separat abgelegt)“. Es geht also nichts verloren.</p>
+<div class="box tip"><strong class="h">Tipp: In der PDF springen</strong><p>Öffnen Sie die PDF in <strong>Vorschau</strong> und wählen Sie oben im Menü <strong>Darstellung → Inhaltsverzeichnis</strong>. Links stehen dann „E-Mail“, „Anlage 1 – …“, „Anlage 2 – …“. Ein Klick darauf springt zur jeweiligen Seite.</p></div>
+</div></li>
+</ol>
+
+<!-- ============================================================ TEIL 3 -->
+<h2><span class="part">Teil 3</span>Word- und Excel-Anlagen: LibreOffice installieren</h2>
+<p>PDFs, Bilder und Textdateien wandelt das Programm selbst um. Für <strong>Word-, Excel- und PowerPoint-Anlagen</strong> braucht es auf dem Mac das kostenlose Programm <strong>LibreOffice</strong>. Ohne LibreOffice werden solche Anlagen nicht angehängt, sondern separat neben der PDF abgelegt.</p>
+<ol class="steps">
+  <li><div><h3>Herausfinden, welchen Chip Ihr Mac hat</h3><p>Apfel-Symbol oben links → <strong>Über diesen Mac</strong>. Steht dort <strong>Chip: Apple M1</strong> (oder M2, M3, M4 …), haben Sie einen Apple-Chip. Steht dort <strong>Prozessor: … Intel</strong>, haben Sie einen Intel-Mac.</p></div></li>
+  <li><div><h3>LibreOffice herunterladen</h3><p>Rufen Sie <a href="https://de.libreoffice.org/download/download/" target="_blank" rel="noopener">de.libreoffice.org/download</a> auf. Wählen Sie bei der Betriebssystem-Auswahl <strong>macOS (Apple Silicon)</strong> für einen Apple-Chip oder <strong>macOS x86_64</strong> für Intel. Klicken Sie dann auf <strong>Herunterladen</strong>.</p></div></li>
+  <li><div><h3>Installieren</h3><p>Die heruntergeladene Datei (Endung <code>.dmg</code>) doppelklicken. Im erscheinenden Fenster das LibreOffice-Symbol auf den Ordner <strong>Applications</strong> ziehen. Das war's. Ab jetzt werden Word- und Excel-Anlagen automatisch mit in die PDF übernommen.</p></div></li>
+</ol>
+<div class="box tip"><strong class="h">Schöneres Layout mit Google Chrome</strong><p>Ist Google Chrome installiert, nutzt das Programm ihn im Hintergrund, um die E-Mail im Originallayout zu drucken. Ohne Chrome entsteht die PDF trotzdem, nur schlichter: Text, Tabellen und Bilder sind dann vollständig, aber ohne die Farben und Schriften der Mail.</p></div>
+
+<!-- ============================================================ TEIL 4 -->
+<h2><span class="part">Teil 4</span>Zielordner ändern oder Programm entfernen</h2>
+<p>Öffnen Sie das installierte Programm. Am schnellsten geht das mit der Spotlight-Suche: <kbd>⌘</kbd> + <kbd>Leertaste</kbd> drücken, <strong>EML zu PDF</strong> tippen und <kbd>↩</kbd> drücken.</p>
+<figure>
+<svg viewBox="0 0 640 230" role="img" aria-label="Spotlight-Suche mit EML zu PDF und anschließendem Menü mit Deinstallieren, Zielordner ändern, OK">
+  <rect x="20" y="14" width="600" height="46" rx="12" fill="#f6f6f7" stroke="#c9cbd1"/>
+  <circle cx="46" cy="36" r="8" fill="none" stroke="#8a8d96" stroke-width="2.5"/><line x1="52" y1="42" x2="58" y2="48" stroke="#8a8d96" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="70" y="43" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="18" fill="#1d1d1f">EML zu PDF</text>
+  <image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAATGklEQVR42u2de3BV1b3HP2vtffZ5nySEGJBHKTBWo9W2tpdeS3X0ynircqHtBK0NtlO5pQPojBWhEi4xCjRi6/SVdrRVuMRSRMcO6linVZQKU0QdrAoUvEESQYg88jjvc/Ze6/5xHkAMJGAeJzG/mT0EOHudtX/f9fv+fuu71tqBYRu2YRu2YRu2YRu2YRu2YRu2YRu2YRu2Yfu0mOijzw4V0wUB0lVXXWV+GkdnZWWlMdARIHKjoKqqyu/z+czW1tYh7/iSkhIeeeSRdoCamhpZW1urBgIAAeiZM2eWBoPBeVrrH2qt/VprMZTpSAihhBAAe5RSD61bt+7JkwdivwBQU1Mjd+3aJQzDKDdN82+WZVWkUikcx0FrTbaDQ5P0tcYwDAzDwDRNYrHYQ+vXr19YWVkpn3zySadfAKisrDSefPJJ55Zbbvlfj8dzazweT2it3T6fD8uySCaTSCmHnOMB3G43HR0dKKWUEEK73W4zmUxes27dupc3bNhgzJo1q1dBMLsa/bW1tc5NN910kZRyViKRsA3DcKfTaeHz+fjxj39MeXk54XAYwzCGRDQolaH4UCjESy+9xNq1a3G5XIZSynYcR2mt/wd4eefOnb1OQx8DYNeuXQLANM1xUkqPUspJp9NCCMHRo0e5//77ue222/ja175GPB5HCDEoQchRqeM4eDweAB5++GE2b96MYRgkk0kMw5BaaymEmADQF8n4TOVlCtCO41BaWgpAS0sLQgh+9atf8dFHH3H99dfjOA6O42AYRj6MB0myxbZtfD4fhw8fZu3atfzjH/8gFAqRSCSYMGECLS0taK3RWqf6qh/yDCNESClFMplkzJgx1NXVUVFRQUdHBx6Ph0cffZT6+no8Hg8ejwfHcfLRMBgux3EIhUIcOHCAZcuWsX37doLBIG1tbXz/+9/nzjvvxLbt3OdFvwNw8khJp9MEg0EWLlzIzJkziUajlJaWsnXrVlasWMGhQ4cIBAI4jjMoqEdrTSAQYPPmzaxYsYJoNIrb7cbr9bJw4UJuuOEGkslkv0S02dNwzdHMnDlzKCsr49FHHyUUCrFjxw6am5tZtGgRkydPJhKJIKUsyLyglMIwDNxuNxs3bmT16tUEg0GSySQjRoygurqaCRMmkEwm+61P8mw4UylFOBxm+vTpVFdX4/P5MAyDWCxGdXU1zzzzDMFgECFEweUDx3Hw+XwopVi+fDlr166luLiYSCTClClTuO+++xg3bhzt7e39WmKflcYjhEBKSTQaZcqUKZx33nn88pe/5ODBg3g8HhoaGjhy5Ag33XQTbrc7V0kMuPNt2yYYDLJnzx7WrFnDe++9RyAQIBaLMW3aNObOnYvWmng8jmn2r+x1TlAbhkE4HGbMmDGsWrWKK664gtbWVvx+Pxs3buRnP/tZvsIYyLygtUYpRSgU4p133uG+++6jsbERy7KIRqMsWLCA+fPnk0wmB2xyec7faBgGqVQKpRTz5s1jzpw5JBIJSkpK2LVrF0uXLmX37t0Eg8EBASHH9z6fj6effppVq1blHVxeXk5tbS1XXnklkUgkH9kDYZ/oW6WUOI6DbdvMnDmT+fPnE4vFME2TAwcOUFdXx/bt2/H7/fnqo7/43uVyobVmzZo1rF69GiklkUiEsWPHsnTpUi655JJ8wTCQ9om/PVdXh8Nhpk6dysqVKxk9ejTpdBohBCtXrmTt2rX4/X4Mw8hP+/vS+cFgkHA4THV1Nc899xwlJSW0t7dzww03UFtbSygUykspA229Br9hGESjUS644AJ+8pOf8IUvfIF4PE4oFOLZZ5+lrq6Ojo4O/H5/n1BSLsKCwSDbtm1j2bJlHDhwAJ/Ph23bfOc732HOnDlYlkUqlSoI5/cqADkQIpEIoVCImpoabrzxxnxy3rZtG3V1dTQ3N/d6clZKIYTA7Xbz4osv8vOf/5zcwpHWmsWLF3PzzTcTjUZxHKeglNxe70kuL8RiMWbPns3ixYvRWuN2uzl8+DB33303W7duJRgM9kpeUEphWRaWZfGb3/yGX//613i9XmKxGBdeeCEPPPAAl1xyCeFwuCAniH1S9OYeMh6PM3XqVEKhEL///e9paWnB7XZTX19PJBLh2muvzYt55zIqHcfB6/XS1tbGmjVr2LJlC8XFxcRiMa688krmzp2bB6NQKKfPI6BzNITDYS6++GLq6uq46KKLaGtrw+Px8Lvf/Y76+npcLheWZZ0VJWmt88n2gw8+4J577mHbtm0EAgFaW1upqqrirrvuQkpJPB4vWOf3OQC5vBCLxXC5XCxcuJDrrruOWCxGSUkJW7duZcmSJRw8eLDH84Wcjh8MBnn++ee59957iUajmKaJZVncfvvtzJgxg0gkgta64Ffu+qV3hmGQTqcxDIMFCxZQVVVFJBLB4/Gwb98+6urqeOutt/D7/SilTpsXcoIgwPr16/nDH/6A4zikUimKiopYtmwZ06ZNK1i+HzAAcnlBa00kEmH69OksX74cn8+H1ppoNEpNTQ3PPvssgUCgSzHPcZw8QA888ADr1q3L6/dXXHEFq1atYsyYMQVT3xccAJ3FvIqKCpYsWUJFRQXxeJzi4mIaGhpoaGhAKYXL5cpP2nLO379/PytXruTdd9+luLiYZDJJZWUlCxYswOv1Foz4V7AAdCXm3XvvvUydOpWjR4/i9/vZsGEDDz74IMlkMr/SFgwGefvtt1m6dCl79+7FsiwikQjz5s3je9/7Hul0mnQ6PSh3agxYj3ML36lUinnz5jF79mySySShUIjdu3dz1113sXPnToLBIA0NDfz0pz9FSonWmrKyMpYuXcrXv/51Ojo6Bu3GgD6bB5xNmaqUQinFzTffzPnnn8/DDz+MYRi0tbVRX1/PpZdeyksvvZTX7ydNmsTdd99NWVkZ4XC43/X7IQXAyZO2nJg3efJkHnzwQfbt20csFmPTpk0E/H5ajx/n29/+Nt/97ndRWhPu6MjwfW8rrFqfuHJ9BPQ5bMcUPdjOWDDDJyfmlZeXs2TJEh5//HG2btmC3+0Gw2DeHXfwn9ddRzKVQmmN6fFknNTb1KMUwuUC00QJgRICR0otzmFv6MtgvgKqFlTBA5ADIR6PU1RUxO3z53P5V79KqLwc58gRLr/0UtoPHUIKAULQV6K21hppWej2dry2jQkoxzHemDixqKdtTARe3LcvcjXYADUgTwdCwRGolJJUPI4RCvFvo0ZxZO1aOl55hW0HD2K63b1POacLBK35QTwuhRCg9cS0bTf1kFLVPhCfHT+++S34y5F0+rfTDh1q3gDGLHAKHgDtOLiKiuh49VUaq6qwjx1DBgJI08SORvsjKUFW7vCeKGulEKLHEaAAU4hir5SXjhRi9ovjx0+7trl5V1cgFBYAjoMZDNKxZQv7qqogncYaNQpt2wPSHZWNtmzMnVXoOVrrhG07PinPHwEvbRs//j++2ty8S4MUJ9FRwcxctFIIr5f4zp28P3s2Op1GeDzodPrUyqQ/r5OqoEzmOatLSiFcca0dQ4hRaL3ptc98ZlS2zhIFBwBKIU2To3/8Y4Z2fD4YBFsde1CKGlGlUiMMo1wrdbMA/ebll5uFBUC28rBbWwlv3oz0+weMdvqksBDCiGuttZSVAJe/+aZdeBEgJSqZxD5+HAaZoNbt+ALhZGhnVOcJWmGpV0IgTLPfSs1+piLQOl0wYtwZpYCha6LwAfiU2TAAA2yDQssVUsKZFluydbvuVL+fnODF6e7PTba6qP/Pqp0uymrdg22YhQ+AENjhMDqZzMsEH5MOpES4XBgeD8LlQp88fxACFY2i4vFT78+pqFmnCtNEejwI08w4rovv6bKd00gZ0uvNzGW6yWnmGUQlfWKQ6IE58SIEKpFg5De/ia+iomv52XGw29qI7dlDZMcO7OPHMYuKMjNrIXASCYqvuYbglCmn3q81OpXCiURIHzlCYv9+4u+9R7q1FTMYzJTCuREsJSoW67qdriJKCMJvvEHbiy8ivd4zgmCeXpZxXLkt3i6Xa0COoQop0ckkI7/1LUZ84xvdfj7e2MjBhx7iyIYNyEAg47h4nOJrrmH0D3/Y/f1793JkwwYOPfYYOhZDer15IFUWyJ60A3D4scc4/txzGH7/qRHZXRKuqKjIefmoUsr2eDx6//79NDY25g809+Xx0dNSkG2jksnTz5CVwjtpEpPr6xn1gx/gdHRk8kaWOrq7XyuF94ILGL90KRc/9RTW2LE48fiJ3NPDdj5xEq6trVWVlZXG+vXrd9xyyy3P+3y+/zp+/Hhy+fLlVmlpqcidB+51KUgI3MkkNyYSeAwjr0TmIkGYZmZXnGnS/uqrdGzdivR4MEeMoHTGjAzt2DbCMBhXXc3xF17Abm3N9LXT/ZF//pPWv/wFIxTCOu88glOm4B43LpM4HYfAl77EhQ0N7JwxAyceR7jdJ/JFF+3kIqUzBUmPp9tE3CUFVVRU6JqaGrl3797FqVRqSnFxcXksFqOpqanPdh84gM+2z0xz2f9r/dvf2H///VglJahEgiNPPUXFE0/kH9gMhQhOmcKxP//51Oop64zw9u3su+ceXCUlIARmcTGjf/Qjxi1ciDAMdDqN76KLGHPnnby/ZEmGxztFG0Dk9dfZX12NOWLEiYjIrSe4XOeehLPvRJDAv6qqqqamUqnFpmneYhiGr69eV6OEwJ1O9+izRiCANXIkrtJStOMQ3r6d2L/+ReCLX8woqFJilZWddvRJrxdr5EjMkhK0baNtm6ZlyzBDIUbPnZtxsNaUzZrFh/X1OOFwz545Vx0JgcytWX+CMlRl35zyf8B/z549+34hhMdxHK2U6lUErGwEjG1rC1i2/YoQIqhBi9PsRNDpNCoeRyUSONEoht+PmX2fRa46UWc6bK1U3vHaccAwMEtKOLx6NeW33pqnFFdpKf7Pf562TZtOjaTsz4GvfIUJK1acSkHZ9lsef5z0Rx9lFvjPpQrKRULu5U0NDQ3N/aAaul8bN87pbqeD9HpxlZZiFhdjlZcz5o478Iwfnxm5hgFCENuzB2FZmflDt/znIFwu0i0tJJqa8F14Idg2WBbu88/P0MtJfcpNxgKXXUbgssu6bLL1hRdIffghwrLOHYCT6Iiampo+ky0u3rVL7Kyo0FueftpntrWd1vsiK1OfP28eo267LUNHXm/G0Y6TcaRl0f73vxN5/XUMv590PN7zOUc6jUokTv3nXALuoxK8xzPhvnxxnQYxC/T0iRNVT7KA9HgyHNsZHMMgsmMHjXfeic4tDPbQ+SiF4fViFhWdQmVONPqxdrRSCMPougrKUlDq6NEeSeuDcl+fSiRQyWRmG7vj4ITDxBsbaf3rXznyxBOoeDwDUA+PxArTxGlvx1dRkaGybJkJkHj//Yy8cTKVda6miotP0FQ2CRuhULf8P+gA0I6DMAw+/O1vOfiLX5yoYtJp7PZ2VCqFGQwics4/3cqaEJmIkTIjZbS3gxCMW7QIsmWoME0S+/YRfecdDI+HdCdq+lg11Wm2qx3nE1dBhRsB8Tjp48dP0IEQSJ8vM+1XqtuRnwNMWBbS6yX45S8zbtEiiq+++sS9QnDokUdw2towy8q6dmbnamqoytFdysIuVybEcw+uVLcbd3JJfMT113Pppk2ZmXRJCd7Jk/PAYBgIl4ujGzdyeM0ajKKiPt2dMTgA0Bqd1dfzUnFP9PvO92sNSmGNGoU1atTHAXK5AGhZvZr9y5Yhs3/Pf0dX/RjyAGid0emlxMiJgd3U1p3vF253Rk/qajFFKZxYDPvYMTpee42P/vQn2l99FcPny+SIk5yfa8fIShOyF/aqFsSxkqy6rt+YOLEonU43mUIU2aCFEELbNr7PfQ5XWVn+iGqiqYlkc3P3VYYQ6HQaz2c/i3vs2I+vB9g2Kh7Hbmsj1dKC3dqamRUHAqeurnVqRyuFkJLU4cPE33uv235oUB4hZELrvf/e3Py5wRMB2XIw+u67p8i/0rIyE6TuRl9WFIs3NhLbvbvrakhKRJb3zeLiPM30pB3hcvVY8xncFOTznSKGnRX/ao10uxGdFc2T80PuzzMl2y7ayeWUoZ+Ee1DhdJuEe6OS6a12Ti7oGLaBraiHXTAMwDAAhZZ2h7C/dUEDYDiOEEK49FD1vBBWwQKgQZQ6ThKtm83MprChhIN2gUKpfdlnlQUFgAD9ChjjDxyII8TGQKboHzJHZLTWjkcIKYV4AuDNyy83CkqKyEUAwOuTJo01bPs1A0bHlHKkEMYgpx47KKXZ4Ti7k1Je8UpTU8e9mQ0HuqAoKNsh8W+NjR/ElJrmaN3il9JQWqd15lin0oPkInM5Sut0UEozofUuQ8prrm5qajvpWQsrAnKWO8z89/HjKwJCvOCXclxCKRwGzy8v04ABeKUk4jhvfyjEdTc2NR3ufEaYQn2mHAjPjB49coxl3epoPVNCud3pjG2h+t+dCYH3TSGe2R+JPD7z2LFwV84vaKsZQpNEPVh/86AG8fJVV5mD8QFqQL4Mpv50/hbaYRu2YRu2YRu2wrf/B2Kg4rtbKA4IAAAAAElFTkSuQmCC" x="576" y="20" width="34" height="34"/>
+  <rect x="80" y="84" width="480" height="136" rx="14" fill="#f6f6f7" stroke="#c9cbd1"/>
+  <image href="data:image/png;base64,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" x="98" y="100" width="44" height="44"/>
+  <g font-family="-apple-system,Helvetica,Arial,sans-serif" fill="#1d1d1f" font-size="12">
+    <text x="156" y="116" font-weight="700" font-size="13">EML zu PDF 1.3.0</text>
+    <text x="156" y="138">Die PDFs werden gespeichert in:</text>
+    <text x="156" y="154" fill="#444">/Users/ihrname/Downloads/E-Mails als PDF</text>
+  </g>
+  <rect x="190" y="176" width="116" height="28" rx="7" fill="#e3e4e8"/><text x="248" y="195" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">Deinstallieren</text>
+  <rect x="314" y="176" width="140" height="28" rx="7" fill="#e3e4e8"/><text x="384" y="195" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">Zielordner ändern</text>
+  <rect x="462" y="176" width="80" height="28" rx="7" fill="#007aff"/><text x="502" y="195" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#fff">OK</text>
+</svg>
+<figcaption>Oben: Spotlight-Suche. Unten: das Fenster, das danach erscheint.</figcaption>
+</figure>
+<ul>
+  <li><span class="btnname">Zielordner ändern</span> öffnet wieder die Ordnerauswahl aus Schritt 5. Neue PDFs landen danach im neuen Ordner, auch bei der Automatik.</li>
+  <li><span class="btnname">Deinstallieren</span> entfernt Programm, Rechtsklick-Eintrag und Automatik vollständig. Ihre bereits erstellten PDFs bleiben erhalten.</li>
+</ul>
+<p>Das installierte Programm liegt übrigens im Finder unter <strong>Gehe zu → Benutzerordner → Programme</strong> (Kurzbefehl <kbd>⇧</kbd> + <kbd>⌘</kbd> + <kbd>H</kbd>).</p>
+
+<!-- ============================================================ TEIL 5 -->
+<h2><span class="part">Teil 5</span>Wenn etwas nicht klappt</h2>
+
+<details open>
+<summary>Im Rechtsklick-Menü fehlt „Schnellaktionen“ oder „In PDF umwandeln“</summary>
+<p>Öffnen Sie <strong>Apfel-Symbol → Systemeinstellungen → Allgemein → Anmeldeobjekte &amp; Erweiterungen</strong>. Scrollen Sie zum Abschnitt <strong>Erweiterungen</strong> und klicken Sie bei <strong>Finder</strong> auf das <strong>ⓘ</strong>. Schalten Sie dort <strong>In PDF umwandeln</strong> ein.</p>
+<figure>
+<svg viewBox="0 0 640 250" role="img" aria-label="Systemeinstellungen, Erweiterungen, Finder: Schalter In PDF umwandeln eingeschaltet">
+  <rect x="1" y="1" width="638" height="248" rx="12" fill="#ffffff" stroke="#c9cbd1"/>
+  <text x="24" y="34" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="15" font-weight="700" fill="#1d1d1f">Anmeldeobjekte &amp; Erweiterungen</text>
+  <text x="24" y="66" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#1d1d1f">Erweiterungen</text>
+  <rect x="20" y="76" width="280" height="40" rx="9" fill="#f4f4f6"/>
+  <text x="36" y="101" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">Finder</text>
+  <circle cx="278" cy="96" r="9" fill="none" stroke="#6e717a" stroke-width="1.6"/><text x="278" y="100" text-anchor="middle" font-family="Georgia,serif" font-size="11" font-style="italic" fill="#6e717a">i</text>
+  <rect x="260" y="80" width="36" height="32" rx="8" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="6 4"/>
+  <circle cx="300" cy="80" r="11" fill="#c8261e"/><text x="300" y="85" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#fff">1</text>
+  <rect x="330" y="50" width="290" height="180" rx="12" fill="#f6f6f7" stroke="#c9cbd1"/>
+  <text x="346" y="76" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#1d1d1f">Finder</text>
+  <rect x="342" y="90" width="266" height="40" rx="8" fill="#ffffff"/>
+  <text x="356" y="115" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1d1d1f">In PDF umwandeln</text>
+  <rect x="556" y="100" width="38" height="22" rx="11" fill="#34c759"/><circle cx="583" cy="111" r="9" fill="#fff"/>
+  <rect x="548" y="94" width="54" height="34" rx="10" fill="none" stroke="#c8261e" stroke-width="3" stroke-dasharray="6 4"/>
+  <circle cx="604" cy="94" r="11" fill="#c8261e"/><text x="604" y="99" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#fff">2</text>
+  <rect x="342" y="138" width="266" height="40" rx="8" fill="#ffffff"/>
+  <text x="356" y="163" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" fill="#9a9da5">Markierung</text>
+  <rect x="534" y="190" width="72" height="26" rx="7" fill="#007aff"/><text x="570" y="208" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#fff">Fertig</text>
+</svg>
+<figcaption>① bei „Finder“ auf ⓘ klicken, ② Schalter „In PDF umwandeln“ einschalten (grün).</figcaption>
+</figure>
+<p>Bei macOS 13 und 14 finden Sie dasselbe unter <strong>Datenschutz &amp; Sicherheit → Erweiterungen → Finder</strong>. Hilft das nicht, melden Sie sich einmal ab und wieder an.</p>
+</details>
+
+<details open>
+<summary>Die Automatik wandelt neue Mails nicht um</summary>
+<ul>
+  <li>Liegt die <code>.eml</code> direkt im Ordner <strong>Downloads</strong>? Unterordner werden nicht überwacht.</li>
+  <li>Prüfen Sie die Erlaubnis: <strong>Apfel-Symbol → Systemeinstellungen → Datenschutz &amp; Sicherheit → Dateien und Ordner</strong>. Dort bei <strong>EML zu PDF</strong> (eventuell als <strong>eml2pdf</strong> aufgeführt) den Schalter <strong>Ordner „Downloads“</strong> einschalten.</li>
+  <li>Prüfen Sie, ob die Automatik laufen darf: <strong>Apfel-Symbol → Systemeinstellungen → Allgemein → Anmeldeobjekte &amp; Erweiterungen</strong>. Unter <strong>Im Hintergrund erlauben</strong> muss <strong>eml2pdf</strong> eingeschaltet sein.</li>
+  <li>Wurde bei der Einrichtung „Nein“ gewählt? Dann das Programm wie in Teil 1 noch einmal aus der ZIP-Datei starten und bei der Automatik „Ja“ wählen.</li>
+</ul>
+</details>
+
+<details open>
+<summary>Der Mac meldet „… ist beschädigt und kann nicht geöffnet werden“</summary>
+<p>Das passiert gelegentlich bei Programmen, die nicht aus dem App Store stammen. So beheben Sie es einmalig:</p>
+<ol>
+  <li>Programm <strong>Terminal</strong> öffnen: <kbd>⌘</kbd> + <kbd>Leertaste</kbd>, „Terminal“ tippen, <kbd>↩</kbd>.</li>
+  <li>Folgende Zeile genau so hineinkopieren und <kbd>↩</kbd> drücken:<br><code>xattr -cr ~/Downloads/"EML zu PDF.app"</code></li>
+  <li>Terminal schließen und <strong>EML zu PDF</strong> erneut doppelklicken. Weiter bei Teil 1, Schritt 2.</li>
+</ol>
+</details>
+
+<details open>
+<summary>Eine Word- oder Excel-Anlage liegt separat statt in der PDF</summary>
+<p>LibreOffice ist nicht installiert, siehe Teil 3. Nach der Installation die E-Mail einfach noch einmal umwandeln.</p>
+</details>
+
+<details open>
+<summary>Eine PDF-Anlage liegt separat und es heißt „ließ sich nicht anhängen“</summary>
+<p>Diese PDF ist mit einem Öffnungs-Passwort geschützt. Solche Dateien dürfen nicht verändert werden und bleiben deshalb einzeln. Mit dem Passwort öffnen Sie sie ganz normal in Vorschau.</p>
+</details>
+
+<details open>
+<summary>Etwas anderes geht schief</summary>
+<p>Das Programm schreibt ein Protokoll. So finden Sie es: Im Finder oben <strong>Gehe zu → Gehe zum Ordner …</strong> (<kbd>⇧</kbd> + <kbd>⌘</kbd> + <kbd>G</kbd>), dann Folgendes einfügen und <kbd>↩</kbd> drücken:</p>
+<p><code>~/Library/Application Support/EML zu PDF</code></p>
+<p>Schicken Sie die Datei <code>protokoll.txt</code> aus diesem Ordner zusammen mit einem Bildschirmfoto an Ihren Ansprechpartner. Ein Bildschirmfoto machen Sie mit <kbd>⇧</kbd> + <kbd>⌘</kbd> + <kbd>4</kbd>, anschließend <kbd>Leertaste</kbd> drücken und das Fenster anklicken.</p>
+</details>
+
+<!-- ============================================================ KURZFASSUNG -->
+<h2><span class="part">Auf einen Blick</span>Kurzfassung</h2>
+<div class="cheat">
+<dl>
+  <dt>Einrichten</dt><dd>ZIP doppelklicken → „EML zu PDF“ doppelklicken → „Fertig“ → Systemeinstellungen → Datenschutz &amp; Sicherheit → „Dennoch öffnen“ → „Ja“ → Ordner „Auswählen“ → Automatik Ja/Nein → bei Ja „Erlauben“</dd>
+  <dt>Umwandeln</dt><dd>Rechtsklick auf die .eml → Schnellaktionen → In PDF umwandeln</dd>
+  <dt>Automatisch</dt><dd>.eml in Downloads speichern, nach wenigen Sekunden liegt die PDF im Zielordner</dd>
+  <dt>Ergebnis</dt><dd>eine PDF pro Mail, Anlagen hinten angehängt, Dateiname „Datum Betreff.pdf“</dd>
+  <dt>Word/Excel-Anlagen</dt><dd>LibreOffice installieren (kostenlos, de.libreoffice.org)</dd>
+  <dt>Ändern / Entfernen</dt><dd><kbd>⌘</kbd> + <kbd>Leertaste</kbd> → „EML zu PDF“ → Zielordner ändern / Deinstallieren</dd>
+</dl>
+</div>
+
+</div>
+<style>
+@page{size:A4;margin:14mm 14mm 16mm}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-size:11.5pt;padding:0}
+header.top{padding-block:0 14px}
+h2{break-after:avoid;break-inside:avoid;margin-top:28px}
+h2:last-of-type{break-before:page}
+h3{break-after:avoid}
+figure,.box,details,.cheat,.pair{break-inside:avoid}
+ol.steps>li{break-inside:auto}
+figure svg{min-width:0}
+a{color:inherit}
+</style></body></html>
