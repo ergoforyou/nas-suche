@@ -174,7 +174,8 @@ export class Avatar {
     this.vrmFraming = config.vrmFraming ?? 'brust'; // 3D-Figur: Bildausschnitt
     this.flip = !!config.flip;
     // Position/Größe innerhalb der Bühne (nur im Chatfenster; die freie Figur nutzt das Fenster selbst)
-    this.layout = { x: 0, y: 0, scale: 1, ...(this.useLayout ? config.stage ?? {} : {}) };
+    // Standard etwas kleiner als die Bühne (Handy), damit rundum Platz zum Anfassen bleibt
+    this.layout = { ...(this.defaultLayout ?? { x: 0, y: 0, scale: 1 }), ...(this.useLayout ? config.stage ?? {} : {}) };
     // feste Einpassung (passt sich an, wenn sich die Bühne ändert, z. B. Drehen des Handys)
     this.fitMode = this.useLayout && !config.stage ? config.stageFit ?? null : null;
     // Ebene 0 = Grundbild, danach die Posen. Jede Ebene hat eigene Mund-/Augen-/Kopfdaten.

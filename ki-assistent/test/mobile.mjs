@@ -210,6 +210,30 @@ const tapRes = await page.evaluate(async () => {
   return { stopped, frameAfterTap, frameAfterHold };
 });
 check(tapRes.stopped > 0 && !tapRes.frameAfterTap && tapRes.frameAfterHold, 'Handy: Figur antippen stoppt die Sprache (kein Rahmen), langes Drücken öffnet den Rahmen', JSON.stringify(tapRes));
+// Zwei Finger zusammenziehen verkleinert die Figur – ohne vorher den Rahmen zu öffnen; Rahmen bleibt vom Rand weg
+const pinchRes = await page.evaluate(async () => {
+  const a = window.__app.avatar;
+  const c = a.canvas.getBoundingClientRect();
+  const r = a.rect;
+  const cx = c.left + r.x + r.w / 2;
+  const cy = c.top + r.y + r.h / 2;
+  const before = a.layout.scale;
+  const ev = (type, id, x, y) => a.canvas.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, button: 0, pointerId: id, bubbles: true, pointerType: 'touch' }));
+  ev('pointerdown', 21, cx - 80, cy);
+  await new Promise((r2) => setTimeout(r2, 40));
+  ev('pointerdown', 22, cx + 80, cy);
+  for (let i = 1; i <= 5; i++) {
+    ev('pointermove', 21, cx - 80 + i * 8, cy);
+    ev('pointermove', 22, cx + 80 - i * 8, cy);
+  }
+  ev('pointerup', 21, cx - 40, cy);
+  ev('pointerup', 22, cx + 40, cy);
+  await new Promise((r2) => setTimeout(r2, 700)); // langes Drücken darf danach nicht noch den Rahmen öffnen
+  const after = a.layout.scale;
+  const frameShown = !document.querySelector('.rb').hidden;
+  return { before, after, frameShown, def: a.defaultLayout };
+});
+check(pinchRes.after < pinchRes.before * 0.8 && !pinchRes.frameShown && pinchRes.def?.scale < 1, 'Handy: zwei Finger zusammenziehen verkleinert die Figur (ohne Rahmen); Standard etwas kleiner als die Bühne', JSON.stringify(pinchRes));
 await page.evaluate(() => {
   const a = window.__app.avatar;
   const r = a.rect;

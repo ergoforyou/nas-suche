@@ -103,8 +103,12 @@ export class RubberBand {
     const canvas = avatar.canvas;
     if (opts.kind === 'layout') canvas.classList.add('rb-touch'); // Wischgesten nicht als Scrollen deuten
     canvas.addEventListener('pointerdown', (e) => this.down(e));
-    // Zwei Finger: zoomen (wie bei Fotos)
+    // Zwei Finger: zoomen (wie bei Fotos) – überall auf der Bühne, auch ohne Rahmen
     this.touches = new Map();
+    this.fingers = new Map();
+    const lift = (e) => this.fingers.delete(e.pointerId);
+    canvas.addEventListener('pointerup', lift);
+    canvas.addEventListener('pointercancel', lift);
     canvas.addEventListener('dblclick', (e) => {
       if (opts.tapToTalk) return; // Handy: einfaches Antippen spricht bzw. stoppt schon
       const p = this.local(e);
@@ -145,18 +149,20 @@ export class RubberBand {
     if (!r) return;
     const c = this.avatar.canvas;
     const pad = 3;
-    // im transparenten Fenster den Rahmen innerhalb der Fensterfläche halten
-    const x = Math.max(1, r.x - pad);
-    const y = Math.max(1, r.y - pad);
-    const w = Math.min(c.clientWidth - x - 1, r.w + pad * 2);
-    const h = Math.min(c.clientHeight - y - 1, r.h + pad * 2);
+    // Rahmen innerhalb der Fläche halten; auf dem Handy mit Abstand zum Rand, damit die großen Anfasser ganz
+    // sichtbar sind und nicht in den Wisch-Gesten am Bildschirmrand landen
+    const m = this.container.closest('.mobile') ? 22 : 1;
+    const x = Math.max(m, r.x - pad);
+    const y = Math.max(m, r.y - pad);
+    const w = Math.min(c.clientWidth - x - m, r.w + pad * 2 - (x - (r.x - pad)));
+    const h = Math.min(c.clientHeight - y - m, r.h + pad * 2 - (y - (r.y - pad)));
     Object.assign(this.el.style, { left: `${x + c.offsetLeft}px`, top: `${y + c.offsetTop}px`, width: `${w}px`, height: `${h}px` });
   }
 
   /** Einpassung setzen (null = Standard) und merken. */
   applyFit(fit) {
     this.avatar.fitMode = fit;
-    if (!fit) this.avatar.layout = { x: 0, y: 0, scale: 1 };
+    if (!fit) this.avatar.layout = { ...(this.avatar.defaultLayout ?? { x: 0, y: 0, scale: 1 }) };
     this.markFit();
     this.opts.onFit?.(fit);
   }
@@ -183,6 +189,20 @@ export class RubberBand {
   down(e) {
     if (e.button !== 0) return;
     const p = this.local(e);
+    if (this.opts.kind === 'layout' && e.pointerType === 'touch') {
+      this.fingers.set(e.pointerId, p);
+      if (this.fingers.size >= 2 && !this.pinching) {
+        e.preventDefault();
+        this.holdCancel?.();
+        try {
+          this.avatar.canvas.setPointerCapture(e.pointerId);
+        } catch {}
+        this.avatar.freeLayout?.();
+        this.markFit();
+        this.touches = new Map([...this.fingers].slice(-2));
+        return this.pinchStart();
+      }
+    }
     // zweiter Finger (darf neben der Figur liegen): Zoomen
     if (this.opts.kind === 'layout' && this.touches.size === 1 && e.pointerType === 'touch') {
       e.preventDefault();
@@ -258,6 +278,7 @@ export class RubberBand {
     let moved = false;
     const done = () => {
       clearTimeout(timer);
+      this.holdCancel = null;
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
       canvas.removeEventListener('pointercancel', cancel);
@@ -277,6 +298,11 @@ export class RubberBand {
       if (!moved) this.opts.onTap?.();
     };
     const cancel = () => done();
+    // zweiter Finger: kein Antippen/Rahmen, sondern Zoomen
+    this.holdCancel = () => {
+      moved = true;
+      done();
+    };
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', cancel);

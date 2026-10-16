@@ -300,6 +300,8 @@ function friendlyError(e) {
 
 // ---------------------------------------------------------------- Bausteine
 const avatar = new Avatar($('avatar'), { useLayout: true });
+// Handy: Figur anfangs etwas kleiner als die Bühne und leicht angehoben – rundum Platz für Finger und Anfasser
+if (MOBILE) avatar.defaultLayout = { x: 0, y: -0.03, scale: 0.86 };
 const status = (text) => ($('status').textContent = text ?? '');
 
 const tts = new SpeechOutput({
@@ -2293,7 +2295,7 @@ $('avResetPos').onclick = () => {
   persona().avatar.stage = null;
   persona().avatar.stageFit = null;
   avatar.fitMode = null;
-  avatar.layout = { x: 0, y: 0, scale: 1 };
+  avatar.layout = { ...(avatar.defaultLayout ?? { x: 0, y: 0, scale: 1 }) };
   save();
 };
 $('avIdleHead').oninput = (e) => {

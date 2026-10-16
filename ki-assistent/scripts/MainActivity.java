@@ -327,7 +327,7 @@ public class MainActivity extends BridgeActivity {
         if (!(wv.getParent() instanceof ViewGroup)) return;
         DisplayMetrics dm = getResources().getDisplayMetrics();
         android.content.SharedPreferences pref = getSharedPreferences("ki_schwebend", MODE_PRIVATE);
-        int w = pref.getInt("w", Math.max(dp(130), Math.round(dm.widthPixels * 0.36f)));
+        int w = pref.getInt("w", Math.max(dp(120), Math.round(dm.widthPixels * 0.28f)));
         w = Math.max(dp(90), Math.min(w, dm.widthPixels));
         int h = Math.round(w * (float) pipH / pipW);
         h = Math.max(dp(90), Math.min(h, Math.round(dm.heightPixels * 0.7f)));
@@ -386,16 +386,7 @@ public class MainActivity extends BridgeActivity {
             @Override
             public boolean onScale(ScaleGestureDetector d) {
                 if (floatBox == null) return false;
-                DisplayMetrics m = getResources().getDisplayMetrics();
-                float k = d.getScaleFactor();
-                int nw = Math.max(dp(90), Math.min(m.widthPixels, Math.round(floatParams.width * k)));
-                int nh = Math.round(nw * (float) pipH / pipW);
-                if (nh > m.heightPixels * 0.85f) return true;
-                floatParams.x -= (nw - floatParams.width) / 2;
-                floatParams.y -= (nh - floatParams.height) / 2;
-                floatParams.width = nw;
-                floatParams.height = nh;
-                floatWm().updateViewLayout(floatBox, floatParams);
+                scaleFloat(d.getScaleFactor());
                 return true;
             }
         });
@@ -561,7 +552,7 @@ public class MainActivity extends BridgeActivity {
         bg.setCornerRadius(dp(14));
         box.setBackground(bg);
         box.setElevation(dp(6));
-        String[][] items = { { "🎤  Sprechen", "talk" }, { "📞  Live an/aus", "livetoggle" }, { "🖼  Bildschirm fragen", "screenask" }, { "📱  App öffnen", "app" }, { "🙈  Ausblenden", "hide" } };
+        String[][] items = { { "🎤  Sprechen", "talk" }, { "📞  Live an/aus", "livetoggle" }, { "🖼  Bildschirm fragen", "screenask" }, { "➖  Kleiner", "smaller" }, { "➕  Größer", "bigger" }, { "📱  App öffnen", "app" }, { "🙈  Ausblenden", "hide" } };
         for (String[] it : items) {
             android.widget.TextView tv = new android.widget.TextView(this);
             tv.setText(it[0]);
@@ -570,6 +561,12 @@ public class MainActivity extends BridgeActivity {
             tv.setPadding(dp(14), dp(10), dp(18), dp(10));
             final String what = it[1];
             tv.setOnClickListener((v) -> {
+                // Größe: Menü bleibt offen, damit man mehrmals tippen kann
+                if (what.equals("smaller") || what.equals("bigger")) {
+                    scaleFloat(what.equals("smaller") ? 0.85f : 1.18f);
+                    saveFloatPlace();
+                    return;
+                }
                 hideFloatMenu();
                 if (what.equals("hide")) {
                     hideFloat();
@@ -601,6 +598,24 @@ public class MainActivity extends BridgeActivity {
             menuView = box;
         } catch (Exception e) {
             Log.w("KI-Assistent", "Menü", e);
+        }
+    }
+
+    /** Schwebende Figur vergrößern/verkleinern (um die Mitte, mit Grenzen). */
+    void scaleFloat(float k) {
+        if (floatBox == null || floatParams == null) return;
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        int nw = Math.max(dp(90), Math.min(m.widthPixels, Math.round(floatParams.width * k)));
+        int nh = Math.round(nw * (float) pipH / pipW);
+        if (nh > m.heightPixels * 0.85f) return;
+        floatParams.x -= (nw - floatParams.width) / 2;
+        floatParams.y -= (nh - floatParams.height) / 2;
+        floatParams.width = nw;
+        floatParams.height = nh;
+        try {
+            floatWm().updateViewLayout(floatBox, floatParams);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Größe", e);
         }
     }
 
