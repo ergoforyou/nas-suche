@@ -197,7 +197,7 @@ class KeySettings:
     despill: float = 0.8                 # Farbsaum entfernen 0..1
     unmix: bool = True                   # Kantenfarben vom Hintergrund entmischen
     from_edge: bool = False              # nur vom Bildrand aus zusammenhaengende Flaechen
-    ai_quality: str = "schnell"          # "schnell" | "hoch"
+    ai_quality: str = "hoch"             # "hoch" (ResNet50) | "schnell" (MobileNet)
     ai_detail: float = 1.0               # 0.5..2 – Aufloesung des KI-Netzes
     ai_edge_colors: bool = True          # Kantenfarben aus KI-Vordergrund
     use_gpu: bool = True
@@ -464,17 +464,18 @@ class Processor:
         """Schwachen Schleier um die Figur entfernen.
 
         1. Sehr geringe Deckung (Rauschen/Schimmer) wird ausgeblendet.
-        2. Alles, was weit von der deckenden Figur entfernt liegt, wird
-           durchsichtig (Reste im Hintergrund).
+        2. Einzelne schwache Flecken im Hintergrund, die nirgends deckend sind,
+           werden entfernt. Alles, was mit der Figur zusammenhaengt (Haende,
+           Fuesse), bleibt vollstaendig erhalten.
         """
         t = 0.25 * strength
         a = np.clip((alpha - t) / (1.0 - t), 0.0, 1.0)
-        core = (alpha > 0.6).astype(np.uint8)
-        if core.any():
-            k = max(3, int(round((3 + 14 * (1.0 - strength)) * sc)))
-            ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1))
-            near = cv2.dilate(core, ker) > 0
-            a = np.where(near, a, 0.0)
+        n, labels = cv2.connectedComponents((a > 0.0).astype(np.uint8), connectivity=8)
+        if n > 2:
+            keep = np.zeros(n, bool)
+            keep[np.unique(labels[alpha > 0.6])] = True
+            keep[0] = True
+            a = np.where(keep[labels], a, 0.0)
         return a.astype(np.float32)
 
     def _post_alpha(self, alpha: np.ndarray, rgb_u8: np.ndarray) -> np.ndarray:

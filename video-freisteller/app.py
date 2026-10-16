@@ -346,13 +346,14 @@ class MainWindow(QMainWindow):
         self.g_ai = QGroupBox("KI-Freistellung (lokal berechnet)")
         fa = QFormLayout(self.g_ai)
         self.cb_aiq = QComboBox()
-        self.cb_aiq.addItem("Schnell (MobileNet)", "schnell")
-        self.cb_aiq.addItem("Höchste Qualität (ResNet50, ~100 MB Download)", "hoch")
+        self.cb_aiq.addItem("Genau (ResNet50, empfohlen)", "hoch")
+        self.cb_aiq.addItem("Schnell (MobileNet, verliert eher Hände/Füße)", "schnell")
         self.cb_aiq.currentIndexChanged.connect(self._aiq_changed)
         fa.addRow("Modell:", self.cb_aiq)
         self.s_detail = slider_row(0.5, 2.5, 1.0, 0.1, 2, "×")
-        self.s_detail.setToolTip("Höher = feinere Details (Haare), langsamer. "
-                                 "Bei Nahaufnahmen eher niedriger.")
+        self.s_detail.setToolTip("Empfohlen: 1,0. Niedriger = Figur wird sicherer erkannt, aber die Kante "
+                                 "wird verwaschen (Aura). Höher = feinere Haare, aber unsichere Stellen "
+                                 "(Hände, Füße) können wegfallen.")
         fa.addRow("Detailstufe:", self.s_detail)
         self.ck_edgecol = QCheckBox("Kantenfarben bereinigen (kein Hintergrund-Saum)")
         fa.addRow(self.ck_edgecol)
@@ -556,6 +557,10 @@ class MainWindow(QMainWindow):
             s = P.KeySettings.from_dict(json.loads(self.qs.value("key", "{}")))
         except Exception:  # noqa: BLE001
             s = P.KeySettings()
+        if int(self.qs.value("settings_version", 1)) < 2:
+            # Ab Version 2: genaues Modell als Standard, Detailstufe 1,0
+            s.ai_quality, s.ai_detail = "hoch", 1.0
+            self.qs.setValue("settings_version", 2)
         self._apply_settings(s)
         exp = {}
         try:
@@ -696,7 +701,7 @@ class MainWindow(QMainWindow):
                 "Jetzt einmalig herunterladen? Danach wird alles lokal berechnet.") != \
                 QMessageBox.StandardButton.Yes:
             if quality == "hoch":
-                self.cb_aiq.setCurrentIndex(0)
+                self.cb_aiq.setCurrentIndex(self.cb_aiq.findData("schnell"))
             return False
         dlg = QProgressDialog("KI-Modell wird geladen…", None, 0, 100, self)
         dlg.setWindowModality(Qt.WindowModality.WindowModal)

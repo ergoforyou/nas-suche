@@ -33,8 +33,8 @@ Der Export erfolgt als **WebM mit Transparenz**. Alles wird lokal auf dem eigene
 | **Farbe** | Green-Screen, Blue-Screen oder **weißer Hintergrund**. Die Farbe mit der Pipette direkt im Bild anklicken. |
 | **Nicht freistellen** | Nur schneiden bzw. umwandeln. |
 
-- **KI-Modell:** „Schnell“ ist eingebaut. „Höchste Qualität“ (ResNet50) wird beim ersten Auswählen einmalig geladen (~100 MB) und liefert noch feinere Kanten.
-- **Detailstufe:** Höhere Werte erfassen feinere Haare, rechnen aber langsamer. Bei Nahaufnahmen ist oft ein Wert unter 1 besser.
+- **KI-Modell:** „Genau“ (ResNet50) ist der Standard. Es erfasst Hände und Füße zuverlässig und ist kaum langsamer als „Schnell“ (MobileNet). Beide Modelle sind eingebaut.
+- **Detailstufe:** 1,0 lassen. Niedriger macht die Kante verwaschen (Aura um die Figur). Höher bringt feinere Haare, dafür können unsichere Stellen wie Hände oder Füße wegfallen.
 - **Toleranz / Weicher Übergang** (Farbe): Die Toleranz legt fest, was komplett verschwindet. Der weiche Übergang bestimmt, wie breit die Abstufung zur vollen Deckung ist (fein graduierte Kante).
 - **Auto (Bildrand):** übernimmt die häufigste Farbe am Bildrand als Hintergrundfarbe, wie im KI-Assistenten.
 - **Nur vom Bildrand aus entfernen** (wird bei „Weiß“ automatisch eingeschaltet): Es verschwindet nur Hintergrund, der mit dem
