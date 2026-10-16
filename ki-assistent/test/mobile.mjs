@@ -762,6 +762,36 @@ const priv = await page.evaluate(async () => ({
   history: Object.values(window.__app.state.history ?? {}).flat().length,
 }));
 check(priv.area === 'privat' && priv.cls && priv.kb === null && priv.history === 0, 'Bereich Privat: getrennte Daten, kein Firmenwissen', JSON.stringify(priv));
+// Bereichswechsel nimmt Personas mit (Avatar usw.), Gedächtnis bleibt je Bereich
+const carry = await page.evaluate(async () => {
+  const mine = [
+    { id: 'a', name: 'Max', avatar: { image: 'neu.png', poses: [{ id: 'p1' }] }, voice: 'thorsten', memory: ['dienstlich-geheim'] },
+    { id: 'b', name: 'Lisa', avatar: { image: 'lisa.png' }, memory: ['x'] },
+  ];
+  const other = { personas: [{ id: 'z', name: 'Max', avatar: { image: 'alt.png' }, memory: ['privat-merk'] }, { id: 'c', name: 'Nur privat', memory: [] }] };
+  const r = window.__app.carryPersonas(mine, 'a', other);
+  const max = r.personas.find((p) => p.name === 'Max');
+  const lisa = r.personas.find((p) => p.name === 'Lisa');
+  // Handy: Zielbereich wird wirklich geschrieben und lässt sich lesen
+  const back = await window.desktop.areaLoad?.('privat');
+  return {
+    n: r.personas.length,
+    maxImg: max.avatar.image,
+    maxPoses: max.avatar.poses.length,
+    maxMem: max.memory,
+    maxId: max.id,
+    active: r.activeId,
+    lisaMem: lisa.memory,
+    keepOnly: r.personas.some((p) => p.name === 'Nur privat'),
+    loadOk: back === null || Array.isArray(back?.personas),
+  };
+});
+check(
+  carry.n === 3 && carry.maxImg === 'neu.png' && carry.maxPoses === 1 && carry.maxMem[0] === 'privat-merk' && carry.maxId === 'z' && carry.active === 'z' &&
+    carry.lisaMem.length === 0 && carry.keepOnly && carry.loadOk,
+  'Bereichswechsel: Personas samt Avatar kommen mit, Gedächtnis bleibt je Bereich',
+  JSON.stringify(carry),
+);
 // Privat-Funktionen: Notiz per „Merk dir“, Fehlerprotokoll ohne Schlüssel, Fahrmodus
 const privF = await page.evaluate(async () => {
   const app = window.__app;

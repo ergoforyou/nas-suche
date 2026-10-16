@@ -46,8 +46,28 @@ try {
 } catch {}
 const areaDir = () => (AREA === 'privat' ? path.join(app.getPath('userData'), 'privat') : app.getPath('userData'));
 ipcMain.on('area:get', (e) => (e.returnValue = AREA));
-ipcMain.handle('area:set', (_e, name) => {
+const areaDirOf = (name) => (name === 'privat' ? path.join(app.getPath('userData'), 'privat') : app.getPath('userData'));
+// Daten des anderen Bereichs lesen (für das Mitnehmen der Personas beim Wechsel)
+ipcMain.handle('area:load', (_e, name) => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(areaDirOf(name), 'daten.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+});
+ipcMain.handle('area:set', (_e, name, patch) => {
   const next = name === 'privat' ? 'privat' : 'dienstlich';
+  if (patch && next !== AREA) {
+    // Personas in den Zielbereich schreiben (Gedächtnis und Chats dort bleiben, wie sie sind)
+    const file = path.join(areaDirOf(next), 'daten.json');
+    let cur = {};
+    try {
+      cur = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {}
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file + '.tmp', JSON.stringify({ ...cur, ...patch }, null, 2));
+    fs.renameSync(file + '.tmp', file);
+  }
   fs.writeFileSync(areaFile(), JSON.stringify({ bereich: next }));
   // sauberer Neustart: alle Daten, Schlüssel und Verbindungen des anderen Bereichs laden
   setTimeout(() => {

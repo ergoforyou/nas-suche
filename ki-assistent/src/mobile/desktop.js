@@ -415,7 +415,13 @@ const api = {
 
   // ---- Google Kalender und Aufgaben
   area: AREA,
-  areaSet: async (name) => {
+  areaLoad: async (name) => readJson(name === 'privat' ? 'privat/daten.json' : 'daten.json'),
+  areaSet: async (name, patch) => {
+    const next = name === 'privat' ? 'privat' : 'dienstlich';
+    if (patch && next !== AREA) {
+      const file = next === 'privat' ? 'privat/daten.json' : 'daten.json';
+      await writeJson(file, { ...((await readJson(file)) ?? {}), ...patch });
+    }
     try {
       localStorage.setItem('ki-bereich', name === 'privat' ? 'privat' : 'dienstlich');
     } catch {}

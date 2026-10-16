@@ -4087,11 +4087,44 @@ function refreshAreaUi() {
 }
 async function switchArea() {
   const to = AREA === 'privat' ? 'dienstlich' : 'privat';
-  if (!confirm(`Zum Bereich „${to === 'privat' ? 'Privat' : 'Dienstlich'}“ wechseln? Die App startet dafür neu.`)) return;
+  if (
+    !confirm(
+      `Zum Bereich „${to === 'privat' ? 'Privat' : 'Dienstlich'}“ wechseln? Die App startet dafür neu.\n\n` +
+        'Deine Personas (Avatar, Posen, Videos, Stimme, Texte, Schnellbefehle) kommen mit. Gedächtnis, Chats, ' +
+        'API-Schlüssel und Google-Verbindung bleiben je Bereich getrennt.',
+    )
+  )
+    return;
   // sofort speichern (nicht verzögert), weil die App gleich neu startet
   clearTimeout(saveTimer);
   await desktop.saveData({ settings: state.settings, personas: state.personas, activeId: state.activeId, history: state.history });
-  await desktop.areaSet(to);
+  // Personas mitnehmen: Avatar, Posen, Videos, Stimme, Texte, Schnellbefehle – Gedächtnis und Chats bleiben je Bereich
+  let patch = null;
+  try {
+    const other = desktop.areaLoad ? await desktop.areaLoad(to) : null;
+    patch = carryPersonas(state.personas, state.activeId, other);
+  } catch (e) {
+    console.warn('Personas nicht mitgenommen', e);
+  }
+  await desktop.areaSet(to, patch);
+}
+/**
+ * Personas für den anderen Bereich zusammenführen. Gleiche Persona (gleiche ID oder gleicher Name) wird aktualisiert,
+ * behält dort aber ihr eigenes Gedächtnis; neue kommen ohne Gedächtnis dazu; Personas, die es nur dort gibt, bleiben.
+ */
+function carryPersonas(personas, activeId, other) {
+  const theirs = (other?.personas ?? []).map((p) => ({ ...p }));
+  let activeThere = activeId;
+  for (const mine of personas) {
+    const { memory: _m, ...look } = mine;
+    let i = theirs.findIndex((t) => t.id === mine.id);
+    if (i < 0) i = theirs.findIndex((t) => t.name === mine.name);
+    if (i >= 0) {
+      theirs[i] = { ...look, id: theirs[i].id, memory: theirs[i].memory ?? [] };
+      if (mine.id === activeId) activeThere = theirs[i].id;
+    } else theirs.push({ ...look, memory: [] });
+  }
+  return { personas: theirs, activeId: activeThere };
 }
 $('btnArea').onclick = switchArea;
 $('areaSwitch').onclick = switchArea;
@@ -5483,6 +5516,7 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  carryPersonas,
   edition: EDITION,
   avatar,
   avatarState,

@@ -20,7 +20,8 @@ ipcRenderer.on('avatar:cursor', (_e, p) => cursorHandler(p));
 contextBridge.exposeInMainWorld('desktop', {
   edition: ipcRenderer.sendSync('app:edition'),
   area: ipcRenderer.sendSync('area:get'),
-  areaSet: (name) => ipcRenderer.invoke('area:set', name),
+  areaSet: (name, patch) => ipcRenderer.invoke('area:set', name, patch),
+  areaLoad: (name) => ipcRenderer.invoke('area:load', name),
   areaCopyKeys: () => ipcRenderer.invoke('area:copyKeys'),
   kbLoad: () => ipcRenderer.invoke('kb:load'),
   kbSave: (kb) => ipcRenderer.invoke('kb:save', kb),
