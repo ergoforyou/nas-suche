@@ -4090,8 +4090,8 @@ async function switchArea() {
   if (
     !confirm(
       `Zum Bereich „${to === 'privat' ? 'Privat' : 'Dienstlich'}“ wechseln? Die App startet dafür neu.\n\n` +
-        'Deine Personas (Avatar, Posen, Videos, Stimme, Texte, Schnellbefehle) kommen mit. Gedächtnis, Chats, ' +
-        'API-Schlüssel und Google-Verbindung bleiben je Bereich getrennt.',
+        'Deine Personas (Avatar, Posen, Videos, Stimme, Texte, Schnellbefehle) und die Claude-/OpenAI-Schlüssel kommen mit. ' +
+        'Gedächtnis, Chats und Google-Verbindung bleiben je Bereich getrennt.',
     )
   )
     return;

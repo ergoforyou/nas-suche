@@ -751,7 +751,12 @@ const sys = JSON.stringify(chatReq?.system ?? '');
 check(!!chatReq && /internen Firmendokumenten/.test(sys) && /85 Euro/.test(sys) && !/Zahlungsfrist/.test(sys), 'Nur passende Abschnitte gehen an Claude', sys.slice(-200));
 const kbNote = await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? '');
 check(/Firmenwissen mitgegeben: Preisliste\.txt/.test(kbNote), 'Antwort zeigt, welches Dokument mitgegeben wurde', kbNote.slice(-80));
-// Bereich Privat: eigene Daten, kein Firmenwissen
+// Bereich Privat: eigene Daten, kein Firmenwissen – Claude-/OpenAI-Schlüssel kommen beim Wechsel mit
+const keysBefore = await page.evaluate(async () => {
+  const k = (await window.__keyFile()) ?? {};
+  await window.__shareKeys('privat');
+  return { anthropic: !!k.anthropic, openai: !!k.openai };
+});
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'privat'));
 await page.reload();
 await page.waitForFunction(() => window.__app);
@@ -760,7 +765,13 @@ const priv = await page.evaluate(async () => ({
   cls: document.documentElement.classList.contains('area-privat'),
   kb: await window.desktop.kbLoad(),
   history: Object.values(window.__app.state.history ?? {}).flat().length,
+  keys: await window.desktop.keyStatus(),
 }));
+check(
+  (!keysBefore.anthropic || priv.keys.anthropic) && (!keysBefore.openai || priv.keys.openai) && (keysBefore.anthropic || keysBefore.openai),
+  'Bereichswechsel: Claude-/OpenAI-Schlüssel kommen mit (einmal eingeben reicht)',
+  JSON.stringify({ before: keysBefore, privat: priv.keys }),
+);
 check(priv.area === 'privat' && priv.cls && priv.kb === null && priv.history === 0, 'Bereich Privat: getrennte Daten, kein Firmenwissen', JSON.stringify(priv));
 // Bereichswechsel nimmt Personas mit (Avatar usw.), Gedächtnis bleibt je Bereich
 const carry = await page.evaluate(async () => {

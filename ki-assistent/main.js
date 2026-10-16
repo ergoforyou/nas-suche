@@ -68,6 +68,7 @@ ipcMain.handle('area:set', (_e, name, patch) => {
     fs.writeFileSync(file + '.tmp', JSON.stringify({ ...cur, ...patch }, null, 2));
     fs.renameSync(file + '.tmp', file);
   }
+  if (next !== AREA) shareKeys(areaDir(), areaDirOf(next));
   fs.writeFileSync(areaFile(), JSON.stringify({ bereich: next }));
   // sauberer Neustart: alle Daten, Schlüssel und Verbindungen des anderen Bereichs laden
   setTimeout(() => {
@@ -76,6 +77,33 @@ ipcMain.handle('area:set', (_e, name, patch) => {
   }, 150);
   return next;
 });
+// Claude- und OpenAI-Schlüssel beim Wechsel mitnehmen, wenn der andere Bereich noch keine hat (einmal eingeben reicht).
+// Bewusst unterschiedliche Schlüssel bleiben; die Google-Verbindung bleibt je Bereich getrennt.
+function shareKeys(fromDir, toDir) {
+  try {
+    const read = (d) => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(d, 'schluessel.json'), 'utf8'));
+      } catch {
+        return {};
+      }
+    };
+    const from = read(fromDir);
+    const to = read(toDir);
+    let changed = false;
+    for (const k of ['anthropic', 'openai']) {
+      if (from[k] && !to[k]) {
+        to[k] = from[k];
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    fs.mkdirSync(toDir, { recursive: true });
+    fs.writeFileSync(path.join(toDir, 'schluessel.json'), JSON.stringify(to));
+  } catch (e) {
+    console.warn('Schlüssel nicht übernommen', e);
+  }
+}
 // API-Schlüssel (Claude/OpenAI) aus Dienstlich übernehmen – ohne Google-Verbindung
 ipcMain.handle('area:copyKeys', () => {
   if (AREA !== 'privat') return false;

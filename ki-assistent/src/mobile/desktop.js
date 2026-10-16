@@ -47,13 +47,13 @@ const areaPath = (p) => (AREA === 'privat' ? `privat/${p}` : p);
 const vault = () => (window.KIKeys?.available?.() ? window.KIKeys : null);
 const PROVIDERS = ['anthropic', 'openai', 'google'];
 let keys = null;
-async function loadKeys() {
-  const file = (await readJson(areaPath('schluessel.json'))) ?? {};
+async function loadKeys(path = areaPath('schluessel.json')) {
+  const file = (await readJson(path)) ?? {};
   const v = vault();
   if (!file.enc) {
     // ältere Versionen: Klartext – gleich verschlüsselt neu speichern
     const plain = Object.fromEntries(PROVIDERS.filter((p) => file[p]).map((p) => [p, file[p]]));
-    if (v && Object.keys(plain).length) await storeKeys(plain);
+    if (v && Object.keys(plain).length) await storeKeys(plain, path);
     return plain;
   }
   const out = {};
@@ -65,9 +65,9 @@ async function loadKeys() {
   }
   return out;
 }
-async function storeKeys(k) {
+async function storeKeys(k, path = areaPath('schluessel.json')) {
   const v = vault();
-  if (!v) return writeJson(areaPath('schluessel.json'), k);
+  if (!v) return writeJson(path, k);
   const file = { enc: 1 };
   for (const p of PROVIDERS) {
     if (!k[p]) continue;
@@ -75,11 +75,27 @@ async function storeKeys(k) {
     if (!enc) throw new Error('Schlüssel konnte nicht verschlüsselt werden.');
     file[p] = enc;
   }
-  await writeJson(areaPath('schluessel.json'), file);
+  await writeJson(path, file);
+}
+// Claude- und OpenAI-Schlüssel beim Bereichswechsel mitnehmen, wenn der andere Bereich noch keine hat.
+// Entschlüsselt und für den anderen Bereich neu verschlüsselt; Google bleibt je Bereich getrennt.
+async function shareKeys(to) {
+  const mine = await getKeys();
+  const path = to === 'privat' ? 'privat/schluessel.json' : 'schluessel.json';
+  const theirs = await loadKeys(path);
+  let changed = false;
+  for (const p of ['anthropic', 'openai']) {
+    if (mine[p] && !theirs[p]) {
+      theirs[p] = mine[p];
+      changed = true;
+    }
+  }
+  if (changed) await storeKeys(theirs, path);
 }
 const getKeys = async () => (keys ??= await loadKeys());
 // für den Emulator-Test: Liegt die Schlüsseldatei wirklich verschlüsselt vor?
 window.__keyFile = () => readJson(areaPath('schluessel.json'));
+window.__shareKeys = shareKeys;
 
 // ---------------------------------------------------------------- Cloud-Anbieter
 const CLOUD_OPTS = { dangerouslyAllowBrowser: true, maxRetries: 3 };
@@ -421,6 +437,13 @@ const api = {
     if (patch && next !== AREA) {
       const file = next === 'privat' ? 'privat/daten.json' : 'daten.json';
       await writeJson(file, { ...((await readJson(file)) ?? {}), ...patch });
+    }
+    if (next !== AREA) {
+      try {
+        await shareKeys(next);
+      } catch (e) {
+        console.warn('Schlüssel nicht übernommen', e);
+      }
     }
     try {
       localStorage.setItem('ki-bereich', name === 'privat' ? 'privat' : 'dienstlich');
