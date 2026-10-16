@@ -2946,6 +2946,21 @@ $('poseEditMain').onclick = () => setEditIndex(-1);
  * Freigestellt wird mit der Art der Pose (KI, einfarbige Wand, Greenscreen); bei KI wird die Maske für den
  * Abschnitt vorher berechnet. Die Bilder werden erst vorbereitet und dann im richtigen Takt aufgenommen.
  */
+/** Warten, bis das Video ein Bild an der aktuellen Stelle hat (höchstens ms). */
+function videoReady(v, ms = 3000) {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      v.removeEventListener('loadeddata', done);
+      v.removeEventListener('canplay', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    v.addEventListener('loadeddata', done);
+    v.addEventListener('canplay', done);
+  });
+}
+
 async function bakeTransparentVideo(pose, clip, say, shouldStop = () => false, setFrac = () => {}) {
   const stopCheck = () => {
     if (shouldStop()) throw new Error('abgebrochen');
@@ -2973,6 +2988,9 @@ async function bakeTransparentVideo(pose, clip, say, shouldStop = () => false, s
   for (let i = 0; i < n; i++) {
     stopCheck();
     await seekVideo(L.video, Math.min(clip.end - 0.01, clip.start + i / fps));
+    // auf langsamen Geräten ist das Bild nach dem Springen manchmal noch nicht da – sonst bliebe es leer
+    if (L.video.readyState < 2) await videoReady(L.video);
+    if (L.video.readyState < 2) throw new Error('Das Video ließ sich nicht lesen – bitte noch einmal versuchen');
     L.lastVideoTime = -1;
     L.buildVideoFrame();
     frames.push(await createImageBitmap(L.frame));

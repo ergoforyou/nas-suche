@@ -475,6 +475,9 @@ const baked = await page.evaluate(async (n) => {
   v.src = p.video;
   await new Promise((r) => (v.onloadeddata = r));
   await new Promise((r) => { v.onseeked = r; v.currentTime = 0.5; });
+  // aufgenommene WebM hat keinen Index – nach dem Springen auf das Bild warten (langsame Rechner)
+  for (let i = 0; i < 60 && v.readyState < 2; i++) await new Promise((r) => setTimeout(r, 50));
+  if (v.requestVideoFrameCallback) await Promise.race([new Promise((r) => v.requestVideoFrameCallback(r)), new Promise((r) => setTimeout(r, 500))]);
   const c = document.createElement('canvas');
   c.width = v.videoWidth;
   c.height = v.videoHeight;
@@ -482,7 +485,7 @@ const baked = await page.evaluate(async (n) => {
   g.drawImage(v, 0, 0);
   const d = g.getImageData(0, 0, c.width, c.height).data;
   const a = (fx, fy) => d[(Math.round(fy * (c.height - 1)) * c.width + Math.round(fx * (c.width - 1))) * 4 + 3];
-  return { cutMode: p.cutMode, clip: p.clip ?? null, wall: a(0.03, 0.03), body: a(0.5, 0.55), file: window.__saved?.slice(n).map((f) => f.name) };
+  return { cutMode: p.cutMode, clip: p.clip ?? null, wall: a(0.03, 0.03), body: a(0.5, 0.55), file: window.__saved?.slice(n).map((f) => f.name), rs: v.readyState, t: v.currentTime, wh: [c.width, c.height], status: document.querySelector('#status')?.textContent };
 }, savedBefore);
 check(baked.cutMode === 'alpha' && baked.wall < 30 && baked.body > 200 && !baked.clip, 'Abschnitt als freigestelltes Video gespeichert (Hintergrund durchsichtig)', JSON.stringify(baked));
 check(/freigestellt\.webm$/.test(baked.file?.[0] ?? ''), 'Freigestelltes Video auch als Datei gesichert', JSON.stringify(baked.file));
