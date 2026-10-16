@@ -50,7 +50,7 @@ Portabel vom USB-Stick: `NasSuche-Portable.zip` entpacken, Ordner auf den Stick,
 
 Läuft ab macOS 11 auf Apple-Chip (M1–M4) und Intel; pro Mac etwa 5 Minuten.
 
-1. `NasSuche-Mac.zip` doppelklicken und **„ERGOFORYOU NAS-Suche“ in den Ordner *Programme* ziehen.**
+1. `NasSuche-Mac.zip` doppelklicken und **„ERGOFORYOU NAS-Suche“ in den Ordner „Programme“ ziehen.**
 2. **Erster Start:** Rechtsklick auf die App → **Öffnen** → „Öffnen“ bestätigen. Klappt das nicht: *Systemeinstellungen → Datenschutz & Sicherheit → „Dennoch öffnen“*. Nur beim ersten Mal nötig.
 3. **Vorgabe übernehmen:** *Einstellungen → Browser & Kollegen → „Vorgabe laden …“* und die `NasSuche.json` aus dem NAS-Ordner `Mac` wählen. Ohne Vorgabe: *Suchordner & NAS* ausfüllen, z. B. NAS-Freigabe `smb://DiskStation/Daten` und Suchordner `/Volumes/Daten`.
 4. **NAS-Kennwort:** macOS fragt einmal nach Benutzer und Kennwort – „Im Schlüsselbund sichern“ anhaken.
@@ -59,6 +59,31 @@ Läuft ab macOS 11 auf Apple-Chip (M1–M4) und Intel; pro Mac etwa 5 Minuten.
 7. Weiter mit der Browser-Erweiterung (unten).
 
 Test: im Finder **⌘K** drücken und `smb://DiskStation/Daten` verbinden. Klappt das, findet auch die Suche das NAS.
+
+## Mac: nur eine NAS-Freigabe – Kunden und Digitale Eingänge gezielt einbinden
+
+Trifft zu, wenn der Mac nur eine Freigabe verbindet (z. B. `smb://DiskStation/Daten`), in der alle Bereiche als Unterordner liegen. Der Mac verbindet immer die ganze Freigabe – einzelne Unterordner lassen sich nicht als eigenes Laufwerk verbinden. Das ist für die Suche auch nicht nötig: Die NAS-Suche durchsucht nur die Unterordner, die man als Suchordner einträgt. Weniger Ordner = kleinerer Index = schnellere Suche und schnelleres Einlesen.
+
+1. **Freigabe prüfen:** Im Finder **⌘K**, `smb://DiskStation/Daten` eingeben (Servername und Freigabe wie bei euch), **Verbinden**, Kennwort im Schlüsselbund sichern. Die Freigabe erscheint als `/Volumes/Daten`; darin liegen z. B. `Kunden` und `Digitale Eingänge`.
+2. **NAS-Suche → Einstellungen → Suchordner & NAS.**
+3. Unter **„NAS-Freigaben, die beim Start verbunden werden“** genau eine Zeile: `smb://DiskStation/Daten`.
+4. Unter **„Diese Ordner werden durchsucht“** den bisherigen Eintrag `/Volumes/Daten` (falls vorhanden) markieren → **Entfernen**.
+5. Die gewünschten Bereiche einzeln hinzufügen – per **„Ordner auswählen …“** (links in der Seitenleiste „Daten“ wählen, dann den Unterordner) oder Pfad eintippen und **Hinzufügen**:
+   - `smb://DiskStation/Daten/Kunden`
+   - `smb://DiskStation/Daten/Digitale Eingänge`
+6. Die NAS-Suche macht daraus automatisch `/Volumes/Daten/Kunden` und `/Volumes/Daten/Digitale Eingänge` und trägt die Freigabe zum Verbinden ein. **Speichern** – das erste Einlesen dauert je nach Größe einige Minuten, danach ist die Suche sofort da.
+7. **Feste Ordner anlegen:** In der Suche *Ordner ▾ → „Ordner auswählen und anzeigen …“* → `Digitale Eingänge` → *Ordner ▾ → „Angezeigten Ordner als festen Ordner merken …“*. Ebenso für `Kunden`. Im Browser erscheinen sie zusätzlich unter **Schnellzugriff**.
+8. Optional: *Ordner ▾ → „Angezeigten Ordner beim Start links öffnen“* für die Digitalen Eingänge, rechts die Kunden-Suche.
+9. **Für alle Kollegen übernehmen:** *Einstellungen → Browser & Kollegen → „Als Vorgabe speichern …“* → `NasSuche.json` in den NAS-Ordner `_NasSuche/Mac`. Kollegen wählen auf ihrem Mac *„Vorgabe laden …“* – Freigabe, Suchordner und feste Ordner sind dann identisch eingerichtet.
+
+| Eintrag | Beispiel | Wirkung |
+| --- | --- | --- |
+| NAS-Freigabe | smb://DiskStation/Daten | wird beim Start und Anmelden automatisch verbunden |
+| Suchordner 1 | /Volumes/Daten/Kunden | wird durchsucht |
+| Suchordner 2 | /Volumes/Daten/Digitale Eingänge | wird durchsucht |
+| Alles andere in „Daten“ | – | wird nicht eingelesen, bleibt im Finder erreichbar |
+
+Noch bequemer im Finder: die Ordner `Kunden` und `Digitale Eingänge` aus dem Finder-Fenster in die Seitenleiste unter *Favoriten* ziehen. Sollen die Bereiche wirklich als getrennte Laufwerke erscheinen, muss der NAS-Admin sie in der Synology-Verwaltung (DSM → Systemsteuerung → Freigegebener Ordner) als eigene Freigaben anlegen; das ändert aber auch die Pfade an den Windows-PCs und ist für die Suche nicht nötig.
 
 ## Browser-Erweiterung einrichten (Chrome, Edge, Opera, Brave)
 
