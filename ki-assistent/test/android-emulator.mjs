@@ -184,7 +184,7 @@ if (BETA) {
   check(allowed, 'Erlaubnis „Über anderen Apps einblenden“ erkannt');
   await run(`window.__app.state.settings.floatOverlay = true; KIFloat.setEnabled(true); KIFloat.now(); return true`);
   let fl = {};
-  for (let i = 0; i < 20 && !fl.showing; i++) {
+  for (let i = 0; i < 20 && !(fl.showing && fl.cls); i++) {
     await sleep(500);
     fl = await run(`return { showing: KIFloat.showing(), cls: document.documentElement.classList.contains('float-ov'), transparent: window.__app.avatar.transparent }`);
   }
