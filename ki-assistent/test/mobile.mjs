@@ -749,6 +749,20 @@ await page.reload();
 await page.waitForFunction(() => window.__app);
 const back = await page.evaluate(() => ({ area: window.__app.area, history: Object.values(window.__app.state.history ?? {}).flat().length }));
 check(back.area === 'dienstlich' && back.history > 0, 'Zurück in Dienstlich: alles wieder da', JSON.stringify(back));
+// ---- Schnellbefehle: Beispiele einfügen, Knopf über dem Eingabefeld nimmt den Text mit
+if (!(await page.isVisible('#tabs [data-tab=buero]'))) await page.click('#btnSettings');
+await page.click('#tabs [data-tab=buero]');
+await page.click('#offQuickExamples');
+await page.click('#btnCloseDrawer');
+const chips = await page.evaluate(() => [...document.querySelectorAll('#quickBar .chip')].map((b) => b.textContent));
+check(chips.includes('Angebot formulieren') && chips.length >= 4, 'Schnellbefehle über dem Eingabefeld', JSON.stringify(chips));
+const qBefore = claudeRequests.length;
+await page.fill('#input', 'Wartung 2 Std., Anfahrt Hannover');
+await page.click('#quickBar .chip >> text=Angebot formulieren');
+await page.waitForTimeout(1500);
+const qReq = claudeRequests.slice(qBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Formuliere aus diesen Angaben'));
+check(!!qReq && JSON.stringify(qReq.messages).includes('Wartung 2 Std.'), 'Schnellbefehl schickt Anweisung samt Text');
+await page.waitForFunction(() => !window.__app.state.busy, null, { timeout: 10000 }).catch(() => {});
 // ---- Sprechblase, wenn der Ton aus ist
 const bub = await page.evaluate(async () => {
   window.__app.state.settings.bubble = 'stumm';

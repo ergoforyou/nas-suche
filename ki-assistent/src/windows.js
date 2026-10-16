@@ -8,7 +8,7 @@ import { toDocx, toPrintHtml, fileBase } from './export.js';
 
 const desktop = window.desktop;
 
-function openChild(url, name) {
+export function openChild(url, name) {
   const w = window.open(url, name);
   if (!w) return Promise.reject(new Error('Fenster konnte nicht geöffnet werden'));
   return new Promise((resolve, reject) => {

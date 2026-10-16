@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+  <title>KI-Assistent</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #14161b; color: #e6e8ee; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; gap: 8px; }
+    .src { max-height: 64px; overflow: hidden; color: #9aa3b5; font-size: 12px; border-left: 3px solid #3d7be0; padding-left: 8px; white-space: pre-wrap; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    button { background: #232833; color: inherit; border: 1px solid #343b49; border-radius: 8px; padding: 5px 10px; cursor: pointer; font: inherit; }
+    button:hover { border-color: #5b9cf5; }
+    button.on { background: #3d7be0; border-color: #5b9cf5; }
+    button.primary { background: #3d7be0; border-color: #5b9cf5; }
+    textarea { flex: 1; min-height: 120px; resize: none; background: #1b1f27; color: inherit; border: 1px solid #343b49; border-radius: 8px; padding: 8px; font: inherit; }
+    .foot { display: flex; gap: 6px; align-items: center; }
+    .foot .hint { flex: 1; color: #9aa3b5; font-size: 12px; }
+    .dk { display: flex; align-items: center; gap: 10px; height: 100%; padding: 0 14px; font-size: 14px; }
+    .dk .dot { width: 12px; height: 12px; border-radius: 50%; background: #e5534b; animation: puls 1s infinite; flex: none; }
+    @keyframes puls { 50% { opacity: 0.3; } }
+    body.small { padding: 0; }
+  </style>
+</head>
+<body></body>
+</html>

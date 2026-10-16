@@ -317,6 +317,11 @@ body.floating .stage { display: none; }
 .kb-list .kb-doc { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: var(--panel-2); border-radius: 6px; }
 .kb-list .kb-doc span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-list .kb-doc small { opacity: 0.7; }
+.quick-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 10px 0; }
+.quick-bar .chip { background: var(--panel-2); border: 1px solid var(--border, #343b49); border-radius: 14px; padding: 3px 10px; font-size: 13px; }
+.quick-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
+.quick-row { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
+.quick-row textarea { grid-column: 1 / -1; resize: vertical; }
 .beta-badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #b26a00; color: #fff; vertical-align: middle; }
 
 /* Video-Werkzeug: Abschnitt wählen, Standbild übernehmen */

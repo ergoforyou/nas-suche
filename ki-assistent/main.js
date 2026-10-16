@@ -12,6 +12,8 @@ const {
   globalShortcut,
   safeStorage,
   dialog,
+  clipboard,
+  Notification,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -67,6 +69,122 @@ ipcMain.handle('area:copyKeys', () => {
   fs.mkdirSync(path.dirname(keyFile()), { recursive: true });
   fs.writeFileSync(keyFile(), JSON.stringify(to));
   return true;
+});
+
+// ---------------------------------------------------------------- Büro: markierten Text holen, einfügen, Präsentation erkennen
+// Unter Windows ein dauerhaft laufender PowerShell-Helfer (Win32-Aufrufe, ohne zusätzliche Programme):
+// Vordergrundfenster merken/zurückholen, Strg+C bzw. Strg+V senden, „Bitte nicht stören“-Zustand abfragen.
+const HELPER_PS = `
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class KIHelfer {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int s);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+  public static void Loslassen() { foreach (byte b in new byte[] { 0x10, 0x11, 0x12, 0x5B, 0x5C }) keybd_event(b, 0, 2, UIntPtr.Zero); }
+  public static void Strg(byte k) { keybd_event(0x11, 0, 0, UIntPtr.Zero); keybd_event(k, 0, 0, UIntPtr.Zero); keybd_event(k, 0, 2, UIntPtr.Zero); keybd_event(0x11, 0, 2, UIntPtr.Zero); }
+}
+"@
+while ($true) {
+  $l = [Console]::In.ReadLine(); if ($l -eq $null) { break }
+  $p = $l.Split(' ')
+  switch ($p[0]) {
+    'FG' { [Console]::Out.WriteLine('OK ' + [KIHelfer]::GetForegroundWindow().ToInt64()) }
+    'SETFG' { [KIHelfer]::SetForegroundWindow([IntPtr][Int64]$p[1]) | Out-Null; [Console]::Out.WriteLine('OK') }
+    'COPY' { [KIHelfer]::Loslassen(); Start-Sleep -Milliseconds 80; [KIHelfer]::Strg(0x43); [Console]::Out.WriteLine('OK') }
+    'PASTE' { [KIHelfer]::Loslassen(); Start-Sleep -Milliseconds 40; [KIHelfer]::Strg(0x56); [Console]::Out.WriteLine('OK') }
+    'STATE' { $s = 0; [KIHelfer]::SHQueryUserNotificationState([ref]$s) | Out-Null; [Console]::Out.WriteLine('OK ' + $s) }
+    default { [Console]::Out.WriteLine('OK') }
+  }
+}`;
+let helper = null;
+let helperQueue = [];
+let helperBuf = '';
+function helperCmd(cmd) {
+  if (process.platform !== 'win32') return Promise.resolve(null);
+  if (!helper) {
+    const { spawn } = require('node:child_process');
+    // als Datei starten (stdin bleibt frei für die Befehle)
+    const script = path.join(app.getPath('userData'), 'ki-helfer.ps1');
+    fs.mkdirSync(path.dirname(script), { recursive: true });
+    fs.writeFileSync(script, '\ufeff' + HELPER_PS.replace(/\r?\n/g, '\r\n'));
+    helper = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true });
+    helper.stdout.on('data', (d) => {
+      helperBuf += d.toString();
+      let nl;
+      while ((nl = helperBuf.indexOf('\n')) >= 0) {
+        const line = helperBuf.slice(0, nl).trim();
+        helperBuf = helperBuf.slice(nl + 1);
+        if (line.startsWith('OK')) helperQueue.shift()?.(line.slice(2).trim());
+      }
+    });
+    helper.on('exit', () => {
+      helper = null;
+      helperQueue.splice(0).forEach((r) => r(null));
+    });
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 8000);
+    helperQueue.push((v) => {
+      clearTimeout(timer);
+      resolve(v);
+    });
+    helper.stdin.write(cmd + '\r\n');
+  });
+}
+app.on('will-quit', () => helper?.kill());
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Markierten Text der aktiven App holen (Strg+C), Zwischenablage danach wiederherstellen. */
+async function grabSelection() {
+  const hwnd = await helperCmd('FG');
+  const before = clipboard.readText();
+  let text = '';
+  if (hwnd) {
+    clipboard.writeText('');
+    await helperCmd('COPY');
+    for (let i = 0; i < 12 && !text; i++) {
+      await wait(60);
+      text = clipboard.readText();
+    }
+    clipboard.writeText(before);
+  }
+  // ohne Markierung (oder nicht Windows): Inhalt der Zwischenablage verwenden
+  return { text: text || before, fromClipboard: !text, hwnd };
+}
+
+/** Text in die vorher aktive App einfügen (über die Zwischenablage, danach wiederhergestellt). */
+async function pasteInto({ text, hwnd, restore = true }) {
+  const before = clipboard.readText();
+  clipboard.writeText(text);
+  if (process.platform !== 'win32' || !hwnd) return { pasted: false };
+  await helperCmd(`SETFG ${hwnd}`);
+  await wait(150);
+  await helperCmd('PASTE');
+  if (restore) setTimeout(() => clipboard.writeText(before), 700);
+  return { pasted: true };
+}
+ipcMain.handle('office:paste', (_e, opts) => pasteInto(opts));
+ipcMain.handle('office:copy', (_e, text) => clipboard.writeText(String(text ?? '')));
+ipcMain.handle('office:foreground', () => helperCmd('FG'));
+// Windows-Zustand: 1 normal, 2 Vollbild-App, 3 Vollbild-Spiel/Video, 4 Präsentationsmodus, 5 Stille Stunden
+ipcMain.handle('office:state', async () => Number(await helperCmd('STATE')) || 0);
+ipcMain.handle('office:notify', (_e, { title, body, silent }) => {
+  if (!Notification.isSupported()) return false;
+  const n = new Notification({ title, body, silent: !!silent });
+  n.on('click', () => {
+    if (win && !win.isDestroyed()) {
+      win.show();
+      win.focus();
+    }
+  });
+  n.show();
+  return true;
+});
+ipcMain.handle('office:avatarVisible', (_e, on) => {
+  if (avatarWin && !avatarWin.isDestroyed()) on ? avatarWin.showInactive() : avatarWin.hide();
 });
 
 // ---------------------------------------------------------------- Firmenwissen (nur Dienstlich)
@@ -393,6 +511,32 @@ function createWindow() {
         },
       };
     }
+    if (frameName === 'aktion' || frameName === 'diktat') {
+      const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+      const c = screen.getCursorScreenPoint();
+      const small = frameName === 'diktat';
+      const width = small ? 300 : 480;
+      const height = small ? 56 : 420;
+      const x = small ? Math.round(wa.x + (wa.width - width) / 2) : Math.min(Math.max(wa.x, c.x - 40), wa.x + wa.width - width);
+      const y = small ? wa.y + wa.height - height - 24 : Math.min(Math.max(wa.y, c.y + 16), wa.y + wa.height - height);
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          x, y, width, height,
+          frame: !small,
+          resizable: !small,
+          alwaysOnTop: true,
+          skipTaskbar: small,
+          minimizable: false,
+          maximizable: false,
+          focusable: !small,
+          autoHideMenuBar: true,
+          title: small ? 'Diktat' : 'Text bearbeiten – KI-Assistent',
+          backgroundColor: '#14161b',
+          webPreferences: { backgroundThrottling: false },
+        },
+      };
+    }
     if (frameName === 'output') {
       const b = saved.outputBounds ?? { width: 720, height: 820 };
       return {
@@ -512,6 +656,28 @@ function runSmokeTest() {
         console.log('Claude-Streaming über Chromium:', JSON.stringify(viaChromium));
         if (viaChromium.text !== 'Hallo Welt' || !viaChromium.aborted) return fail('Cloud-Streaming über Chromium');
       }
+      // Büro: Text-Aktionsfenster öffnet sich mit allen Aktionen, Windows-Helfer antwortet
+      await js("window.__app.openTextAction({ text: 'Sehr geehrte Damen und Herren, bitte senden Sie mir ein Angebot.' })");
+      await new Promise((r) => setTimeout(r, 1500));
+      const aktion = BrowserWindow.getAllWindows().find((w) => /Text bearbeiten/.test(w.getTitle()));
+      const buttons = aktion ? await aktion.webContents.executeJavaScript("document.querySelectorAll('.actions button').length") : 0;
+      console.log('Text-Aktion: Fenster', !!aktion, '| Aktionen', buttons);
+      if (!aktion || buttons < 5) return fail('Text-Aktionsfenster');
+      aktion.close();
+      if (process.platform === 'win32') {
+        const st = Number(await helperCmd('STATE'));
+        const fg = await helperCmd('FG');
+        console.log('Windows-Helfer: Zustand', st, '| Vordergrundfenster', fg);
+        if (!(st >= 1) || !fg) return fail('Windows-Helfer antwortet nicht');
+      }
+      // Firmenwissen in der echten App: PDF über pdf.js lesen (Datei liegt im Programm)
+      const kbPdf = await js(`(async () => {
+        const base = new URL('wasm/pdf/', location.href).href;
+        const ok = await fetch(base + 'pdf.min.js').then((r) => r.ok);
+        return { ok, area: window.__app.area };
+      })()`);
+      console.log('Firmenwissen (pdf.js im Paket):', JSON.stringify(kbPdf));
+      if (!kbPdf.ok) return fail('pdf.js fehlt im Programm');
       // Sprachkette in der echten App: Piper spricht, Whisper erkennt
       const speech = await js('window.__app.selfTest()');
       console.log('Sprach-Selbsttest:', JSON.stringify(speech));
@@ -549,6 +715,15 @@ app.whenReady().then(() => {
 
   // Systemweites Tastenkürzel zum Sprechen – auch wenn das Fenster nicht im Vordergrund ist.
   globalShortcut.register('Control+Alt+Space', () => win?.webContents.send('cmd', 'mic'));
+  // Büro: markierten Text bearbeiten (Strg+Alt+K) und Diktat in die aktive App (Strg+Alt+D)
+  globalShortcut.register('Control+Alt+K', async () => {
+    const sel = await grabSelection();
+    win?.webContents.send('cmd', 'textaction', { ...sel, cursor: screen.getCursorScreenPoint() });
+  });
+  globalShortcut.register('Control+Alt+D', async () => {
+    const hwnd = await helperCmd('FG');
+    win?.webContents.send('cmd', 'dictate', { hwnd });
+  });
 });
 
 app.on('before-quit', () => (quitting = true));
@@ -1078,6 +1253,16 @@ const google = googleLib.createGoogle({
   save: async (t) => writeKey('google', t ? JSON.stringify(t) : ''),
 });
 
+ipcMain.handle('google:upcoming', async (_e, { timeZone: tz = 'Europe/Berlin', hours = 48 } = {}) => {
+  if (EDITION === 'lokal' || !(await google.status()).connected) return null;
+  const local = (d) => d.toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T').slice(0, 16);
+  const now = new Date();
+  const until = new Date(+now + hours * 3600e3);
+  const ev = await googleLib.runTool(google, 'kalender_termine_lesen', { von: local(now), bis: local(until) }, { timeZone: tz });
+  const ta = await googleLib.runTool(google, 'aufgaben_lesen', {}, { timeZone: tz });
+  const last = local(until).slice(0, 10);
+  return { termine: ev.termine, aufgaben: (ta.aufgaben ?? []).filter((t) => t.faellig && t.faellig <= last) };
+});
 ipcMain.handle('google:status', () => (EDITION === 'lokal' ? { connected: false, blocked: true } : google.status()));
 ipcMain.handle('google:disconnect', () => google.disconnect());
 ipcMain.handle('google:connect', async (_e, { clientId, clientSecret }) => {

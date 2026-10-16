@@ -128,6 +128,15 @@ Tageszeit, Begrüßung beim Start, Status-Leuchte, Sprechblase (z. B. im Büro o
   lokal in Abschnitte zerlegt und durchsucht; zu einer Frage gehen nur die passendsten Abschnitte (höchstens 5) an den
   KI-Anbieter, unter der Antwort steht, welche Dokumente mitgegeben wurden. Keine Kundendaten aufnehmen.
 
+### Büro (PC, Beta)
+
+- **Strg+Alt+K** – markierten Text in jeder App bearbeiten: zusammenfassen, Antwort entwerfen (mit Firmenwissen),
+  höflicher, übersetzen, korrigieren oder eigene Schnellbefehle; „Ersetzen“ fügt das Ergebnis direkt ein.
+- **Strg+Alt+D** – Diktat in jede App: sprechen, nach einer Pause wird der Text am Cursor eingefügt (auf Wunsch geglättet).
+- **Erinnerungen** als Windows-Benachrichtigung, **Tagesbriefing** einmal am Tag (Termine, Aufgaben, Wetter am Ort).
+- **Nicht stören** bei Präsentation/Vollbild: Figur ausgeblendet, keine Sprachausgabe, Erinnerungen still.
+- **Schnellbefehle** (⚙ → Büro): eigene Knöpfe über dem Eingabefeld, `{text}` = Text im Eingabefeld/Markierung.
+
 ### Gedächtnis
 
 Unter ⚙ → **Gedächtnis**: Nach jeder Antwort fragt die App das Modell in LM Studio kurz, welche Fakten dauerhaft

@@ -4,7 +4,7 @@ const listeners = new Map();
 ipcRenderer.on('llm:event', (_e, msg) => listeners.get(msg.id)?.(msg));
 
 let commandHandler = () => {};
-ipcRenderer.on('cmd', (_e, cmd) => commandHandler(cmd));
+ipcRenderer.on('cmd', (_e, cmd, data) => commandHandler(cmd, data));
 let cursorHandler = () => {};
 ipcRenderer.on('avatar:cursor', (_e, p) => cursorHandler(p));
 
@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('desktop', {
   areaCopyKeys: () => ipcRenderer.invoke('area:copyKeys'),
   kbLoad: () => ipcRenderer.invoke('kb:load'),
   kbSave: (kb) => ipcRenderer.invoke('kb:save', kb),
+  officePaste: (opts) => ipcRenderer.invoke('office:paste', opts),
+  officeCopy: (text) => ipcRenderer.invoke('office:copy', text),
+  officeForeground: () => ipcRenderer.invoke('office:foreground'),
+  officeState: () => ipcRenderer.invoke('office:state'),
+  officeNotify: (n) => ipcRenderer.invoke('office:notify', n),
+  avatarVisible: (on) => ipcRenderer.invoke('office:avatarVisible', on),
+  googleUpcoming: (opts) => ipcRenderer.invoke('google:upcoming', opts),
   loadData: () => ipcRenderer.invoke('data:load'),
   saveData: (data) => ipcRenderer.invoke('data:save', data),
   minimize: () => ipcRenderer.send('win:minimize'),

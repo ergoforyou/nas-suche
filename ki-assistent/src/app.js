@@ -5,7 +5,7 @@ import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
 import { computeVideoMask, seek as seekVideo } from './videomask.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
-import { FloatingAvatar, OutputWindow } from './windows.js';
+import { FloatingAvatar, OutputWindow, openChild } from './windows.js';
 import { RubberBand } from './rubberband.js';
 import { buildDepthMap, imageKey } from './parallax.js';
 import { detectFaceRig, markersFromRig } from './facerig.js';
@@ -134,6 +134,11 @@ const DEFAULT_SETTINGS = {
   statusGlow: true, // farbiger Rand: hört zu (grün) / denkt (blau)
   greet: true, // beim Start begrüßen (Anlass „begrüßen“)
   kbUse: true, // Firmenwissen im Gespräch nutzen (nur Bereich Dienstlich, sobald Dokumente da sind)
+  dictClean: true, // Diktat: Satzzeichen/Füllwörter vom Sprachmodell glätten lassen
+  dictPause: 1800, // Diktat endet nach so viel Stille (ms)
+  briefing: '', // Tagesbriefing um 'HH:MM' ('' = aus)
+  lastBriefing: '',
+  dnd: 'auto', // Nicht stören: 'auto' (Vollbild/Präsentation) | 'an' | 'aus'
 };
 
 const CLAUDE_MODELS = [
@@ -695,7 +700,7 @@ async function send(text) {
   const think = new ThinkFilter();
   const moods = new MoodFilter(); // Stimmungsmarken wie [freudig] steuern die Mimik und werden entfernt
   let guessed = null;
-  const speak = state.settings.speak;
+  const speak = state.settings.speak && !state.dnd;
   state.spoken = '';
   const splitter = new SentenceSplitter((s) => {
     // Hält sich das Modell nicht an die Marken, wird die Stimmung aus dem Satz erraten
@@ -1220,8 +1225,10 @@ setInterval(() => {
   }
 }, 1000);
 
-desktop.onCommand((cmd) => {
+desktop.onCommand((cmd, data) => {
   if (cmd === 'mic') toggleMic();
+  if (cmd === 'textaction') openTextAction(data);
+  if (cmd === 'dictate') dictate(data);
   if (cmd === 'output') openOutput();
   if (cmd === 'dock') setFloating(false);
   if (cmd === 'newchat') newChat();
@@ -1463,6 +1470,14 @@ function fillSettings() {
   $('phFloat').checked = !!s.floatOverlay;
   $('avTod').checked = s.todMood !== false;
   $('kbUse').checked = s.kbUse !== false;
+  $('offDictClean').checked = s.dictClean !== false;
+  $('offDictPause').value = String(s.dictPause ?? 1800);
+  $('offReminders').checked = !!s.reminders;
+  $('offLead').value = String(s.reminderLead ?? 15);
+  $('offBriefing').value = s.briefing ?? '';
+  $('offDnd').value = s.dnd ?? 'auto';
+  renderQuickEditor();
+  renderQuickBar();
   $('avBubble').value = s.bubble ?? 'stumm';
   $('avGlow').checked = s.statusGlow !== false;
   $('avGreet').checked = s.greet !== false;
@@ -4042,6 +4057,326 @@ $('kbQuery').oninput = () => {
 };
 refreshAreaUi();
 
+
+// ---------------------------------------------------------------- Büro (PC): Text-Aktionen, Diktat, Erinnerungen,
+// Tagesbriefing, Nicht stören, Schnellbefehle
+const OFFICE = !MOBILE && !!desktop.officePaste;
+const TEXT_ACTIONS = [
+  ['summary', 'Zusammenfassen', 'Fasse den folgenden Text kurz und klar zusammen – bei längeren Texten in Stichpunkten. Gib nur die Zusammenfassung aus.'],
+  ['reply', 'Antwort entwerfen', 'Formuliere eine passende, freundliche und professionelle Antwort auf diese Nachricht (Sie-Form, wenn die Nachricht siezt). Gib nur den Antworttext aus, ohne Betreff.'],
+  ['polite', 'Höflicher', 'Formuliere den Text höflicher und professioneller. Inhalt und Sprache beibehalten. Gib nur den neuen Text aus.'],
+  ['translate', 'Übersetzen', 'Übersetze den Text: deutschen Text ins Englische, jeden anderen ins Deutsche. Gib nur die Übersetzung aus.'],
+  ['fix', 'Korrigieren', 'Korrigiere Rechtschreibung, Grammatik und Zeichensetzung. Stil, Inhalt und Zeilenumbrüche beibehalten. Gib nur den korrigierten Text aus.'],
+];
+const DICT_CLEAN =
+  'Das ist ein diktierter Text aus der Spracherkennung. Setze Satzzeichen und Groß-/Kleinschreibung richtig, entferne Füllwörter ' +
+  '(ähm, äh, also am Satzanfang) und offensichtliche Versprecher. Nichts hinzufügen, nichts umformulieren. Gib nur den Text aus.';
+
+/** Einmalige Anfrage ohne Gesprächsverlauf (für Text-Aktionen und Diktat). */
+async function askOnce(system, user, onDelta) {
+  const model = await ensureModel();
+  const id = newId();
+  return new Promise((resolve, reject) => {
+    let out = '';
+    desktop.chat({ id, ...llmParams(model), messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }, (ev) => {
+      if (ev.type === 'delta') {
+        out += ev.payload;
+        onDelta?.(out.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').replace(/^\s*\[[a-zäöüß]+\]\s*/i, ''));
+      } else if (ev.type === 'done') resolve(out.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^\s*\[[a-zäöüß]+\]\s*/i, '').trim());
+      else if (ev.type === 'error') reject(new Error(ev.payload));
+    });
+  });
+}
+
+let actionWin = null;
+async function openTextAction({ text = '', hwnd = null, fromClipboard = false } = {}) {
+  text = String(text ?? '').trim();
+  if (!text) {
+    desktop.officeNotify?.({ title: 'KI-Assistent', body: 'Kein Text markiert – erst Text markieren, dann Strg+Alt+K.', silent: true });
+    return;
+  }
+  if (actionWin && !actionWin.closed) actionWin.close();
+  const w = await openChild('aktion.html', 'aktion');
+  actionWin = w;
+  const d = w.document;
+  const el = (tag, props = {}, ...kids) => {
+    const n = Object.assign(d.createElement(tag), props);
+    n.append(...kids);
+    return n;
+  };
+  const src = el('div', { className: 'src', textContent: (fromClipboard ? '(aus der Zwischenablage) ' : '') + text.slice(0, 400) });
+  const acts = el('div', { className: 'actions' });
+  const out = el('textarea', { placeholder: 'Aktion wählen – das Ergebnis erscheint hier und lässt sich noch bearbeiten.' });
+  const hint = el('span', { className: 'hint' });
+  const bReplace = el('button', { className: 'primary', textContent: hwnd ? 'Ersetzen' : 'Kopieren', title: 'Ergebnis in die App einfügen (ersetzt die Markierung)' });
+  const bCopy = el('button', { textContent: 'Kopieren' });
+  const bChat = el('button', { textContent: 'In den Chat', title: 'Text im Chatfenster weiterbearbeiten' });
+  const foot = el('div', { className: 'foot' }, hint, bChat, bCopy, bReplace);
+  if (!hwnd) bCopy.hidden = true;
+  d.body.append(src, acts, out, foot);
+  let running = null;
+  const quick = (persona().quick ?? []).filter((q) => q.prompt?.includes('{text}'));
+  const all = [...TEXT_ACTIONS.map(([id, label, prompt]) => ({ id, label, prompt })), ...quick.map((q, i) => ({ id: `q${i}`, label: q.name, prompt: q.prompt }))];
+  for (const a of all) {
+    const b = el('button', { textContent: a.label });
+    b.onclick = async () => {
+      acts.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      const myRun = (running = {});
+      out.value = '';
+      hint.textContent = 'schreibt …';
+      let system = a.prompt.includes('{text}') ? 'Bearbeite den Text nach der Anweisung. Gib nur das Ergebnis aus.' : a.prompt;
+      let user = a.prompt.includes('{text}') ? a.prompt.replace('{text}', text) : text;
+      // Antworten entwerfen: passendes Firmenwissen mitgeben
+      if (a.id === 'reply' && kbActive()) {
+        const hits = searchIndex(kbIndex, text, 4);
+        if (hits.length) system += `\n\n${kbPrompt(hits)}`;
+      }
+      try {
+        const res = await askOnce(system, user, (t) => running === myRun && (out.value = t));
+        if (running !== myRun) return;
+        out.value = res;
+        hint.textContent = 'fertig – bei Bedarf noch anpassen';
+      } catch (e) {
+        if (running === myRun) hint.textContent = `Fehler: ${friendlyError(e)}`;
+      }
+    };
+    acts.append(b);
+  }
+  const result = () => out.value.trim();
+  bReplace.onclick = async () => {
+    if (!result()) return;
+    if (hwnd) {
+      w.close();
+      await desktop.officePaste({ text: result(), hwnd });
+    } else {
+      await desktop.officeCopy(result());
+      hint.textContent = 'In die Zwischenablage kopiert ✓';
+    }
+  };
+  bCopy.onclick = async () => {
+    if (!result()) return;
+    await desktop.officeCopy(result());
+    hint.textContent = 'Kopiert ✓';
+  };
+  bChat.onclick = () => {
+    input.value = result() ? `${text}\n\n---\n${result()}` : text;
+    autoGrow();
+    desktop.show?.();
+    w.close();
+    input.focus();
+  };
+  d.addEventListener('keydown', (e) => e.key === 'Escape' && w.close());
+  w.focus();
+}
+
+// ---- Diktat in die aktive App
+let dictating = false;
+async function dictate({ hwnd = null } = {}) {
+  if (dictating) return stt.stop();
+  if (state.micActive) return status('Mikrofon ist gerade belegt.');
+  dictating = true;
+  state.micActive = true;
+  let w = null;
+  const show = (html) => w && !w.closed && (w.document.body.innerHTML = `<div class="dk">${html}</div>`);
+  try {
+    tts.stop();
+    w = await openChild('aktion.html', 'diktat').catch(() => null);
+    if (w) w.document.body.className = 'small';
+    show('<span class="dot"></span> Diktat – sprich jetzt … <small>(Pause = fertig)</small>');
+    const audio = await stt.listen({
+      threshold: () => state.settings.sensitivity,
+      silenceMs: Number(state.settings.dictPause) || 1800,
+      maxMs: 180000,
+    });
+    show('⏳ wird erkannt …');
+    let text = (await transcribeWithFallback(audio))?.trim() ?? '';
+    if (!text || NOISE.some((r) => r.test(text))) {
+      show('Nichts verstanden.');
+      await new Promise((r) => setTimeout(r, 900));
+      return;
+    }
+    if (state.settings.dictClean !== false) {
+      show('✎ wird geglättet …');
+      text = (await askOnce(DICT_CLEAN, text).catch(() => '')) || text;
+    }
+    w?.close();
+    w = null;
+    await desktop.officePaste({ text, hwnd });
+  } catch (e) {
+    status(`Diktat: ${friendlyError(e)}`);
+  } finally {
+    dictating = false;
+    state.micActive = false;
+    w?.close();
+  }
+}
+
+// ---- Nicht stören: Vollbild-App oder Präsentation – Figur ausblenden, nicht sprechen
+async function checkDnd() {
+  const mode = state.settings.dnd ?? 'auto';
+  let on = mode === 'an';
+  if (mode === 'auto' && desktop.officeState) on = [2, 3, 4].includes(await desktop.officeState());
+  if (on === !!state.dnd) return;
+  state.dnd = on;
+  if (state.settings.floating) desktop.avatarVisible?.(!on);
+  $('offDndInfo').textContent = on ? '🔕 Nicht stören ist gerade aktiv.' : '';
+  if (on) tts.stop();
+}
+
+// ---- Erinnerungen am PC: Windows-Benachrichtigung, Figur sagt sie an (nicht bei „Nicht stören“)
+let pcTimers = [];
+const shownReminders = new Set();
+function scheduleLocalReminders(items) {
+  pcTimers.forEach(clearTimeout);
+  pcTimers = [];
+  for (const it of items) {
+    const ms = it.at - Date.now();
+    if (ms <= 0 || ms > 2 ** 31 - 1 || shownReminders.has(it.key)) continue;
+    pcTimers.push(
+      setTimeout(() => {
+        shownReminders.add(it.key);
+        desktop.officeNotify?.({ title: it.title, body: it.text, silent: !!state.dnd });
+        fireEvent('reminder', 6000);
+        status(`⏰ ${it.title}: ${it.text}`);
+        if (state.settings.speak && !state.dnd && !state.busy && !tts.speaking) tts.enqueue(`${it.title}: ${it.text}`);
+      }, ms),
+    );
+  }
+}
+
+// ---- Tagesbriefing: einmal am Tag zur eingestellten Zeit (oder auf Knopfdruck)
+const BRIEFING_PROMPT =
+  'Gib mir bitte ein kurzes Tagesbriefing für heute: meine Termine und fälligen Aufgaben (schau in Kalender und Aufgaben, falls verbunden), ' +
+  'das Wetter an meinem Ort und was heute besonders zu beachten ist. Höchstens sechs Sätze, gut vorlesbar.';
+function checkBriefing() {
+  const at = state.settings.briefing;
+  if (!at || state.dnd || state.busy) return;
+  const now = new Date();
+  const today = now.toLocaleDateString('sv-SE');
+  const [h, m] = at.split(':').map(Number);
+  if (state.settings.lastBriefing === today || now.getHours() * 60 + now.getMinutes() < h * 60 + m) return;
+  state.settings.lastBriefing = today;
+  save();
+  send(BRIEFING_PROMPT);
+}
+
+// ---- Schnellbefehle (je Persona, gehen mit dem Persona-Export mit)
+const QUICK_EXAMPLES = [
+  { name: 'Angebot formulieren', prompt: 'Formuliere aus diesen Angaben ein freundliches, professionelles Angebot (Sie-Form):\n{text}' },
+  { name: 'Kundenanfrage beantworten', prompt: 'Beantworte diese Kundenanfrage freundlich und kompetent:\n{text}' },
+  { name: 'Kürzer fassen', prompt: 'Kürze den Text auf das Wesentliche, ohne Inhalt zu verlieren:\n{text}' },
+  { name: 'Text für die Website', prompt: 'Schreibe aus diesen Stichpunkten einen gut lesbaren Website-Text:\n{text}' },
+];
+function renderQuickBar() {
+  const bar = $('quickBar');
+  const list = persona().quick ?? [];
+  bar.innerHTML = '';
+  bar.hidden = !list.length;
+  for (const q of list) {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = q.name || 'Befehl';
+    b.title = q.prompt.includes('{text}') ? 'Nimmt den Text aus dem Eingabefeld' : q.prompt;
+    b.onclick = () => {
+      const t = input.value.trim();
+      if (q.prompt.includes('{text}')) {
+        if (!t) return status(`„${q.name}“: erst den Text ins Eingabefeld schreiben oder einfügen.`);
+        input.value = '';
+        autoGrow();
+        send(q.prompt.replace('{text}', t));
+      } else send(q.prompt);
+    };
+    bar.append(b);
+  }
+}
+function renderQuickEditor() {
+  const box = $('offQuickList');
+  box.innerHTML = '';
+  const list = (persona().quick ??= []);
+  list.forEach((q, i) => {
+    const row = document.createElement('div');
+    row.className = 'quick-row';
+    const name = document.createElement('input');
+    name.value = q.name;
+    name.placeholder = 'Name';
+    name.oninput = () => {
+      q.name = name.value;
+      save();
+      renderQuickBar();
+    };
+    const prompt = document.createElement('textarea');
+    prompt.value = q.prompt;
+    prompt.rows = 2;
+    prompt.placeholder = 'Anweisung – {text} steht für den Text aus dem Eingabefeld bzw. die Markierung';
+    prompt.oninput = () => {
+      q.prompt = prompt.value;
+      save();
+    };
+    const del = document.createElement('button');
+    del.textContent = '🗑';
+    del.onclick = () => {
+      list.splice(i, 1);
+      save();
+      renderQuickEditor();
+      renderQuickBar();
+    };
+    row.append(name, del, prompt);
+    box.append(row);
+  });
+}
+$('offQuickAdd').onclick = () => {
+  (persona().quick ??= []).push({ name: 'Neuer Befehl', prompt: '{text}' });
+  save();
+  renderQuickEditor();
+  renderQuickBar();
+};
+$('offQuickExamples').onclick = () => {
+  const list = (persona().quick ??= []);
+  for (const ex of QUICK_EXAMPLES) if (!list.some((q) => q.name === ex.name)) list.push({ ...ex });
+  save();
+  renderQuickEditor();
+  renderQuickBar();
+};
+
+for (const [id, key, num] of [
+  ['offDictClean', 'dictClean'],
+  ['offReminders', 'reminders'],
+]) {
+  $(id).onchange = (e) => {
+    state.settings[key] = e.target.checked;
+    save();
+    if (key === 'reminders') syncReminders();
+  };
+}
+for (const [id, key, num] of [
+  ['offDictPause', 'dictPause', true],
+  ['offLead', 'reminderLead', true],
+  ['offBriefing', 'briefing'],
+  ['offDnd', 'dnd'],
+]) {
+  $(id).onchange = (e) => {
+    state.settings[key] = num ? Number(e.target.value) : e.target.value;
+    save();
+    if (key === 'reminderLead') syncReminders();
+    if (key === 'dnd') checkDnd();
+  };
+}
+$('offBriefingNow').onclick = () => {
+  $('drawer').hidden = true;
+  send(BRIEFING_PROMPT);
+};
+
+function startOffice() {
+  renderQuickBar();
+  if (!OFFICE) return;
+  checkDnd();
+  setInterval(checkDnd, 15000);
+  syncReminders();
+  setInterval(syncReminders, 15 * 60e3);
+  setInterval(checkBriefing, 60e3);
+  setTimeout(checkBriefing, 8000);
+}
+
 // ---------------------------------------------------------------- Ort (Wetter, Verkehr & Co.)
 // Nur ein ungefährer Ortsname geht mit der Anfrage an den KI-Anbieter, keine genauen Koordinaten.
 let placeCache = null;
@@ -4169,19 +4504,23 @@ $('phBgTalk').onchange = (e) => setBgTalk(e.target.checked);
 // ---------------------------------------------------------------- Android: Erinnerungen an Termine & Aufgaben
 // Nur wenn eingeschaltet: Die nächsten 2 Tage aus Google werden als Wecker auf dem Handy geplant (auch bei
 // geschlossener App). Neu eingetragene Termine kommen dazu, sobald die App das nächste Mal läuft.
+const remInfo = (t) => {
+  $('phRemInfo').textContent = t;
+  $('offRemInfo').textContent = t;
+};
 async function syncReminders() {
-  const d = dev();
-  if (!d?.setReminders) return;
+  const d = dev()?.setReminders ? dev() : OFFICE ? { setReminders: (j) => scheduleLocalReminders(JSON.parse(j)) } : null;
+  if (!d) return;
   if (!state.settings.reminders || !desktop.googleUpcoming) return d.setReminders('[]');
   let up;
   try {
     up = await desktop.googleUpcoming({ timeZone: userTimeZone(), hours: 48 });
   } catch (e) {
-    $('phRemInfo').textContent = `Google nicht erreichbar: ${e.message}`;
+    remInfo(`Google nicht erreichbar: ${e.message}`);
     return;
   }
   if (!up) {
-    $('phRemInfo').textContent = 'Erst unter Verbindung mit Google verbinden.';
+    remInfo('Erst unter Verbindung mit Google verbinden.');
     return d.setReminders('[]');
   }
   const lead = Number(state.settings.reminderLead) || 15;
@@ -4204,15 +4543,15 @@ async function syncReminders() {
   }
   const next = items.filter((i) => i.at > now).sort((a, b) => a.at - b.at).slice(0, 50);
   d.setReminders(JSON.stringify(next));
-  $('phRemInfo').textContent = next.length
+  remInfo(next.length
     ? `Geplant: ${next.length} Erinnerung${next.length > 1 ? 'en' : ''}, nächste ${new Date(next[0].at).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} Uhr.`
-    : 'Keine anstehenden Termine oder Aufgaben in den nächsten 2 Tagen.';
+    : 'Keine anstehenden Termine oder Aufgaben in den nächsten 2 Tagen.');
 }
 $('phReminders').onchange = (e) => {
   state.settings.reminders = e.target.checked;
   save();
   if (e.target.checked && dev() && !dev().notifyAllowed?.()) dev().askNotify?.();
-  if (!e.target.checked) $('phRemInfo').textContent = '';
+  if (!e.target.checked) remInfo('');
   syncReminders();
 };
 $('phLead').onchange = (e) => {
@@ -4352,6 +4691,8 @@ window.__app = {
   addKbFiles: (files) => addKbFiles(files),
   kbSearch: (q) => searchIndex(kbIndex, q, 5),
   area: AREA,
+  openTextAction: (o) => openTextAction(o),
+  renderQuickBar: () => renderQuickBar(),
   checkPower: () => checkPower(),
   currentPlace: () => currentPlace(),
   buildMessages: () => buildMessages(),
@@ -4361,6 +4702,7 @@ init().then(() => {
   if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
   refreshGoogle();
   startPhoneFeatures();
+  startOffice();
   loadKb();
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);

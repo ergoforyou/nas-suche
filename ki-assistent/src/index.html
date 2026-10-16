@@ -37,6 +37,7 @@
   <div class="status" id="status"></div>
 
   <div class="attachments" id="attachments" hidden></div>
+  <div class="quick-bar" id="quickBar" hidden></div>
 
   <footer class="composer">
     <button id="btnAttach" class="round" title="Datei anhängen – PDF, Bild, Text, Excel/Word/PowerPoint (oder Datei ins Fenster ziehen)" hidden>📎</button>
@@ -60,6 +61,7 @@
         <button data-tab="voice">Sprache</button>
         <button data-tab="conn">Verbindung</button>
         <button data-tab="wissen" id="tabWissen">Wissen</button>
+        <button data-tab="buero">Büro</button>
         <button data-tab="phone" class="mobile-only">Handy</button>
       </nav>
       <button id="btnCloseDrawer" class="icon" title="Schließen">✕</button>
@@ -580,6 +582,69 @@
         <div id="kbList" class="kb-list"></div>
         <label>Probe-Suche <input id="kbQuery" type="text" placeholder="z. B. Preis für Wartung" autocomplete="off" /></label>
         <div id="kbHits" class="hint"></div>
+      </div>
+    </div>
+
+    <div class="tab" data-tab="buero" hidden>
+      <h3>Schnellbefehle</h3>
+      <p class="hint">Eigene Knöpfe über dem Eingabefeld für wiederkehrende Aufgaben. <b>{text}</b> steht für den Text im
+        Eingabefeld (am PC auch für markierten Text bei Strg+Alt+K). Gehören zur Persona und gehen mit dem Persona-Export mit.</p>
+      <div id="offQuickList" class="quick-list"></div>
+      <div class="row wrap">
+        <button id="offQuickAdd">➕ Neuer Befehl</button>
+        <button id="offQuickExamples">Beispiele einfügen</button>
+      </div>
+      <div class="desktop-only">
+        <h3>Markierten Text bearbeiten – Strg+Alt+K</h3>
+        <p class="hint">In jeder App Text markieren (Outlook, Word, Browser …) und <b>Strg+Alt+K</b> drücken: zusammenfassen,
+          Antwort entwerfen (mit Firmenwissen), höflicher formulieren, übersetzen, korrigieren – oder eigene Schnellbefehle.
+          „Ersetzen“ fügt das Ergebnis direkt an der Stelle ein. Ohne Markierung wird die Zwischenablage verwendet.</p>
+        <h3>Diktat in jede App – Strg+Alt+D</h3>
+        <p class="hint">Cursor in ein Textfeld setzen, <b>Strg+Alt+D</b> drücken und sprechen. Nach einer kurzen Pause wird der
+          Text dort eingefügt (nochmal Strg+Alt+D beendet sofort).</p>
+        <label class="check"><input id="offDictClean" type="checkbox" /> Diktat glätten: Satzzeichen und Füllwörter vom KI-Modell korrigieren lassen</label>
+        <label>Diktat endet nach einer Pause von
+          <select id="offDictPause">
+            <option value="1200">1,2 Sekunden</option>
+            <option value="1800">1,8 Sekunden</option>
+            <option value="2500">2,5 Sekunden (mit Denkpausen)</option>
+          </select>
+        </label>
+        <h3>Erinnerungen und Tagesbriefing</h3>
+        <label class="check"><input id="offReminders" type="checkbox" /> Termine und Aufgaben aus Google als Windows-Benachrichtigung – die Figur sagt sie an</label>
+        <label>Vorlauf bei Terminen
+          <select id="offLead">
+            <option value="5">5 Minuten</option>
+            <option value="10">10 Minuten</option>
+            <option value="15">15 Minuten</option>
+            <option value="30">30 Minuten</option>
+            <option value="60">1 Stunde</option>
+          </select>
+        </label>
+        <div id="offRemInfo" class="hint"></div>
+        <label>Tagesbriefing (Termine, Aufgaben, Wetter am Ort)
+          <div class="row">
+            <select id="offBriefing" style="flex:1">
+              <option value="">aus</option>
+              <option value="07:30">täglich ab 7:30 Uhr</option>
+              <option value="08:00">täglich ab 8:00 Uhr</option>
+              <option value="08:30">täglich ab 8:30 Uhr</option>
+              <option value="09:00">täglich ab 9:00 Uhr</option>
+            </select>
+            <button id="offBriefingNow">Jetzt</button>
+          </div>
+        </label>
+        <p class="hint">Das Briefing kommt einmal am Tag, sobald der KI-Assistent nach dieser Uhrzeit läuft. Kalender und Aufgaben
+          brauchen die Google-Verbindung, das Wetter die Internetsuche und den Ort (Verbindung → Ort).</p>
+        <h3>Nicht stören</h3>
+        <label>Bei Präsentation, Bildschirmfreigabe im Vollbild oder Vollbild-Apps
+          <select id="offDnd">
+            <option value="auto">automatisch: Figur ausblenden, nicht sprechen, Erinnerungen still</option>
+            <option value="an">immer an (Figur still)</option>
+            <option value="aus">aus</option>
+          </select>
+        </label>
+        <div id="offDndInfo" class="hint"></div>
       </div>
     </div>
 
