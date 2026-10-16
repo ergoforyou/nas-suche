@@ -87,6 +87,7 @@ const PERMS = [
   'android.permission.BLUETOOTH_CONNECT',
   // Beta: schwebende Figur über anderen Apps (muss in den Android-Einstellungen erlaubt werden)
   'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   ['android.permission.BLUETOOTH', 30],
 ];
 for (const entry of PERMS) {
@@ -172,6 +173,9 @@ const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 
 const gradle = path.join(root, 'android/app/build.gradle');
 let g = fs.readFileSync(gradle, 'utf8');
 const [maj, min, pat] = version.split('.').map((n) => parseInt(n, 10));
+// Beta: Nummer hinter „-beta.“ – jede neue Beta hat eine höhere versionCode und installiert sich über die vorige
+const betaNo = Number(/-beta\.(\d+)/.exec(version)?.[1] ?? 0);
+const versionCode = BETA ? (maj * 10000 + min * 100 + pat) * 100 + betaNo : maj * 10000 + min * 100 + pat;
 // Fester Test-Signierschlüssel: Sonst signiert jeder Build mit einem neuen Zufallsschlüssel, und Android
 // verweigert das Update über die vorherige Version.
 if (!g.includes('android-test.keystore')) {
@@ -193,6 +197,6 @@ if (BETA) {
   const strings = path.join(root, 'android/app/src/main/res/values/strings.xml');
   fs.writeFileSync(strings, fs.readFileSync(strings, 'utf8').replace(/(<string name="(?:app_name|title_activity_main)">)[^<]*/g, '$1KI-Assistent Beta'));
 }
-g = g.replace(/versionCode \d+/, `versionCode ${maj * 10000 + min * 100 + pat}`).replace(/versionName "[^"]*"/, `versionName "${version}"`);
+g = g.replace(/versionCode \d+/, `versionCode ${versionCode}`).replace(/versionName "[^"]*"/, `versionName "${version}"`);
 fs.writeFileSync(gradle, g);
 console.log('Android-Manifest und Version angepasst:', version);

@@ -140,9 +140,15 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception ignored) {}
     }
 
+    // nicht über webView.post(): Während die Ansicht ins schwebende Fenster umzieht, ist sie kurz abgehängt,
+    // und solche Aufträge würden erst später (und in falscher Reihenfolge) ausgeführt
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+
     void runJs(String js) {
         if (bridge == null) return;
-        bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(js, null));
+        mainHandler.post(() -> {
+            if (bridge != null) bridge.getWebView().evaluateJavascript(js, null);
+        });
     }
 
     private static final int SHARE_MAX = 30 * 1024 * 1024;
@@ -429,6 +435,19 @@ public class MainActivity extends BridgeActivity {
 
     private void saveFloatPlace() {
         if (floatParams == null) return;
+        // im Bildschirm halten (mindestens ein gutes Stück der Figur bleibt sichtbar)
+        if (floatBox != null) {
+            DisplayMetrics m = getResources().getDisplayMetrics();
+            int keepX = Math.min(floatParams.width, dp(60));
+            int keepY = Math.min(floatParams.height, dp(60));
+            int x = Math.max(keepX - floatParams.width, Math.min(floatParams.x, m.widthPixels - keepX));
+            int y = Math.max(0, Math.min(floatParams.y, m.heightPixels - keepY));
+            if (x != floatParams.x || y != floatParams.y) {
+                floatParams.x = x;
+                floatParams.y = y;
+                floatWm().updateViewLayout(floatBox, floatParams);
+            }
+        }
         getSharedPreferences("ki_schwebend", MODE_PRIVATE).edit()
             .putInt("x", floatParams.x).putInt("y", floatParams.y).putInt("w", floatParams.width).apply();
     }
@@ -602,6 +621,26 @@ public class MainActivity extends BridgeActivity {
                 }
             });
             return true;
+        }
+
+        /** Ist die App vom Akku-Sparen ausgenommen (wichtig bei Samsung für Hintergrund und schwebende Figur)? */
+        @JavascriptInterface
+        public boolean batteryExempt() {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            return pm == null || pm.isIgnoringBatteryOptimizations(getPackageName());
+        }
+
+        @JavascriptInterface
+        public void askBatteryExempt() {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
+                } catch (Exception e) {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+                    } catch (Exception ignored) {}
+                }
+            });
         }
 
         /** Einstellungen für den Standard-Assistenten öffnen. */

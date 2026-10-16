@@ -4046,13 +4046,31 @@ function refreshFloat() {
       ? 'Aktiv: Beim Verlassen der App (Home-Taste, App-Wechsel) schwebt die Figur über anderen Apps – statt Bild-im-Bild.'
       : 'Noch nicht erlaubt: „Erlauben …“ tippen und bei „KI-Assistent Beta“ „Über anderen Apps einblenden“ einschalten.';
   f.setEnabled(!!state.settings.floatOverlay && allowed);
+  // Samsung & Co. beenden Hintergrund-Apps gern – Ausnahme vom Akku-Sparen anbieten
+  const exempt = dev()?.batteryExempt?.() ?? true;
+  $('phBattery').hidden = exempt || !state.settings.floatOverlay;
+}
+/** Figur ohne durchsichtigen Hintergrund (Foto)? Dann einmal freistellen, damit nur die Figur schwebt. */
+async function prepareFloatFigure() {
+  const av = persona().avatar;
+  if (av.vrm || av.original || !av.image) return; // 3D-Figur ist ohnehin durchsichtig
+  if (hasTransparency(await imageToCanvas(av.image, 256))) return;
+  const keep = editIndex;
+  editIndex = -1;
+  try {
+    if (await cutoutAvatar('auto')) status('Figur freigestellt – sie schwebt jetzt ohne Hintergrund.');
+  } finally {
+    editIndex = keep;
+  }
 }
 $('phFloat').onchange = (e) => {
   state.settings.floatOverlay = e.target.checked;
   save();
   if (e.target.checked && floater() && !floater().allowed()) floater().askPermission();
+  if (e.target.checked) prepareFloatFigure().catch((err) => status(`Freistellen: ${err.message}`));
   refreshFloat();
 };
+$('phBattery').onclick = () => dev()?.askBatteryExempt?.();
 $('phFloatAllow').onclick = () => floater()?.askPermission();
 $('phFloatNow').onclick = () => {
   $('drawer').hidden = true;
