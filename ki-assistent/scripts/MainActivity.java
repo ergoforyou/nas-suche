@@ -101,6 +101,7 @@ public class MainActivity extends BridgeActivity {
 
     // ---- „Speichern unter …“: Android fragt nach Ordner und Dateiname (Downloads, Drive, …)
     private ActivityResultLauncher<String> createDoc;
+    private ActivityResultLauncher<Intent> screenAsk;
     private byte[] pendingBytes;
     private String pendingId;
 
@@ -560,7 +561,7 @@ public class MainActivity extends BridgeActivity {
         bg.setCornerRadius(dp(14));
         box.setBackground(bg);
         box.setElevation(dp(6));
-        String[][] items = { { "🎤  Sprechen", "talk" }, { "📞  Live an/aus", "livetoggle" }, { "📱  App öffnen", "app" }, { "🙈  Ausblenden", "hide" } };
+        String[][] items = { { "🎤  Sprechen", "talk" }, { "📞  Live an/aus", "livetoggle" }, { "🖼  Bildschirm fragen", "screenask" }, { "📱  App öffnen", "app" }, { "🙈  Ausblenden", "hide" } };
         for (String[] it : items) {
             android.widget.TextView tv = new android.widget.TextView(this);
             tv.setText(it[0]);
@@ -872,6 +873,47 @@ public class MainActivity extends BridgeActivity {
             return out.toString();
         }
 
+        /** Bildschirm fragen: Android-Freigabe anfordern (danach kommt ein Ereignis „screen“ mit dem Bild). */
+        @JavascriptInterface
+        public void captureScreen() {
+            runOnUiThread(() -> {
+                hideFloatMenu();
+                try {
+                    android.media.projection.MediaProjectionManager mpm = getSystemService(android.media.projection.MediaProjectionManager.class);
+                    screenAsk.launch(mpm.createScreenCaptureIntent());
+                } catch (Exception e) {
+                    Log.w("KI-Assistent", "Bildschirm-Freigabe", e);
+                    pushAction("screen-failed");
+                }
+            });
+        }
+
+        /** Mitteilungen vorlesen: an/aus und Apps (Paketnamen, kommagetrennt). */
+        @JavascriptInterface
+        public void setNotifyApps(boolean on, String packages) {
+            java.util.Set<String> set = new java.util.HashSet<>();
+            for (String p : (packages == null ? "" : packages).split(",")) if (!p.trim().isEmpty()) set.add(p.trim());
+            KINotify.prefs(MainActivity.this).edit().putBoolean("an", on).putStringSet("apps", set).apply();
+        }
+
+        /** Hat der Nutzer den Zugriff auf Mitteilungen erlaubt? */
+        @JavascriptInterface
+        public boolean notifyAccess() {
+            String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+            return flat != null && flat.contains(getPackageName() + "/");
+        }
+
+        @JavascriptInterface
+        public void askNotifyAccess() {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
+                } catch (Exception e) {
+                    startActivity(new Intent(Settings.ACTION_SETTINGS));
+                }
+            });
+        }
+
         @JavascriptInterface
         public void setCar(String name) {
             getSharedPreferences("ki_auto", MODE_PRIVATE).edit().putString("name", name == null ? "" : name).apply();
@@ -1061,6 +1103,24 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // muss vor dem Start der Activity registriert werden
         createDoc = registerForActivityResult(new ActivityResultContracts.CreateDocument("application/octet-stream"), this::writePending);
+        // „Bildschirm fragen“: Freigabe holen, dann nimmt der Vordergrund-Dienst genau ein Bild auf
+        screenAsk = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), (res) -> {
+            if (res.getResultCode() != android.app.Activity.RESULT_OK || res.getData() == null) {
+                pushAction("screen-failed");
+                return;
+            }
+            Intent svc = new Intent(this, KIConversationService.class).setAction(KIConversationService.PROJECT)
+                .putExtra("code", res.getResultCode()).putExtra("data", res.getData());
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
+                    else startService(svc);
+                } catch (Exception e) {
+                    Log.w("KI-Assistent", "Bildschirm-Dienst", e);
+                    pushAction("screen-failed");
+                }
+            }, 500); // Freigabe-Dialog erst verschwinden lassen
+        });
         super.onCreate(savedInstanceState);
         applyParams();
         bridge.getWebView().addJavascriptInterface(new Object() {

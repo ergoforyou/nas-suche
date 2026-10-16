@@ -141,7 +141,7 @@ check(!!rec.mime && rec.stopped && rec.size > 200, 'Videoaufnahme (WebM) in der 
 check(rec.corner <= 8 && rec.center > 200, 'Aufgenommenes Video behält den transparenten Hintergrund', JSON.stringify(rec));
 
 // 4c) Handy-Funktionen: Teilen, Schnellstart, Erinnerungen, Hintergrund-Gespräch, Akku
-const FNS = ['takeIntents', 'power', 'placeName', 'setReminders', 'setBackground', 'pinWidget', 'addTile', 'assistantSettings', 'appLog', 'deviceInfo', 'bondedDevices', 'setCar'];
+const FNS = ['takeIntents', 'power', 'placeName', 'setReminders', 'setBackground', 'pinWidget', 'addTile', 'assistantSettings', 'appLog', 'deviceInfo', 'bondedDevices', 'setCar', 'captureScreen', 'setNotifyApps', 'notifyAccess'];
 check(await run(`return ${JSON.stringify(FNS)}.every((f) => typeof window.KIDevice?.[f] === 'function')`), 'Handy-Schnittstelle (KIDevice) vollständig');
 const pw = await run(`return JSON.parse(KIDevice.power())`);
 check(typeof pw.level === 'number' && pw.level >= 0, 'Akkustand lesbar', JSON.stringify(pw));

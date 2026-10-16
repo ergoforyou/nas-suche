@@ -261,11 +261,13 @@ export class SpeechOutput {
     this.spokenInTurn++;
     const gen = this.generation;
     const item = { text: clean, gen, meta };
-    if (this.engine !== 'system') {
+    // meta.local: nur auf dem Gerät sprechen (z. B. vorgelesene Mitteilungen – nichts geht an einen Cloud-Dienst)
+    const engine = meta?.local && ['cloud', 'server'].includes(this.engine) ? 'piper' : this.engine;
+    if (engine !== 'system') {
       const job =
-        this.engine === 'server'
+        engine === 'server'
           ? this.synthServer(clean, meta?.mood)
-          : this.engine === 'cloud'
+          : engine === 'cloud'
             ? this.synthCloud(clean, meta?.mood)
             : synthesize(clean, this.voiceFor(clean), {
               rate: this.rate,

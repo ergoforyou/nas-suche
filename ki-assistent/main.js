@@ -100,6 +100,7 @@ while ($true) {
   }
 }`;
 let helper = null;
+let helperReady = false;
 let helperQueue = [];
 let helperBuf = '';
 function helperCmd(cmd) {
@@ -117,16 +118,22 @@ function helperCmd(cmd) {
       while ((nl = helperBuf.indexOf('\n')) >= 0) {
         const line = helperBuf.slice(0, nl).trim();
         helperBuf = helperBuf.slice(nl + 1);
-        if (line.startsWith('OK')) helperQueue.shift()?.(line.slice(2).trim());
+        if (line.startsWith('OK')) {
+          helperReady = true;
+          helperQueue.shift()?.(line.slice(2).trim());
+        }
       }
     });
     helper.on('exit', () => {
       helper = null;
+      helperReady = false;
       helperQueue.splice(0).forEach((r) => r(null));
     });
   }
+  // erster Aufruf: PowerShell übersetzt den Helfer erst (Add-Type) – das kann auf langsamen Rechnern dauern
+  const first = !helperReady;
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), 8000);
+    const timer = setTimeout(() => resolve(null), first ? 30000 : 8000);
     helperQueue.push((v) => {
       clearTimeout(timer);
       resolve(v);
@@ -717,6 +724,8 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  // Windows-Helfer für Strg+Alt+K / Diktat schon vorwärmen, damit der erste Aufruf sofort klappt
+  if (process.platform === 'win32') setTimeout(() => helperCmd('STATE').catch(() => {}), 4000);
 
   // Systemweites Tastenkürzel zum Sprechen – auch wenn das Fenster nicht im Vordergrund ist.
   globalShortcut.register('Control+Alt+Space', () => win?.webContents.send('cmd', 'mic'));

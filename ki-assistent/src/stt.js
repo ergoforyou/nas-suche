@@ -70,9 +70,9 @@ export class SpeechInput {
     }
   }
 
-  async transcribe(audio, onProgress) {
+  async transcribe(audio, onProgress, model = this.model) {
     const res = await this.call(
-      { type: 'transcribe', model: this.model, language: this.language, audio },
+      { type: 'transcribe', model, language: this.language, audio },
       onProgress,
       [audio.buffer],
     );

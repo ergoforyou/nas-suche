@@ -724,6 +724,22 @@
           </div>
         </label>
         <div id="privCarInfo" class="hint"></div>
+        <h3>Aktivierungswort <span class="beta-badge">Privat</span></h3>
+        <label class="check"><input id="privWakeOn" type="checkbox" /> Auf das Aktivierungswort hören – dann ohne Knopf sprechen</label>
+        <label>Aktivierungswort <input id="privWakeWord" type="text" autocomplete="off" /></label>
+        <p class="hint">Z. B. „Max, wie wird das Wetter morgen?“ – oder nur „Max“, dann hört die Figur zu. Erkannt wird auf dem Handy
+          (Whisper, einmaliger Download); vorher geht nichts nach außen. Ähnlich Klingendes zählt mit (Max/Maks). Hört auch im
+          Hintergrund, braucht dafür „Gespräch im Hintergrund“ und etwas mehr Akku.</p>
+        <button id="privWakeTest">Probe …</button>
+        <h3>Nachrichten vorlesen <span class="beta-badge">Privat</span></h3>
+        <label class="check"><input id="privNotifyOn" type="checkbox" /> Neue Nachrichten dieser Apps vorlesen (mit der Stimme auf dem Gerät – nichts geht an einen Cloud-Dienst)</label>
+        <div id="privNotifyApps" class="row wrap"></div>
+        <button id="privNotifyAllow" hidden>Erlauben …</button>
+        <div id="privNotifyInfo" class="hint"></div>
+        <h3>Bildschirm fragen <span class="beta-badge">Privat</span></h3>
+        <p class="hint">In der schwebenden Figur lange drücken → „🖼 Bildschirm fragen“: Android fragt jedes Mal nach, dann geht genau
+          ein Bildschirmfoto mit der Frage an Claude. Nichts wird gespeichert.</p>
+        <button id="privScreen">So geht's</button>
         <h3>Problem melden</h3>
         <p class="hint">Speichert die letzten Ereignisse der App als Textdatei – ohne Gesprächsinhalte und ohne Schlüssel. Die Datei
           schickst du mir, dann sehe ich, was auf deinem Handy schiefgelaufen ist.</p>

@@ -22,6 +22,17 @@ public class KIConversationService extends Service {
     static final String CHANNEL = "gespraech";
     static final String STOP = "de.ergoforyou.kiassistent.GESPRAECH_BEENDEN";
     static volatile boolean running;
+    static final String PROJECT = "de.ergoforyou.kiassistent.BILDSCHIRM";
+    /** läuft der Dienst nur für das Bildschirmfoto (dann danach wieder beenden)? */
+    static volatile boolean onlyForProjection;
+
+    /** Bildschirmfoto fertig: Dienst wieder auf den normalen Typ zurück bzw. beenden. */
+    static void projectionDone(android.content.Context c) {
+        if (onlyForProjection) {
+            onlyForProjection = false;
+            c.stopService(new Intent(c, KIConversationService.class));
+        }
+    }
     private PowerManager.WakeLock lock;
 
     @Override
@@ -54,12 +65,15 @@ public class KIConversationService extends Service {
             .setContentIntent(PendingIntent.getActivity(this, 10, open, pf))
             .addAction(new Notification.Action.Builder(null, "Beenden", PendingIntent.getService(this, 11, stop, pf)).build());
         Notification n = b.build();
+        boolean project = intent != null && PROJECT.equals(intent.getAction());
+        if (project && !running) onlyForProjection = true;
         try {
             if (Build.VERSION.SDK_INT >= 30) {
                 int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
                 if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                     type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
                 }
+                if (project) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
                 startForeground(1, n, type);
             } else {
                 startForeground(1, n);
@@ -76,7 +90,12 @@ public class KIConversationService extends Service {
                 lock.acquire(4 * 60 * 60 * 1000L); // höchstens 4 Stunden am Stück
             }
         }
-        running = true;
+        if (!onlyForProjection) running = true;
+        if (project) {
+            int code = intent.getIntExtra("code", 0);
+            Intent data = intent.getParcelableExtra("data");
+            KIScreen.capture(this, code, data);
+        }
         return START_NOT_STICKY;
     }
 

@@ -789,6 +789,18 @@ const privF = await page.evaluate(async () => {
 check(privF.wrap, 'Privat: Notizen, Fahrmodus und Fehlerprotokoll sichtbar');
 check(privF.note === 'Reifen wechseln' && privF.sat === 6 && /Notiert/.test(privF.bubble ?? ''), '„Merk dir … bis Samstag“ wird als Notiz mit Fälligkeit gespeichert', JSON.stringify(privF));
 check(privF.logOk && /fehlerprotokoll/.test(privF.file ?? ''), 'Fehlerprotokoll gespeichert, ohne Schlüssel/Token/E-Mail');
+const wake = await page.evaluate(() => {
+  const app = window.__app;
+  const a = app.matchWake('Hey Macks, wie wird das Wetter morgen?', 'Max');
+  const b = app.matchWake('Wie wird das Wetter morgen?', 'Max');
+  const c = app.matchWake('Hallo Lina.', 'Hey Lina');
+  app.state.settings.notifyOn = true;
+  app.state.settings.speak = false;
+  app.readNotification({ app: 'com.whatsapp', title: 'Anna', text: 'Bin um 7 da' });
+  return { a, b, c, st: document.querySelector('#status').textContent };
+});
+check(wake.a?.rest === 'wie wird das wetter morgen' && wake.b === null && wake.c?.rest === '', 'Aktivierungswort (frei wählbar, ähnlich klingend) erkannt, Frage danach übernommen', JSON.stringify(wake));
+check(/Anna.*WhatsApp.*Bin um 7 da/.test(wake.st), 'Nachricht wird angesagt', wake.st);
 check(privF.drive.full && privF.drive.live && privF.drive.prompt && !privF.after.full && !privF.after.live, 'Fahrmodus: Nur-Figur, Live, kurze Antworten – und wieder aus', JSON.stringify(privF.drive));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();

@@ -1204,6 +1204,12 @@ function progressStatus(label) {
 }
 
 function toggleMic() {
+  // wartet nur auf das Aktivierungswort: abbrechen und richtig zuhören
+  if (state.wakeListening) {
+    stt.cancel();
+    state.wakeListening = false;
+    state.micActive = false;
+  }
   if (stt.listening) return stt.stop();
   if (state.micActive) return;
   tts.stop();
@@ -4550,6 +4556,23 @@ async function handleIntents() {
       if (!stt.listening && !state.micActive) toggleMic();
       continue;
     }
+    if (ev.action === 'screenask') {
+      if (PRIV) dev()?.captureScreen?.();
+      else status('„Bildschirm fragen“ gibt es im Bereich 🏠 Privat.');
+      continue;
+    }
+    if (ev.action === 'screen') {
+      if (PRIV && ev.data) await askAboutScreen(ev.data);
+      continue;
+    }
+    if (ev.action === 'screen-failed') {
+      status('Bildschirmfoto nicht möglich (Freigabe abgelehnt?).');
+      continue;
+    }
+    if (ev.action === 'notification') {
+      readNotification(ev);
+      continue;
+    }
     if (ev.action === 'livetoggle') {
       setHandsFree(!state.settings.handsFree);
       continue;
@@ -4935,6 +4958,137 @@ $('phFloatDock').onchange = (e) => {
   save();
   window.KIFloat?.setDock?.(e.target.checked);
 };
+
+// ---- Aktivierungswort (frei wählbar): erkannt auf dem Handy (Whisper lokal), nichts geht vorher nach außen
+/** Kölner Phonetik: ähnlich klingende deutsche Wörter bekommen denselben Code (Max ≈ Macks ≈ Maks). */
+function koelner(word) {
+  const w = String(word).toUpperCase().replace(/Ä/g, 'A').replace(/Ö/g, 'O').replace(/Ü/g, 'U').replace(/ß/g, 'S').replace(/[^A-Z]/g, '');
+  let out = '';
+  for (let i = 0; i < w.length; i++) {
+    const c = w[i];
+    const p = w[i - 1] ?? '';
+    const n = w[i + 1] ?? '';
+    let d = '';
+    if ('AEIJOUY'.includes(c)) d = '0';
+    else if (c === 'H') d = '';
+    else if (c === 'B') d = '1';
+    else if (c === 'P') d = n === 'H' ? '3' : '1';
+    else if ('DT'.includes(c)) d = 'CSZ'.includes(n) ? '8' : '2';
+    else if ('FVW'.includes(c)) d = '3';
+    else if ('GKQ'.includes(c)) d = '4';
+    else if (c === 'C') d = i === 0 ? ('AHKLOQRUX'.includes(n) ? '4' : '8') : 'SZ'.includes(p) || !'AHKOQUX'.includes(n) ? '8' : '4';
+    else if (c === 'X') d = 'CKQ'.includes(p) ? '8' : '48';
+    else if (c === 'L') d = '5';
+    else if ('MN'.includes(c)) d = '6';
+    else if (c === 'R') d = '7';
+    else if ('SZ'.includes(c)) d = '8';
+    out += d;
+  }
+  return out.replace(/(.)\1+/g, '$1').replace(/(?!^)0/g, '');
+}
+const wakeWord = () => (state.settings.wakeWord || persona().name || 'Max').trim();
+/** Kommt das Aktivierungswort im erkannten Text vor? Liefert den Rest danach (z. B. die Frage). */
+function matchWake(text, phrase) {
+  const words = String(text).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  const key = String(phrase).toLowerCase().split(/\s+/).filter(Boolean).pop();
+  if (!key || !words.length) return null;
+  const kc = koelner(key);
+  for (let i = 0; i < Math.min(words.length, 6); i++) {
+    const w = words[i];
+    if (w === key || (kc.length >= 2 && koelner(w) === kc)) return { rest: words.slice(i + 1).join(' ') };
+  }
+  return null;
+}
+let wakeRunning = false;
+async function wakeLoop() {
+  if (wakeRunning) return;
+  wakeRunning = true;
+  logEv('WACHWORT', `an („${wakeWord()}“)`);
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  while (PRIV && state.settings.wakeOn) {
+    if (state.micActive || state.busy || tts.speaking || state.settings.handsFree || state.dnd || state.transcribing) {
+      await pause(600);
+      continue;
+    }
+    let audio = null;
+    state.micActive = true;
+    state.wakeListening = true;
+    try {
+      audio = await stt.listen({ waitForSpeech: true, threshold: () => state.settings.sensitivity * 1.2, silenceMs: 700, maxMs: 6000, startMs: () => 200 });
+    } catch (e) {
+      logEv('WACHWORT', e.message);
+    } finally {
+      state.micActive = false;
+      state.wakeListening = false;
+    }
+    if (!audio || audio.length < 4000 || !state.settings.wakeOn) {
+      await pause(audio ? 50 : 1500);
+      continue;
+    }
+    let text = '';
+    try {
+      text = await stt.transcribe(audio, null, stt.model);
+    } catch (e) {
+      logEv('WACHWORT', `Erkennung: ${e.message}`);
+      await pause(2000);
+      continue;
+    }
+    const hit = matchWake(text, wakeWord());
+    if (!hit) continue;
+    logEv('WACHWORT', 'erkannt');
+    fireEvent('ack', 1500);
+    $('drawer').hidden = true;
+    // „Max, wie wird das Wetter?“ – Frage gleich mitgenommen; nur „Max“ – dann zuhören
+    if (hit.rest.split(' ').filter(Boolean).length >= 2) await send(hit.rest);
+    else await listenOnce();
+  }
+  wakeRunning = false;
+}
+function setWake(on) {
+  state.settings.wakeOn = !!on;
+  save();
+  if (on && PRIV) {
+    // im Hintergrund weiterhören braucht den Vordergrund-Dienst
+    if (!state.settings.bgTalk) setBgTalk(true);
+    wakeLoop();
+  } else if (state.wakeListening) stt.cancel();
+}
+
+// ---- Mitteilungen vorlesen (nur nach Freigabe in den Android-Einstellungen; vorgelesen wird auf dem Gerät)
+const NOTIFY_APPS = [
+  ['com.whatsapp', 'WhatsApp'],
+  ['org.thoughtcrime.securesms', 'Signal'],
+  ['org.telegram.messenger', 'Telegram'],
+  ['com.google.android.apps.messaging', 'SMS (Google)'],
+  ['com.samsung.android.messaging', 'SMS (Samsung)'],
+  ['com.google.android.gm', 'Gmail'],
+  ['com.microsoft.office.outlook', 'Outlook'],
+];
+function syncNotify() {
+  const apps = state.settings.notifyApps ?? ['com.whatsapp', 'org.thoughtcrime.securesms', 'com.google.android.apps.messaging', 'com.samsung.android.messaging'];
+  dev()?.setNotifyApps?.(PRIV && !!state.settings.notifyOn, apps.join(','));
+  const ok = dev()?.notifyAccess?.();
+  $('privNotifyAllow').hidden = !!ok || !state.settings.notifyOn;
+  $('privNotifyInfo').textContent = state.settings.notifyOn && !ok ? 'Noch nicht freigegeben: „Erlauben …“ tippen und bei „KI-Assistent Beta“ den Zugriff einschalten.' : '';
+}
+function readNotification(ev) {
+  if (!PRIV || !state.settings.notifyOn || state.dnd) return;
+  const app = NOTIFY_APPS.find(([p]) => p === ev.app)?.[1] ?? 'einer App';
+  const text = String(ev.text ?? '').replace(/\s+/g, ' ').slice(0, 280);
+  status(`💬 ${ev.title} (${app}): ${text}`);
+  fireEvent('reminder', 3000);
+  if (state.settings.speak) tts.enqueue(`Nachricht von ${ev.title}: ${text}`, { local: true });
+}
+
+// ---- Bildschirm fragen: ein Bildschirmfoto (nach Android-Freigabe) geht mit der Frage an Claude
+async function askAboutScreen(b64) {
+  if (!attachAllowed()) return status('„Bildschirm fragen“ geht mit Claude (⚙ → Verbindung → KI-Anbieter).');
+  const file = new File([fromB64(b64)], 'bildschirm.jpg', { type: 'image/jpeg' });
+  await addAttachments([file]);
+  await send(state.screenQuestion || 'Was ist auf meinem Bildschirm zu sehen? Fasse kurz zusammen, was wichtig ist, und hilf mir, falls dort eine Frage oder Aufgabe steht.');
+  state.screenQuestion = null;
+}
+
 function refreshPriv() {
   $('privWrap').hidden = !PRIV;
   $('privHint').hidden = !MOBILE || PRIV;
@@ -4942,7 +5096,54 @@ function refreshPriv() {
   renderNotes();
   fillCars();
   dev()?.setCar?.(state.settings.carName || '');
+  $('privWakeOn').checked = !!state.settings.wakeOn;
+  $('privWakeWord').value = state.settings.wakeWord || '';
+  $('privWakeWord').placeholder = persona().name || 'Max';
+  $('privNotifyOn').checked = !!state.settings.notifyOn;
+  const apps = state.settings.notifyApps ?? ['com.whatsapp', 'org.thoughtcrime.securesms', 'com.google.android.apps.messaging', 'com.samsung.android.messaging'];
+  const box = $('privNotifyApps');
+  box.innerHTML = '';
+  for (const [pkg, label] of NOTIFY_APPS) {
+    const l = document.createElement('label');
+    l.className = 'check';
+    const c = document.createElement('input');
+    c.type = 'checkbox';
+    c.checked = apps.includes(pkg);
+    c.onchange = () => {
+      const cur = new Set(state.settings.notifyApps ?? apps);
+      c.checked ? cur.add(pkg) : cur.delete(pkg);
+      state.settings.notifyApps = [...cur];
+      save();
+      syncNotify();
+    };
+    l.append(c, ` ${label}`);
+    box.append(l);
+  }
+  syncNotify();
+  if (state.settings.wakeOn) wakeLoop();
 }
+$('privWakeOn').onchange = (e) => setWake(e.target.checked);
+$('privWakeWord').onchange = (e) => {
+  state.settings.wakeWord = e.target.value.trim();
+  save();
+  logEv('WACHWORT', `Wort geändert („${wakeWord()}“)`);
+};
+$('privWakeTest').onclick = () => {
+  const t = prompt(`Probe: Was hätte die Spracherkennung verstanden? (z. B. „Hey ${wakeWord()}, wie spät ist es“)`, `Hey ${wakeWord()}, wie spät ist es`);
+  if (t == null) return;
+  const hit = matchWake(t, wakeWord());
+  status(hit ? `✔ Erkannt – Frage danach: „${hit.rest || '(keine – dann hört die Figur zu)'}“` : '✘ Nicht erkannt.');
+};
+$('privNotifyOn').onchange = (e) => {
+  state.settings.notifyOn = e.target.checked;
+  save();
+  syncNotify();
+  if (e.target.checked && !dev()?.notifyAccess?.()) dev()?.askNotifyAccess?.();
+};
+$('privNotifyAllow').onclick = () => dev()?.askNotifyAccess?.();
+$('privScreen').onclick = () => {
+  status('Wechsle in die App, um die es geht, und tippe in der schwebenden Figur lange → „Bildschirm fragen“.');
+};
 
 function startPhoneFeatures() {
   if (!MOBILE) return;
@@ -4992,6 +5193,9 @@ window.__app = {
   saveBugReport: () => saveBugReport(),
   noteDue,
   setDrive: (on) => setDrive(on),
+  matchWake,
+  koelner,
+  readNotification: (ev) => readNotification(ev),
   bodyHandles,
   showBubble: (t) => showBubble(t),
   addKbFiles: (files) => addKbFiles(files),

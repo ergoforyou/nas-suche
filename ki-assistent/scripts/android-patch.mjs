@@ -66,6 +66,7 @@ const RESOURCES = {
     <string name="ki_sc_live_short">📞 Live</string>
     <string name="ki_sc_note_short">📝</string>
     <string name="ki_sc_note">Notiz</string>
+    <string name="ki_notify">KI-Assistent: Nachrichten vorlesen</string>
 </resources>
 `,
 };
@@ -93,6 +94,8 @@ const PERMS = [
   // Beta: schwebende Figur über anderen Apps (muss in den Android-Einstellungen erlaubt werden)
   'android.permission.SYSTEM_ALERT_WINDOW',
   'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+  // Privat: Bildschirm fragen (ein Bildschirmfoto nach Android-Freigabe)
+  'android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION',
   ['android.permission.BLUETOOTH', 30],
 ];
 for (const entry of PERMS) {
@@ -137,7 +140,13 @@ if (!xml.includes('android.intent.action.SEND')) {
 if (!xml.includes('KIConversationService')) {
   const parts = `
         <service android:name=".KIConversationService" android:exported="false"
-            android:foregroundServiceType="microphone|mediaPlayback" />
+            android:foregroundServiceType="microphone|mediaPlayback|mediaProjection" />
+        <service android:name=".KINotify" android:exported="true" android:label="@string/ki_notify"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
         <receiver android:name=".KIReminder" android:exported="false" />
         <receiver android:name=".KIBoot" android:exported="true">
             <intent-filter>
