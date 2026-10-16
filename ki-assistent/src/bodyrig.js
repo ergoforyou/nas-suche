@@ -67,14 +67,17 @@ export function bodyHandles(rig, W, H, st) {
   const mid = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
   const anchor = (p, r) => out.push({ x: p.x, y: p.y, dx: 0, dy: 0, rx: r, ry: r });
   const b = st.breathe ?? 0;
-  const lift = -(b * 0.01 + (st.shrug ?? 0) * 0.045 + (st.posture ?? 0) * 0.014) * sw;
-  const open = (st.posture ?? 0) * 0.005 * sw + b * 0.002 * sw; // aufrecht: Schultern etwas breiter
+  // shoulders: false = Schultern bleiben stehen (kein Heben, Zucken, Breiterwerden) – vermeidet Verzerrungen am
+  // Schulterrand; Atmen der Brust und Arm-/Handbewegungen bleiben
+  const still = st.shoulders === false;
+  const lift = still ? 0 : -(b * 0.01 + (st.shrug ?? 0) * 0.045 + (st.posture ?? 0) * 0.014) * sw;
+  const open = still ? 0 : (st.posture ?? 0) * 0.005 * sw + b * 0.002 * sw; // aufrecht: Schultern etwas breiter
   // Schultern: heben/senken, bei aufrechter Haltung leicht nach außen
   for (const [s, dir] of [
     [ls, Math.sign(ls.x - mid.x) || 1],
     [rs, Math.sign(rs.x - mid.x) || -1],
   ]) {
-    out.push({ x: s.x, y: s.y, dx: dir * open, dy: lift, rx: sw * 0.3, ry: sw * 0.22 });
+    out.push({ x: s.x, y: s.y, dx: dir * open, dy: lift, rx: sw * (still ? 0.22 : 0.3), ry: sw * 0.22 });
   }
   // Brust hebt sich beim Einatmen etwas
   out.push({ x: mid.x, y: mid.y + sw * 0.35, dx: 0, dy: -(b * 0.008 + (st.posture ?? 0) * 0.01) * sw, rx: sw * 0.38, ry: sw * 0.22 });

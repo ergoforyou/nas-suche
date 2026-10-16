@@ -80,6 +80,8 @@ export class Avatar {
     this.transparent = transparent;
     this.ctx = canvas.getContext('2d', { willReadFrequently: transparent });
     this.state = avatarState;
+    // Körper-Rig: Schultern bewegen nur auf dem Handy; am PC bleiben sie stehen (sonst Verzerrungen am Schulterrand)
+    this.bodyShoulders = globalThis.desktop?.platform === 'android';
     this.open = 0; // geglättete Mundöffnung 0..1
     this.blink = 0;
     this.nextBlink = performance.now() + 2500;
@@ -585,6 +587,7 @@ export class Avatar {
       swing: (Math.sin(t * 0.9) * 0.6 + Math.sin(t * 0.37) * 0.4) * m,
       gesture: S.gesture * m,
       side: S.side,
+      shoulders: this.bodyShoulders !== false,
     };
   }
 

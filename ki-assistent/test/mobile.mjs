@@ -185,6 +185,20 @@ const body = await page.evaluate(async (img) => {
   return { found: !!av.bodyRig?.lShoulder && !!av.bodyRig?.rShoulder, warp: !!window.__app.avatar.layers?.[0]?.bodyWarp };
 }, figur);
 check(body.found && body.warp, 'Körper aus dem Grundbild erkannt und bewegt', JSON.stringify(body));
+// Schultern: auf dem Handy beweglich, mit shoulders:false (PC) stehen sie still – Arme und Brust bewegen weiter
+const shoulders = await page.evaluate(async () => {
+  const av = window.__app.avatar;
+  const a = av.layers?.find((L) => L.bodyRig) ?? av;
+  if (!a.bodyRig) return { skip: true };
+  const st = { breathe: 1, shrug: 1, posture: 1, swing: 1, gesture: 1, side: 1 };
+  const H = window.__app.bodyHandles;
+  const move = (hs) => hs.slice(0, 2).map((h) => Math.abs(h.dx) + Math.abs(h.dy));
+  const arms = (hs) => hs.slice(4).some((h) => Math.abs(h.dx) + Math.abs(h.dy) > 0.01);
+  const on = H(a.bodyRig, a.w, a.h, st);
+  const off = H(a.bodyRig, a.w, a.h, { ...st, shoulders: false });
+  return { phone: av.bodyShoulders, on: move(on), off: move(off), armsOff: arms(off) };
+});
+check(shoulders.skip || (shoulders.phone === true && shoulders.on.some((v) => v > 0.1) && shoulders.off.every((v) => v === 0) && shoulders.armsOff), 'Schultern: Handy beweglich, PC still (Arme bewegen weiter)', JSON.stringify(shoulders));
 // 3D-Figur aus Bildern auf dem Handy: Das Auswahlfenster muss über dem Dialog liegen, das Bild ankommen
 await page.evaluate(() => document.querySelector('.rb')?.setAttribute('hidden', ''));
 await page.click('#btnSettings');

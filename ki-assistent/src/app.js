@@ -9,7 +9,7 @@ import { FloatingAvatar, OutputWindow, openChild } from './windows.js';
 import { RubberBand } from './rubberband.js';
 import { buildDepthMap, imageKey } from './parallax.js';
 import { detectFaceRig, markersFromRig } from './facerig.js';
-import { detectBodyRig } from './bodyrig.js';
+import { detectBodyRig, bodyHandles } from './bodyrig.js';
 import { openMarkEditor } from './markeditor.js';
 import { packPersona, unpackPersona } from './personapack.js';
 import { debugVoice, synthesize, piperState } from './piper.js';
@@ -4753,6 +4753,7 @@ window.__app = {
   syncReminders: () => syncReminders(),
   fireEvent,
   timeOfDayEnergy,
+  bodyHandles,
   showBubble: (t) => showBubble(t),
   addKbFiles: (files) => addKbFiles(files),
   kbSearch: (q) => searchIndex(kbIndex, q, 5),
