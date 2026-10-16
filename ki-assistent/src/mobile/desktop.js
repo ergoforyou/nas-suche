@@ -1,13 +1,14 @@
 // Android-App (Capacitor): stellt der Oberfläche dieselbe Schnittstelle bereit wie auf dem PC der
 // Electron-Hauptprozess (window.desktop). Daten und Schlüssel liegen im privaten App-Speicher,
 // Claude/ChatGPT werden direkt aus der App angesprochen, Dateien über "Teilen" weitergegeben.
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { FilePicker } from '@capawesome/capacitor-file-picker';
 import Anthropic, { toFile } from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import cloud from '../../cloud.js';
+import googleLib from '../../google.js';
 
 const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI } = cloud;
 
@@ -38,7 +39,7 @@ let data = null;
 // Schlüssel liegen verschlüsselt im App-Speicher: Der AES-Schlüssel dazu steckt im Android-Keystore
 // (Hardware-geschützt, lässt sich nicht auslesen oder kopieren). window.KIKeys kommt aus MainActivity.java.
 const vault = () => (window.KIKeys?.available?.() ? window.KIKeys : null);
-const PROVIDERS = ['anthropic', 'openai'];
+const PROVIDERS = ['anthropic', 'openai', 'google'];
 let keys = null;
 async function loadKeys() {
   const file = (await readJson('schluessel.json')) ?? {};
@@ -86,6 +87,50 @@ async function openaiClient() {
   if (!k) throw new Error('Kein OpenAI-Schlüssel hinterlegt (⚙ → Verbindung).');
   return new OpenAI({ ...CLOUD_OPTS, apiKey: k });
 }
+
+// ---------------------------------------------------------------- Google Kalender und Aufgaben
+// Anfragen laufen nativ (CapacitorHttp): keine Browser-Sperren für fremde Adressen (CORS).
+async function googleHttp({ method, url, headers = {}, body }) {
+  const type = Object.entries(headers).find(([k]) => k.toLowerCase() === 'content-type')?.[1] ?? '';
+  const data = body == null ? undefined : /json/.test(type) ? JSON.parse(body) : /form/.test(type) ? Object.fromEntries(new URLSearchParams(body)) : body;
+  const r = await CapacitorHttp.request({ method, url, headers, ...(data !== undefined ? { data } : {}) });
+  let out = r.data;
+  if (typeof out === 'string') {
+    try {
+      out = out ? JSON.parse(out) : null;
+    } catch {}
+  }
+  return { status: r.status, data: out };
+}
+const google = googleLib.createGoogle({
+  http: googleHttp,
+  load: async () => {
+    const raw = (await getKeys()).google;
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+  save: async (t) => {
+    const k = await getKeys();
+    if (t) k.google = JSON.stringify(t);
+    else delete k.google;
+    await storeKeys(k);
+  },
+});
+const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin';
+async function googleTools() {
+  if (!(await google.status()).connected) return null;
+  return {
+    defs: googleLib.TOOLS,
+    status: googleLib.TOOL_STATUS,
+    run: (name, input) => googleLib.runTool(google, name, input, { timeZone: timeZone() }),
+  };
+}
+// Antwort der Anmeldung (MainActivity.java -> Auth): "/?code=…&state=…"
+let authWaiter = null;
+window.__kiAuthDone = (target) => authWaiter?.(target);
 
 const running = new Map();
 const containers = new Map();
@@ -156,7 +201,7 @@ const api = {
 
   // ---- Chat
   chat: (req, onEvent) => {
-    const { id, provider = 'anthropic', baseUrl, model, messages, temperature, effort, web, files, conversation } = req;
+    const { id, provider = 'anthropic', baseUrl, model, messages, temperature, effort, web, files, conversation, google: useGoogle } = req;
     const ctrl = new AbortController();
     running.set(id, ctrl);
     const send = (type, payload) => onEvent({ id, type, payload });
@@ -167,9 +212,10 @@ const api = {
             containers,
             uploads,
             saveFile: saveCreatedFile,
+            clientTools: useGoogle ? await googleTools() : null,
           });
         } else if (provider === 'openai') {
-          await chatOpenAI(await openaiClient(), { model, messages, effort }, send, ctrl.signal);
+          await chatOpenAI(await openaiClient(), { model, messages, effort }, send, ctrl.signal, { clientTools: useGoogle ? await googleTools() : null });
         } else {
           const res = await fetch(apiUrl(baseUrl, '/v1/chat/completions'), {
             method: 'POST',
@@ -290,6 +336,33 @@ const api = {
   ttsServerMultilingual: notHere('Chatterbox'),
   onCommand: () => {},
   onAvatarCursor: () => {},
+
+  // ---- Google Kalender und Aufgaben
+  googleStatus: () => google.status(),
+  googleDisconnect: () => google.disconnect(),
+  googleConnect: async ({ clientId, clientSecret }) => {
+    if (!String(clientId || '').includes('.apps.googleusercontent.com')) throw new Error('Bitte die Client-ID aus der Google Cloud Console eintragen.');
+    const auth = window.KIAuth;
+    if (!auth) throw new Error('Anmeldung ist nur in der Android-App möglich.');
+    const { verifier, challenge, state } = await googleLib.pkce();
+    const port = auth.listen();
+    if (!port) throw new Error('Anmeldung konnte nicht gestartet werden.');
+    const redirectUri = `http://127.0.0.1:${port}`;
+    const target = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Keine Anmeldung innerhalb von 5 Minuten.')), 5 * 60 * 1000);
+      authWaiter = (t) => {
+        clearTimeout(timer);
+        authWaiter = null;
+        resolve(t);
+      };
+      auth.open(googleLib.authUrl({ clientId, redirectUri, challenge, state }));
+    });
+    const q = new URL(target || '/', redirectUri).searchParams;
+    if (q.get('state') !== state) throw new Error('Anmeldung abgebrochen.');
+    if (q.get('error')) throw new Error(`Google: ${q.get('error')}`);
+    const email = await google.exchange({ clientId, clientSecret, code: q.get('code'), verifier, redirectUri });
+    return { connected: true, email };
+  },
 
   // ---- Bild-im-Bild (siehe scripts/MainActivity.java)
   pipSupported: () => !!window.KIPip?.supported?.(),

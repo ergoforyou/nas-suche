@@ -12,6 +12,7 @@ import { detectBodyRig } from './bodyrig.js';
 import { openMarkEditor } from './markeditor.js';
 import { debugVoice, synthesize, piperState } from './piper.js';
 import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
+import googleLib from '../google.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
@@ -98,6 +99,8 @@ const DEFAULT_SETTINGS = {
   pipOnLeave: true, // Android: beim Verlassen der App als Bild-im-Bild weiterlaufen
   bargeIn: true, // Live-Gespräch: dazwischenreden erlaubt
   moodTags: true, // Mimik: das Sprachmodell markiert seine Stimmung, die Figur zeigt sie
+  googleUse: true, // Google Kalender & Aufgaben im Gespräch (sobald verbunden)
+  googleClientId: '',
   livePauseMs: 800, // so lange Stille, bis mein Satz als fertig gilt
   alwaysOnTop: false,
   stageHeight: null,
@@ -468,6 +471,7 @@ function buildMessages() {
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(p.memory.map((m) => `- ${m.text}`).join('\n')));
   if (p.style !== 'frei') parts.push(r.lang);
   if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
+  if (googleActive()) parts.push(googleLib.toolPrompt(new Date(), userTimeZone()));
   const sys = parts.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
   const h = history()
@@ -697,6 +701,7 @@ async function send(text) {
       ...(state.settings.provider === 'anthropic'
         ? { web: state.settings.claudeWeb, files: state.settings.claudeFiles, conversation: `${persona().id}:${chatSerial}` }
         : {}),
+      ...(googleActive() ? { google: true, timeZone: userTimeZone() } : {}),
       messages: buildMessages(),
     },
     (ev) => {
@@ -1335,6 +1340,7 @@ function fillSettings() {
   }
   toggleProviderFields();
   refreshKeys();
+  refreshGoogle();
   if (!LOCAL_ONLY) {
     $('vCloudVoice').value = p.voice.cloud?.voice ?? 'nova';
     $('vCloudStyle').value = p.voice.cloud?.instructions ?? '';
@@ -3363,6 +3369,55 @@ function toggleProviderFields() {
   $('btnAttach').hidden = p !== 'anthropic';
 }
 
+// ---------------------------------------------------------------- Google Kalender & Aufgaben
+const userTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin';
+/** Werkzeuge nur für Claude/ChatGPT, nur wenn verbunden und eingeschaltet. */
+const googleActive = () =>
+  !LOCAL_ONLY && !!state.google?.connected && state.settings.googleUse !== false && ['anthropic', 'openai'].includes(state.settings.provider);
+
+async function refreshGoogle() {
+  if (LOCAL_ONLY || !desktop.googleStatus) return;
+  try {
+    state.google = await desktop.googleStatus();
+  } catch {
+    state.google = { connected: false };
+  }
+  const g = state.google;
+  $('gInfo').textContent = g.connected ? `✔ Verbunden${g.email ? ` als ${g.email}` : ''}` : 'Nicht verbunden';
+  $('gDisconnect').hidden = !g.connected;
+  $('gConnect').textContent = g.connected ? 'Neu verbinden' : 'Mit Google verbinden';
+  $('gUse').checked = state.settings.googleUse !== false;
+  $('gClientId').value ||= state.settings.googleClientId ?? '';
+}
+$('gConnect').onclick = async () => {
+  const clientId = $('gClientId').value.trim();
+  const clientSecret = $('gClientSecret').value.trim();
+  state.settings.googleClientId = clientId;
+  save();
+  $('gInfo').textContent = 'Anmeldung im Browser … (danach zurück zur App)';
+  $('gConnect').disabled = true;
+  try {
+    const r = await desktop.googleConnect({ clientId, clientSecret });
+    $('gClientSecret').value = '';
+    status(`Mit Google verbunden${r.email ? ` (${r.email})` : ''} – frag z. B. „Was steht morgen an?“`);
+  } catch (e) {
+    $('gInfo').textContent = `Nicht verbunden: ${e.message}`;
+    $('gConnect').disabled = false;
+    return;
+  }
+  $('gConnect').disabled = false;
+  refreshGoogle();
+};
+$('gDisconnect').onclick = async () => {
+  if (!confirm('Verbindung zu Google trennen?')) return;
+  await desktop.googleDisconnect();
+  refreshGoogle();
+};
+$('gUse').onchange = (e) => {
+  state.settings.googleUse = e.target.checked;
+  save();
+};
+
 async function refreshKeys() {
   if (LOCAL_ONLY) return {};
   const k = await desktop.keyStatus();
@@ -3578,7 +3633,7 @@ function applyEdition() {
   for (const sel of ['#cProvider option:not([value="lmstudio"])', '#vEngine option[value="cloud"]']) {
     document.querySelectorAll(sel).forEach((o) => o.remove());
   }
-  for (const id of ['cKeysWrap', 'cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap', 'btnAttach', 'fileAttach']) $(id)?.remove();
+  for (const id of ['cKeysWrap', 'gWrap', 'cClaudeWrap', 'cOpenaiWrap', 'cCloudHint', 'vCloudWrap', 'btnAttach', 'fileAttach']) $(id)?.remove();
   const prov = $('cProvider').closest('label');
   if (prov) prov.hidden = true;
   if (state.settings.provider !== 'lmstudio') state.settings.provider = 'lmstudio';
@@ -3609,6 +3664,7 @@ window.__app = {
 
 init().then(() => {
   if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
+  refreshGoogle();
   ensureFaceRig();
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
   if (!state.settings.offline && state.settings.handsFree) setTimeout(() => stt.warmup().catch(() => {}), 3000);

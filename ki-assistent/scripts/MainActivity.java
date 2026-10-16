@@ -5,6 +5,12 @@ import android.net.Uri;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import java.io.OutputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
@@ -54,6 +60,59 @@ public class MainActivity extends BridgeActivity {
             saveDone(true, uri.toString());
         } catch (Exception e) {
             saveDone(false, String.valueOf(e.getMessage()));
+        }
+    }
+
+    // ---- Google-Anmeldung: Browser öffnen, kurz auf 127.0.0.1 lauschen, Antwort (Code) an die Oberfläche geben
+    public class Auth {
+        /** Startet den Empfänger und liefert den Port (0 bei Fehler). */
+        @JavascriptInterface
+        public int listen() {
+            try {
+                ServerSocket server = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
+                server.setSoTimeout(5 * 60 * 1000);
+                int port = server.getLocalPort();
+                new Thread(() -> {
+                    String target = "";
+                    try (Socket sock = server.accept()) {
+                        BufferedReader in = new BufferedReader(new InputStreamReader(sock.getInputStream(), StandardCharsets.UTF_8));
+                        String line = in.readLine(); // GET /?code=…&state=… HTTP/1.1
+                        if (line != null && line.startsWith("GET ")) target = line.split(" ")[1];
+                        String html = "<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
+                            + "<body style=\"font:18px sans-serif;padding:32px\">✔ Fertig – zurück zum KI-Assistenten …</body>";
+                        byte[] body = html.getBytes(StandardCharsets.UTF_8);
+                        OutputStream out = sock.getOutputStream();
+                        out.write(("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + body.length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                        out.write(body);
+                        out.flush();
+                    } catch (Exception e) {
+                        Log.w("KI-Assistent", "Google-Anmeldung", e);
+                    } finally {
+                        try { server.close(); } catch (Exception ignored) {}
+                    }
+                    final String result = target;
+                    runOnUiThread(() -> {
+                        // App wieder nach vorn holen
+                        Intent back = new Intent(MainActivity.this, MainActivity.class);
+                        back.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        startActivity(back);
+                        if (bridge != null) {
+                            String js = "window.__kiAuthDone && window.__kiAuthDone(" + org.json.JSONObject.quote(result) + ")";
+                            bridge.getWebView().evaluateJavascript(js, null);
+                        }
+                    });
+                }).start();
+                return port;
+            } catch (Exception e) {
+                Log.w("KI-Assistent", "Empfänger für Google-Anmeldung", e);
+                return 0;
+            }
+        }
+
+        /** Adresse im Browser öffnen (Google-Anmeldung). */
+        @JavascriptInterface
+        public void open(String url) {
+            runOnUiThread(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))));
         }
     }
 
@@ -172,6 +231,7 @@ public class MainActivity extends BridgeActivity {
         }, "KIPip");
         bridge.getWebView().addJavascriptInterface(new KeyVault(), "KIKeys");
         bridge.getWebView().addJavascriptInterface(new FileSaver(), "KIFiles");
+        bridge.getWebView().addJavascriptInterface(new Auth(), "KIAuth");
     }
 
     // Android 8–11: beim Verlassen (Home-Taste, App-Wechsel) selbst auslösen; ab 12 macht das setAutoEnterEnabled

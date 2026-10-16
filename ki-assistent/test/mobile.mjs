@@ -32,10 +32,13 @@ await page.addInitScript(() => {
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 let request = null;
+const claudeQueue = []; // vorbereitete Antworten (Ereignislisten) für die nächsten Claude-Anfragen
+const claudeRequests = [];
 await page.route('https://api.anthropic.com/**', (route) => {
   request = { headers: route.request().headers(), body: JSON.parse(route.request().postData()) };
+  claudeRequests.push(request.body);
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
-  const evs = [
+  const evs = claudeQueue.length ? claudeQueue.shift() : [
     { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
     { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
     { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '[freudig] Hallo vom Handy!' } },
@@ -404,6 +407,63 @@ const baked = await page.evaluate(async (n) => {
 }, savedBefore);
 check(baked.cutMode === 'alpha' && baked.wall < 30 && baked.body > 200 && !baked.clip, 'Abschnitt als freigestelltes Video gespeichert (Hintergrund durchsichtig)', JSON.stringify(baked));
 check(/freigestellt\.webm$/.test(baked.file?.[0] ?? ''), 'Freigestelltes Video auch als Datei gesichert', JSON.stringify(baked.file));
+// ---- Google Kalender & Aufgaben: Anmeldung (nachgebildet), dann fragt Claude den Kalender ab
+const googleCalls = [];
+await page.route('https://oauth2.googleapis.com/token', (route) => {
+  const body = route.request().postData() ?? '';
+  googleCalls.push({ url: 'token', body });
+  const idToken = 'x.' + Buffer.from(JSON.stringify({ email: 'jens.test@gmail.com' })).toString('base64url') + '.y';
+  route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ access_token: 'AT1', refresh_token: 'RT1', expires_in: 3600, id_token: idToken }) });
+});
+await page.route('https://www.googleapis.com/calendar/**', (route) => {
+  googleCalls.push({ url: route.request().url(), auth: route.request().headers().authorization });
+  route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ items: [{ id: 'e1', summary: 'Zahnarzt', start: { dateTime: '2026-10-17T14:00:00+02:00' }, end: { dateTime: '2026-10-17T15:00:00+02:00' } }] }) });
+});
+await page.evaluate(() => {
+  // Android-Anmeldung nachbilden: Browser „meldet“ sofort mit Code zurück
+  window.KIAuth = { listen: () => 54321, open: (url) => setTimeout(() => window.__kiAuthDone('/?code=CODE1&state=' + new URL(url).searchParams.get('state')), 50) };
+});
+if (!(await page.isVisible('#tabs [data-tab=conn]'))) await page.click('#btnSettings');
+await page.click('#tabs [data-tab=conn]');
+await page.fill('#gClientId', '123-abc.apps.googleusercontent.com');
+await page.fill('#gClientSecret', 'GOCSPX-test');
+await page.click('#gConnect');
+await page.waitForFunction(() => /Verbunden/.test(document.querySelector('#gInfo').textContent), null, { timeout: 10000 }).catch(() => {});
+const gInfo = await page.textContent('#gInfo');
+check(/jens\.test@gmail\.com/.test(gInfo) && /code=CODE1/.test(googleCalls[0]?.body ?? '') && /code_verifier=/.test(googleCalls[0]?.body ?? ''), 'Google verbunden (Anmeldung mit PKCE)', gInfo);
+const stored = await page.evaluate(async () => JSON.stringify(await window.__keyFile()));
+check(stored.includes('RT1'), 'Google-Token gespeichert (im Browser-Test ohne Keystore unverschlüsselt)', '');
+await page.click('#closeSettings').catch(() => {});
+// Claude: erst Werkzeug „Termine lesen“, dann Antwort mit dem Ergebnis
+const sse = (blocks, stop) => [
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  ...blocks,
+  { type: 'message_delta', delta: { stop_reason: stop }, usage: { output_tokens: 3 } },
+  { type: 'message_stop' },
+];
+claudeQueue.push(
+  sse([
+    { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu1', name: 'kalender_termine_lesen', input: {} } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"von":"2026-10-17T00:00","bis":"2026-10-18T00:00"}' } },
+    { type: 'content_block_stop', index: 0 },
+  ], 'tool_use'),
+  sse([
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '[ruhig] Morgen um 14 Uhr hast du den Zahnarzt.' } },
+    { type: 'content_block_stop', index: 0 },
+  ], 'end_turn'),
+);
+const nReq = claudeRequests.length;
+await page.fill('#input', 'Was steht morgen an?');
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => /Zahnarzt/.test([...document.querySelectorAll('.msg.assistant')].pop()?.textContent ?? ''), null, { timeout: 15000 }).catch(() => {});
+const calReq = googleCalls.find((c) => c.url.includes('/calendar/'));
+const firstReq = claudeRequests[nReq];
+const secondReq = claudeRequests[nReq + 1];
+check(firstReq?.tools?.some((t) => t.name === 'kalender_termine_lesen') && /Google-Kalender/.test(JSON.stringify(firstReq?.system ?? '')), 'Claude bekommt Kalender-Werkzeuge und Datum/Uhrzeit', '');
+check(calReq?.auth === 'Bearer AT1' && /timeMin=2026-10-1[67]T/.test(decodeURIComponent(calReq.url)), 'Kalender mit Token und Zeitraum abgefragt', calReq?.url?.slice(0, 120));
+check(JSON.stringify(secondReq?.messages?.at(-1) ?? '').includes('Zahnarzt'), 'Ergebnis geht als tool_result zurück an Claude');
+check(/Zahnarzt/.test(await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].pop()?.textContent ?? '')), 'Antwort mit Termin im Chat');
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

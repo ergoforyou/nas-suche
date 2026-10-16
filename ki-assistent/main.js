@@ -807,6 +807,19 @@ function getKey(provider) {
   }
 }
 
+/** Wert verschlüsselt speichern (leer = löschen). */
+function writeKey(name, value) {
+  const all = readKeyFile();
+  const clean = String(value ?? '').trim();
+  if (!clean) delete all[name];
+  else {
+    const encrypted = safeStorage.isEncryptionAvailable();
+    all[name] = { encrypted, data: (encrypted ? safeStorage.encryptString(clean) : Buffer.from(clean, 'utf8')).toString('base64') };
+  }
+  fs.mkdirSync(path.dirname(keyFile()), { recursive: true });
+  fs.writeFileSync(keyFile(), JSON.stringify(all));
+}
+
 ipcMain.handle('keys:status', () => {
   const k = readKeyFile();
   return { anthropic: !!k.anthropic, openai: !!k.openai, encrypted: safeStorage.isEncryptionAvailable() };
@@ -969,6 +982,79 @@ ipcMain.handle('stt:cloud', async (_e, { audio, language, model }) => {
   }
 });
 
+// ---------------------------------------------------------------- Google Kalender und Aufgaben (nur Cloud-Ausgabe)
+// Anmeldung im Standardbrowser; Google leitet danach an http://127.0.0.1:<Port> zurück, wo die App kurz lauscht.
+// Das Token liegt verschlüsselt (Windows) in schluessel.json und verlässt den Hauptprozess nie.
+const googleLib = require('./google.js');
+const google = googleLib.createGoogle({
+  http: async ({ method, url, headers, body }) => {
+    const res = await systemFetch(url, { method, headers, body });
+    const text = await res.text();
+    let data = text;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {}
+    return { status: res.status, data };
+  },
+  load: async () => {
+    const raw = getKey('google');
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+  save: async (t) => writeKey('google', t ? JSON.stringify(t) : ''),
+});
+
+ipcMain.handle('google:status', () => (EDITION === 'lokal' ? { connected: false, blocked: true } : google.status()));
+ipcMain.handle('google:disconnect', () => google.disconnect());
+ipcMain.handle('google:connect', async (_e, { clientId, clientSecret }) => {
+  if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
+  if (!String(clientId || '').includes('.apps.googleusercontent.com')) throw new Error('Bitte die Client-ID aus der Google Cloud Console eintragen.');
+  const http = require('node:http');
+  const { verifier, challenge, state } = await googleLib.pkce();
+  // kurz auf 127.0.0.1 lauschen, bis Google mit dem Anmeldecode zurückleitet
+  const result = await new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      const u = new URL(req.url, 'http://127.0.0.1');
+      if (!u.searchParams.has('code') && !u.searchParams.has('error')) {
+        res.writeHead(404);
+        return res.end();
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<meta charset="utf-8"><body style="font:16px sans-serif;padding:40px">✔ Fertig – du kannst dieses Fenster schließen und zum KI-Assistenten zurückkehren.</body>');
+      server.close();
+      clearTimeout(timer);
+      if (u.searchParams.get('state') !== state) return reject(new Error('Anmeldung abgebrochen (ungültige Antwort).'));
+      if (u.searchParams.get('error')) return reject(new Error(`Google: ${u.searchParams.get('error')}`));
+      resolve({ code: u.searchParams.get('code'), redirectUri: `http://127.0.0.1:${server.address()?.port ?? port}` });
+    });
+    let port = 0;
+    const timer = setTimeout(() => {
+      server.close();
+      reject(new Error('Keine Anmeldung innerhalb von 5 Minuten.'));
+    }, 5 * 60 * 1000);
+    server.listen(0, '127.0.0.1', () => {
+      port = server.address().port;
+      shell.openExternal(googleLib.authUrl({ clientId, redirectUri: `http://127.0.0.1:${port}`, challenge, state }));
+    });
+  });
+  const email = await google.exchange({ clientId, clientSecret, code: result.code, verifier, redirectUri: result.redirectUri });
+  if (win && !win.isDestroyed()) win.focus();
+  return { connected: true, email };
+});
+
+/** Werkzeuge für den Chat, wenn Google verbunden ist. */
+async function googleTools(timeZone) {
+  if (EDITION === 'lokal' || !(await google.status()).connected) return null;
+  return {
+    defs: googleLib.TOOLS,
+    status: googleLib.TOOL_STATUS,
+    run: (name, input) => googleLib.runTool(google, name, input, { timeZone }),
+  };
+}
+
 // ---------------------------------------------------------------- LM Studio (OpenAI-kompatible API)
 // Die Anfragen laufen über den Hauptprozess, damit es keine CORS-Probleme gibt.
 function apiUrl(base, p) {
@@ -1012,7 +1098,7 @@ ipcMain.handle('file:open', async (_e, file) => {
   return shell.openPath(resolved);
 });
 
-ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, messages, temperature, effort, web, files, conversation }) => {
+ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, messages, temperature, effort, web, files, conversation, google: useGoogle, timeZone }) => {
   const ctrl = new AbortController();
   running.set(id, ctrl);
   const send = (type, payload) => {
@@ -1027,7 +1113,8 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
     const name = provider === 'anthropic' ? 'Claude' : 'ChatGPT';
     try {
       if (provider === 'anthropic') {
-        const ctx = { containers: claudeContainers, uploads: claudeUploads, saveFile: saveCreatedFile };
+        const clientTools = useGoogle ? await googleTools(timeZone) : null;
+        const ctx = { containers: claudeContainers, uploads: claudeUploads, saveFile: saveCreatedFile, clientTools };
         const req = { model, messages, effort, web, files, conversation };
         try {
           await chatAnthropic(anthropicClient().client, req, send, ctrl.signal, ctx);
@@ -1039,7 +1126,10 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
           await chatAnthropic(anthropicClient().client, req, send, ctrl.signal, ctx);
         }
       }
-      else await chatOpenAI(openaiClient().client, { model, messages, effort }, send, ctrl.signal);
+      else {
+        const clientTools = useGoogle ? await googleTools(timeZone) : null;
+        await chatOpenAI(openaiClient().client, { model, messages, effort }, send, ctrl.signal, { clientTools });
+      }
     } catch (err) {
       const SDK = provider === 'anthropic' ? require('@anthropic-ai/sdk').default : require('openai').default;
       if (ctrl.signal.aborted || err instanceof SDK.APIUserAbortError) send('done');

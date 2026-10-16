@@ -441,6 +441,32 @@
         <div id="cOpenaiKeyInfo" class="hint"></div>
       </div>
 
+      <div id="gWrap">
+        <h3>Google Kalender &amp; Aufgaben</h3>
+        <p class="hint">Dann kannst du sagen: „Was steht morgen an?“, „Trag mir Donnerstag 14 Uhr Zahnarzt ein, Erinnerung eine Stunde vorher“,
+          „Setz auf meine Liste: Angebot schicken, bis Freitag“. Eingetragen wird erst, nachdem du es im Gespräch bestätigt hast.</p>
+        <details class="hint"><summary>Einmalig einrichten (ca. 10 Minuten)</summary>
+          <ol>
+            <li>console.cloud.google.com öffnen → oben „Projekt auswählen“ → „Neues Projekt“ (Name z. B. „KI-Assistent“).</li>
+            <li>„APIs &amp; Dienste“ → „Bibliothek“ → <b>Google Calendar API</b> und <b>Google Tasks API</b> jeweils „Aktivieren“.</li>
+            <li>„OAuth-Zustimmungsbildschirm“ (bzw. „Google Auth Platform“) → Zielgruppe <b>Extern</b>, App-Name und deine E-Mail eintragen;
+              unter „Testnutzer“ deine Google-Adresse hinzufügen. Danach „App veröffentlichen“ (sonst läuft die Anmeldung nach 7 Tagen ab).</li>
+            <li>„Anmeldedaten“ (Clients) → „Anmeldedaten erstellen“ → <b>OAuth-Client-ID</b> → Anwendungstyp <b>Desktop-App</b>.
+              Client-ID und Clientschlüssel hier eintragen. (Derselbe Client funktioniert am PC und auf dem Handy.)</li>
+            <li>„Mit Google verbinden“ → im Browser anmelden. Der Hinweis „Google hat diese App nicht überprüft“ ist bei eigener Nutzung
+              normal: „Erweitert“ → „Weiter zu KI-Assistent“.</li>
+          </ol>
+        </details>
+        <label>Client-ID <input id="gClientId" placeholder="….apps.googleusercontent.com" autocomplete="off" /></label>
+        <label>Clientschlüssel (Client secret) <input id="gClientSecret" type="password" placeholder="GOCSPX-…" autocomplete="off" /></label>
+        <div class="row wrap">
+          <button id="gConnect">Mit Google verbinden</button>
+          <button id="gDisconnect" hidden>Trennen</button>
+        </div>
+        <div id="gInfo" class="hint"></div>
+        <label class="check"><input id="gUse" type="checkbox" /> Kalender &amp; Aufgaben im Gespräch nutzen <span class="hint">(gilt für Claude und ChatGPT; die betroffenen Termine gehen dabei an den Anbieter)</span></label>
+      </div>
+
       <div id="cClaudeWrap" hidden>
         <label>Modell
           <div class="row">

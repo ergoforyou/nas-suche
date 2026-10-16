@@ -58,6 +58,9 @@ contextBridge.exposeInMainWorld('desktop', {
   anthropicModels: () => ipcRenderer.invoke('anthropic:models'),
   ttsCloudSpeak: (opts) => ipcRenderer.invoke('tts:cloud:speak', opts),
   transcribeCloud: (audio, language, model) => ipcRenderer.invoke('stt:cloud', { audio, language, model }),
+  googleStatus: () => ipcRenderer.invoke('google:status'),
+  googleConnect: (opts) => ipcRenderer.invoke('google:connect', opts),
+  googleDisconnect: () => ipcRenderer.invoke('google:disconnect'),
 
   // LM Studio
   lmStudioPrompts: () => ipcRenderer.invoke('lmstudio:prompts'),

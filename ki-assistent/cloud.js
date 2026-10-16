@@ -152,7 +152,12 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
     }
   }
   const { system, messages: msgs } = toClaudeMessages(messages, uploaded);
-  const tools = claudeTools(model, { web, files });
+  // eigene Werkzeuge der App (z. B. Google-Kalender): ctx.clientTools = { defs, run(name, input), status }
+  const own = ctx.clientTools;
+  const tools = [
+    ...claudeTools(model, { web, files }),
+    ...(own?.defs ?? []).map((t) => ({ ...t, eager_input_streaming: true })),
+  ];
   const betas = [];
   if (files) betas.push('code-execution-2025-08-25');
   // Bei Sonnet/Opus 5.5: falls ein Sicherheitsfilter ablehnt, übernimmt automatisch ein passendes Modell
@@ -180,14 +185,16 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
   const all = [];
   let wroteText = false;
   let final;
-  // Serverwerkzeuge können pausieren (pause_turn) – dann mit dem bisherigen Verlauf fortsetzen
-  for (let round = 0; round < 6; round++) {
+  // Serverwerkzeuge können pausieren (pause_turn) – dann mit dem bisherigen Verlauf fortsetzen.
+  // Eigene Werkzeuge (tool_use): hier ausführen und das Ergebnis zurückgeben.
+  for (let round = 0; round < 10; round++) {
     const stream = open(params);
     let sep = false;
     for await (const ev of stream) {
       if (ev.type === 'content_block_start') {
         const b = ev.content_block;
         if (b.type === 'server_tool_use' && TOOL_STATUS[b.name]) send('status', TOOL_STATUS[b.name]);
+        if (b.type === 'tool_use' && own?.status?.[b.name]) send('status', own.status[b.name]);
         if (b.type === 'text' && wroteText) sep = true;
       } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
         if (sep) {
@@ -201,6 +208,23 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
     final = await stream.finalMessage();
     all.push(...final.content);
     if (final.container?.id && conversation) ctx.containers?.set(conversation, final.container.id);
+    if (final.stop_reason === 'tool_use' && own) {
+      const results = [];
+      for (const b of final.content) {
+        if (b.type !== 'tool_use') continue;
+        try {
+          // Eingaben prüfen: beim Streamen kann eine Eingabe unvollständig ankommen
+          if (!b.input || typeof b.input !== 'object') throw new Error('Eingabe unvollständig');
+          const out = await own.run(b.name, b.input);
+          results.push({ type: 'tool_result', tool_use_id: b.id, content: JSON.stringify(out) });
+        } catch (err) {
+          results.push({ type: 'tool_result', tool_use_id: b.id, content: `Fehler: ${err.message}`, is_error: true });
+        }
+      }
+      params.messages = [...params.messages, { role: 'assistant', content: final.content }, { role: 'user', content: results }];
+      if (final.container?.id) params.container = { ...params.container, id: final.container.id };
+      continue;
+    }
     if (final.stop_reason !== 'pause_turn') break;
     params.messages = [...params.messages, { role: 'assistant', content: final.content }];
     if (final.container?.id) params.container = { ...params.container, id: final.container.id };
@@ -226,21 +250,63 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
   send('done');
 }
 
-async function chatOpenAI(client, { model, messages, effort }, send, signal) {
-  const params = { model, messages: messages.map(({ role, content }) => ({ role, content })), stream: true };
+async function chatOpenAI(client, { model, messages, effort }, send, signal, ctx = {}) {
+  const own = ctx.clientTools;
+  const params = {
+    model,
+    messages: messages.map(({ role, content }) => ({ role, content })),
+    stream: true,
+    ...(own?.defs?.length
+      ? { tools: own.defs.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })) }
+      : {}),
+  };
   // Denkende Modelle (GPT-5.x, o-Reihe): für flüssiges Sprechen nur kurz nachdenken lassen
-  const reasoning = /^(gpt-5|o\d)/i.test(model) ? effort || 'low' : null;
-  let stream;
-  try {
-    stream = await client.chat.completions.create(reasoning ? { ...params, reasoning_effort: reasoning } : params, { signal });
-  } catch (err) {
-    // Modell kennt die Einstellung nicht (oder diesen Wert nicht): ohne sie erneut versuchen
-    if (!reasoning || err?.status !== 400 || !/reasoning/i.test(String(err?.message))) throw err;
-    stream = await client.chat.completions.create(params, { signal });
-  }
-  for await (const chunk of stream) {
-    const delta = chunk.choices?.[0]?.delta?.content;
-    if (delta) send('delta', delta);
+  let reasoning = /^(gpt-5|o\d)/i.test(model) ? effort || 'low' : null;
+  const open = async () => {
+    try {
+      return await client.chat.completions.create(reasoning ? { ...params, reasoning_effort: reasoning } : params, { signal });
+    } catch (err) {
+      // Modell kennt die Einstellung nicht (oder diesen Wert nicht): ohne sie erneut versuchen
+      if (!reasoning || err?.status !== 400 || !/reasoning/i.test(String(err?.message))) throw err;
+      reasoning = null;
+      return client.chat.completions.create(params, { signal });
+    }
+  };
+  for (let round = 0; round < 8; round++) {
+    const stream = await open();
+    const calls = [];
+    let text = '';
+    for await (const chunk of stream) {
+      const d = chunk.choices?.[0]?.delta;
+      if (d?.content) {
+        text += d.content;
+        send('delta', d.content);
+      }
+      for (const tc of d?.tool_calls ?? []) {
+        const c = (calls[tc.index] ??= { id: '', name: '', args: '' });
+        if (tc.id) c.id = tc.id;
+        if (tc.function?.name) c.name += tc.function.name;
+        if (tc.function?.arguments) c.args += tc.function.arguments;
+      }
+    }
+    if (!calls.length || !own) break;
+    // Werkzeuge ausführen und das Ergebnis zurückgeben, dann weiter antworten lassen
+    params.messages.push({
+      role: 'assistant',
+      content: text || null,
+      tool_calls: calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.args || '{}' } })),
+    });
+    for (const c of calls) {
+      if (own.status?.[c.name]) send('status', own.status[c.name]);
+      let content;
+      try {
+        content = JSON.stringify(await own.run(c.name, JSON.parse(c.args || '{}')));
+      } catch (err) {
+        content = `Fehler: ${err.message}`;
+      }
+      params.messages.push({ role: 'tool', tool_call_id: c.id, content });
+    }
+    if (text) send('delta', '\n\n');
   }
   send('done');
 }
