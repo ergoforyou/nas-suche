@@ -407,6 +407,18 @@ const baked = await page.evaluate(async (n) => {
 }, savedBefore);
 check(baked.cutMode === 'alpha' && baked.wall < 30 && baked.body > 200 && !baked.clip, 'Abschnitt als freigestelltes Video gespeichert (Hintergrund durchsichtig)', JSON.stringify(baked));
 check(/freigestellt\.webm$/.test(baked.file?.[0] ?? ''), 'Freigestelltes Video auch als Datei gesichert', JSON.stringify(baked.file));
+// Abbrechen während des Speicherns: Fenster schließt sich, Pose bleibt unverändert
+await page.locator('.pose-opts button', { hasText: '✂' }).last().click();
+await page.waitForSelector('#vtool video');
+await page.waitForFunction(() => document.querySelector('#vtool video').readyState >= 1);
+await page.selectOption('#vtool .vt-mode', 'flood');
+const poseBefore = await page.evaluate(() => JSON.stringify(window.__app.persona().avatar.poses.at(-1)));
+await page.click('#vtool [data-act=bake]');
+const cancelBtn = await page.evaluate(() => ({ text: document.querySelector('#vtool [data-act=close]').textContent, enabled: !document.querySelector('#vtool [data-act=close]').disabled }));
+await page.click('#vtool [data-act=close]');
+await page.waitForTimeout(1500);
+const afterCancel = await page.evaluate(() => ({ open: !!document.querySelector('#vtool'), pose: JSON.stringify(window.__app.persona().avatar.poses.at(-1)) }));
+check(cancelBtn.enabled && /Abbrechen/.test(cancelBtn.text) && !afterCancel.open && afterCancel.pose === poseBefore, 'Speichern lässt sich abbrechen, Pose bleibt unverändert', JSON.stringify(cancelBtn));
 // ---- Google Kalender & Aufgaben: Anmeldung (nachgebildet), dann fragt Claude den Kalender ab
 const googleCalls = [];
 await page.route('https://oauth2.googleapis.com/token', (route) => {

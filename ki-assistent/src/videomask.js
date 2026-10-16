@@ -8,12 +8,15 @@
 const MAGIC = 'KIM2';
 const HEADER = 16;
 
-function seek(video, t) {
+export function seek(video, t, ms = 3000) {
   return new Promise((resolve) => {
     const done = () => {
+      clearTimeout(timer);
       video.removeEventListener('seeked', done);
       resolve();
     };
+    // manche Geräte melden kein „seeked“, wenn sich die Zeit nicht ändert – dann nach kurzer Zeit weiter
+    const timer = setTimeout(done, Math.abs(video.currentTime - t) < 0.001 ? 50 : ms);
     video.addEventListener('seeked', done);
     video.currentTime = t;
   });
@@ -24,7 +27,7 @@ function seek(video, t) {
  * @param {(img: ImageData) => Promise<Uint8ClampedArray>} removeBackground liefert RGBA mit Alpha
  * @param {(done: number, total: number) => void} onProgress
  */
-export async function computeVideoMask(url, removeBackground, onProgress, { fps = 20, maxSide = 480, start = 0, end = Infinity } = {}) {
+export async function computeVideoMask(url, removeBackground, onProgress, { fps = 20, maxSide = 480, start = 0, end = Infinity, shouldStop = () => false } = {}) {
   const v = document.createElement('video');
   v.muted = true;
   v.playsInline = true;
@@ -57,6 +60,7 @@ export async function computeVideoMask(url, removeBackground, onProgress, { fps 
   view.setFloat32(12, t0, true);
 
   for (let i = 0; i < n; i++) {
+    if (shouldStop()) throw new Error('abgebrochen');
     await seek(v, Math.min(duration - 0.001, t0 + i / fps));
     g.drawImage(v, 0, 0, w, h);
     const rgba = await removeBackground(g.getImageData(0, 0, w, h));

@@ -2,7 +2,7 @@ import { Avatar, avatarState, detectFace, loadImage } from './avatar.js';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
-import { computeVideoMask } from './videomask.js';
+import { computeVideoMask, seek as seekVideo } from './videomask.js';
 import { renderMarkdown, addCopyButtons } from './markdown.js';
 import { FloatingAvatar, OutputWindow } from './windows.js';
 import { RubberBand } from './rubberband.js';
@@ -2459,16 +2459,20 @@ async function isGreenScreen(url) {
 }
 
 /** Video einmal Bild für Bild per KI freistellen und die Masken speichern. */
-async function computeMaskFor(pose) {
+async function computeMaskFor(pose, { say = status, shouldStop } = {}) {
   try {
-    status('Video wird per KI freigestellt … (einmalig)');
+    say('Video wird per KI freigestellt … (beim ersten Mal wird das KI-Modell geladen)');
     const t0 = performance.now();
     const bytes = await computeVideoMask(
       pose.video,
-      (img) => stt.removeBackground(img, progressStatus('Freistellen')),
-      (done, total) => status(`Video wird per KI freigestellt … ${done} / ${total} Bilder`),
+      (img) =>
+        stt.removeBackground(img, (p) => {
+          // Fortschritt des Modell-Downloads (nur beim ersten Mal)
+          if (p?.status === 'progress' && p.total) say(`KI-Modell wird geladen … ${Math.round((p.loaded / p.total) * 100)} %`);
+        }),
+      (done, total) => say(`Video wird per KI freigestellt … ${done} / ${total} Bilder`),
       // nur der gewählte Abschnitt – bei langen Videos viel schneller
-      pose.clip ? { start: pose.clip.start, end: pose.clip.end } : {},
+      { ...(pose.clip ? { start: pose.clip.start, end: pose.clip.end } : {}), ...(shouldStop ? { shouldStop } : {}) },
     );
     const old = pose.mask;
     pose.mask = await desktop.saveMedia(bytes, 'mask');
@@ -2480,7 +2484,8 @@ async function computeMaskFor(pose) {
     renderPoseList();
     status(`Video freigestellt (${((performance.now() - t0) / 1000).toFixed(0)} s). Passt es nicht: Freistell-Art in der Posen-Liste ändern.`);
   } catch (e) {
-    status(`KI-Freistellen fehlgeschlagen: ${friendlyError(e)} – Freistell-Art „Einfarbige Wand“ versuchen.`);
+    if (shouldStop?.()) return say('Abgebrochen.');
+    say(`KI-Freistellen fehlgeschlagen: ${friendlyError(e)} – Freistell-Art „Einfarbige Wand“ versuchen.`);
   }
 }
 
@@ -2686,28 +2691,29 @@ $('poseEditMain').onclick = () => setEditIndex(-1);
  * Freigestellt wird mit der Art der Pose (KI, einfarbige Wand, Greenscreen); bei KI wird die Maske für den
  * Abschnitt vorher berechnet. Die Bilder werden erst vorbereitet und dann im richtigen Takt aufgenommen.
  */
-async function bakeTransparentVideo(pose, clip, say) {
+async function bakeTransparentVideo(pose, clip, say, shouldStop = () => false) {
+  const stopCheck = () => {
+    if (shouldStop()) throw new Error('abgebrochen');
+  };
   if (pose.cutMode === 'ai') {
     const covers = pose.mask && pose.clip && Math.abs(pose.clip.start - clip.start) < 0.05 && Math.abs(pose.clip.end - clip.end) < 0.05;
     if (!covers) {
       pose.clip = clip;
-      say('KI stellt den Abschnitt frei …');
-      await computeMaskFor(pose);
-      if (!pose.mask) throw new Error('KI-Freistellung fehlgeschlagen');
+      const before = pose.mask;
+      await computeMaskFor(pose, { say, shouldStop });
+      stopCheck();
+      if (!pose.mask || pose.mask === before) throw new Error('KI-Freistellung fehlgeschlagen – „Einfarbige Wand“ versuchen');
     }
   }
+  say('Video wird vorbereitet …');
   const L = await avatar.createVideoLayer({ ...pose, clip: null, loop: false });
   const fps = 25;
   const n = Math.max(1, Math.round((clip.end - clip.start) * fps));
   const frames = [];
-  const seek = (t) =>
-    new Promise((r) => {
-      L.video.onseeked = r;
-      L.video.currentTime = t;
-    });
   L.video.pause();
   for (let i = 0; i < n; i++) {
-    await seek(Math.min(clip.end - 0.01, clip.start + i / fps));
+    stopCheck();
+    await seekVideo(L.video, Math.min(clip.end - 0.01, clip.start + i / fps));
     L.lastVideoTime = -1;
     L.buildVideoFrame();
     frames.push(await createImageBitmap(L.frame));
@@ -2729,6 +2735,11 @@ async function bakeTransparentVideo(pose, clip, say) {
   rec.start(250);
   const t0 = performance.now();
   for (let i = 0; i < frames.length; i++) {
+    if (shouldStop()) {
+      rec.stop();
+      frames.forEach((f) => f.close());
+      throw new Error('abgebrochen');
+    }
     const due = t0 + (i * 1000) / fps;
     await new Promise((r) => setTimeout(r, Math.max(0, due - performance.now())));
     g.clearRect(0, 0, c.width, c.height);
@@ -2737,12 +2748,18 @@ async function bakeTransparentVideo(pose, clip, say) {
     if (i % 5 === 0) say(`Video wird gespeichert … ${Math.round(((i + 1) / frames.length) * 100)} %`);
   }
   await new Promise((r) => setTimeout(r, 1000 / fps));
-  await new Promise((r) => {
-    rec.onstop = r;
-    rec.stop();
-  });
+  // Aufnahme beenden – mit Sicherheitsnetz, falls das Gerät das Ende nicht meldet
+  await Promise.race([
+    new Promise((r) => {
+      rec.onstop = r;
+      rec.stop();
+    }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('Die Aufnahme wurde vom Gerät nicht abgeschlossen')), 10000)),
+  ]);
   frames.forEach((f) => f.close());
-  return new Uint8Array(await new Blob(chunks, { type: 'video/webm' }).arrayBuffer());
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  if (blob.size < 200) throw new Error('Dieses Gerät hat kein Video aufgenommen');
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
 const fmtSec = (t) => `${(+t).toFixed(1).replace('.', ',')} s`;
@@ -2931,8 +2948,13 @@ function openVideoTool(pose, { onApply } = {}) {
     box.remove();
   };
   let applied = false;
+  let baking = false; // „Freigestellt speichern“ läuft (Schließen bricht ab)
   // Schließen ohne „Abschnitt übernehmen“: ganzes Video bleibt – nach dem Hochladen trotzdem freistellen
   const dismiss = () => {
+    if (baking) {
+      baking = false;
+      status('Freistellen abgebrochen.');
+    }
     close();
     if (onApply && !applied) onApply();
   };
@@ -3002,12 +3024,16 @@ function openVideoTool(pose, { onApply } = {}) {
     bake: async () => {
       const clip = clipOrNull() ?? { start: 0, end: dur };
       if (clip.end - clip.start > 15) return (info.textContent = 'Bitte höchstens 15 Sekunden wählen (z. B. mit „2 s ab hier“).');
+      const before = { cutMode: pose.cutMode, keyTol: pose.keyTol, clip: pose.clip, mask: pose.mask };
       commitCut();
       if (pose.cutMode === 'none') pose.cutMode = 'ai';
       v.pause();
-      box.querySelectorAll('button').forEach((b) => (b.disabled = true));
+      // während der Arbeit: alles gesperrt außer „Schließen“ (bricht ab)
+      box.querySelectorAll('button:not([data-act=close])').forEach((b) => (b.disabled = true));
+      q('[data-act=close]').textContent = 'Abbrechen';
+      baking = true;
       try {
-        const bytes = await bakeTransparentVideo(pose, clip, (t) => (info.textContent = t));
+        const bytes = await bakeTransparentVideo(pose, clip, (t) => (info.textContent = t), () => !baking);
         // Pose nutzt ab jetzt das fertig freigestellte Video (kein Freistellen mehr beim Abspielen)
         const others = (persona().avatar.poses ?? []).filter((p) => p !== pose);
         const oldVideo = pose.video;
@@ -3032,11 +3058,20 @@ function openVideoTool(pose, { onApply } = {}) {
           a.click();
           setTimeout(() => URL.revokeObjectURL(a.href), 5000);
         }
+        baking = false;
         close();
         status('Freigestelltes Video gespeichert – die Pose nutzt es jetzt direkt.');
       } catch (e) {
+        const stopped = !baking;
+        baking = false;
+        // abgebrochen oder fehlgeschlagen: Pose bleibt wie vorher
+        Object.assign(pose, before);
+        if (!before.clip) delete pose.clip;
+        save();
+        if (stopped) return;
         info.textContent = `Freistellen nicht möglich: ${e.message}`;
         box.querySelectorAll('button').forEach((b) => (b.disabled = false));
+        q('[data-act=close]').textContent = 'Schließen';
       }
     },
     still: async () => {

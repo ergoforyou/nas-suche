@@ -108,6 +108,31 @@ const mood = await run(`
   return { name: a.moodCur?.name, smile: a.moodCur?.smile };`);
 check(mood.name === 'freudig' && mood.smile > 0.2, 'Figur übernimmt die Stimmung', JSON.stringify(mood));
 
+// 4b) Video mit transparentem Hintergrund aufnehmen (für „Freigestellt speichern“) – geht das in der Android-WebView?
+const rec = await run(`
+  const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8'];
+  const mime = types.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+  if (!mime) return { mime: null };
+  const c = document.createElement('canvas'); c.width = 96; c.height = 128;
+  const g = c.getContext('2d');
+  const track = c.captureStream(0).getVideoTracks()[0];
+  const r = new MediaRecorder(track ? new MediaStream([track]) : c.captureStream(0), { mimeType: mime, videoBitsPerSecond: 2e6 });
+  const chunks = []; r.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  r.start(100);
+  for (let i = 0; i < 20; i++) { g.clearRect(0, 0, 96, 128); g.fillStyle = '#3a6fd0'; g.fillRect(20, 30, 40, 70); track.requestFrame(); await new Promise((ok) => setTimeout(ok, 50)); }
+  const stopped = await Promise.race([new Promise((ok) => { r.onstop = () => ok(true); r.stop(); }), new Promise((ok) => setTimeout(() => ok(false), 8000))]);
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  if (!stopped || !blob.size) return { mime, stopped, size: blob.size };
+  const v = document.createElement('video'); v.muted = true; v.src = URL.createObjectURL(blob);
+  await Promise.race([new Promise((ok) => (v.onloadeddata = ok)), new Promise((ok) => setTimeout(ok, 5000))]);
+  await Promise.race([new Promise((ok) => { v.onseeked = ok; v.currentTime = 0.4; }), new Promise((ok) => setTimeout(ok, 3000))]);
+  const c2 = document.createElement('canvas'); c2.width = 96; c2.height = 128; const g2 = c2.getContext('2d'); g2.drawImage(v, 0, 0);
+  const d = g2.getImageData(0, 0, 96, 128).data;
+  return { mime, stopped, size: blob.size, corner: d[3], center: d[(60 * 96 + 40) * 4 + 3] };`);
+console.log('   Aufnahme:', JSON.stringify(rec));
+check(!!rec.mime && rec.stopped && rec.size > 200, 'Videoaufnahme (WebM) in der WebView möglich', JSON.stringify(rec));
+check(rec.corner === 0 && rec.center > 200, 'Aufgenommenes Video behält den transparenten Hintergrund', JSON.stringify(rec));
+
 // 5) Keine Skriptfehler (auch nicht beim Start – die stehen im Systemprotokoll)
 const log = adb('logcat', '-d', '-s', 'Capacitor/Console:E', 'chromium:E');
 // nur unbehandelte Fehler zählen (Capacitor meldet z. B. beim Start harmlos „Error injecting safe area CSS“)
