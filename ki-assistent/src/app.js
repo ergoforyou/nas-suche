@@ -1035,11 +1035,23 @@ const waitIdle = async (ms) => {
 const STT_FALLBACKS = ['onnx-community/whisper-base', 'onnx-community/whisper-tiny'];
 async function transcribeWithFallback(audio) {
   if (state.settings.sttEngine === 'cloud' && desktop.transcribeCloud) {
-    try {
-      return await desktop.transcribeCloud(audio, stt.language, state.settings.sttCloudModel);
-    } catch (e) {
-      status(`Cloud-Spracherkennung: ${e.message} – nutze Whisper auf dem Gerät.`);
+    const keys = await desktop.keyStatus().catch(() => ({}));
+    if (keys.openai) {
+      try {
+        return await desktop.transcribeCloud(audio, stt.language, state.settings.sttCloudModel);
+      } catch (e) {
+        status(`Cloud-Spracherkennung: ${e.message} – nutze Whisper auf dem Gerät.`);
+      }
+    } else if (!state.noKeyHintShown) {
+      state.noKeyHintShown = true;
+      addBubble(
+        'error',
+        'Für die schnelle Cloud-Spracherkennung (und die OpenAI-Stimme mit Gefühl) fehlt der OpenAI-Schlüssel – ⚙ → Verbindung. ' +
+          'Bis dahin erkennt Whisper auf dem Gerät (einmaliger Download).',
+      );
     }
+    // auf dem Handy als Ersatz das kleinere Modell (schneller geladen, weniger Speicher)
+    if (MOBILE && /whisper-small/.test(stt.model)) stt.model = 'onnx-community/whisper-base';
   }
   try {
     return await stt.transcribe(audio, progressStatus('Spracherkennung'));
@@ -1161,10 +1173,17 @@ function progressStatus(label) {
   const files = {};
   return (p) => {
     if (p.status === 'progress' && p.file) {
-      files[p.file] = p.progress ?? 0;
+      // nach Datenmenge (MB), nicht nach Dateien – sonst bleibt die Anzeige bei der großen Datei „hängen“
+      files[p.file] = { loaded: p.loaded ?? 0, total: p.total ?? 0, pct: p.progress ?? 0 };
       const vals = Object.values(files);
-      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-      status(`${label}: Modell wird geladen … ${Math.round(avg)} % (nur beim ersten Mal)`);
+      const total = vals.reduce((a, f) => a + f.total, 0);
+      const loaded = vals.reduce((a, f) => a + Math.min(f.loaded, f.total || f.loaded), 0);
+      const mb = (b) => Math.round(b / 1048576);
+      status(
+        total > 0
+          ? `${label}: Modell wird geladen … ${mb(loaded)} von ${mb(total)} MB (nur beim ersten Mal)`
+          : `${label}: Modell wird geladen … ${Math.round(vals.reduce((a, f) => a + f.pct, 0) / vals.length)} % (nur beim ersten Mal)`,
+      );
     } else if (p.status === 'ready') status('');
   };
 }
@@ -3728,6 +3747,14 @@ const saveKey = (provider, inputId) => async () => {
   await refreshKeys();
   if (provider === 'openai') refreshOpenaiModels();
   status('API-Schlüssel gespeichert.');
+  // OpenAI-Schlüssel da, Persona spricht aber noch mit Piper: die ausdrucksstarke Stimme anbieten
+  const p = persona();
+  if (provider === 'openai' && p.voice.engine === 'piper' && confirm('OpenAI-Stimme (mit Gefühl, je nach Stimmung) für diese Persona verwenden?')) {
+    p.voice.engine = 'cloud';
+    save();
+    applyPersona();
+    fillSettings();
+  }
 };
 $('cClaudeKeySave').onclick = saveKey('anthropic', 'cClaudeKey');
 const deleteKey = (provider, name) => async () => {
@@ -3816,6 +3843,11 @@ async function init() {
     if (!LOCAL_ONLY && desktop.transcribeCloud) state.settings.sttEngine = 'cloud';
     if (state.settings.sttModel === 'onnx-community/whisper-base') state.settings.sttModel = 'onnx-community/whisper-small';
     state.settings.sttDefaults = 2;
+  }
+  // Handy: lokal lieber Whisper Base (Small ist 250 MB und auf vielen Handys zu schwer)
+  if (MOBILE && (data.settings?.sttDefaults ?? 0) < 3) {
+    if (state.settings.sttModel === 'onnx-community/whisper-small') state.settings.sttModel = 'onnx-community/whisper-base';
+    state.settings.sttDefaults = 3;
   }
   state.personas = data.personas?.length ? data.personas.map(migratePersona) : [defaultPersona()];
   state.activeId = data.activeId ?? state.personas[0].id;
@@ -4099,6 +4131,7 @@ async function openTextAction({ text = '', hwnd = null, fromClipboard = false } 
   const w = await openChild('aktion.html', 'aktion');
   actionWin = w;
   const d = w.document;
+  d.title = 'Text bearbeiten – KI-Assistent';
   const el = (tag, props = {}, ...kids) => {
     const n = Object.assign(d.createElement(tag), props);
     n.append(...kids);

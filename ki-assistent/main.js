@@ -659,7 +659,7 @@ function runSmokeTest() {
       // Büro: Text-Aktionsfenster öffnet sich mit allen Aktionen, Windows-Helfer antwortet
       await js("window.__app.openTextAction({ text: 'Sehr geehrte Damen und Herren, bitte senden Sie mir ein Angebot.' })");
       await new Promise((r) => setTimeout(r, 1500));
-      const aktion = BrowserWindow.getAllWindows().find((w) => /Text bearbeiten/.test(w.getTitle()));
+      const aktion = BrowserWindow.getAllWindows().find((w) => /aktion\.html/.test(w.webContents.getURL()));
       const buttons = aktion ? await aktion.webContents.executeJavaScript("document.querySelectorAll('.actions button').length") : 0;
       console.log('Text-Aktion: Fenster', !!aktion, '| Aktionen', buttons);
       if (!aktion || buttons < 5) return fail('Text-Aktionsfenster');
