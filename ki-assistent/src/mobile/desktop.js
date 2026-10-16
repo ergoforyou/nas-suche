@@ -284,6 +284,55 @@ const api = {
     }
   },
   // ---- Spracherkennung in der Cloud (schneller als Whisper auf dem Handy)
+  /**
+   * Echtzeit-Gespräch (OpenAI Realtime): kurzlebigen Sitzungsschlüssel holen und die WebRTC-Verbindung aufbauen.
+   * Der eigentliche API-Schlüssel bleibt in der App; die Verbindung nutzt nur den kurzlebigen Schlüssel.
+   */
+  realtimeConnect: async ({ offerSdp, instructions, voice, model = 'gpt-realtime' }) => {
+    const key = (await getKeys()).openai;
+    if (!key) throw new Error('Kein OpenAI-Schlüssel hinterlegt (⚙ → Verbindung).');
+    const session = {
+      type: 'realtime',
+      model,
+      instructions,
+      audio: { input: { transcription: { model: 'gpt-4o-mini-transcribe' } }, output: { voice } },
+    };
+    const j = async (r) => {
+      const t = await r.text();
+      if (!r.ok) throw new Error(`OpenAI ${r.status}: ${t.slice(0, 300)}`);
+      return t;
+    };
+    // aktueller Weg: client_secrets + /realtime/calls; ältere Konten: sessions + /realtime
+    try {
+      const sec = JSON.parse(
+        await j(await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session }),
+        })),
+      );
+      const ek = sec.value ?? sec.client_secret?.value;
+      return await j(await fetch(`https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ek}`, 'Content-Type': 'application/sdp' },
+        body: offerSdp,
+      }));
+    } catch (e) {
+      if (!/404|400/.test(String(e.message))) throw e;
+      const old = JSON.parse(
+        await j(await fetch('https://api.openai.com/v1/realtime/sessions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'gpt-4o-realtime-preview', voice, instructions, input_audio_transcription: { model: 'whisper-1' } }),
+        })),
+      );
+      return await j(await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${old.client_secret.value}`, 'Content-Type': 'application/sdp' },
+        body: offerSdp,
+      }));
+    }
+  },
   transcribeCloud: async (audio, language, model) => {
     try {
       return await transcribeOpenAI(await openaiClient(), toFile, audio, { language, model });

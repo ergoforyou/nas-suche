@@ -5215,6 +5215,137 @@ function refreshSyncUi() {
   $('syncPhoneWrap').hidden = !PRIV;
 }
 
+
+// ---- Echtzeit-Gespräch (OpenAI Realtime): Hören, Denken und Sprechen in einem Schritt – Antworten in ca. ½ s
+const RT_VOICES = ['marin', 'cedar', 'coral', 'sage', 'shimmer', 'alloy', 'ash', 'ballad', 'echo', 'verse'];
+let rt = null;
+function rtInstructions() {
+  // gleiche Persona-Anweisungen wie im Chat – ohne Stimmungsmarken (die würden sonst mitgesprochen)
+  const keep = state.settings.moodTags;
+  state.settings.moodTags = false;
+  try {
+    return (buildMessages()[0]?.content ?? '') + '\n\nDu sprichst gerade live mit dem Nutzer: antworte natürlich, kurz und gesprochen.';
+  } finally {
+    state.settings.moodTags = keep;
+  }
+}
+async function startRealtime() {
+  if (rt) return;
+  if (!PRIV) return status('Das Echtzeit-Gespräch gibt es vorerst im Bereich 🏠 Privat.');
+  if (!desktop.realtimeConnect) return status('Echtzeit-Gespräch ist hier nicht verfügbar.');
+  stopAll();
+  if (state.settings.handsFree) setHandsFree(false);
+  if (state.settings.wakeOn && state.wakeListening) stt.cancel();
+  state.place = await currentPlace();
+  const voice = RT_VOICES.includes(state.settings.rtVoice) ? state.settings.rtVoice : 'marin';
+  const pc = new RTCPeerConnection();
+  rt = { pc, user: null, bot: null, botText: '' };
+  status('Echtzeit-Gespräch wird verbunden …');
+  try {
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    rt.mic = mic;
+    mic.getTracks().forEach((t) => pc.addTrack(t, mic));
+    // Antwortstimme abspielen und für die Lippenbewegung messen
+    const audioEl = new Audio();
+    audioEl.autoplay = true;
+    rt.audioEl = audioEl;
+    pc.ontrack = (ev) => {
+      audioEl.srcObject = ev.streams[0];
+      const ctx = new AudioContext();
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      ctx.createMediaStreamSource(ev.streams[0]).connect(an);
+      const buf = new Float32Array(an.fftSize);
+      rt.ctx = ctx;
+      const tick = () => {
+        if (!rt) return;
+        an.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (const v of buf) sum += v * v;
+        const lvl = Math.min(1, Math.sqrt(sum / buf.length) * 6);
+        avatarState.level = lvl;
+        avatarState.speaking = lvl > 0.04 || (avatarState.speaking && lvl > 0.015);
+        requestAnimationFrame(tick);
+      };
+      tick();
+    };
+    const dc = pc.createDataChannel('oai-events');
+    rt.dc = dc;
+    dc.onmessage = (m) => {
+      let ev;
+      try {
+        ev = JSON.parse(m.data);
+      } catch {
+        return;
+      }
+      const t = ev.type ?? '';
+      if (t === 'input_audio_buffer.speech_started') {
+        avatarState.listening = true;
+        fireEvent('ack', 800);
+      } else if (t === 'input_audio_buffer.speech_stopped') {
+        avatarState.listening = false;
+        avatarState.thinking = true;
+      } else if (/input_audio_transcription\.completed$/.test(t) && ev.transcript?.trim()) {
+        const entry = { role: 'user', content: ev.transcript.trim() };
+        history().push(entry);
+        decorateBubble(addBubble('user', entry.content), entry);
+      } else if (/response\.(output_)?audio_transcript\.delta$/.test(t)) {
+        avatarState.thinking = false;
+        if (!rt.bot) rt.bot = addBubble('assistant', '');
+        rt.botText += ev.delta ?? '';
+        fillBubble(rt.bot, 'assistant', rt.botText);
+        $('chat').scrollTop = $('chat').scrollHeight;
+      } else if (/response\.(output_)?audio_transcript\.done$/.test(t) || t === 'response.done') {
+        if (rt.bot && rt.botText.trim()) {
+          history().push({ role: 'assistant', content: rt.botText.trim() });
+          save();
+        }
+        rt.bot = null;
+        rt.botText = '';
+        avatarState.thinking = false;
+      } else if (t === 'error') {
+        status(`Echtzeit: ${ev.error?.message ?? 'Fehler'}`);
+        logEv('ECHTZEIT', ev.error?.message);
+      }
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const answer = await desktop.realtimeConnect({ offerSdp: offer.sdp, instructions: rtInstructions(), voice });
+    await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+    $('privRealtime').textContent = '⏹ Echtzeit-Gespräch beenden';
+    document.documentElement.classList.add('realtime');
+    status('🎙 Echtzeit-Gespräch läuft – einfach sprechen, dazwischenreden geht.');
+    logEv('ECHTZEIT', `an (${voice})`);
+  } catch (e) {
+    logEv('ECHTZEIT', e.message);
+    status(`Echtzeit-Gespräch: ${e.message}`);
+    stopRealtime();
+  }
+}
+function stopRealtime() {
+  if (!rt) return;
+  try {
+    rt.dc?.close();
+    rt.pc.close();
+    rt.mic?.getTracks().forEach((t) => t.stop());
+    rt.ctx?.close();
+    if (rt.audioEl) rt.audioEl.srcObject = null;
+  } catch {}
+  rt = null;
+  avatarState.speaking = false;
+  avatarState.listening = false;
+  avatarState.thinking = false;
+  avatarState.level = 0;
+  document.documentElement.classList.remove('realtime');
+  $('privRealtime').textContent = '🎙 Echtzeit-Gespräch starten';
+  logEv('ECHTZEIT', 'aus');
+}
+$('privRealtime').onclick = () => (rt ? stopRealtime() : startRealtime());
+$('privRtVoice').onchange = (e) => {
+  state.settings.rtVoice = e.target.value;
+  save();
+};
+
 function refreshPriv() {
   $('privWrap').hidden = !PRIV;
   $('privHint').hidden = !MOBILE || PRIV;
@@ -5222,6 +5353,9 @@ function refreshPriv() {
   renderNotes();
   fillCars();
   dev()?.setCar?.(state.settings.carName || '');
+  const vs = $('privRtVoice');
+  if (!vs.options.length) for (const v of RT_VOICES) vs.add(new Option(v[0].toUpperCase() + v.slice(1), v));
+  vs.value = RT_VOICES.includes(state.settings.rtVoice) ? state.settings.rtVoice : 'marin';
   $('privWakeOn').checked = !!state.settings.wakeOn;
   $('privWakeWord').value = state.settings.wakeWord || '';
   $('privWakeWord').placeholder = persona().name || 'Max';
@@ -5321,6 +5455,10 @@ window.__app = {
   setDrive: (on) => setDrive(on),
   matchWake,
   koelner,
+  rtInstructions: () => rtInstructions(),
+  startRealtime: () => startRealtime(),
+  stopRealtime: () => stopRealtime(),
+  rtActive: () => !!rt,
   readNotification: (ev) => readNotification(ev),
   bodyHandles,
   showBubble: (t) => showBubble(t),

@@ -137,6 +137,17 @@ Tageszeit, Begrüßung beim Start, Status-Leuchte, Sprechblase (z. B. im Büro o
 - **Nicht stören** bei Präsentation/Vollbild: Figur ausgeblendet, keine Sprachausgabe, Erinnerungen still.
 - **Schnellbefehle** (⚙ → Büro): eigene Knöpfe über dem Eingabefeld, `{text}` = Text im Eingabefeld/Markierung.
 
+### Privat-Funktionen auf dem Handy (Beta, nur Bereich Privat)
+
+- **Echtzeit-Gespräch** (OpenAI Realtime): Antworten in ca. ½ s, Dazwischenreden; kostet mehr pro Minute.
+- **Aktivierungswort** frei wählbar (Standard: Name der Persona), auf dem Handy erkannt.
+- **Notizen**: „Merk dir: … bis Samstag“ bzw. 📝 im Widget – Google Aufgaben oder lokale Liste.
+- **Fahrmodus**: startet mit dem Auto-Bluetooth, kurze Antworten, Nur-Figur-Ansicht.
+- **Nachrichten vorlesen** (WhatsApp, Signal, SMS …) mit der Stimme auf dem Gerät.
+- **Bildschirm fragen** über das Menü der schwebenden Figur.
+- **Abgleich mit dem PC im WLAN** (QR-Code), **Fehlerprotokoll** zum Weitergeben.
+- Schwebende Figur: Sprechblase, Andocken am Rand, Menü bei langem Drücken.
+
 ### Gedächtnis
 
 Unter ⚙ → **Gedächtnis**: Nach jeder Antwort fragt die App das Modell in LM Studio kurz, welche Fakten dauerhaft

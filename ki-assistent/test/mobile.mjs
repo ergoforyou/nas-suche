@@ -841,6 +841,63 @@ const after2 = await page.evaluate(() => window.__app.state.personas.length);
 pc.close();
 check(after2 === before2 + 1, 'Abgleich: Persona vom PC übers WLAN geholt', `${before2} → ${after2}`);
 check(received[0] > 1000, 'Abgleich: Persona an den PC gesendet', JSON.stringify(received));
+// Echtzeit-Gespräch: WebRTC gegen eine nachgebildete Gegenstelle (statt OpenAI) – Ton, Mitschrift, Lippen
+const rtRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const tone = () => {
+    const ctx = new AudioContext();
+    const d = ctx.createMediaStreamDestination();
+    const o = ctx.createOscillator();
+    o.frequency.value = 220;
+    o.connect(d);
+    o.start();
+    return d.stream;
+  };
+  const origGum = navigator.mediaDevices.getUserMedia;
+  navigator.mediaDevices.getUserMedia = async () => tone();
+  window.desktop.realtimeConnect = async ({ offerSdp, instructions, voice }) => {
+    window.__rt = { instructions, voice };
+    const pc2 = new RTCPeerConnection();
+    const s = tone();
+    s.getTracks().forEach((t) => pc2.addTrack(t, s));
+    pc2.ondatachannel = (e) => {
+      const dc = e.channel;
+      dc.onopen = () => {
+        const send = (o) => dc.send(JSON.stringify(o));
+        send({ type: 'input_audio_buffer.speech_started' });
+        send({ type: 'conversation.item.input_audio_transcription.completed', transcript: 'Wie spät ist es?' });
+        send({ type: 'response.output_audio_transcript.delta', delta: 'Es ist ' });
+        send({ type: 'response.output_audio_transcript.delta', delta: 'gleich drei.' });
+        send({ type: 'response.output_audio_transcript.done' });
+      };
+    };
+    await pc2.setRemoteDescription({ type: 'offer', sdp: offerSdp });
+    await pc2.setLocalDescription(await pc2.createAnswer());
+    await new Promise((r) => {
+      if (pc2.iceGatheringState === 'complete') return r();
+      pc2.onicegatheringstatechange = () => pc2.iceGatheringState === 'complete' && r();
+      setTimeout(r, 3000);
+    });
+    window.__pc2 = pc2;
+    return pc2.localDescription.sdp;
+  };
+  await app.startRealtime();
+  let maxLevel = 0;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    maxLevel = Math.max(maxLevel, app.avatarState.level);
+  }
+  const msgs = [...document.querySelectorAll('.msg')].slice(-2).map((m) => m.textContent.trim());
+  const active = app.rtActive();
+  app.stopRealtime();
+  navigator.mediaDevices.getUserMedia = origGum;
+  window.__pc2?.close();
+  return { active, after: app.rtActive(), msgs, maxLevel, noMood: !/Stimmungsmarke|\[freudig\]/.test(window.__rt?.instructions ?? ''), voice: window.__rt?.voice };
+});
+check(rtRes.active && !rtRes.after, 'Echtzeit-Gespräch verbindet (WebRTC) und lässt sich beenden', JSON.stringify(rtRes));
+check(/Wie spät ist es/.test(rtRes.msgs[0] ?? '') && /Es ist gleich drei/.test(rtRes.msgs[1] ?? ''), 'Echtzeit: Mitschrift von Frage und Antwort im Chat', JSON.stringify(rtRes.msgs));
+check(rtRes.maxLevel > 0.05, 'Echtzeit: Lippen bewegen sich mit der Antwortstimme', String(rtRes.maxLevel));
+check(rtRes.noMood && rtRes.voice === 'marin', 'Echtzeit: Persona-Anweisungen ohne Stimmungsmarken, Stimme gewählt');
 check(privF.drive.full && privF.drive.live && privF.drive.prompt && !privF.after.full && !privF.after.live, 'Fahrmodus: Nur-Figur, Live, kurze Antworten – und wieder aus', JSON.stringify(privF.drive));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();

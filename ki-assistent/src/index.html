@@ -736,6 +736,15 @@
           </div>
         </label>
         <div id="privCarInfo" class="hint"></div>
+        <h3>Echtzeit-Gespräch <span class="beta-badge">Privat</span></h3>
+        <p class="hint">Hören, Denken und Sprechen in einem Schritt (OpenAI Realtime): Antworten in etwa einer halben Sekunde,
+          sehr natürliche Stimme, Dazwischenreden jederzeit. Braucht den OpenAI-Schlüssel; kostet pro Gesprächsminute deutlich
+          mehr als der normale Weg (Größenordnung einige Cent pro Minute). Kalender, Internetsuche und Firmenwissen sind
+          hier noch nicht eingebunden – dafür das normale Gespräch nutzen.</p>
+        <div class="row">
+          <button id="privRealtime">🎙 Echtzeit-Gespräch starten</button>
+          <select id="privRtVoice" title="Stimme"></select>
+        </div>
         <h3>Aktivierungswort <span class="beta-badge">Privat</span></h3>
         <label class="check"><input id="privWakeOn" type="checkbox" /> Auf das Aktivierungswort hören – dann ohne Knopf sprechen</label>
         <label>Aktivierungswort <input id="privWakeWord" type="text" autocomplete="off" /></label>
