@@ -3,6 +3,8 @@ name: Video-Freisteller (Windows-EXE)
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - "video-freisteller/**"
       - ".github/workflows/video-freisteller.yml"
