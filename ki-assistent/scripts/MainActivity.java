@@ -19,6 +19,19 @@ import android.os.PowerManager;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.view.KeyEvent;
+import android.annotation.SuppressLint;
+import android.graphics.Color;
+import android.graphics.PixelFormat;
+import android.util.DisplayMetrics;
+import android.view.GestureDetector;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.webkit.WebView;
+import android.widget.FrameLayout;
+import android.widget.Toast;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
@@ -67,6 +80,16 @@ public class MainActivity extends BridgeActivity {
     // Ereignisse von außen (Teilen, Widget, Kachel, Assistent-Taste, Headset), bis die Oberfläche sie abholt
     private final JSONArray pendingEvents = new JSONArray();
     private MediaSession session;
+
+    // ---- Beta: schwebende Figur über anderen Apps (statt Bild-im-Bild)
+    private boolean floatEnabled = false;
+    private FrameLayout floatBox;
+    private WindowManager.LayoutParams floatParams;
+    private ViewGroup webParent;
+    private int webIndex;
+    private ViewGroup.LayoutParams webLayout;
+    private boolean floatStartedService;
+    private boolean floatHintShown;
     private int pipW = 3;
     private int pipH = 4;
 
@@ -257,6 +280,225 @@ public class MainActivity extends BridgeActivity {
                 session.release();
                 session = null;
             }
+        }
+    }
+
+
+    // ---- Beta: schwebende Figur. Die WebView mit der laufenden Figur wandert beim Verlassen der App in ein
+    // rahmenloses, durchsichtiges Fenster über allen Apps und beim Zurückkehren wieder in die App.
+    // Alles läuft weiter (Stimme, Mikrofon, Mimik), weil es dieselbe Oberfläche ist.
+    boolean canFloat() {
+        return Build.VERSION.SDK_INT >= 26 && Settings.canDrawOverlays(this);
+    }
+
+    private WindowManager floatWm() {
+        return (WindowManager) getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
+    }
+
+    /** Form der Figur hat sich geändert: Fenster anpassen (Breite bleibt). */
+    void refitFloat() {
+        if (floatBox == null) return;
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        floatParams.height = Math.max(dp(90), Math.min(Math.round(floatParams.width * (float) pipH / pipW), Math.round(m.heightPixels * 0.85f)));
+        floatWm().updateViewLayout(floatBox, floatParams);
+    }
+
+    private int dp(float v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    void showFloat() {
+        if (floatBox != null || bridge == null || !floatEnabled || !canFloat()) return;
+        WebView wv = bridge.getWebView();
+        if (!(wv.getParent() instanceof ViewGroup)) return;
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        android.content.SharedPreferences pref = getSharedPreferences("ki_schwebend", MODE_PRIVATE);
+        int w = pref.getInt("w", Math.max(dp(130), Math.round(dm.widthPixels * 0.36f)));
+        w = Math.max(dp(90), Math.min(w, dm.widthPixels));
+        int h = Math.round(w * (float) pipH / pipW);
+        h = Math.max(dp(90), Math.min(h, Math.round(dm.heightPixels * 0.7f)));
+        floatParams = new WindowManager.LayoutParams(w, h, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT);
+        floatParams.gravity = Gravity.TOP | Gravity.START;
+        floatParams.x = pref.getInt("x", dm.widthPixels - w - dp(12));
+        floatParams.y = pref.getInt("y", dm.heightPixels - h - dp(120));
+
+        webParent = (ViewGroup) wv.getParent();
+        webIndex = webParent.indexOfChild(wv);
+        webLayout = wv.getLayoutParams();
+        webParent.removeView(wv);
+
+        final GestureDetector taps = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                pushAction("talk");
+                return true;
+            }
+
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                Intent back = new Intent(MainActivity.this, MainActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(back);
+                return true;
+            }
+
+            @Override
+            public void onLongPress(MotionEvent e) {
+                hideFloat();
+                Toast.makeText(MainActivity.this, "Figur ausgeblendet – App öffnen, um sie wieder zu sehen", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public boolean onScroll(MotionEvent e1, MotionEvent e2, float dx, float dy) {
+                if (floatBox == null || e2.getPointerCount() > 1) return false;
+                floatParams.x = Math.round(floatParams.x - dx);
+                floatParams.y = Math.round(floatParams.y - dy);
+                floatWm().updateViewLayout(floatBox, floatParams);
+                return true;
+            }
+        });
+        final ScaleGestureDetector pinch = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override
+            public boolean onScale(ScaleGestureDetector d) {
+                if (floatBox == null) return false;
+                DisplayMetrics m = getResources().getDisplayMetrics();
+                float k = d.getScaleFactor();
+                int nw = Math.max(dp(90), Math.min(m.widthPixels, Math.round(floatParams.width * k)));
+                int nh = Math.round(nw * (float) pipH / pipW);
+                if (nh > m.heightPixels * 0.85f) return true;
+                floatParams.x -= (nw - floatParams.width) / 2;
+                floatParams.y -= (nh - floatParams.height) / 2;
+                floatParams.width = nw;
+                floatParams.height = nh;
+                floatWm().updateViewLayout(floatBox, floatParams);
+                return true;
+            }
+        });
+        floatBox = new FrameLayout(this) {
+            @Override
+            public boolean onInterceptTouchEvent(MotionEvent ev) {
+                return true; // alle Berührungen sind Gesten für das Fenster, nicht für die Seite
+            }
+
+            @Override
+            public boolean onTouchEvent(MotionEvent ev) {
+                pinch.onTouchEvent(ev);
+                if (!pinch.isInProgress()) taps.onTouchEvent(ev);
+                if (ev.getActionMasked() == MotionEvent.ACTION_UP || ev.getActionMasked() == MotionEvent.ACTION_CANCEL) saveFloatPlace();
+                return true;
+            }
+        };
+        floatBox.setBackgroundColor(Color.TRANSPARENT);
+        wv.setBackgroundColor(Color.TRANSPARENT);
+        floatBox.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        try {
+            floatWm().addView(floatBox, floatParams);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Schwebende Figur", e);
+            floatBox.removeView(wv);
+            webParent.addView(wv, webIndex, webLayout);
+            floatBox = null;
+            return;
+        }
+        // Mikrofon und Ton dürfen im Hintergrund nur mit Vordergrund-Dienst weiterlaufen
+        if (!KIConversationService.running) {
+            floatStartedService = true;
+            try {
+                Intent svc = new Intent(this, KIConversationService.class);
+                if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
+                else startService(svc);
+            } catch (Exception e) {
+                Log.w("KI-Assistent", "Dienst für schwebende Figur", e);
+            }
+        }
+        runJs("window.__setFloat && window.__setFloat(true)");
+        if (!floatHintShown) {
+            floatHintShown = true;
+            Toast.makeText(this, "Tippen: sprechen · doppelt: App · ziehen: verschieben · zwei Finger: Größe · lange drücken: ausblenden", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void saveFloatPlace() {
+        if (floatParams == null) return;
+        getSharedPreferences("ki_schwebend", MODE_PRIVATE).edit()
+            .putInt("x", floatParams.x).putInt("y", floatParams.y).putInt("w", floatParams.width).apply();
+    }
+
+    void hideFloat() {
+        if (floatBox == null) return;
+        saveFloatPlace();
+        WebView wv = bridge.getWebView();
+        try {
+            floatWm().removeView(floatBox);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Schwebende Figur schließen", e);
+        }
+        floatBox.removeView(wv);
+        floatBox = null;
+        if (webParent != null) webParent.addView(wv, Math.min(webIndex, webParent.getChildCount()), webLayout);
+        wv.setBackgroundColor(Color.WHITE);
+        if (floatStartedService) {
+            floatStartedService = false;
+            stopService(new Intent(this, KIConversationService.class));
+        }
+        runJs("window.__setFloat && window.__setFloat(false)");
+    }
+
+    /** Schnittstelle für die Oberfläche: window.KIFloat */
+    public class Floater {
+        @JavascriptInterface
+        public boolean supported() {
+            return Build.VERSION.SDK_INT >= 26;
+        }
+
+        @JavascriptInterface
+        public boolean allowed() {
+            return canFloat();
+        }
+
+        /** Android-Einstellung „Über anderen Apps einblenden“ für diese App öffnen. */
+        @JavascriptInterface
+        public void askPermission() {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
+                } catch (Exception e) {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION));
+                }
+            });
+        }
+
+        /** Beim Verlassen der App schweben (statt Bild-im-Bild). */
+        @JavascriptInterface
+        public void setEnabled(boolean on) {
+            runOnUiThread(() -> {
+                floatEnabled = on;
+                applyParams();
+            });
+        }
+
+        /** Sofort schweben lassen: App in den Hintergrund, Figur bleibt. */
+        @JavascriptInterface
+        public void now() {
+            runOnUiThread(() -> {
+                if (!floatEnabled || !canFloat()) return;
+                showFloat();
+                moveTaskToBack(true);
+            });
+        }
+
+        @JavascriptInterface
+        public boolean showing() {
+            return floatBox != null;
         }
     }
 
@@ -531,7 +773,7 @@ public class MainActivity extends BridgeActivity {
     private PictureInPictureParams pipParams() {
         PictureInPictureParams.Builder b = new PictureInPictureParams.Builder().setAspectRatio(new Rational(pipW, pipH));
         if (Build.VERSION.SDK_INT >= 31) {
-            b.setAutoEnterEnabled(pipEnabled);
+            b.setAutoEnterEnabled(pipEnabled && !(floatEnabled && canFloat()));
             b.setSeamlessResizeEnabled(true);
         }
         return b.build();
@@ -577,6 +819,7 @@ public class MainActivity extends BridgeActivity {
                     pipW = (int) Math.round(r * 1000);
                     pipH = 1000;
                     applyParams();
+                    refitFloat();
                 });
             }
         }, "KIPip");
@@ -584,6 +827,7 @@ public class MainActivity extends BridgeActivity {
         bridge.getWebView().addJavascriptInterface(new FileSaver(), "KIFiles");
         bridge.getWebView().addJavascriptInterface(new Auth(), "KIAuth");
         bridge.getWebView().addJavascriptInterface(new Device(), "KIDevice");
+        bridge.getWebView().addJavascriptInterface(new Floater(), "KIFloat");
         current = new WeakReference<>(this);
     }
 
@@ -591,6 +835,8 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         resumed = true;
+        hideFloat();
+        applyParams();
         current = new WeakReference<>(this);
     }
 
@@ -602,6 +848,12 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        if (floatBox != null) {
+            try {
+                floatWm().removeView(floatBox);
+            } catch (Exception ignored) {}
+            floatBox = null;
+        }
         if (session != null) {
             session.release();
             session = null;
@@ -614,6 +866,10 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onUserLeaveHint() {
         super.onUserLeaveHint();
+        if (floatEnabled && canFloat()) {
+            showFloat();
+            return;
+        }
         if (pipEnabled && Build.VERSION.SDK_INT >= 26 && Build.VERSION.SDK_INT < 31) enterPictureInPictureMode(pipParams());
     }
 

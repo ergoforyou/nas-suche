@@ -194,6 +194,9 @@ APK aufs Handy laden, öffnen, Installation aus dieser Quelle einmal erlauben.
   geschlossener App; bei offener App sagt die Figur sie an.
 - **Gespräch im Hintergrund** (nur wenn eingeschaltet): läuft bei ausgeschaltetem Bildschirm weiter, Headset-Taste = sprechen.
 - **Akku-Sparmodus**: Figur mit weniger Bildern pro Sekunde bei Energiesparmodus bzw. wenig Akku.
+- **Beta-Linie** (Zweig `claude/ki-assistent-beta`, Datei `kanal.json`): App „KI-Assistent Beta“ mit eigener App-ID,
+  installierbar neben der normalen App. Darin neu: **schwebende Figur** über anderen Apps (⚙ → Handy → Schwebende Figur;
+  Android-Erlaubnis „Über anderen Apps einblenden“ nötig).
 - Nicht auf dem Handy: freie Figur über anderen Apps (geplant), Ausgabefenster, PDF-Export, Chatterbox.
 
 ## Entwickeln

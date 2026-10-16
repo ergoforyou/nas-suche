@@ -297,6 +297,9 @@ body.floating .stage { display: none; }
 .pip .state-badge, .pip .resize-handle { display: none !important; }
 .pip body { padding: 0; }
 .pip .stage { height: 100vh !important; min-height: 0; }
+/* Beta: schwebende Figur – alles durchsichtig außer der Figur */
+.float-ov, .float-ov body, .float-ov .stage { background: transparent !important; }
+.beta-badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #b26a00; color: #fff; vertical-align: middle; }
 
 /* Video-Werkzeug: Abschnitt wählen, Standbild übernehmen */
 #vtool { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }

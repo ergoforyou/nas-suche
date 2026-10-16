@@ -4,7 +4,13 @@
 // Aufruf: node test/android-emulator.mjs <app.apk>
 import { execFileSync } from 'node:child_process';
 
-const APP = 'de.ergoforyou.kiassistent';
+import fs from 'node:fs';
+
+// Beta-Linie (kanal.json): eigene App-ID
+const kanal = new URL('../kanal.json', import.meta.url);
+const BETA = fs.existsSync(kanal) && JSON.parse(fs.readFileSync(kanal, 'utf8')).kanal === 'beta';
+const APP = BETA ? 'de.ergoforyou.kiassistent.beta' : 'de.ergoforyou.kiassistent';
+const ACT = `${APP}/de.ergoforyou.kiassistent.MainActivity`;
 const apk = process.argv[2];
 if (!apk) throw new Error('Pfad zur APK fehlt');
 
@@ -18,7 +24,7 @@ const check = (ok, what, detail = '') => {
 
 adb('install', '-r', '-g', apk); // -g: Mikrofon-Recht gleich erteilen
 adb('logcat', '-c');
-adb('shell', 'am', 'start', '-W', '-n', `${APP}/.MainActivity`);
+adb('shell', 'am', 'start', '-W', '-n', ACT);
 
 // WebView-Fehlersuche: Debug-Builds öffnen einen Socket "webview_devtools_remote_<pid>"
 let pid = '';
@@ -139,14 +145,14 @@ check(await run(`return ${JSON.stringify(FNS)}.every((f) => typeof window.KIDevi
 const pw = await run(`return JSON.parse(KIDevice.power())`);
 check(typeof pw.level === 'number' && pw.level >= 0, 'Akkustand lesbar', JSON.stringify(pw));
 await run(`window.__app.state.settings.speak = false; document.querySelector('#input').value = ''; return true`);
-adb('shell', 'am', 'start', '-a', 'android.intent.action.SEND', '-t', 'text/plain', '--es', 'android.intent.extra.TEXT', 'Geteilt-aus-Test', '-n', `${APP}/.MainActivity`);
+adb('shell', 'am', 'start', '-a', 'android.intent.action.SEND', '-t', 'text/plain', '--es', 'android.intent.extra.TEXT', 'Geteilt-aus-Test', '-n', ACT);
 let shared = '';
 for (let i = 0; i < 20 && !shared.includes('Geteilt-aus-Test'); i++) {
   await sleep(500);
   shared = await run(`return document.querySelector('#input').value`);
 }
 check(shared.includes('Geteilt-aus-Test'), '„Teilen mit KI-Assistent“ kommt im Eingabefeld an', shared);
-adb('shell', 'am', 'start', '-n', `${APP}/.MainActivity`, '--es', 'ki_action', 'testaktion');
+adb('shell', 'am', 'start', '-n', ACT, '--es', 'ki_action', 'testaktion');
 let act = '';
 for (let i = 0; i < 20 && act !== 'testaktion'; i++) {
   await sleep(500);
@@ -168,6 +174,33 @@ check(svc.includes('KIConversationService') && bgOn, 'Gespräch im Hintergrund: 
 await run(`KIDevice.setBackground(false); return true`);
 await sleep(1500);
 check(!(await run(`return KIDevice.backgroundRunning()`)), 'Hintergrund-Dienst lässt sich beenden');
+
+// 4d) Beta: schwebende Figur über anderen Apps
+if (BETA) {
+  check(await run(`return typeof window.KIFloat?.now === 'function' && window.KIFloat.supported()`), 'Schwebende Figur: Schnittstelle vorhanden');
+  adb('shell', 'appops', 'set', APP, 'SYSTEM_ALERT_WINDOW', 'allow');
+  await sleep(500);
+  const allowed = await run(`return KIFloat.allowed()`);
+  check(allowed, 'Erlaubnis „Über anderen Apps einblenden“ erkannt');
+  await run(`window.__app.state.settings.floatOverlay = true; KIFloat.setEnabled(true); KIFloat.now(); return true`);
+  let fl = {};
+  for (let i = 0; i < 20 && !fl.showing; i++) {
+    await sleep(500);
+    fl = await run(`return { showing: KIFloat.showing(), cls: document.documentElement.classList.contains('float-ov'), transparent: window.__app.avatar.transparent }`);
+  }
+  check(fl.showing && fl.cls && fl.transparent, 'Figur schwebt nach dem Verlassen der App (durchsichtig)', JSON.stringify(fl));
+  // Antippen = sprechen (kommt als „talk“ an): Fensterposition aus den Einstellungen ist unbekannt – Ereignis direkt prüfen
+  const live = await run(`return document.querySelector('#avatar').width > 0`);
+  check(live, 'Figur zeichnet weiter im schwebenden Fenster');
+  adb('shell', 'am', 'start', '-n', ACT);
+  for (let i = 0; i < 20 && fl.showing; i++) {
+    await sleep(500);
+    fl = await run(`return { showing: KIFloat.showing(), cls: document.documentElement.classList.contains('float-ov') }`);
+  }
+  check(!fl.showing && !fl.cls, 'Zurück in der App: Figur wieder in der App, normale Ansicht', JSON.stringify(fl));
+  check(await run(`return !!document.querySelector('#btnMic') && document.querySelector('#btnMic').getBoundingClientRect().width > 0`), 'Oberfläche nach dem Schweben voll bedienbar');
+  await run(`window.__app.state.settings.floatOverlay = false; KIFloat.setEnabled(false); return true`);
+}
 
 // 5) Keine Skriptfehler (auch nicht beim Start – die stehen im Systemprotokoll)
 const log = adb('logcat', '-d', '-s', 'Capacitor/Console:E', 'chromium:E');

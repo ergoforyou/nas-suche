@@ -3,10 +3,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const APP = 'de.ergoforyou.kiassistent';
+const BASE = 'de.ergoforyou.kiassistent';
+// Beta-Linie (Datei kanal.json, nur im Beta-Zweig): eigene App-ID und eigener Name -> neben der normalen App installierbar
+const kanalFile = new URL('../kanal.json', import.meta.url);
+const BETA = fs.existsSync(kanalFile) && JSON.parse(fs.readFileSync(kanalFile, 'utf8')).kanal === 'beta';
+const APP = BETA ? `${BASE}.beta` : BASE;
 const shortcut = (id, label, action, icon = '@drawable/ic_ki_mic') => `
     <shortcut android:shortcutId="${id}" android:enabled="true" android:icon="${icon}" android:shortcutShortLabel="@string/${label}">
-        <intent android:action="android.intent.action.VIEW" android:targetPackage="${APP}" android:targetClass="${APP}.MainActivity">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="${APP}" android:targetClass="${BASE}.MainActivity">
             <extra android:name="ki_action" android:value="${action}" />
         </intent>
     </shortcut>`;
@@ -81,6 +85,8 @@ const PERMS = [
   'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
   'android.permission.WAKE_LOCK',
   'android.permission.BLUETOOTH_CONNECT',
+  // Beta: schwebende Figur über anderen Apps (muss in den Android-Einstellungen erlaubt werden)
+  'android.permission.SYSTEM_ALERT_WINDOW',
   ['android.permission.BLUETOOTH', 30],
 ];
 for (const entry of PERMS) {
@@ -165,7 +171,7 @@ for (const [file, content] of Object.entries(RESOURCES)) {
 const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const gradle = path.join(root, 'android/app/build.gradle');
 let g = fs.readFileSync(gradle, 'utf8');
-const [maj, min, pat] = version.split('.').map(Number);
+const [maj, min, pat] = version.split('.').map((n) => parseInt(n, 10));
 // Fester Test-Signierschlüssel: Sonst signiert jeder Build mit einem neuen Zufallsschlüssel, und Android
 // verweigert das Update über die vorherige Version.
 if (!g.includes('android-test.keystore')) {
@@ -181,6 +187,11 @@ if (!g.includes('android-test.keystore')) {
         }
     }`,
   );
+}
+if (BETA) {
+  g = g.replace(/applicationId "[^"]*"/, `applicationId "${APP}"`);
+  const strings = path.join(root, 'android/app/src/main/res/values/strings.xml');
+  fs.writeFileSync(strings, fs.readFileSync(strings, 'utf8').replace(/(<string name="(?:app_name|title_activity_main)">)[^<]*/g, '$1KI-Assistent Beta'));
 }
 g = g.replace(/versionCode \d+/, `versionCode ${maj * 10000 + min * 100 + pat}`).replace(/versionName "[^"]*"/, `versionName "${version}"`);
 fs.writeFileSync(gradle, g);

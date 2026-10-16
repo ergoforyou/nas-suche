@@ -127,6 +127,7 @@ const DEFAULT_SETTINGS = {
   reminderLead: 15, // Minuten vor dem Termin
   bgTalk: false, // Android: Gespräch läuft im Hintergrund weiter (Bildschirm aus, Headset-Taste)
   powerSave: 'auto', // Android: 'auto' | 'an' | 'aus' – Figur sparsamer bei wenig Akku
+  floatOverlay: false, // Android (Beta): Figur schwebt beim Verlassen der App frei über anderen Apps
 };
 
 const CLAUDE_MODELS = [
@@ -1421,6 +1422,7 @@ function fillSettings() {
   $('phLead').value = String(s.reminderLead ?? 15);
   $('phBgTalk').checked = !!s.bgTalk;
   $('phPower').value = s.powerSave ?? 'auto';
+  $('phFloat').checked = !!s.floatOverlay;
   $('avPipBg').value = s.pipBg ?? 'dunkel';
   $('avPipCamera').checked = s.pipCamera !== false;
   $('avPipColor').value = s.pipBgColor ?? '#1e2430';
@@ -4027,8 +4029,51 @@ $('phPower').onchange = (e) => {
   checkPower();
 };
 
+// ---------------------------------------------------------------- Android (Beta): schwebende Figur
+// Beim Verlassen der App wandert die laufende Oberfläche in ein durchsichtiges Fenster über allen Apps;
+// zu sehen ist nur die Figur. Antippen = sprechen (kommt als „talk“ über handleIntents).
+const floater = () => (MOBILE ? window.KIFloat : null);
+function refreshFloat() {
+  const f = floater();
+  $('phFloatWrap').hidden = !f?.supported?.();
+  if (!f) return;
+  const allowed = f.allowed();
+  $('phFloatAllow').hidden = allowed;
+  $('phFloatNow').disabled = !allowed || !state.settings.floatOverlay;
+  $('phFloatInfo').textContent = !state.settings.floatOverlay
+    ? ''
+    : allowed
+      ? 'Aktiv: Beim Verlassen der App (Home-Taste, App-Wechsel) schwebt die Figur über anderen Apps – statt Bild-im-Bild.'
+      : 'Noch nicht erlaubt: „Erlauben …“ tippen und bei „KI-Assistent Beta“ „Über anderen Apps einblenden“ einschalten.';
+  f.setEnabled(!!state.settings.floatOverlay && allowed);
+}
+$('phFloat').onchange = (e) => {
+  state.settings.floatOverlay = e.target.checked;
+  save();
+  if (e.target.checked && floater() && !floater().allowed()) floater().askPermission();
+  refreshFloat();
+};
+$('phFloatAllow').onclick = () => floater()?.askPermission();
+$('phFloatNow').onclick = () => {
+  $('drawer').hidden = true;
+  floater()?.now();
+};
+window.__setFloat = (on) => {
+  document.documentElement.classList.toggle('pip', !!on);
+  document.documentElement.classList.toggle('float-ov', !!on);
+  avatar.pipFit = !!on;
+  avatar.camera = state.settings.pipCamera !== false;
+  avatar.cam = null;
+  avatar.transparent = !!on; // kein Hintergrund: nur die Figur ist zu sehen
+  avatar.bgStyle = null;
+  avatar.bg = null;
+  window.dispatchEvent(new Event('resize'));
+  if (on) setTimeout(updatePipShape, 300);
+};
+
 function startPhoneFeatures() {
   if (!MOBILE) return;
+  refreshFloat();
   intentsReady = true;
   handleIntents();
   if (state.settings.bgTalk) dev()?.setBackground?.(true);
@@ -4039,6 +4084,7 @@ function startPhoneFeatures() {
   if (state.settings.placeAuto) refreshPlace().catch(() => {});
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
+    refreshFloat();
     checkPower();
     syncReminders();
   });

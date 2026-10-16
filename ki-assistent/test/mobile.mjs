@@ -628,6 +628,17 @@ check(
   JSON.stringify(rem),
 );
 check(phone.fps === 5, 'Akku-Sparmodus: bei 8 % Akku nur noch 5 Bilder/s', String(phone.fps));
+// ---- Beta: schwebende Figur – nur die Figur, Hintergrund durchsichtig
+const fl = await page.evaluate(async () => {
+  window.__setFloat(true);
+  await new Promise((r) => setTimeout(r, 800));
+  const c = document.querySelector('#avatar');
+  const px = c.getContext('2d').getImageData(1, 1, 1, 1).data;
+  const out = { corner: px[3], body: getComputedStyle(document.body).backgroundColor, chat: getComputedStyle(document.querySelector('#chat')).display };
+  window.__setFloat(false);
+  return out;
+});
+check(fl.corner === 0 && /rgba\(0, 0, 0, 0\)|transparent/.test(fl.body) && fl.chat === 'none', 'Schwebende Figur: nur Figur, Hintergrund durchsichtig', JSON.stringify(fl));
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

@@ -67,10 +67,10 @@ jobs:
         run: |
           v=$(node -p "require('./package.json').version")
           mkdir -p release-android
-          cp android/app/build/outputs/apk/debug/app-debug.apk "release-android/KI-Assistent-Android-$v.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "release-android/KI-Assistent-Beta-Android-$v.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: KI-Assistent-Android
+          name: KI-Assistent-Beta-Android
           path: ki-assistent/release-android/*.apk
 
   android-test:
@@ -85,7 +85,7 @@ jobs:
           node-version: 22
       - uses: actions/download-artifact@v4
         with:
-          name: KI-Assistent-Android
+          name: KI-Assistent-Beta-Android
           path: ki-assistent/apk
       - name: KVM für den Emulator freischalten
         run: |
@@ -105,6 +105,8 @@ jobs:
 
   windows:
     name: Windows-Programm bauen
+    # Beta-Linie: nur die Android-App ändert sich – Windows-Pakete kommen aus dem normalen Zweig
+    if: ${{ !contains(github.ref, 'ki-assistent-beta') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
