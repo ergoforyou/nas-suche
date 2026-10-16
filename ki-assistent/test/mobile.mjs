@@ -759,6 +759,37 @@ const priv = await page.evaluate(async () => ({
   history: Object.values(window.__app.state.history ?? {}).flat().length,
 }));
 check(priv.area === 'privat' && priv.cls && priv.kb === null && priv.history === 0, 'Bereich Privat: getrennte Daten, kein Firmenwissen', JSON.stringify(priv));
+// Privat-Funktionen: Notiz per „Merk dir“, Fehlerprotokoll ohne Schlüssel, Fahrmodus
+const privF = await page.evaluate(async () => {
+  const app = window.__app;
+  await window.desktop.setKey('anthropic', 'sk-ant-geheim-1234567890');
+  document.querySelector('#input').value = 'Merk dir: Reifen wechseln bis Samstag';
+  document.querySelector('#btnSend').click();
+  await new Promise((r) => setTimeout(r, 600));
+  const notes = app.state.settings.notes ?? [];
+  const sat = new Date(`${notes[0]?.due}T12:00`).getDay();
+  window.KIDevice = { appLog: () => 'Bearer abcdef sk-ant-geheim-1234567890 test@example.com', deviceInfo: () => '{"modell":"Test"}', power: () => '{}' };
+  const savedName = [];
+  const orig = window.desktop.saveFileAs;
+  window.desktop.saveFileAs = async (name) => (savedName.push(name), { ok: true });
+  const log = await app.saveBugReport();
+  window.desktop.saveFileAs = orig;
+  delete window.KIDevice;
+  app.setDrive(true);
+  const drive = { full: document.documentElement.classList.contains('stage-full'), live: app.state.settings.handsFree, prompt: /Fahrmodus/.test(app.buildMessages()[0]?.content ?? '') };
+  app.setDrive(false);
+  await window.desktop.setKey('anthropic', '');
+  return {
+    wrap: !document.querySelector('#privWrap').hidden,
+    note: notes[0]?.text, sat, bubble: [...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent,
+    logOk: /Fehlerprotokoll/.test(log) && !/geheim|abcdef|test@example/.test(log), file: savedName[0],
+    drive, after: { full: document.documentElement.classList.contains('stage-full'), live: app.state.settings.handsFree },
+  };
+});
+check(privF.wrap, 'Privat: Notizen, Fahrmodus und Fehlerprotokoll sichtbar');
+check(privF.note === 'Reifen wechseln' && privF.sat === 6 && /Notiert/.test(privF.bubble ?? ''), '„Merk dir … bis Samstag“ wird als Notiz mit Fälligkeit gespeichert', JSON.stringify(privF));
+check(privF.logOk && /fehlerprotokoll/.test(privF.file ?? ''), 'Fehlerprotokoll gespeichert, ohne Schlüssel/Token/E-Mail');
+check(privF.drive.full && privF.drive.live && privF.drive.prompt && !privF.after.full && !privF.after.live, 'Fahrmodus: Nur-Figur, Live, kurze Antworten – und wieder aus', JSON.stringify(privF.drive));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

@@ -42,16 +42,19 @@ const RESOURCES = {
     <TextView android:id="@+id/ki_widget_live" android:layout_width="wrap_content" android:layout_height="match_parent"
         android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp"
         android:text="@string/ki_sc_live_short" android:textColor="#9FC3FF" android:textSize="15sp" />
+    <TextView android:id="@+id/ki_widget_note" android:layout_width="wrap_content" android:layout_height="match_parent"
+        android:gravity="center" android:paddingStart="8dp" android:paddingEnd="12dp"
+        android:text="@string/ki_sc_note_short" android:textColor="#FFD27F" android:textSize="15sp" />
 </LinearLayout>
 `,
   'xml/ki_widget_info.xml': `<?xml version="1.0" encoding="utf-8"?>
-<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" android:minWidth="180dp"
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" android:minWidth="220dp"
     android:minHeight="50dp" android:targetCellWidth="3" android:targetCellHeight="1" android:updatePeriodMillis="0"
     android:initialLayout="@layout/ki_widget" android:resizeMode="horizontal" android:widgetCategory="home_screen"
     android:description="@string/ki_widget" />
 `,
   'xml/ki_shortcuts.xml': `<?xml version="1.0" encoding="utf-8"?>
-<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">${shortcut('sprechen', 'ki_sc_talk', 'listen')}${shortcut('live', 'ki_sc_live', 'live')}
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">${shortcut('sprechen', 'ki_sc_talk', 'listen')}${shortcut('live', 'ki_sc_live', 'live')}${shortcut('notiz', 'ki_sc_note', 'note')}
 </shortcuts>
 `,
   'values/ki_strings.xml': `<?xml version="1.0" encoding="utf-8"?>
@@ -61,6 +64,8 @@ const RESOURCES = {
     <string name="ki_sc_talk">Sprechen</string>
     <string name="ki_sc_live">Live-Gespräch</string>
     <string name="ki_sc_live_short">📞 Live</string>
+    <string name="ki_sc_note_short">📝</string>
+    <string name="ki_sc_note">Notiz</string>
 </resources>
 `,
 };

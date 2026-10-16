@@ -24,6 +24,7 @@ public class KIWidget extends AppWidgetProvider {
             RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.ki_widget);
             v.setOnClickPendingIntent(R.id.ki_widget_talk, action(c, "listen", 30));
             v.setOnClickPendingIntent(R.id.ki_widget_live, action(c, "live", 31));
+            v.setOnClickPendingIntent(R.id.ki_widget_note, action(c, "note", 32));
             m.updateAppWidget(id, v);
         }
     }

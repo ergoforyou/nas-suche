@@ -90,6 +90,12 @@ public class MainActivity extends BridgeActivity {
     private ViewGroup.LayoutParams webLayout;
     private boolean floatStartedService;
     private boolean floatHintShown;
+    private boolean floatDock = true; // am Rand andocken (bzw. halb verstecken)
+    private boolean floatHalf; // halb hinter dem Rand versteckt
+    private android.widget.TextView bubbleView;
+    private android.view.View menuView;
+    private final android.os.Handler bubbleHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private android.content.BroadcastReceiver carReceiver;
     private int pipW = 3;
     private int pipH = 4;
 
@@ -345,6 +351,10 @@ public class MainActivity extends BridgeActivity {
 
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (floatHalf) {
+                    slideIn();
+                    return true;
+                }
                 pushAction("talk");
                 return true;
             }
@@ -359,8 +369,7 @@ public class MainActivity extends BridgeActivity {
 
             @Override
             public void onLongPress(MotionEvent e) {
-                hideFloat();
-                Toast.makeText(MainActivity.this, "Figur ausgeblendet – App öffnen, um sie wieder zu sehen", Toast.LENGTH_SHORT).show();
+                showFloatMenu();
             }
 
             @Override
@@ -429,7 +438,7 @@ public class MainActivity extends BridgeActivity {
         runJs("window.__setFloat && window.__setFloat(true)");
         if (!floatHintShown) {
             floatHintShown = true;
-            Toast.makeText(this, "Tippen: sprechen · doppelt: App · ziehen: verschieben · zwei Finger: Größe · lange drücken: ausblenden", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Tippen: sprechen · doppelt: App · ziehen: verschieben · zwei Finger: Größe · lange drücken: Menü", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -442,6 +451,17 @@ public class MainActivity extends BridgeActivity {
             int keepY = Math.min(floatParams.height, dp(60));
             int x = Math.max(keepX - floatParams.width, Math.min(floatParams.x, m.widthPixels - keepX));
             int y = Math.max(0, Math.min(floatParams.y, m.heightPixels - keepY));
+            floatHalf = false;
+            if (floatDock) {
+                int w = floatParams.width;
+                int left = x;
+                int right = m.widthPixels - (x + w);
+                // weit über den Rand gezogen: halb verstecken; nahe am Rand: bündig andocken
+                if (left < -w * 0.3f) { x = -w / 2; floatHalf = true; }
+                else if (right < -w * 0.3f) { x = m.widthPixels - w / 2; floatHalf = true; }
+                else if (left < m.widthPixels * 0.12f) x = 0;
+                else if (right < m.widthPixels * 0.12f) x = m.widthPixels - w;
+            }
             if (x != floatParams.x || y != floatParams.y) {
                 floatParams.x = x;
                 floatParams.y = y;
@@ -453,6 +473,8 @@ public class MainActivity extends BridgeActivity {
     }
 
     void hideFloat() {
+        hideBubble();
+        hideFloatMenu();
         if (floatBox == null) return;
         saveFloatPlace();
         WebView wv = bridge.getWebView();
@@ -470,6 +492,156 @@ public class MainActivity extends BridgeActivity {
             stopService(new Intent(this, KIConversationService.class));
         }
         runJs("window.__setFloat && window.__setFloat(false)");
+    }
+
+
+    /** Halb versteckte Figur wieder ganz hereinholen. */
+    void slideIn() {
+        if (floatBox == null) return;
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        floatParams.x = floatParams.x < 0 ? 0 : m.widthPixels - floatParams.width;
+        floatHalf = false;
+        floatWm().updateViewLayout(floatBox, floatParams);
+        saveFloatPlace();
+    }
+
+    /** Sprechblase neben der schwebenden Figur (eigenes kleines Fenster, nimmt keine Berührungen an). */
+    void showBubble(String text, int ms) {
+        if (floatBox == null || text == null || text.trim().isEmpty()) return;
+        hideBubble();
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        android.widget.TextView tv = new android.widget.TextView(this);
+        tv.setText(text.length() > 220 ? text.substring(0, 217) + " …" : text);
+        tv.setTextColor(0xFF1B1F27);
+        tv.setTextSize(14);
+        tv.setMaxWidth(dp(240));
+        tv.setPadding(dp(12), dp(8), dp(12), dp(8));
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xF2FAFBFD);
+        bg.setCornerRadius(dp(14));
+        tv.setBackground(bg);
+        tv.setElevation(dp(4));
+        WindowManager.LayoutParams p = new WindowManager.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT);
+        p.gravity = Gravity.TOP | Gravity.START;
+        tv.measure(android.view.View.MeasureSpec.makeMeasureSpec(dp(240), android.view.View.MeasureSpec.AT_MOST), android.view.View.MeasureSpec.UNSPECIFIED);
+        int bw = tv.getMeasuredWidth();
+        int cx = floatParams.x + floatParams.width / 2;
+        p.x = cx > m.widthPixels / 2 ? Math.max(dp(4), floatParams.x - bw - dp(6)) : Math.min(m.widthPixels - bw - dp(4), floatParams.x + floatParams.width + dp(6));
+        p.y = Math.max(dp(4), floatParams.y + dp(8));
+        try {
+            floatWm().addView(tv, p);
+            bubbleView = tv;
+            bubbleHandler.postDelayed(this::hideBubble, Math.max(1500, ms));
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Sprechblase", e);
+        }
+    }
+
+    void hideBubble() {
+        bubbleHandler.removeCallbacksAndMessages(null);
+        if (bubbleView != null) {
+            try { floatWm().removeView(bubbleView); } catch (Exception ignored) {}
+            bubbleView = null;
+        }
+    }
+
+    /** Menü bei langem Drücken: Sprechen, Live, App öffnen, Ausblenden. */
+    void showFloatMenu() {
+        if (floatBox == null) return;
+        hideFloatMenu();
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding(dp(6), dp(6), dp(6), dp(6));
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xF01E2430);
+        bg.setCornerRadius(dp(14));
+        box.setBackground(bg);
+        box.setElevation(dp(6));
+        String[][] items = { { "🎤  Sprechen", "talk" }, { "📞  Live an/aus", "livetoggle" }, { "📱  App öffnen", "app" }, { "🙈  Ausblenden", "hide" } };
+        for (String[] it : items) {
+            android.widget.TextView tv = new android.widget.TextView(this);
+            tv.setText(it[0]);
+            tv.setTextColor(Color.WHITE);
+            tv.setTextSize(16);
+            tv.setPadding(dp(14), dp(10), dp(18), dp(10));
+            final String what = it[1];
+            tv.setOnClickListener((v) -> {
+                hideFloatMenu();
+                if (what.equals("hide")) {
+                    hideFloat();
+                    Toast.makeText(MainActivity.this, "Figur ausgeblendet – App öffnen, um sie wieder zu sehen", Toast.LENGTH_SHORT).show();
+                } else if (what.equals("app")) {
+                    startActivity(new Intent(MainActivity.this, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
+                } else pushAction(what);
+            });
+            box.addView(tv);
+        }
+        box.setOnTouchListener((v, ev) -> {
+            if (ev.getActionMasked() == MotionEvent.ACTION_OUTSIDE) hideFloatMenu();
+            return false;
+        });
+        WindowManager.LayoutParams p = new WindowManager.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT);
+        p.gravity = Gravity.TOP | Gravity.START;
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        box.measure(android.view.View.MeasureSpec.UNSPECIFIED, android.view.View.MeasureSpec.UNSPECIFIED);
+        int mw = box.getMeasuredWidth();
+        int cx = floatParams.x + floatParams.width / 2;
+        p.x = cx > m.widthPixels / 2 ? Math.max(dp(4), floatParams.x - mw - dp(6)) : Math.min(m.widthPixels - mw - dp(4), floatParams.x + floatParams.width + dp(6));
+        p.y = Math.max(dp(4), floatParams.y + dp(20));
+        try {
+            floatWm().addView(box, p);
+            menuView = box;
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Menü", e);
+        }
+    }
+
+    void hideFloatMenu() {
+        if (menuView != null) {
+            try { floatWm().removeView(menuView); } catch (Exception ignored) {}
+            menuView = null;
+        }
+    }
+
+    // ---- Fahrmodus: Verbindet sich das gewählte Auto-Bluetooth, meldet die App das der Oberfläche
+    @SuppressLint("MissingPermission")
+    void registerCarReceiver() {
+        if (carReceiver != null) return;
+        carReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                String car = getSharedPreferences("ki_auto", MODE_PRIVATE).getString("name", "");
+                if (car.isEmpty()) return;
+                android.bluetooth.BluetoothDevice d = i.getParcelableExtra(android.bluetooth.BluetoothDevice.EXTRA_DEVICE);
+                String name = null;
+                try { name = d == null ? null : d.getName(); } catch (Exception ignored) {}
+                if (name == null || !name.equals(car)) return;
+                boolean on = android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED.equals(i.getAction());
+                try {
+                    pushEvent(new JSONObject().put("action", "car").put("on", on));
+                } catch (Exception ignored) {}
+                if (on && !resumed) {
+                    try {
+                        startActivity(new Intent(MainActivity.this, MainActivity.class)
+                            .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } catch (Exception e) {
+                        Log.w("KI-Assistent", "Fahrmodus: App nach vorn", e);
+                    }
+                }
+            }
+        };
+        IntentFilter f = new IntentFilter();
+        f.addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED);
+        f.addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(carReceiver, f, Context.RECEIVER_EXPORTED);
+        else registerReceiver(carReceiver, f);
     }
 
     /** Schnittstelle für die Oberfläche: window.KIFloat */
@@ -518,6 +690,16 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean showing() {
             return floatBox != null;
+        }
+
+        @JavascriptInterface
+        public void bubble(String text, int ms) {
+            runOnUiThread(() -> showBubble(text, ms));
+        }
+
+        @JavascriptInterface
+        public void setDock(boolean on) {
+            floatDock = on;
         }
     }
 
@@ -641,6 +823,59 @@ public class MainActivity extends BridgeActivity {
                     } catch (Exception ignored) {}
                 }
             });
+        }
+
+        /** Systemprotokoll dieser App (nur eigene Einträge) für das Fehlerprotokoll. */
+        @JavascriptInterface
+        public String appLog() {
+            try {
+                Process p = Runtime.getRuntime().exec(new String[] { "logcat", "-d", "-t", "400", "--pid=" + android.os.Process.myPid() });
+                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = r.readLine()) != null) sb.append(line).append('\n');
+                return sb.toString();
+            } catch (Exception e) {
+                return "Systemprotokoll nicht lesbar: " + e.getMessage();
+            }
+        }
+
+        @JavascriptInterface
+        public String deviceInfo() {
+            try {
+                return new JSONObject()
+                    .put("hersteller", Build.MANUFACTURER).put("modell", Build.MODEL).put("android", Build.VERSION.RELEASE)
+                    .put("sdk", Build.VERSION.SDK_INT).put("app", getPackageName())
+                    .put("ueberlagern", canFloat()).put("akkuAusnahme", ((PowerManager) getSystemService(Context.POWER_SERVICE)).isIgnoringBatteryOptimizations(getPackageName()))
+                    .toString();
+            } catch (Exception e) {
+                return "{}";
+            }
+        }
+
+        /** Gekoppelte Bluetooth-Geräte (Namen) – für die Auswahl des Autos im Fahrmodus. */
+        @SuppressLint("MissingPermission")
+        @JavascriptInterface
+        public String bondedDevices() {
+            JSONArray out = new JSONArray();
+            try {
+                if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    runOnUiThread(() -> requestPermissions(new String[] { Manifest.permission.BLUETOOTH_CONNECT }, 4713));
+                    return "null";
+                }
+                android.bluetooth.BluetoothManager bm = getSystemService(android.bluetooth.BluetoothManager.class);
+                if (bm == null || bm.getAdapter() == null) return "[]";
+                for (android.bluetooth.BluetoothDevice d : bm.getAdapter().getBondedDevices()) if (d.getName() != null) out.put(d.getName());
+            } catch (Exception e) {
+                Log.w("KI-Assistent", "Bluetooth-Geräte", e);
+            }
+            return out.toString();
+        }
+
+        @JavascriptInterface
+        public void setCar(String name) {
+            getSharedPreferences("ki_auto", MODE_PRIVATE).edit().putString("name", name == null ? "" : name).apply();
+            if (name != null && !name.isEmpty()) runOnUiThread(MainActivity.this::registerCarReceiver);
         }
 
         /** Einstellungen für den Standard-Assistenten öffnen. */
@@ -868,6 +1103,7 @@ public class MainActivity extends BridgeActivity {
         bridge.getWebView().addJavascriptInterface(new Device(), "KIDevice");
         bridge.getWebView().addJavascriptInterface(new Floater(), "KIFloat");
         current = new WeakReference<>(this);
+        if (!getSharedPreferences("ki_auto", MODE_PRIVATE).getString("name", "").isEmpty()) registerCarReceiver();
     }
 
     @Override
@@ -887,6 +1123,12 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        if (carReceiver != null) {
+            try { unregisterReceiver(carReceiver); } catch (Exception ignored) {}
+            carReceiver = null;
+        }
+        hideBubble();
+        hideFloatMenu();
         if (floatBox != null) {
             try {
                 floatWm().removeView(floatBox);

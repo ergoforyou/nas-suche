@@ -169,6 +169,9 @@ const RULES = {
     place: (p) =>
       `Der Nutzer befindet sich ungefähr hier: ${p}. Nutze das für ortsbezogene Fragen (Wetter, Verkehr und Staus, ` +
       'Öffnungszeiten, „in der Nähe“), ohne den Ort ungefragt zu erwähnen.',
+    drive:
+      'Fahrmodus: Der Nutzer fährt gerade Auto. Antworte sehr kurz (höchstens zwei Sätze), ohne Aufzählungen und ohne ' +
+      'etwas, das man lesen müsste. Bei Navigation oder Verkehr nur das Wichtigste.',
     web:
       'Du hast Internetzugang über die Werkzeuge web_search und web_fetch. Für aktuelle Dinge wie Wetter, Verkehr und ' +
       'Staus, Nachrichten, Öffnungszeiten oder Preise suche selbst im Internet, statt zu sagen, dass du das nicht ' +
@@ -191,6 +194,8 @@ const RULES = {
     place: (p) =>
       `The user is roughly here: ${p}. Use this for location-related questions (weather, traffic, opening hours, ` +
       '"near me") without mentioning the place unprompted.',
+    drive:
+      'Driving mode: the user is driving. Answer very briefly (two sentences at most), no lists, nothing that needs reading.',
     web:
       'You have internet access through the web_search and web_fetch tools. For current information such as weather, ' +
       'traffic, news, opening hours or prices, search the web yourself instead of saying you cannot look it up. If ' +
@@ -265,7 +270,8 @@ tts.onShape = (v) => (avatarState.shape = avatarState.shape * 0.5 + v * 0.5);
 tts.onViseme = (v) => (avatarState.viseme = v);
 tts.onItem = (meta) => {
   if (meta?.mood) setMood(meta.mood);
-  if (meta?.text && state.settings.bubble === 'immer') showBubble(meta.text);
+  const floatOn = document.documentElement.classList.contains('float-ov');
+  if (meta?.text && (state.settings.bubble === 'immer' || (floatOn && state.settings.bubble !== 'aus'))) showBubble(meta.text);
 };
 
 /** Stimmung der Figur setzen (aus der Antwort); sie klingt nach dem Sprechen von selbst ab. */
@@ -545,6 +551,7 @@ function buildMessages() {
   else if (webActive() || state.place) parts.push(r.now(new Date(), userTimeZone()));
   if (state.place) parts.push(r.place(state.place));
   if (state.kbHits?.length) parts.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
+  if (state.drive) parts.push(r.drive);
   if (webActive()) parts.push(r.web);
   const sys = parts.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
@@ -670,6 +677,13 @@ const NEW_CHAT_COMMAND = /^(neuer chat|neues gespräch|new chat)[.!]?$/i;
 async function send(text) {
   text = text.trim();
   if (NEW_CHAT_COMMAND.test(text) && !pendingAttachments.length) return newChat();
+  // Privat: „Merk dir …“ bzw. Notiz über 📝 – ohne Sprachmodell direkt notieren
+  if (PRIV && text && !pendingAttachments.length && (state.noteMode || NOTE_RE.test(text))) {
+    const note = state.noteMode ? text : text.match(NOTE_RE)[1];
+    state.noteMode = false;
+    addBubble('user', text);
+    return saveNote(note);
+  }
   if ((!text && !pendingAttachments.length) || state.busy) return;
   tts.stop();
   tts.newTurn();
@@ -1494,6 +1508,7 @@ function fillSettings() {
   $('phBgTalk').checked = !!s.bgTalk;
   $('phPower').value = s.powerSave ?? 'auto';
   $('phFloat').checked = !!s.floatOverlay;
+  $('phFloatDock').checked = s.floatDock !== false;
   $('avTod').checked = s.todMood !== false;
   $('kbUse').checked = s.kbUse !== false;
   $('avCloseMode').value = s.closeMode ?? 'beenden';
@@ -3953,6 +3968,11 @@ let bubbleTimer = null;
 function showBubble(text) {
   const b = $('speechBubble');
   if (!b || !text?.trim()) return;
+  // schwebende Figur: Sprechblase als eigenes kleines Fenster neben der Figur
+  if (document.documentElement.classList.contains('float-ov')) {
+    window.KIFloat?.bubble?.(text.trim(), 2500 + Math.min(6000, text.length * 55));
+    return;
+  }
   b.textContent = text.trim().length > 160 ? `${text.trim().slice(0, 157)} …` : text.trim();
   b.hidden = false;
   b.classList.remove('fade');
@@ -4518,6 +4538,26 @@ async function handleIntents() {
   } catch {}
   for (const ev of list) {
     window.__app.lastIntent = ev.action;
+    logEv('EREIGNIS', ev.action);
+    if (ev.action === 'note') {
+      if (!PRIV) {
+        status('Notizen gibt es im Bereich 🏠 Privat.');
+        continue;
+      }
+      $('drawer').hidden = true;
+      state.noteMode = true;
+      status('📝 Notiz – sprich jetzt …');
+      if (!stt.listening && !state.micActive) toggleMic();
+      continue;
+    }
+    if (ev.action === 'livetoggle') {
+      setHandsFree(!state.settings.handsFree);
+      continue;
+    }
+    if (ev.action === 'car') {
+      if (PRIV && state.settings.carAuto !== false) setDrive(!!ev.on);
+      continue;
+    }
     if (ev.action === 'listen') {
       $('drawer').hidden = true;
       if (!stt.listening && !state.micActive) toggleMic();
@@ -4720,8 +4760,194 @@ window.__setFloat = (on) => {
   if (on) setTimeout(updatePipShape, 300);
 };
 
+
+// ---------------------------------------------------------------- Privat-Funktionen (Android, nur Bereich Privat)
+// Fehlerprotokoll, Notizen („Merk dir …“), Fahrmodus – vorerst nur im Bereich Privat.
+const PRIV = MOBILE && AREA === 'privat';
+
+// ---- Fehlerprotokoll: letzte Ereignisse der App, ohne Gesprächsinhalte und ohne Schlüssel
+const LOG = [];
+function logEv(kind, msg) {
+  LOG.push(`${new Date().toISOString().slice(11, 23)} ${kind} ${String(msg ?? '').replace(/\s+/g, ' ').slice(0, 300)}`);
+  if (LOG.length > 600) LOG.splice(0, LOG.length - 600);
+}
+for (const k of ['error', 'warn']) {
+  const orig = console[k].bind(console);
+  console[k] = (...a) => {
+    try {
+      logEv(k.toUpperCase(), a.map((x) => x?.stack || x?.message || (typeof x === 'object' ? JSON.stringify(x)?.slice(0, 200) : x)).join(' '));
+    } catch {}
+    orig(...a);
+  };
+}
+window.addEventListener('error', (e) => logEv('FEHLER', `${e.message} @ ${String(e.filename).split('/').pop()}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => logEv('FEHLER', e.reason?.stack || e.reason?.message || e.reason));
+new MutationObserver(() => $('status').textContent && logEv('STATUS', $('status').textContent)).observe($('status'), { childList: true, characterData: true, subtree: true });
+const redact = (t) =>
+  String(t)
+    .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-…')
+    .replace(/(Bearer|access_token|refresh_token|id_token)["=:\s]+[\w.\-~+/]+/gi, '$1 …')
+    .replace(/ya29\.[\w.-]+/g, 'ya29.…')
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '…@…');
+async function saveBugReport() {
+  const d = dev();
+  const s = state.settings;
+  const head = {
+    version: APP_VERSION,
+    bereich: AREA,
+    geraet: (() => {
+      try {
+        return JSON.parse(d?.deviceInfo?.() || '{}');
+      } catch {
+        return {};
+      }
+    })(),
+    akku: d?.power?.(),
+    schwebend: window.KIFloat?.showing?.(),
+    hintergrund: d?.backgroundRunning?.(),
+    einstellungen: {
+      anbieter: s.provider, claudeModell: s.claudeModel, stimme: persona().voice?.engine, erkennung: s.sttEngine, lokalesModell: s.sttModel,
+      live: s.handsFree, schwebend: s.floatOverlay, erinnerungen: s.reminders, hintergrundGespraech: s.bgTalk, akkuModus: s.powerSave,
+    },
+    browser: navigator.userAgent,
+  };
+  const text = redact(
+    `KI-Assistent – Fehlerprotokoll ${new Date().toLocaleString('de-DE')}\n${JSON.stringify(head, null, 2)}\n\n--- App ---\n${LOG.join('\n')}\n\n--- System (nur diese App) ---\n${d?.appLog?.() ?? '–'}`,
+  );
+  const name = `ki-fehlerprotokoll-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
+  const bytes = new TextEncoder().encode(text);
+  const r = desktop.saveFileAs ? await desktop.saveFileAs(name, bytes) : null;
+  status(r?.cancelled ? 'Speichern abgebrochen.' : `Fehlerprotokoll gespeichert: ${name} – bitte an mich schicken.`);
+  return text;
+}
+
+// ---- Notizen: „Merk dir: …“ bzw. 📝 im Widget – in Google Aufgaben (falls verbunden), sonst lokal
+const NOTE_RE = /^\s*(?:merk dir|merke dir|notiere(?: dir)?|notiz)\s*[:,]?\s+(.+)$/is;
+const WEEKDAYS = ['sonntag', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag'];
+function noteDue(raw) {
+  const iso = (d) => d.toLocaleDateString('sv-SE');
+  const now = new Date();
+  let due = null;
+  let title = raw.trim();
+  const m = title.match(/\s*,?\s*\b(?:bis|am|für)\s+(heute|morgen|übermorgen|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?)\b\.?\s*$/i);
+  if (m) {
+    const w = m[1].toLowerCase();
+    const d = new Date(now);
+    if (w === 'morgen') d.setDate(d.getDate() + 1);
+    else if (w === 'übermorgen') d.setDate(d.getDate() + 2);
+    else if (WEEKDAYS.includes(w)) d.setDate(d.getDate() + ((WEEKDAYS.indexOf(w) - d.getDay() + 7) % 7 || 7));
+    else if (m[2]) {
+      d.setMonth(+m[3] - 1, +m[2]);
+      if (m[4]) d.setFullYear(+(m[4].length === 2 ? `20${m[4]}` : m[4]));
+      else if (d < now) d.setFullYear(d.getFullYear() + 1);
+    }
+    due = iso(d);
+    title = title.slice(0, m.index).trim();
+  }
+  return { title: title.replace(/[.\s]+$/, ''), due };
+}
+async function saveNote(raw) {
+  const { title, due } = noteDue(raw);
+  if (!title) return;
+  let where = 'deinen Notizen';
+  try {
+    if (desktop.googleAddTask && (await desktop.googleStatus?.())?.connected) {
+      await desktop.googleAddTask({ title, due });
+      where = 'Google Aufgaben';
+    }
+  } catch (e) {
+    logEv('NOTIZ', `Google: ${e.message}`);
+  }
+  if (where === 'deinen Notizen') {
+    (state.settings.notes ??= []).unshift({ id: newId(), text: title, due, at: Date.now() });
+    save();
+  }
+  renderNotes();
+  const when = due ? ` (fällig ${new Date(`${due}T12:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })})` : '';
+  addBubble('assistant', `📝 Notiert${when}: ${title} – in ${where}.`);
+  fireEvent('success', 2500);
+  if (state.settings.speak && !state.dnd) tts.enqueue('Notiert.');
+}
+function renderNotes() {
+  const box = $('privNotes');
+  if (!box) return;
+  box.innerHTML = '';
+  for (const n of state.settings.notes ?? []) {
+    const row = document.createElement('div');
+    row.className = 'kb-doc';
+    const t = document.createElement('span');
+    t.textContent = `📝 ${n.text}${n.due ? ` · ${new Date(`${n.due}T12:00`).toLocaleDateString('de-DE')}` : ''}`;
+    const del = document.createElement('button');
+    del.textContent = '✓';
+    del.title = 'Erledigt – entfernen';
+    del.onclick = () => {
+      state.settings.notes = state.settings.notes.filter((x) => x !== n);
+      save();
+      renderNotes();
+    };
+    row.append(t, del);
+    box.append(row);
+  }
+  if (!box.children.length) box.textContent = 'Keine lokalen Notizen.';
+}
+
+// ---- Fahrmodus: Nur-Figur-Ansicht, Live-Gespräch, sehr kurze Antworten; startet auf Wunsch mit dem Auto-Bluetooth
+function setDrive(on) {
+  state.drive = !!on;
+  document.documentElement.classList.toggle('drive', !!on);
+  $('privDrive').textContent = on ? '🚗 Fahrmodus beenden' : '🚗 Fahrmodus starten';
+  if (on) {
+    setStageFull(true);
+    if (!state.settings.handsFree) setHandsFree(true);
+    fireEvent('greet', 3000);
+  } else {
+    if (state.settings.handsFree) setHandsFree(false);
+    setStageFull(false);
+  }
+  logEv('FAHRMODUS', on ? 'an' : 'aus');
+}
+function fillCars() {
+  const sel = $('privCar');
+  const raw = dev()?.bondedDevices?.();
+  if (raw === 'null') {
+    $('privCarInfo').textContent = 'Bitte „Geräte in der Nähe“ erlauben und dann ⟳ tippen.';
+    return;
+  }
+  let names = [];
+  try {
+    names = JSON.parse(raw || '[]');
+  } catch {}
+  sel.innerHTML = '';
+  sel.add(new Option('– kein Auto –', ''));
+  for (const n of names) sel.add(new Option(n, n, false, n === state.settings.carName));
+  $('privCarInfo').textContent = names.length ? '' : 'Keine gekoppelten Bluetooth-Geräte gefunden.';
+}
+$('privDrive').onclick = () => setDrive(!state.drive);
+$('privCarRefresh').onclick = fillCars;
+$('privCar').onchange = (e) => {
+  state.settings.carName = e.target.value;
+  save();
+  dev()?.setCar?.(PRIV ? e.target.value : '');
+};
+$('privBug').onclick = () => saveBugReport();
+$('phFloatDock').onchange = (e) => {
+  state.settings.floatDock = e.target.checked;
+  save();
+  window.KIFloat?.setDock?.(e.target.checked);
+};
+function refreshPriv() {
+  $('privWrap').hidden = !PRIV;
+  $('privHint').hidden = !MOBILE || PRIV;
+  if (!PRIV) return;
+  renderNotes();
+  fillCars();
+  dev()?.setCar?.(state.settings.carName || '');
+}
+
 function startPhoneFeatures() {
   if (!MOBILE) return;
+  refreshPriv();
+  window.KIFloat?.setDock?.(state.settings.floatDock !== false);
   refreshFloat();
   intentsReady = true;
   handleIntents();
@@ -4763,6 +4989,9 @@ window.__app = {
   syncReminders: () => syncReminders(),
   fireEvent,
   timeOfDayEnergy,
+  saveBugReport: () => saveBugReport(),
+  noteDue,
+  setDrive: (on) => setDrive(on),
   bodyHandles,
   showBubble: (t) => showBubble(t),
   addKbFiles: (files) => addKbFiles(files),

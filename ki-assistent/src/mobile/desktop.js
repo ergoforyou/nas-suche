@@ -391,6 +391,11 @@ const api = {
   },
   googleStatus: () => google.status(),
   /** Anstehende Termine und Aufgaben (für Erinnerungen auf dem Handy). null = nicht verbunden. */
+  /** Aufgabe in Google Aufgaben anlegen (Notizen „Merk dir …“). */
+  googleAddTask: async ({ title, due }) => {
+    if (!(await google.status()).connected) throw new Error('Google nicht verbunden');
+    return googleLib.runTool(google, 'aufgabe_anlegen', { titel: title, ...(due ? { faellig: due } : {}) }, { timeZone: timeZone() });
+  },
   googleUpcoming: async ({ timeZone: tz = timeZone(), hours = 48 } = {}) => {
     if (!(await google.status()).connected) return null;
     const local = (d) => d.toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T').slice(0, 16);

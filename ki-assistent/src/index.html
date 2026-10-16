@@ -705,6 +705,30 @@
       </label>
       <p class="hint">Sparsam: Figur mit 15 statt bis zu 60 Bildern pro Sekunde; unter 10 % Akku fast still.</p>
       <div id="phPowerInfo" class="hint"></div>
+      <p id="privHint" class="hint" hidden>Weitere Funktionen – Notizen („Merk dir …“), Fahrmodus, Fehlerprotokoll – gibt es vorerst im Bereich 🏠 Privat.</p>
+      <div id="privWrap" hidden>
+        <h3>Notizen <span class="beta-badge">Privat</span></h3>
+        <p class="hint">Sag oder schreib „<b>Merk dir:</b> Reifen wechseln bis Samstag“ – oder tippe im Widget auf 📝 und sprich.
+          Mit Google-Verbindung landet es in Google Aufgaben (mit Fälligkeit), sonst hier.</p>
+        <div id="privNotes" class="kb-list"></div>
+        <h3>Fahrmodus <span class="beta-badge">Privat</span></h3>
+        <p class="hint">Nur die Figur, Live-Gespräch an, sehr kurze Antworten. Startet auf Wunsch automatisch, sobald sich das
+          Handy mit dem Auto verbindet (die App muss dafür im Hintergrund laufen, z. B. mit „Gespräch im Hintergrund“).</p>
+        <div class="row wrap">
+          <button id="privDrive">🚗 Fahrmodus starten</button>
+        </div>
+        <label>Auto (Bluetooth)
+          <div class="row">
+            <select id="privCar" style="flex:1"></select>
+            <button id="privCarRefresh" title="Liste neu laden">⟳</button>
+          </div>
+        </label>
+        <div id="privCarInfo" class="hint"></div>
+        <h3>Problem melden</h3>
+        <p class="hint">Speichert die letzten Ereignisse der App als Textdatei – ohne Gesprächsinhalte und ohne Schlüssel. Die Datei
+          schickst du mir, dann sehe ich, was auf deinem Handy schiefgelaufen ist.</p>
+        <button id="privBug">🐞 Fehlerprotokoll speichern</button>
+      </div>
       <div id="phFloatWrap" hidden>
         <h3>Schwebende Figur <span class="beta-badge">Beta</span></h3>
         <label class="check"><input id="phFloat" type="checkbox" /> Beim Verlassen der App schwebt die Figur frei über anderen
@@ -720,6 +744,7 @@
           Android die Benachrichtigung „hört im Hintergrund“ (nötig fürs Mikrofon).</p>
         <p class="hint">Samsung: Damit One UI die schwebende Figur nicht nach einer Weile beendet, „Akku: nicht einschränken …“
           tippen und „Nicht eingeschränkt“ wählen. Fotos ohne durchsichtigen Hintergrund werden beim Einschalten einmal freigestellt.</p>
+        <label class="check"><input id="phFloatDock" type="checkbox" checked /> Am Bildschirmrand andocken – weit über den Rand gezogen bleibt sie halb versteckt (antippen holt sie herein)</label>
         <div id="phFloatInfo" class="hint"></div>
       </div>
     </div>
