@@ -784,16 +784,6 @@ function runSmokeTest() {
       await new Promise((r) => setTimeout(r, 2500));
       if (!avatarWin) return fail('Avatar-Fenster nicht geöffnet');
       if (!(await js('!!window.__app.floatingReady()'))) return fail('Avatar-Fenster nicht bereit');
-      // Knöpfe an der freien Figur: Live an/aus schaltet wirklich um (und wieder zurück)
-      const live0 = await js('!!window.__app.state.settings.handsFree');
-      const hasCtl = await avatarWin.webContents.executeJavaScript("!!document.getElementById('ctlLive') && !!document.getElementById('ctlStop')");
-      await avatarWin.webContents.executeJavaScript("document.getElementById('ctlLive').click()");
-      await new Promise((r) => setTimeout(r, 400));
-      const live1 = await js('!!window.__app.state.settings.handsFree');
-      await avatarWin.webContents.executeJavaScript("document.getElementById('ctlLive').click()");
-      await new Promise((r) => setTimeout(r, 400));
-      console.log('Figur-Knöpfe:', hasCtl, '| Live', live0, '->', live1);
-      if (!hasCtl || live1 === live0) return fail('Knöpfe an der freien Figur');
       // Größe ändern (wie Mausrad/Eckanfasser) muss das Fenster wirklich vergrößern
       const before = avatarWin.getBounds();
       ipcMain.emit('avatar:resize', null, { factor: 1.25 });
@@ -859,6 +849,17 @@ function runSmokeTest() {
       const speech = await js('window.__app.selfTest()');
       console.log('Sprach-Selbsttest:', JSON.stringify(speech));
       if (!speech.ok) return fail('Sprachkette: ' + (speech.error || speech.heard));
+      // Knöpfe an der freien Figur: Live an/aus schaltet wirklich um (und wieder zurück) – erst nach dem
+      // Sprach-Selbsttest, weil „Live an“ die Spracherkennung vorlädt und den Test sonst ausbremst
+      const live0 = await js('!!window.__app.state.settings.handsFree');
+      const hasCtl = await avatarWin.webContents.executeJavaScript("!!document.getElementById('ctlLive') && !!document.getElementById('ctlStop')");
+      await avatarWin.webContents.executeJavaScript("document.getElementById('ctlLive').click()");
+      await new Promise((r) => setTimeout(r, 400));
+      const live1 = await js('!!window.__app.state.settings.handsFree');
+      await avatarWin.webContents.executeJavaScript("document.getElementById('ctlLive').click()");
+      await new Promise((r) => setTimeout(r, 400));
+      console.log('Figur-Knöpfe:', hasCtl, '| Live', live0, '->', live1);
+      if (!hasCtl || live1 === live0) return fail('Knöpfe an der freien Figur');
       console.log('SMOKE OK');
       quitting = true;
       app.exit(0);
