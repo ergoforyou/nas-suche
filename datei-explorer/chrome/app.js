@@ -43,6 +43,7 @@ const MIME = {
   ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   mp4: 'video/mp4', mov: 'video/quicktime', mp3: 'audio/mpeg', msg: 'application/vnd.ms-outlook', eml: 'message/rfc822',
 };
+const TEXT_EXT = new Set(['txt', 'csv', 'log', 'md', 'json', 'xml', 'ini', 'cfg', 'bat', 'cmd', 'ps1', 'html', 'htm', 'css', 'js', 'go', 'py', 'sql', 'yml', 'yaml', 'tsv', 'eml']);
 const ext = (name) => { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(i + 1).toLowerCase() : ''; };
 function typeLabel(e) {
   if (e.isDir) return 'Ordner';
@@ -269,6 +270,7 @@ class NavTree {
     }));
     if (keepOpen.size) this.nodes.forEach((n) => { if (keepOpen.has(n.key) !== n.open && n.group !== 'pc') n.open = keepOpen.has(n.key) || n.open; });
     this.render();
+    if (this.opts.follow) await this.revealPath(this.opts.follow());
   }
 
   flat() {
@@ -339,6 +341,55 @@ class NavTree {
       pinned ? { label: 'Vom Schnellzugriff lösen', action: () => App.unpin(n.path) }
         : { label: 'An Schnellzugriff anheften', action: () => App.pin(n.path) },
     ]);
+  }
+
+  // revealPath klappt den Baum bis zum Ordner auf und markiert ihn (wie der Windows-Explorer).
+  async revealPath(path) {
+    if (!path || !this.nodes.length) return;
+    const seq = (this.revealSeq = (this.revealSeq || 0) + 1);
+    let cur = null;
+    for (const g of this.nodes.filter((n) => n.group === 'net' || n.group === 'pc')) {
+      for (const c of g.children || []) {
+        if (c.path && (sameP(c.path, path) || isInside(path, c.path)) && (!cur || c.path.length > cur.path.length)) cur = c;
+      }
+    }
+    if (!cur) { this.active = null; this.render(); return; }
+    const top = this.nodes.find((g) => g.children && g.children.includes(cur));
+    if (top) top.open = true;
+    for (let d = 0; d < 40 && !sameP(cur.path, path); d++) {
+      if (cur.children === null) {
+        try {
+          const r = await NAS.api('subdirs?dir=' + encodeURIComponent(cur.path));
+          cur.children = r.dirs.map((x) => { const p = joinPath(cur.path, x); return { key: 'd:' + p, name: x, path: p, depth: cur.depth + 1, open: false, children: null }; });
+        } catch (e) { cur.children = []; }
+      }
+      if (seq !== this.revealSeq) return;
+      const next = cur.children.find((c) => sameP(c.path, path) || isInside(path, c.path));
+      if (!next) break;
+      cur.open = true;
+      cur = next;
+    }
+    // den aktuellen Ordner selbst aufklappen – seine Unterordner sind gleich anklickbar
+    if (sameP(cur.path, path)) {
+      if (cur.children === null) {
+        try {
+          const r = await NAS.api('subdirs?dir=' + encodeURIComponent(cur.path));
+          cur.children = r.dirs.map((x) => { const p = joinPath(cur.path, x); return { key: 'd:' + p, name: x, path: p, depth: cur.depth + 1, open: false, children: null }; });
+        } catch (e) { cur.children = []; }
+      }
+      if (seq !== this.revealSeq) return;
+      cur.open = true;
+    }
+    this.active = cur;
+    this.render();
+    const el = Array.from(this.root.children).find((r) => r._node === cur);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }
+
+  // Unterordner eines Ordners beim nächsten Anzeigen neu lesen (nach Neu/Umbenennen/Verschieben)
+  invalidate(path) {
+    const walkN = (list) => { for (const n of list || []) { if (n.path && sameP(n.path, path)) { n.children = null; n.open = false; } else walkN(n.children); } };
+    walkN(this.nodes);
   }
 
   nodeAt(e) {
@@ -485,9 +536,11 @@ class Pane {
       this.addr.spellcheck = false;
       this.addr.hidden = true;
       this.editBt = nb('✎', 'Pfad eintippen (F4)');
+      this.viewBt = el('button', 'small', 'Ansicht ▾');
+      this.viewBt.title = 'Details, Symbole, Ordnerbaum, Vorschaufenster';
       this.favBt = nb('★', 'Feste Ordner');
       this.reloadBt = nb('⟳', 'Aktualisieren (F5)');
-      this.pathbar.append(this.backBt, this.fwdBt, this.upBt, this.crumbs, this.addr, this.editBt, this.favBt, this.reloadBt);
+      this.pathbar.append(this.backBt, this.fwdBt, this.upBt, this.crumbs, this.addr, this.editBt, this.viewBt, this.favBt, this.reloadBt);
       r.append(this.pathbar);
     }
     const table = el('div', 'table');
@@ -499,26 +552,160 @@ class Pane {
     this.empty = el('div', 'empty');
     this.tbody.append(this.spacer, this.rowsEl, this.empty);
     table.append(this.thead, this.tbody);
-    r.append(table);
-    if (!this.isSearch) {
+    if (this.isSearch) {
+      r.append(table);
+    } else {
+      // Ordnerbaum | Inhalt | Vorschaufenster – Breiten mit den Trennlinien verstellbar
+      this.body = el('div', 'pbody');
+      this.treeEl = el('nav', 'ptree');
+      this.treeEl.tabIndex = -1;
+      this.split1 = el('div', 'vsplit');
+      this.split2 = el('div', 'vsplit');
+      this.prevEl = el('div', 'pprev');
+      this.prevMedia = el('div', 'pv');
+      this.prevName = el('div', 'pname');
+      this.prevInfo = el('div', 'pinfo');
+      this.prevText = el('pre', 'ptext');
+      this.prevEl.append(this.prevMedia, this.prevName, this.prevInfo, this.prevText);
+      this.body.append(this.treeEl, this.split1, table, this.split2, this.prevEl);
+      r.append(this.body);
       this.info = el('div', 'info');
       r.append(this.info);
+      this.tree = new NavTree(this.treeEl, { onSelect: (p) => { this.openFolder(p); this.tbody.focus(); }, follow: () => this.folder });
+      this.bindSplit(this.split1, 'treeW', this.treeEl, 1);
+      this.bindSplit(this.split2, 'prevW', this.prevEl, -1);
+      this.applyLayout();
     }
     this.buildHeader();
     this.bind();
   }
 
+  // ----- Ansicht: Details / Symbole, Ordnerbaum, Vorschaufenster -----
+
+  get mode() { return this.isSearch ? 0 : (this.st.view || 0); }
+
+  applyLayout() {
+    if (this.isSearch) return;
+    const treeOn = this.st.tree !== false && App.state.nav !== false;
+    this.treeEl.hidden = this.split1.hidden = !treeOn;
+    this.prevEl.hidden = this.split2.hidden = !this.st.prev;
+    this.treeEl.style.width = (this.st.treeW || 210) + 'px';
+    this.prevEl.style.width = (this.st.prevW || 280) + 'px';
+    this.root.classList.toggle('grid', this.mode > 0);
+    this.root.classList.toggle('large', this.mode === 2);
+    this.rowsEl.replaceChildren();
+    this.render();
+    if (treeOn && !this.tree.nodes.length) this.tree.load();
+    else if (treeOn) this.tree.revealPath(this.folder);
+    this.updatePreview();
+  }
+
+  setView(m) { this.st.view = m; App.saveState(); this.applyLayout(); }
+
+  bindSplit(bar, key, target, dir) {
+    bar.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const x0 = e.clientX, w0 = target.getBoundingClientRect().width;
+      bar.classList.add('on');
+      const move = (ev) => {
+        const w = Math.max(120, Math.min(this.root.clientWidth * 0.6, w0 + dir * (ev.clientX - x0)));
+        this.st[key] = Math.round(w);
+        target.style.width = w + 'px';
+        this.render();
+      };
+      const up = () => { bar.classList.remove('on'); removeEventListener('mousemove', move); removeEventListener('mouseup', up); App.saveState(); };
+      addEventListener('mousemove', move);
+      addEventListener('mouseup', up);
+    });
+  }
+
+  viewMenu() {
+    const r = this.viewBt.getBoundingClientRect();
+    const m = this.mode;
+    Menu.show(r.left, r.bottom + 2, [
+      { label: 'Details (Liste mit Spalten)', checked: m === 0, action: () => this.setView(0) },
+      { label: 'Mittelgroße Symbole', checked: m === 1, action: () => this.setView(1) },
+      { label: 'Große Symbole (Vorschaubilder)', checked: m === 2, action: () => this.setView(2) },
+      { sep: true },
+      { label: 'Ordnerbaum', checked: this.st.tree !== false && App.state.nav !== false, action: () => { this.st.tree = !(this.st.tree !== false && App.state.nav !== false); if (this.st.tree) App.state.nav = true; App.saveState(); this.applyLayout(); } },
+      { label: 'Vorschaufenster', key: 'Alt+P', checked: !!this.st.prev, action: () => this.togglePreview() },
+      { label: 'Versteckte Dateien anzeigen', checked: !!App.hello.showHidden, action: () => App.toggleHidden() },
+    ]);
+  }
+
+  togglePreview() { if (this.isSearch) return; this.st.prev = !this.st.prev; App.saveState(); this.applyLayout(); }
+
+  // Vorschaufenster: Bild, PDF, Video, Text – sonst die Miniatur von Windows
+  updatePreview() {
+    if (this.isSearch || this.prevEl.hidden) return;
+    clearTimeout(this.prevTimer);
+    this.prevTimer = setTimeout(() => this.showPreview(), 150);
+  }
+
+  async showPreview() {
+    const sel = this.selected();
+    const h = App.hello;
+    const media = (node) => this.prevMedia.replaceChildren(node);
+    const bigIcon = (cat, dir) => { const d = el('div', 'bigic'); d.innerHTML = iconSVG(cat, dir).replace(/width="16" height="16"/, 'width="96" height="96"'); return d; };
+    const clearText = () => { this.prevText.hidden = true; this.prevText.textContent = ''; };
+    if (sel.length !== 1) {
+      clearText();
+      this.prevKey = '';
+      media(bigIcon(CAT.FOLDER, true));
+      if (sel.length) {
+        this.prevName.textContent = `${sel.length} Elemente ausgewählt`;
+        this.prevInfo.textContent = 'zusammen ' + formatSize(sel.filter((x) => !x.isDir).reduce((a, x) => a + x.size, 0));
+      } else {
+        this.prevName.textContent = this.folder ? baseName(this.folder) : '';
+        this.prevInfo.textContent = this.folder ? `Ordner mit ${thousands(this.base.length)} Elementen\n${this.folder}` : '';
+      }
+      return;
+    }
+    const e = sel[0];
+    const key = e.path + '|' + e.mod;
+    if (key === this.prevKey) return;
+    this.prevKey = key;
+    clearText();
+    this.prevName.textContent = e.name;
+    this.prevInfo.textContent = typeLabel(e) + (e.isDir ? '' : ' · ' + formatSize(e.size)) + (e.mod ? '\nGeändert: ' + formatDate(e.mod) : '') + '\n' + e.dir;
+    const x = ext(e.name);
+    const dl = h.dl + encodeURIComponent(e.path) + '?inline=1';
+    const th = (s) => `${h.th}${encodeURIComponent(e.path)}?s=${s}&m=${e.mod}`;
+    if (e.isDir) { media(bigIcon(CAT.FOLDER, true)); return; }
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(x)) {
+      const img = el('img'); img.src = dl; img.onerror = () => media(bigIcon(e.cat, false)); media(img); return;
+    }
+    if (x === 'pdf') { const f = el('iframe'); f.src = dl; media(f); return; }
+    if (['mp4', 'webm', 'mov', 'mp3', 'wav', 'm4a', 'ogg'].includes(x)) {
+      const v = el(['mp3', 'wav', 'm4a', 'ogg'].includes(x) ? 'audio' : 'video'); v.src = dl; v.controls = true; media(v); return;
+    }
+    if (TEXT_EXT.has(x)) {
+      media(bigIcon(e.cat, false));
+      const r = await NAS.api('peek', { path: e.path }).catch(() => null);
+      if (r && !r.error && this.prevKey === key) { this.prevText.textContent = r.text; this.prevText.hidden = false; this.prevMedia.replaceChildren(); }
+      return;
+    }
+    const img = el('img'); img.src = th(512); img.onerror = () => media(bigIcon(e.cat, false)); media(img);
+  }
+
   visibleCols() {
     if (PANEL) return [0, 4];
-    return this.isSearch ? [0, 1, 2, 3, 4] : [0, 1, 3, 4];
+    if (this.isSearch) return [0, 1, 2, 3, 4];
+    // schmale Seite (Ordnerbaum und Vorschau offen): weniger Spalten, Name bleibt lesbar
+    const w = this.tableW || 800;
+    if (w < 330) return [0, 4];
+    if (w < 450) return [0, 3, 4];
+    return [0, 1, 3, 4];
   }
 
   buildHeader() {
     const widths = this.st.cols || DEFAULT_WIDTHS;
     const vis = this.visibleCols();
     const flexCol = this.isSearch ? 2 : 0;
+    const exp = [150, 95, 78, 130, 130]; // Explorer: schmale Grundbreiten, Name dehnt sich
     this.root.style.setProperty('--cols', PANEL ? 'minmax(120px,1fr) 132px'
-      : vis.map((c) => (c === flexCol ? `minmax(${widths[c]}px,1fr)` : widths[c] + 'px')).join(' '));
+      : vis.map((c) => (c === flexCol ? `minmax(${this.isSearch ? widths[c] : exp[c]}px,1fr)` : (this.isSearch ? widths[c] : exp[c]) + 'px')).join(' '));
+    this.colKey = vis.join(',');
     this.thead.innerHTML = '';
     for (const c of vis) {
       const col = COLS[c];
@@ -583,6 +770,7 @@ class Pane {
       this.upBt.addEventListener('click', () => this.goUp());
       this.editBt.addEventListener('click', () => this.editAddress());
       this.favBt.addEventListener('click', () => this.folderMenu());
+      this.viewBt.addEventListener('click', () => this.viewMenu());
       this.reloadBt.addEventListener('click', () => this.reload());
       this.crumbs.addEventListener('dblclick', (e) => { if (e.target === this.crumbs) this.editAddress(); });
       this.addr.addEventListener('keydown', (e) => {
@@ -596,7 +784,11 @@ class Pane {
     this.root.addEventListener('mousedown', () => App.setActive(this));
 
     this.tbody.addEventListener('scroll', () => this.render());
-    new ResizeObserver(() => this.render()).observe(this.tbody);
+    new ResizeObserver(() => {
+      this.tableW = this.tbody.clientWidth;
+      if (!this.isSearch && this.visibleCols().join(',') !== this.colKey) { this.buildHeader(); this.rowsEl.replaceChildren(); }
+      this.render();
+    }).observe(this.tbody);
     this.tbody.addEventListener('mousedown', (e) => this.onMouseDown(e));
     this.tbody.addEventListener('mouseup', (e) => this.onMouseUp(e));
     this.tbody.addEventListener('dblclick', (e) => { const i = this.rowIndexAt(e); if (i >= 0) this.activate(i); });
@@ -683,6 +875,7 @@ class Pane {
 
   updateInfo() {
     if (this.isSearch || !this.info) return;
+    this.updatePreview();
     const n = this.base.length;
     let t = n === 1 ? '1 Element' : `${thousands(n)} Elemente`;
     const sel = this.selected();
@@ -729,6 +922,7 @@ class Pane {
     this.renderCrumbs();
     this.updateNav();
     this.applyView(changed);
+    if (changed && this.tree && !this.treeEl.hidden) this.tree.revealPath(path);
     if (!changed) this.tbody.scrollTop = st;
     if (changed && !sameP(this.st.last || '', path)) { this.st.last = path; App.saveState(); }
     if (changed && App.state.scope === this.idx + 1 && App.search) App.search.runSearch();
@@ -864,7 +1058,69 @@ class Pane {
 
   // ----- Darstellung (nur sichtbare Zeilen) -----
 
+  // Symbolansicht: Kachelmaße
+  gridDims() {
+    const large = this.mode === 2;
+    const cw = large ? 214 : 124, ch = large ? 246 : 150;
+    const cols = Math.max(1, Math.floor((this.tbody.clientWidth || 600) / cw));
+    return { cw, ch, cols, t: large ? 192 : 96 };
+  }
+
+  renderGrid() {
+    const n = this.view.length;
+    const { cw, ch, cols, t } = this.gridDims();
+    this.spacer.style.height = Math.ceil(n / cols) * ch + 'px';
+    const top = this.tbody.scrollTop, h = this.tbody.clientHeight || 600;
+    const firstRow = Math.max(0, Math.floor(top / ch) - 1);
+    const lastRow = Math.ceil((top + h) / ch) + 1;
+    const first = firstRow * cols, last = Math.min(n, lastRow * cols);
+    this.rowsEl.style.transform = 'none';
+    const pool = this.rowsEl.children;
+    let k = 0;
+    for (let i = first; i < last; i++, k++) {
+      let c = pool[k];
+      if (!c || !c.classList.contains('cell')) {
+        const nc = el('div', 'cell'); nc.draggable = true;
+        if (c) c.replaceWith(nc); else this.rowsEl.append(nc);
+        c = nc;
+      }
+      const v = this.view[i], e = v.e;
+      c.style.left = (i % cols) * cw + 'px';
+      c.style.top = Math.floor(i / cols) * ch + 'px';
+      c.style.width = cw + 'px';
+      c.style.height = ch + 'px';
+      let cls = 'cell';
+      if (e.isDir) cls += ' folder';
+      if (this.sel.has(e.path)) cls += ' sel';
+      if (i === this.dropIdx) cls += ' drop';
+      if (App.cut.has(e.path.toLowerCase())) cls += ' cut';
+      c.className = cls;
+      c._idx = i;
+      const key = `${e.path}|${e.mod}|${t}`;
+      if (c._key === key) continue;
+      c._key = key;
+      const box = el('div', 'thumb');
+      box.style.width = box.style.height = t + 'px';
+      const fallback = () => { box.innerHTML = iconSVG(e.cat, e.isDir).replace(/width="16" height="16"/, `width="${Math.round(t * 0.55)}" height="${Math.round(t * 0.55)}"`); };
+      if (e.isDir || !App.hello.th) fallback();
+      else {
+        const img = el('img');
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.src = `${App.hello.th}${encodeURIComponent(e.path)}?s=${t}&m=${e.mod}`;
+        img.onerror = fallback;
+        box.append(img);
+      }
+      const nm = el('div', 'cname', e.name);
+      c.title = e.name + (e.isDir ? '' : '\n' + typeLabel(e) + ' · ' + formatSize(e.size) + '\n' + formatDate(e.mod));
+      c.replaceChildren(box, nm);
+    }
+    while (this.rowsEl.children.length > k) this.rowsEl.lastChild.remove();
+  }
+
   render() {
+    if (this.mode > 0) { this.renderGrid(); return; }
+    if (this.rowsEl.firstChild && this.rowsEl.firstChild.classList.contains('cell')) this.rowsEl.replaceChildren();
     const n = this.view.length;
     this.spacer.style.height = n * ROW_H + 'px';
     const top = this.tbody.scrollTop;
@@ -923,17 +1179,26 @@ class Pane {
   }
 
   rowIndexAt(e) {
-    const row = e.target.closest && e.target.closest('.row');
+    const row = e.target.closest && e.target.closest(this.mode > 0 ? '.cell' : '.row');
     if (row && row._idx !== undefined) return row._idx;
     const r = this.tbody.getBoundingClientRect();
+    if (this.mode > 0) {
+      const { cw, ch, cols } = this.gridDims();
+      const x = e.clientX - r.left, y = e.clientY - r.top + this.tbody.scrollTop;
+      if (x < 0 || x >= cols * cw || y < 0) return -1;
+      const i = Math.floor(y / ch) * cols + Math.floor(x / cw);
+      return i < this.view.length ? i : -1;
+    }
     const i = Math.floor((e.clientY - r.top + this.tbody.scrollTop) / ROW_H);
     return i >= 0 && i < this.view.length && e.clientY >= r.top ? i : -1;
   }
 
   scrollTo(i) {
-    const top = i * ROW_H, h = this.tbody.clientHeight;
+    let top = i * ROW_H, rh = ROW_H;
+    if (this.mode > 0) { const { ch, cols } = this.gridDims(); top = Math.floor(i / cols) * ch; rh = ch; }
+    const h = this.tbody.clientHeight;
     if (top < this.tbody.scrollTop) this.tbody.scrollTop = top;
-    else if (top + ROW_H > this.tbody.scrollTop + h) this.tbody.scrollTop = top + ROW_H - h;
+    else if (top + rh > this.tbody.scrollTop + h) this.tbody.scrollTop = top + rh - h;
   }
 
   // ----- Auswahl -----
@@ -943,6 +1208,7 @@ class Pane {
     this.anchor = this.focusIdx = i;
     this.render();
     this.updateInfo();
+    this.updatePreview();
   }
 
   selectRange(i) {
@@ -951,6 +1217,7 @@ class Pane {
     this.focusIdx = i;
     this.render();
     this.updateInfo();
+    this.updatePreview();
   }
 
   selectAll() {
@@ -1002,21 +1269,29 @@ class Pane {
       if (e.shiftKey) this.selectRange(i); else this.selectOnly(i);
       this.scrollTo(i);
     };
-    const page = Math.max(1, Math.floor(this.tbody.clientHeight / ROW_H) - 1);
+    const g = this.mode > 0 ? this.gridDims() : null;
+    const step = g ? g.cols : 1;
+    const page = g ? Math.max(1, Math.floor(this.tbody.clientHeight / g.ch)) * g.cols : Math.max(1, Math.floor(this.tbody.clientHeight / ROW_H) - 1);
     const ctrl = e.ctrlKey || e.metaKey;
+    if (g && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      move(this.focusIdx + (e.key === 'ArrowLeft' ? -1 : 1));
+      return;
+    }
     if (e.altKey) {
       if (e.key === 'ArrowLeft') { e.preventDefault(); this.goBack(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); this.goForward(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); this.goUp(); }
       else if (e.key === 'Enter') { e.preventDefault(); App.properties(this.selectedPaths().length ? this.selectedPaths() : [this.folder]); }
+      else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); this.togglePreview(); }
       return;
     }
     switch (e.key) {
-      case 'ArrowDown': e.preventDefault(); move(this.focusIdx + 1); break;
+      case 'ArrowDown': e.preventDefault(); move(this.focusIdx < 0 ? 0 : this.focusIdx + step); break;
       case 'ArrowUp':
         e.preventDefault();
         if (this.focusIdx <= 0 && this.isSearch) { this.search.focus(); break; }
-        move(this.focusIdx - 1); break;
+        move(this.focusIdx - step); break;
       case 'PageDown': e.preventDefault(); move(this.focusIdx + page); break;
       case 'PageUp': e.preventDefault(); move(this.focusIdx - page); break;
       case 'Home': e.preventDefault(); move(0); break;
@@ -1291,7 +1566,7 @@ class Pane {
     e.dataTransfer.dropEffect = copy ? 'copy' : 'move';
     App.dragStatus(copy, t.path);
     // aufspringende Ordner: kurz verweilen → Unterordner klappen darunter auf
-    if (t.idx >= 0 && !this.view[t.idx].open) {
+    if (t.idx >= 0 && !this.view[t.idx].open && this.mode === 0) {
       if (this.springIdx !== t.idx) {
         clearTimeout(this.springTimer);
         this.springIdx = t.idx;
@@ -1308,8 +1583,9 @@ class Pane {
     const r = this.tbody.getBoundingClientRect();
     const now = Date.now();
     if (this.lastScroll && now - this.lastScroll < 40) return;
-    if (e.clientY < r.top + 28 && e.clientY >= r.top) { this.tbody.scrollTop -= ROW_H; this.lastScroll = now; }
-    else if (e.clientY > r.bottom - 28 && e.clientY <= r.bottom) { this.tbody.scrollTop += ROW_H; this.lastScroll = now; }
+    const stepPx = this.mode > 0 ? 40 : ROW_H;
+    if (e.clientY < r.top + 28 && e.clientY >= r.top) { this.tbody.scrollTop -= stepPx; this.lastScroll = now; }
+    else if (e.clientY > r.bottom - 28 && e.clientY <= r.bottom) { this.tbody.scrollTop += stepPx; this.lastScroll = now; }
   }
 
   async expand(idx) {
@@ -1369,7 +1645,7 @@ const App = {
   clipFiles: false, // liegen Dateien in der Zwischenablage?
 
   defaultState() {
-    const p = () => ({ filter: 0, inPath: false, sort: 0, desc: false, cols: DEFAULT_WIDTHS.slice(), last: '' });
+    const p = () => ({ filter: 0, inPath: false, sort: 0, desc: false, cols: DEFAULT_WIDTHS.slice(), last: '', view: 0, tree: true, prev: false, treeW: 210, prevW: 280 });
     return { nav: true, scope: 0, topH: 0, panes: [p(), p(), p()] };
   },
 
@@ -1416,8 +1692,7 @@ const App = {
     this.all = [this.search, ...this.panes];
     this.lastExplorer = this.panes[0];
     this.active = this.search;
-    this.nav = new NavTree($('#nav'));
-    this.nav.load();
+    this.nav = { load: () => this.panes.forEach((p) => { if (!p.treeEl.hidden) p.tree.load(); }), setDrop: (x) => this.panes.forEach((p) => p.tree.setDrop(x)) };
 
     $('#navBt').addEventListener('click', () => this.setNav(!this.state.nav));
     $('#refreshBt').addEventListener('click', () => this.reindex());
@@ -1505,11 +1780,12 @@ const App = {
     this.saveTimer = setTimeout(() => NAS.api('state', this.state).catch(() => {}), 400);
   },
 
+  // Ordnerbäume beider Seiten ein/aus
   setNav(on, init) {
     this.state.nav = on;
-    $('#nav').hidden = !on;
-    $('#navBt').textContent = on ? 'Navigation ausblenden' : 'Navigation einblenden';
-    if (!init) this.saveState();
+    if (on && !init) this.panes.forEach((p) => { p.st.tree = true; });
+    $('#navBt').textContent = on ? 'Ordnerbäume ausblenden' : 'Ordnerbäume einblenden';
+    if (!init) { this.panes.forEach((p) => p.applyLayout()); this.saveState(); }
   },
 
   // Trennlinie zwischen Suche und Explorer: Höhe der Suche (höchstens ein Drittel)
@@ -1636,6 +1912,7 @@ const App = {
     if (remember && !r.error) NAS.api('copytarget', { path: target }).then(() => this.refreshHello());
     // verschobene Dateien in der Auswahl mitnehmen
     if (r.moves) this.all.forEach((p) => { for (const [from, to] of Object.entries(r.moves)) { if (p.sel.delete(from)) p.sel.add(to); this.cut.delete(from.toLowerCase()); } });
+    this.panes.forEach((p) => { this.panes.forEach((q) => q.folder && p.tree.invalidate(q.folder)); if (target) p.tree.invalidate(target); });
     await Promise.all(this.all.map((p) => p.refresh()));
     this.nav.load();
   },
@@ -1662,6 +1939,7 @@ const App = {
 
   // Nach dem Umbenennen: Auswahl mitnehmen, Ansichten und Navigation auffrischen
   async afterRename(moves) {
+    this.panes.forEach((p) => { this.panes.forEach((q) => q.folder && p.tree.invalidate(q.folder)); });
     this.all.forEach((p) => {
       for (const [from, to] of Object.entries(moves)) {
         if (p.sel.delete(from)) p.sel.add(to);

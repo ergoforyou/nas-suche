@@ -14,8 +14,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Navigationsbaum links wie im Windows-Explorer: „Schnellzugriff“ (angeheftete Ordner)
-// und „Netzlaufwerke“, beliebig aufklappbar. Klick zeigt den Ordner in der aktiven Ansicht.
+// Ordnerbaum jeder Seite wie im Windows-Explorer: „Schnellzugriff“ (angeheftete Ordner),
+// „Netzlaufwerke“ und „Dieser PC“ mit der vollständigen Ordner-Hierarchie, beliebig aufklappbar.
+// Klick zeigt den Ordner in dieser Seite; der Baum folgt dem geöffneten Ordner.
 
 type navItem struct {
 	name     string
@@ -44,7 +45,7 @@ func (it *navItem) load() {
 	if it.group != 0 {
 		return // Gruppen werden von außen befüllt
 	}
-	for _, name := range it.nav.app.panes[0].subfolders(it.path) {
+	for _, name := range it.nav.pane.subfolders(it.path) {
 		it.children = append(it.children, &navItem{name: name, path: filepath.Join(it.path, name), parent: it, nav: it.nav})
 	}
 }
@@ -78,6 +79,7 @@ func (m *navModel) RootAt(i int) walk.TreeItem { return m.roots[i] }
 
 type Navigator struct {
 	app   *App
+	pane  *Pane // Seite, zu der dieser Baum gehört
 	tv    *walk.TreeView
 	model *navModel
 	quick *navItem
@@ -89,8 +91,8 @@ type Navigator struct {
 	hoverAt   time.Time
 }
 
-func newNavigator(a *App) *Navigator {
-	n := &Navigator{app: a, model: &navModel{}}
+func newNavigator(a *App, p *Pane) *Navigator {
+	n := &Navigator{app: a, pane: p, model: &navModel{}}
 	n.quick = &navItem{name: "Schnellzugriff", group: 1, nav: n, loaded: true}
 	n.pc = &navItem{name: "Dieser PC", group: 3, nav: n, loaded: true}
 	n.nets = &navItem{name: "Netzlaufwerke", group: 2, nav: n, loaded: true}
@@ -196,9 +198,9 @@ func (n *Navigator) init() {
 			n.contextMenu(it)
 		case b == walk.LeftButton && hti.Flags&(0x2|0x4) != 0 && it.path != "":
 			// Klick auf Name/Symbol (nicht auf das Aufklapp-Dreieck) → Ordner in der aktiven Ansicht zeigen
-			p := n.app.explorerPane()
+			p := n.pane
 			path := it.path
-			n.app.mw.Synchronize(func() { p.openFolder(path) })
+			n.app.mw.Synchronize(func() { p.openFolder(path); p.focusView() })
 		}
 	})
 	if err := RegisterDropTarget(uintptr(n.tv.Handle()), n); err != nil {
@@ -226,7 +228,7 @@ func (n *Navigator) pin(path string) {
 	}
 	n.app.cfg.Favorites = append(n.app.cfg.Favorites, Favorite{Name: name, Path: path})
 	n.app.cfg.Save()
-	n.refresh()
+	n.app.refreshNavs()
 	n.app.setStatus("„" + name + "“ ist an den Schnellzugriff angeheftet.")
 }
 
@@ -235,7 +237,7 @@ func (n *Navigator) unpin(path string) {
 		f := n.app.cfg.Favorites
 		n.app.cfg.Favorites = append(f[:i:i], f[i+1:]...)
 		n.app.cfg.Save()
-		n.refresh()
+		n.app.refreshNavs()
 	}
 }
 
@@ -369,4 +371,94 @@ func (n *Navigator) DragLeave() {
 	n.setDrop(0)
 	n.hoverItem = 0
 	n.app.setStatus(n.app.lastInfo)
+}
+
+// ---------- Baum folgt dem geöffneten Ordner ----------
+
+// samePathPrefix: liegt p in (oder ist) dir?
+func samePathPrefix(p, dir string) bool {
+	lp, ld := strings.ToLower(filepath.Clean(p)), strings.ToLower(strings.TrimRight(filepath.Clean(dir), `\`))
+	return lp == ld || strings.HasPrefix(lp, ld+`\`)
+}
+
+// reveal klappt den Baum bis zum Ordner auf und markiert ihn (wie der Windows-Explorer).
+func (n *Navigator) reveal(dir string) {
+	if n.tv == nil || !n.tv.Visible() || dir == "" {
+		return
+	}
+	// Ausgangspunkt: das längste passende Laufwerk bzw. die Freigabe unter Netzlaufwerke / Dieser PC
+	var cur *navItem
+	for _, g := range []*navItem{n.nets, n.pc} {
+		for _, it := range g.children {
+			if it.path != "" && samePathPrefix(dir, it.path) && (cur == nil || len(it.path) > len(cur.path)) {
+				cur = it
+			}
+		}
+	}
+	if cur == nil {
+		return
+	}
+	if cur.parent != nil {
+		n.tv.SetExpanded(cur.parent, true) // Gruppe zuerst öffnen, sonst gibt es die Einträge noch nicht
+	}
+	for depth := 0; depth < 40 && !strings.EqualFold(filepath.Clean(cur.path), filepath.Clean(dir)); depth++ {
+		cur.load()
+		var next *navItem
+		for _, c := range cur.children {
+			if samePathPrefix(dir, c.path) {
+				next = c
+				break
+			}
+		}
+		if next == nil {
+			break
+		}
+		n.expand(cur)
+		cur = next
+	}
+	if strings.EqualFold(filepath.Clean(cur.path), filepath.Clean(dir)) {
+		n.expand(cur) // den aktuellen Ordner selbst aufklappen – seine Unterordner sind gleich anklickbar
+	}
+	n.tv.SetCurrentItem(cur)
+}
+
+// invalidate liest die Unterordner eines angezeigten Ordners beim nächsten Aufklappen neu
+// (nach Neuer Ordner, Umbenennen, Verschieben, Löschen).
+func (n *Navigator) invalidate(dir string) {
+	var find func(list []*navItem) *navItem
+	find = func(list []*navItem) *navItem {
+		for _, it := range list {
+			if it.path != "" && strings.EqualFold(filepath.Clean(it.path), filepath.Clean(dir)) {
+				return it
+			}
+			if it.loaded && it.path != "" && samePathPrefix(dir, it.path) || it.group != 0 {
+				if f := find(it.children); f != nil {
+					return f
+				}
+			}
+		}
+		return nil
+	}
+	it := find(n.model.roots)
+	if it == nil || !it.loaded || it.group != 0 {
+		return
+	}
+	old := make(map[string]bool, len(it.children))
+	for _, c := range it.children {
+		old[strings.ToLower(c.name)] = true
+	}
+	subs := n.pane.subfolders(it.path)
+	same := len(subs) == len(old)
+	for _, s := range subs {
+		same = same && old[strings.ToLower(s)]
+	}
+	if same {
+		return
+	}
+	expanded := n.tv.Expanded(it)
+	it.children, it.loaded = nil, false
+	n.model.PublishItemsReset(it)
+	if expanded {
+		n.expand(it)
+	}
 }

@@ -50,6 +50,19 @@ type Pane struct {
 	info          *walk.Label // „23 Elemente · 2 ausgewählt“
 	history       []string
 	histPos       int
+	nav           *Navigator     // Ordnerbaum dieser Seite
+	split         *walk.Splitter // Ordnerbaum | Inhalt | Vorschau
+	grid          *iconView      // Symbolansicht (mittelgroße/große Symbole)
+	gridCW        *walk.CustomWidget
+	viewBt        *walk.PushButton
+	prevBox       *walk.Composite // Vorschaufenster
+	prevImg       *walk.CustomWidget
+	prevName      *walk.Label
+	prevInfo      *walk.Label
+	prevText      *walk.TextEdit
+	prevTimer     *time.Timer
+	prevPath      string
+	prevMod       int64
 
 	sortCol  *int
 	sortDesc *bool
@@ -99,25 +112,17 @@ func (p *Pane) table() TableView {
 		AlternatingRowBG: true,
 		MultiSelection:   true,
 		Columns: []TableViewColumn{
-			{Title: "Name", Width: map[bool]int{true: 300, false: 280}[p.search]},
-			{Title: "Typ", Width: 95},
+			{Title: "Name", Width: map[bool]int{true: 300, false: 230}[p.search]},
+			{Title: "Typ", Width: 90},
 			{Title: "Ordner", Width: 330, Hidden: !p.search},
 			{Title: "Größe", Width: 75, Alignment: AlignFar},
 			{Title: "Geändert", Width: 110},
 		},
-		Model:           p.model,
-		StyleCell:       p.styleCell,
-		OnItemActivated: p.activate,
-		OnCurrentIndexChanged: func() {
-			if !p.search {
-				p.updateInfo()
-			}
-		},
-		OnSelectedIndexesChanged: func() {
-			if !p.search {
-				p.updateInfo()
-			}
-		},
+		Model:                    p.model,
+		StyleCell:                p.styleCell,
+		OnItemActivated:          p.activate,
+		OnCurrentIndexChanged:    p.selectionChanged,
+		OnSelectedIndexesChanged: p.selectionChanged,
 	}
 }
 
@@ -171,9 +176,11 @@ func (p *Pane) searchWidget() Widget {
 	}
 }
 
-// explorerWidget: eine Explorer-Ansicht (links oder rechts).
+// explorerWidget: eine Explorer-Ansicht (links oder rechts): Pfadleiste, darunter Ordnerbaum,
+// Inhalt (Details oder Symbole) und Vorschaufenster – durch Trennlinien verstellbar.
 func (p *Pane) explorerWidget() Widget {
 	small := Size{Width: 30}
+	grey := walk.RGB(0x55, 0x5F, 0x6B)
 	return Composite{
 		AssignTo:      &p.root,
 		StretchFactor: 1,
@@ -192,12 +199,49 @@ func (p *Pane) explorerWidget() Widget {
 					Label{AssignTo: &p.pathLabel, Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, TextColor: walk.RGB(0x00, 0x3E, 0x8A)},
 					HSpacer{},
 					PushButton{Text: "✎", MinSize: small, MaxSize: small, ToolTipText: "Pfad eintippen (Strg+L)", OnClicked: p.editAddress},
+					PushButton{AssignTo: &p.viewBt, Text: "Ansicht ▾", ToolTipText: "Details, Symbole, Ordnerbaum, Vorschaufenster", OnClicked: p.viewMenu},
 					PushButton{AssignTo: &p.favBtn, Text: "★", MinSize: small, MaxSize: small, ToolTipText: "Feste Ordner", OnClicked: p.showFolderMenu},
 					PushButton{Text: "⟳", MinSize: small, MaxSize: small, ToolTipText: "Aktualisieren (F5)", OnClicked: p.refreshFolder},
 				},
 			},
-			p.table(),
-			Label{AssignTo: &p.info, TextColor: walk.RGB(0x55, 0x5F, 0x6B)},
+			HSplitter{
+				AssignTo:      &p.split,
+				StretchFactor: 1000,
+				HandleWidth:   5,
+				Children: []Widget{
+					TreeView{AssignTo: &p.nav.tv, StretchFactor: 2, MinSize: Size{Width: 120}},
+					Composite{
+						StretchFactor: 5,
+						Layout:        VBox{MarginsZero: true, SpacingZero: true},
+						Children: []Widget{
+							p.table(),
+							CustomWidget{AssignTo: &p.gridCW, StretchFactor: 1000, Visible: false, PaintMode: PaintNoErase,
+								InvalidatesOnResize: true, PaintPixels: func(c *walk.Canvas, r walk.Rectangle) error {
+									if p.grid == nil {
+										return nil
+									}
+									return p.grid.paint(c, r)
+								}},
+						},
+					},
+					Composite{
+						AssignTo:      &p.prevBox,
+						StretchFactor: 3,
+						Visible:       false,
+						MinSize:       Size{Width: 160},
+						Layout:        VBox{Margins: Margins{Left: 6, Top: 4, Right: 4, Bottom: 2}, Spacing: 4},
+						Children: []Widget{
+							CustomWidget{AssignTo: &p.prevImg, StretchFactor: 3, MinSize: Size{Height: 120}, PaintMode: PaintNoErase,
+								InvalidatesOnResize: true, PaintPixels: p.paintPreview},
+							Label{AssignTo: &p.prevName, Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}},
+							Label{AssignTo: &p.prevInfo, TextColor: grey},
+							TextEdit{AssignTo: &p.prevText, StretchFactor: 2, ReadOnly: true, VScroll: true, Visible: false,
+								Font: Font{Family: "Consolas", PointSize: 9}},
+						},
+					},
+				},
+			},
+			Label{AssignTo: &p.info, TextColor: grey},
 		},
 	}
 }
@@ -226,13 +270,7 @@ func (p *Pane) init() {
 	}
 	p.tv.KeyDown().Attach(p.tableKey)
 	p.setupDrag()
-	mark := func() {
-		p.app.lastPane = p
-		if !p.search {
-			p.app.lastExplorer = p
-		}
-		p.app.updateCommands()
-	}
+	mark := p.markActive
 	p.tv.FocusedChanged().Attach(func() {
 		if p.tv.Focused() {
 			mark()
@@ -262,9 +300,168 @@ func (p *Pane) init() {
 	dbg("RegisterDropTarget pane=%d: %v", p.idx, err)
 	if !p.search {
 		RegisterDropTarget(uintptr(p.pathBar.Handle()), &barDrop{p})
+		p.grid = newIconView(p)
+		p.grid.cw = p.gridCW
+		p.grid.init()
+		p.model.onReset = func() { p.tv.Invalidate(); p.grid.modelReset() }
+		p.nav.init()
+		p.applyLayout()
 	}
 	p.updateFilterButtons(nil)
 	p.updateNavButtons()
+}
+
+// markActive: diese Ansicht ist das Ziel der Befehlsleiste.
+func (p *Pane) markActive() {
+	p.app.lastPane = p
+	if !p.search {
+		p.app.lastExplorer = p
+	}
+	p.app.updateCommands()
+}
+
+// ---------- Ansicht: Details / Symbole, Ordnerbaum, Vorschaufenster ----------
+
+func (p *Pane) viewMode() int {
+	if p.search {
+		return 0
+	}
+	return p.app.cfg.ViewMode[p.idx]
+}
+
+// gridOn: die Symbolansicht ist sichtbar (statt der Detail-Liste).
+func (p *Pane) gridOn() bool { return p.grid != nil && p.viewMode() > 0 }
+
+// applyLayout blendet Liste/Symbole, Ordnerbaum und Vorschau nach den Einstellungen ein.
+func (p *Pane) applyLayout() {
+	if p.search {
+		return
+	}
+	c := p.app.cfg
+	grid := p.gridOn()
+	focused := p.viewFocused()
+	sel := p.selIndexes()
+	p.tv.SetVisible(!grid)
+	p.gridCW.SetVisible(grid)
+	p.nav.tv.SetVisible(!c.HideTree[p.idx] && !c.HideNav)
+	p.prevBox.SetVisible(c.Preview[p.idx])
+	p.setSelection(sel)
+	if focused {
+		p.focusView()
+	}
+	if p.nav.tv.Visible() {
+		p.nav.reveal(p.model.folder)
+	}
+	p.updatePreview()
+}
+
+func (p *Pane) setViewMode(m int) {
+	if p.search || p.app.cfg.ViewMode[p.idx] == m {
+		return
+	}
+	p.app.cfg.ViewMode[p.idx] = m
+	p.app.cfg.Save()
+	p.applyLayout()
+}
+
+func (p *Pane) toggleTree() {
+	p.app.cfg.HideTree[p.idx] = !p.app.cfg.HideTree[p.idx]
+	if !p.app.cfg.HideTree[p.idx] && p.app.cfg.HideNav {
+		p.app.setNavVisible(true)
+	}
+	p.app.cfg.Save()
+	p.applyLayout()
+}
+
+func (p *Pane) togglePreview() {
+	if p.search {
+		return
+	}
+	p.app.cfg.Preview[p.idx] = !p.app.cfg.Preview[p.idx]
+	p.app.cfg.Save()
+	p.applyLayout()
+}
+
+func (p *Pane) viewMenu() {
+	c := p.app.cfg
+	m := p.viewMode()
+	var rc win.RECT
+	win.GetWindowRect(p.viewBt.Handle(), &rc)
+	popupMenu(p.app.mw.Handle(), rc.Left, rc.Bottom, []popItem{
+		{text: "Details (Liste mit Spalten)\tStrg+Umschalt+6", checked: m == 0, action: func() { p.setViewMode(0) }},
+		{text: "Mittelgroße Symbole\tStrg+Umschalt+3", checked: m == 1, action: func() { p.setViewMode(1) }},
+		{text: "Große Symbole (Vorschaubilder)\tStrg+Umschalt+2", checked: m == 2, action: func() { p.setViewMode(2) }},
+		{separator: true},
+		{text: "Ordnerbaum", checked: !c.HideTree[p.idx] && !c.HideNav, action: p.toggleTree},
+		{text: "Vorschaufenster\tAlt+P", checked: c.Preview[p.idx], action: p.togglePreview},
+		{text: "Versteckte Dateien anzeigen", checked: c.ShowHidden, action: p.app.toggleHidden},
+	})
+}
+
+// ---------- Auswahl (Detail-Liste oder Symbolansicht) ----------
+
+func (p *Pane) selIndexes() []int {
+	if p.gridOn() {
+		return p.grid.selected()
+	}
+	return p.tv.SelectedIndexes()
+}
+
+func (p *Pane) curIndex() int {
+	if p.gridOn() {
+		return p.grid.cur
+	}
+	return p.tv.CurrentIndex()
+}
+
+func (p *Pane) setSelection(idx []int) {
+	if p.gridOn() {
+		p.grid.setSelection(idx)
+		return
+	}
+	if len(idx) > 0 {
+		p.tv.SetCurrentIndex(idx[0])
+		p.tv.SetSelectedIndexes(idx)
+		p.tv.EnsureItemVisible(idx[0])
+	} else {
+		p.tv.SetSelectedIndexes(nil)
+	}
+}
+
+func (p *Pane) focusView() {
+	if p.gridOn() {
+		p.gridCW.SetFocus()
+	} else {
+		p.tv.SetFocus()
+	}
+}
+
+func (p *Pane) viewFocused() bool {
+	if p.grid != nil && p.gridCW.Focused() {
+		return true
+	}
+	return p.tv.Focused()
+}
+
+func (p *Pane) invalidateView() {
+	p.tv.Invalidate()
+	if p.gridOn() {
+		p.gridCW.Invalidate()
+	}
+}
+
+// selectionChanged: Infozeile und Vorschau nachziehen.
+func (p *Pane) selectionChanged() {
+	if p.search {
+		return
+	}
+	p.updateInfo()
+	if p.prevBox != nil && p.prevBox.Visible() {
+		if p.prevTimer != nil {
+			p.prevTimer.Stop()
+		}
+		p.prevTimer = time.AfterFunc(180*time.Millisecond, func() { p.app.mw.Synchronize(p.updatePreview) })
+	}
 }
 
 func (p *Pane) setStatus(s string) {
@@ -478,7 +675,7 @@ func (p *Pane) openFolder(dir string) {
 	if p.search {
 		t := p.other()
 		t.openFolder(dir)
-		t.tv.SetFocus()
+		t.focusView()
 		return
 	}
 	p.openFolderSel(dir, "")
@@ -511,6 +708,12 @@ func (p *Pane) showFolder(dir, sel string) {
 	p.model.folderMode = true
 	p.buildCrumbs(dir)
 	p.updateNavButtons()
+	if p.grid != nil {
+		p.grid.sel, p.grid.top, p.grid.cur = map[int]bool{}, 0, -1
+	}
+	if p.nav != nil && p.nav.tv != nil {
+		p.nav.reveal(dir)
+	}
 	p.loadFolder(false, sel)
 	p.rememberFolder(dir)
 	if p.app.cfg.SearchScope == p.idx+1 {
@@ -668,7 +871,7 @@ func (p *Pane) updateInfo() {
 	if n == 1 {
 		text = "1 Element"
 	}
-	if sel := p.tv.SelectedIndexes(); len(sel) > 0 {
+	if sel := p.selIndexes(); len(sel) > 0 {
 		var size int64
 		files := 0
 		for _, i := range sel {
@@ -737,12 +940,12 @@ func (p *Pane) addrKey(key walk.Key) {
 
 func (p *Pane) selectedPaths() []string {
 	var out []string
-	for _, i := range p.tv.SelectedIndexes() {
+	for _, i := range p.selIndexes() {
 		if s := p.model.path(i); s != "" {
 			out = append(out, s)
 		}
 	}
-	if len(out) == 0 {
+	if len(out) == 0 && !p.gridOn() {
 		if s := p.model.path(p.tv.CurrentIndex()); s != "" && p.tv.Focused() {
 			out = append(out, s)
 		}
@@ -752,7 +955,7 @@ func (p *Pane) selectedPaths() []string {
 
 func (p *Pane) selectedEntries() []*Entry {
 	var out []*Entry
-	for _, i := range p.tv.SelectedIndexes() {
+	for _, i := range p.selIndexes() {
 		if e, _ := p.model.entry(i); e != nil {
 			out = append(out, e)
 		}
@@ -766,14 +969,14 @@ func (p *Pane) selectAll() {
 	for i := range idx {
 		idx[i] = i
 	}
-	p.tv.SetSelectedIndexes(idx)
+	p.setSelection(idx)
 }
 
 // activate: Ordner → öffnen (Suche: in der unteren Ansicht), Datei → mit dem passenden Programm öffnen.
 func (p *Pane) activate() {
 	paths := p.selectedPaths()
 	if len(paths) == 1 {
-		if e, _ := p.model.entry(p.tv.CurrentIndex()); e != nil && e.IsDir {
+		if e, _ := p.model.entry(p.curIndex()); e != nil && e.IsDir && strings.EqualFold(p.model.path(p.curIndex()), paths[0]) {
 			p.openFolder(paths[0])
 			return
 		}
@@ -805,7 +1008,7 @@ func (p *Pane) showInPane(target *Pane) {
 		return
 	}
 	target.openFolderSel(filepath.Dir(paths[0]), paths[0])
-	target.tv.SetFocus()
+	target.focusView()
 }
 
 func openExplorer(path string, sel bool) {
@@ -875,7 +1078,7 @@ func (p *Pane) newItem(folder bool) {
 	p.model.items = append(p.model.items, Entry{Name: filepath.Base(dst), IsDir: folder, Mod: time.Now().Unix()})
 	p.model.setFolder(dir, p.model.items)
 	p.reselect([]string{dst})
-	p.tv.SetFocus()
+	p.focusView()
 	p.rename()
 }
 
@@ -905,7 +1108,11 @@ func (p *Pane) contextMenu(keyboard bool) {
 	win.GetCursorPos(&pt)
 	if keyboard {
 		var rc win.RECT
-		win.GetWindowRect(p.tv.Handle(), &rc)
+		if p.gridOn() {
+			win.GetWindowRect(p.gridCW.Handle(), &rc)
+		} else {
+			win.GetWindowRect(p.tv.Handle(), &rc)
+		}
 		pt = win.POINT{X: rc.Left + 40, Y: rc.Top + 40}
 	}
 	// Leere Fläche: Menü des Ordners
@@ -926,7 +1133,7 @@ func (p *Pane) contextMenu(keyboard bool) {
 			{separator: true},
 			{text: "Im Windows-Explorer öffnen", action: func() { openExplorer(dir, false) }},
 			{text: "Pfad kopieren", action: func() { walk.Clipboard().SetText(dir) }},
-			{text: "An Schnellzugriff anheften", disabled: a.nav.isPinned(dir) >= 0, action: func() { a.nav.pin(dir) }},
+			{text: "An Schnellzugriff anheften", disabled: a.panes[0].nav.isPinned(dir) >= 0, action: func() { a.panes[0].nav.pin(dir) }},
 			{text: "Eigenschaften\tAlt+Enter", action: func() { ShowProperties(uintptr(a.mw.Handle()), []string{dir}) }},
 		})
 		return
@@ -947,14 +1154,14 @@ func (p *Pane) contextMenu(keyboard bool) {
 			popItem{text: "Ordner links anzeigen (Datei markiert)", action: func() { p.showInPane(a.panes[0]) }},
 			popItem{text: "Ordner rechts anzeigen (Datei markiert)", action: func() { p.showInPane(a.panes[1]) }})
 	} else if firstDir {
-		items = append(items, popItem{text: "In der anderen Ansicht öffnen", action: func() { p.other().openFolderSel(paths[0], ""); p.other().tv.SetFocus() }})
+		items = append(items, popItem{text: "In der anderen Ansicht öffnen", action: func() { p.other().openFolderSel(paths[0], ""); p.other().focusView() }})
 	}
 	items = append(items, popItem{text: "Im Windows-Explorer zeigen", action: func() { openExplorer(paths[0], true) }})
 	if firstDir {
-		if a.nav.isPinned(paths[0]) >= 0 {
-			items = append(items, popItem{text: "Vom Schnellzugriff lösen", action: func() { a.nav.unpin(paths[0]) }})
+		if a.panes[0].nav.isPinned(paths[0]) >= 0 {
+			items = append(items, popItem{text: "Vom Schnellzugriff lösen", action: func() { a.panes[0].nav.unpin(paths[0]) }})
 		} else {
-			items = append(items, popItem{text: "An Schnellzugriff anheften", action: func() { a.nav.pin(paths[0]) }})
+			items = append(items, popItem{text: "An Schnellzugriff anheften", action: func() { a.panes[0].nav.pin(paths[0]) }})
 		}
 	}
 	items = append(items,
@@ -1009,19 +1216,24 @@ func (p *Pane) setupDrag() {
 			return
 		}
 		p.dragArmed = false
-		paths := p.selectedPaths()
-		if len(paths) == 0 {
-			return
-		}
-		p.app.dragSource = true
-		_, err := DragFilesMove(uintptr(p.app.mw.Handle()), paths, true)
-		p.app.dragSource = false
-		if err != nil {
-			p.setStatus("Ziehen nicht möglich: " + err.Error())
-		}
-		// Ziel war z. B. der Windows-Explorer: dort verschobene Dateien hier nachziehen
-		p.app.afterShellChange(paths)
+		p.startDrag()
 	})
+}
+
+// startDrag: markierte Elemente ziehen (Vorgabe verschieben, auch in den Windows-Explorer).
+func (p *Pane) startDrag() {
+	paths := p.selectedPaths()
+	if len(paths) == 0 {
+		return
+	}
+	p.app.dragSource = true
+	_, err := DragFilesMove(uintptr(p.app.mw.Handle()), paths, true)
+	p.app.dragSource = false
+	if err != nil {
+		p.setStatus("Ziehen nicht möglich: " + err.Error())
+	}
+	// Ziel war z. B. der Windows-Explorer: dort verschobene Dateien hier nachziehen
+	p.app.afterShellChange(paths)
 }
 
 // ---------- Ablegen (Ziel) ----------
@@ -1043,6 +1255,9 @@ func (p *Pane) dropFolder(x, y int32) string {
 var procWindowFromPoint = user32.NewProc("WindowFromPoint")
 
 func (p *Pane) rowAtScreen(x, y int32) int {
+	if p.gridOn() {
+		return p.grid.indexAtScreen(x, y)
+	}
 	h, _, _ := procWindowFromPoint.Call(uintptr(uint32(x)) | uintptr(uint32(y))<<32)
 	if h == 0 {
 		return -1
@@ -1108,7 +1323,7 @@ var (
 func (p *Pane) setDropHighlight(row int, whole bool) {
 	if row != p.dropRow {
 		p.dropRow = row
-		p.tv.Invalidate()
+		p.invalidateView()
 	}
 	if p.search {
 		whole = false
@@ -1177,6 +1392,9 @@ const springDelay = 600 * time.Millisecond
 // springLoad: verweilt man mit Dateien über einem Ordner, klappen seine Unterordner
 // darunter als Baum auf – so kann man direkt in „Kunde › Schaden“ ablegen.
 func (p *Pane) springLoad(row int) {
+	if p.gridOn() {
+		return // in der Symbolansicht: Ordnerbaum links zum Aufklappen benutzen
+	}
 	e, _ := p.model.entry(row)
 	if e == nil || !e.IsDir || p.model.isOpen(row) || p.noSubs[p.model.path(row)] {
 		p.hoverRow = -1
@@ -1206,6 +1424,27 @@ var procGetClientRect = user32.NewProc("GetClientRect")
 
 // autoScroll rollt die Liste beim Ziehen am oberen/unteren Rand weiter.
 func (p *Pane) autoScroll(x, y int32) {
+	if p.gridOn() {
+		pt := win.POINT{X: x, Y: y}
+		win.ScreenToClient(p.gridCW.Handle(), &pt)
+		hgt := int32(p.gridCW.ClientBoundsPixels().Height)
+		if time.Since(p.lastScroll) < 80*time.Millisecond || pt.Y < 0 || pt.Y > hgt {
+			return
+		}
+		zone := int32(40 * p.gridCW.DPI() / 96)
+		switch {
+		case pt.Y < zone:
+			p.grid.top -= 24
+		case pt.Y > hgt-zone:
+			p.grid.top += 24
+		default:
+			return
+		}
+		p.grid.clampTop()
+		p.gridCW.Invalidate()
+		p.lastScroll = time.Now()
+		return
+	}
 	h, _, _ := procWindowFromPoint.Call(uintptr(uint32(x)) | uintptr(uint32(y))<<32)
 	hwnd := win.HWND(h)
 	if h == 0 || (hwnd != p.tv.Handle() && !win.IsChild(p.tv.Handle(), hwnd)) {

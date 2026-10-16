@@ -10,7 +10,7 @@ const (
 // Version, die oben im Fenster und in Chrome angezeigt wird. appStage = "Testversion", solange wir
 // ausprobieren – für die endgültige Fassung auf "" setzen (dann steht dort „freigegeben“).
 const (
-	appVersion = "0.9.0"
+	appVersion = "0.10.0"
 	appStage   = "Testversion"
 )
 

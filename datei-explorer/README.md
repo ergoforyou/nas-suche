@@ -6,16 +6,17 @@ Läuft unabhängig von der NAS-Suche – beide Programme können gleichzeitig la
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ ERGOFORYOU  Datei-Explorer                      [Version 0.9.0 · Testversion] │
+│ ERGOFORYOU  Datei-Explorer                     [Version 0.10.0 · Testversion] │
 │ Neu ▾  Ausschneiden  Kopieren  Einfügen  Umbenennen  Löschen  Kopieren ⇄ …   │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ Suchen: [angebot müller        ] [Überall ▾] □ im Pfad  Nur: □PDF □Bilder …   │  höchstens
 │ Name               Typ     Ordner                         Größe  Geändert    │  ein Drittel
-├──────────────┬───────────────────────────────┬───────────────────────────────┤
-│ Schnellzugriff│ ← → ↑  Y: › Kunden › Wrobel ›│ ← → ↑  Y: › Eingang ›          │
-│ Netzlaufwerke │ Name          Typ  Größe  …  │ Name          Typ  Größe  …   │  zwei Drittel
-│ Dieser PC     │                              │                               │
-└──────────────┴───────────────────────────────┴───────────────────────────────┘
+├──────────────────────────────────────┬───────────────────────────────────────┤
+│ ← → ↑  Y: › Kunden › Wrobel › Ansicht▾│ ← → ↑  Y: › Eingang ›        Ansicht▾ │
+│ Ordnerbaum │ Details oder  │ Vorschau │ Ordnerbaum │ Details oder │ Vorschau  │  zwei Drittel
+│ ▾ Y:       │ Symbole mit   │ (Bild,   │ ▾ Y:       │ Symbole      │ (Alt+P)   │
+│  ▾ Kunden  │ Vorschaubild  │ PDF,Text)│  ▸ Eingang │              │           │
+└────────────┴───────────────┴──────────┴────────────┴──────────────┴───────────┘
 ```
 
 ## Versionsfeld
@@ -48,11 +49,28 @@ Ein gemeinsamer Index auf dem NAS (`NasSuche-Index.dat`) wird mitbenutzt – ers
   Rechtsklick → „Ordner links/rechts anzeigen“ öffnet den Ordner der Datei und markiert sie dort.
 
 ### Zwei Explorer-Ansichten unten
+Jede Seite ist ein vollständiger Explorer: **Ordnerbaum** links, **Inhalt** in der Mitte,
+**Vorschaufenster** rechts. Alle Trennlinien lassen sich ziehen – auch die zwischen linker und rechter Seite.
+
+* **Ordnerbaum (echte Hierarchie):** Schnellzugriff, Netzlaufwerke und Dieser PC mit allen Unterordnern,
+  beliebig auf- und zuklappbar, jeder Ordner anklickbar. Der Baum folgt automatisch dem geöffneten Ordner
+  und klappt ihn auf. Dateien auf einen Ordner im Baum ziehen = verschieben (Strg = kopieren).
+* **Ansicht ▾** (je Seite, wird gespeichert):
+  * **Details** – klassisch wie im Windows-Explorer: Name, Typ, Größe, Geändert (Strg+Umschalt+6)
+  * **Mittelgroße Symbole** (Strg+Umschalt+3) und **Große Symbole** (Strg+Umschalt+2) – mit echten
+    Vorschaubildern: Fotos, und PDF-/Office-Seiten, wenn Windows dafür Miniaturen liefert
+    (wie im Windows-Explorer – z. B. mit installiertem Adobe Reader bzw. Office); sonst das Symbol.
+  * **Ordnerbaum** ein/aus, **Vorschaufenster** ein/aus (**Alt+P**), versteckte Dateien.
+* **Vorschaufenster:** großes Vorschaubild der markierten Datei, Textdateien (txt, csv, log …) als Text,
+  dazu Typ, Größe, Datum und Ordner; bei mehreren markierten die Anzahl und Gesamtgröße.
+  In Chrome werden Bilder, PDFs (blätterbar), Videos und Texte direkt angezeigt.
+* „Ordnerbäume ausblenden“ oben schaltet beide Bäume auf einmal aus/ein.
+
 * **← → ↑** (Alt+←, Alt+→, Alt+↑, Rücktaste = zurück), Pfadleiste mit **›** für Unterordner,
   **✎** bzw. **Strg+L / F4 / Alt+D** = Pfad eintippen, **★** = feste Ordner, **⟳ / F5** = aktualisieren.
 * Spalten Name, Typ, Größe, Geändert – Klick auf die Überschrift sortiert (bleibt gespeichert).
+  In Chrome passen sich die Spalten an, wenn die Seite schmal wird (der Name bleibt lesbar).
 * Unter jeder Ansicht: Anzahl Elemente, Auswahl und Größe der Auswahl.
-* Links Navigationsleiste wie im Explorer: Schnellzugriff, Netzlaufwerke, Dieser PC.
 * Beim Start: fester Startordner (★ → „beim Start öffnen“), sonst der zuletzt benutzte Ordner.
 * Ordner aktualisieren sich alle 5 Sekunden von selbst (neue Scans erscheinen automatisch).
 
@@ -78,7 +96,8 @@ Ein gemeinsamer Index auf dem NAS (`NasSuche-Index.dat`) wird mitbenutzt – ers
 * **Strg+Tab** wechselt Suche → links → rechts. Die Befehlsleiste oben wirkt auf die zuletzt angeklickte Ansicht.
 
 ## Im Browser (Chrome, Edge, Opera, Brave)
-Dieselbe Oberfläche – Suche oben, zwei Ansichten unten, Befehlsleiste – als Tab im Browser.
+Dieselbe Oberfläche – Suche oben, zwei Ansichten unten mit Ordnerbaum, Symbolansicht und Vorschaufenster,
+Befehlsleiste – als Tab im Browser.
 **Einrichten:** *Einstellungen → Allgemein → „Explorer im Browser einrichten …“*, dann im Browser unter
 `chrome://extensions` den Entwicklermodus einschalten, „Entpackte Erweiterung laden“ und den angezeigten
 Ordner wählen (Pfad liegt in der Zwischenablage). Eigene Erweiterung – unabhängig von der NAS-Suche-Erweiterung.

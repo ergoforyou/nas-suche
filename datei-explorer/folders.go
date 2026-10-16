@@ -98,9 +98,7 @@ func (p *Pane) reselect(paths []string) {
 		}
 	}
 	if len(idx) > 0 {
-		p.tv.SetCurrentIndex(idx[0])
-		p.tv.SetSelectedIndexes(idx)
-		p.tv.EnsureItemVisible(idx[0])
+		p.setSelection(idx)
 	}
 }
 
@@ -199,7 +197,7 @@ func (p *Pane) showFolderMenu() {
 			del = append(del, popItem{text: f.Name + "   (" + f.Path + ")", action: func() {
 				a.cfg.Favorites = append(a.cfg.Favorites[:i:i], a.cfg.Favorites[i+1:]...)
 				a.cfg.Save()
-				a.nav.refresh()
+				a.refreshNavs()
 				p.setStatus("„" + f.Name + "“ aus den festen Ordnern entfernt.")
 			}})
 		}
@@ -239,13 +237,13 @@ func (p *Pane) addFavorite(dir string) {
 		if strings.EqualFold(f.Path, dir) {
 			a.cfg.Favorites[i].Name = name
 			a.cfg.Save()
-			a.nav.refresh()
+			a.refreshNavs()
 			return
 		}
 	}
 	a.cfg.Favorites = append(a.cfg.Favorites, Favorite{Name: name, Path: dir})
 	a.cfg.Save()
-	a.nav.refresh()
+	a.refreshNavs()
 	p.setStatus("„" + name + "“ ist jetzt unter „★“ und im Schnellzugriff gespeichert – in beiden Ansichten.")
 	if _, err := os.Stat(dir); err != nil {
 		p.setStatus("Hinweis: " + dir + " ist gerade nicht erreichbar.")

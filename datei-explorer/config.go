@@ -41,7 +41,10 @@ type Config struct {
 	SortDescL      bool       `json:"sortierung_links_absteigend"`
 	SortColR       int        `json:"sortierung_rechts"`
 	SortDescR      bool       `json:"sortierung_rechts_absteigend"`
-	HideNav        bool       `json:"navigation_ausgeblendet"`
+	HideNav        bool       `json:"navigation_ausgeblendet"` // Ordnerbäume beider Seiten aus
+	ViewMode       [2]int     `json:"ansicht"`                 // je Seite: 0 Details, 1 mittelgroße, 2 große Symbole
+	HideTree       [2]bool    `json:"ordnerbaum_aus"`          // je Seite
+	Preview        [2]bool    `json:"vorschaufenster"`         // je Seite
 	ShowHidden     bool       `json:"versteckte_anzeigen"`
 	// Ansicht der Chrome-Oberfläche (Haken, Sortierung, Spalten …), von der Erweiterung verwaltet
 	WebState json.RawMessage `json:"chrome_ansicht,omitempty"`

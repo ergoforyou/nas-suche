@@ -404,23 +404,23 @@ func ShellContextMenu(hwnd uintptr, paths []string, x, y int32, extended bool) (
 	return true, nil
 }
 
-// ---------- Tasten mit Alt (Alt+←, Alt+→, Alt+↑, Alt+Enter, Alt+D) ----------
+// ---------- Tasten, die die Oberflächen-Bibliothek nicht meldet ----------
 
-// Die Oberflächen-Bibliothek meldet Tasten mit Alt nicht – deshalb ein Tastatur-Haken nur für
-// dieses Programm. handler liefert true, wenn die Taste verbraucht wurde.
-var altKeyHandler func(vk uint32) bool
+// Alt-Kombinationen und die Tasten der selbst gezeichneten Symbolansicht kommen über einen
+// Tastatur-Haken nur für dieses Programm. handler liefert true, wenn die Taste verbraucht wurde.
+var keyHandler func(vk uint32, alt bool) bool
 
-func installAltKeyHook(handler func(vk uint32) bool) {
-	altKeyHandler = handler
-	cb := syscall.NewCallback(func(code int32, wp, lp uintptr) uintptr {
+func installKeyHook(handler func(vk uint32, alt bool) bool) {
+	keyHandler = handler
+	cb := syscall.NewCallback(func(code, wp, lp uintptr) uintptr {
 		const altDown = 1 << 29
 		const released = 1 << 31
-		if code == 0 && lp&altDown != 0 && lp&released == 0 && altKeyHandler != nil {
-			if altKeyHandler(uint32(wp)) {
+		if int32(code) == 0 && lp&released == 0 && keyHandler != nil {
+			if keyHandler(uint32(wp), lp&altDown != 0) {
 				return 1
 			}
 		}
-		r, _, _ := procCallNextHookEx.Call(0, uintptr(code), wp, lp)
+		r, _, _ := procCallNextHookEx.Call(0, code, wp, lp)
 		return r
 	})
 	tid, _, _ := procGetCurrentThreadId.Call()

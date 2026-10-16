@@ -335,7 +335,7 @@ func (a *App) showSettings() {
 		a.applyHotkey()
 	}
 	a.updateInfo()
-	a.nav.refresh()
+	a.refreshNavs()
 
 	go func() {
 		if drivesChanged || sharedChanged || foldersChanged {

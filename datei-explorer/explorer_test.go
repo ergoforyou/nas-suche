@@ -1,6 +1,8 @@
 package main
 
 import (
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -49,5 +51,29 @@ func TestIndexExplorerFunktionen(t *testing.T) {
 	lix, lres, ltotal, _ := LiveSearch(filepath.Join(root, "Kunden"), Query{Text: "*.pdf"}, nil, func() bool { return false })
 	if ltotal != 2 || len(lres) != 2 || len(lix.Entries) != 2 {
 		t.Fatalf("Direktsuche: %d Treffer, erwartet 2", ltotal)
+	}
+}
+
+// Vorschaubilder und Textvorschau (ohne Windows: Bilder werden selbst verkleinert).
+func TestVorschau(t *testing.T) {
+	dir := t.TempDir()
+	img := image.NewRGBA(image.Rect(0, 0, 800, 400))
+	f, _ := os.Create(filepath.Join(dir, "bild.png"))
+	png.Encode(f, img)
+	f.Close()
+	th, err := Thumbnail(filepath.Join(dir, "bild.png"), 200)
+	if err != nil || th.Bounds().Dx() != 200 || th.Bounds().Dy() != 100 {
+		t.Fatalf("Miniatur: %v %v", err, th)
+	}
+	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("\xef\xbb\xbfZeile 1\nGr\xfc\xdfe"), 0o644)
+	txt, err := peekText(filepath.Join(dir, "a.txt"))
+	if err != nil || txt != "Zeile 1\nGrüße" {
+		t.Fatalf("Textvorschau: %q %v", txt, err)
+	}
+	if got := decodeText([]byte("Gr\xc3\xbc\xc3")); got != "Grü" { // nach 32 KB abgeschnittenes Zeichen
+		t.Fatalf("abgeschnitten: %q", got)
+	}
+	if !isTextFile("Notiz.TXT") || isTextFile("bild.png") {
+		t.Fatal("isTextFile")
 	}
 }

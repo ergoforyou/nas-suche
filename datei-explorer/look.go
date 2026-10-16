@@ -109,3 +109,7 @@ func onlyNameIcons(tv *walk.TableView) {
 		win.SendMessage(win.HWND(child), lvmSetExtendedListViewStyle, lvsExSubItemImages, 0)
 	}
 }
+
+func syscallUTF16(s string) *uint16 { return syscall.StringToUTF16Ptr(s) }
+
+var sizeofSHFILEINFO = unsafe.Sizeof(win.SHFILEINFO{})

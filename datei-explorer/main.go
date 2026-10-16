@@ -24,9 +24,8 @@ type App struct {
 	banner       *banner
 	searchPane   *Pane    // oben: Suche
 	panes        [2]*Pane // unten: Explorer links und rechts
-	nav          *Navigator
-	lastPane     *Pane // zuletzt benutzte Ansicht (Ziel der Befehlsleiste)
-	lastExplorer *Pane // zuletzt benutzte Explorer-Ansicht (Ziel für Klicks im Navigationsbaum)
+	lastPane     *Pane    // zuletzt benutzte Ansicht (Ziel der Befehlsleiste)
+	lastExplorer *Pane    // zuletzt benutzte Explorer-Ansicht (Ziel für Klicks im Navigationsbaum)
 	navBt        *walk.PushButton
 	refreshBt    *walk.PushButton
 	pasteBt      *walk.PushButton
@@ -51,6 +50,7 @@ type App struct {
 	dragSource  bool            // gerade werden Dateien aus dem Programm gezogen
 	cutPaths    map[string]bool // ausgeschnitten (Strg+X) – werden blass angezeigt
 	saveTimer   *time.Timer
+	thumbs      map[string]*thumbEntry // Miniaturen für Symbolansicht und Vorschau
 }
 
 func main() {
@@ -62,7 +62,9 @@ func main() {
 	app.panes = [2]*Pane{newPane(app, 0), newPane(app, 1)}
 	app.searchPane = newPane(app, 2)
 	app.lastExplorer = app.panes[0]
-	app.nav = newNavigator(app)
+	for _, p := range app.panes {
+		p.nav = newNavigator(app, p)
+	}
 	for _, arg := range os.Args[1:] {
 		if strings.EqualFold(arg, "/tray") || strings.EqualFold(arg, "-tray") {
 			app.startTray = true
@@ -140,7 +142,7 @@ func (a *App) run() {
 					cmd("Verschieben ⇄", "Markierte Elemente in den Ordner der anderen Seite verschieben", func() { a.cmdToOther(true) }),
 					cmd("Eigenschaften", "Alt+Enter", func() { a.cmdPane().properties() }),
 					HSpacer{},
-					PushButton{AssignTo: &a.navBt, Text: "Navigation ausblenden", OnClicked: func() { a.setNavVisible(a.cfg.HideNav) }},
+					PushButton{AssignTo: &a.navBt, Text: "Ordnerbäume ausblenden", OnClicked: func() { a.setNavVisible(a.cfg.HideNav) }},
 					PushButton{AssignTo: &a.refreshBt, Text: "Index aktualisieren", ToolTipText: "Suchordner neu einlesen", OnClicked: a.toggleIndex},
 					cmd("Einstellungen …", "Suchordner, Netzlaufwerke, Tastenkombination, Browser", a.showSettings),
 				},
@@ -156,10 +158,12 @@ func (a *App) run() {
 					},
 					Composite{
 						StretchFactor: 2, // unten zwei Drittel: zwei Explorer-Ansichten nebeneinander
-						Layout:        HBox{Margins: Margins{Left: 9, Top: 2, Right: 9, Bottom: 3}, Spacing: 8},
+						Layout:        VBox{Margins: Margins{Left: 9, Top: 2, Right: 9, Bottom: 3}},
 						Children: []Widget{
-							TreeView{AssignTo: &a.nav.tv, MinSize: Size{Width: 180}, MaxSize: Size{Width: 250}},
-							a.panes[0].explorerWidget(), a.panes[1].explorerWidget(),
+							HSplitter{
+								HandleWidth: 8,
+								Children:    []Widget{a.panes[0].explorerWidget(), a.panes[1].explorerWidget()},
+							},
 						},
 					},
 				},
@@ -186,13 +190,12 @@ func (a *App) run() {
 	shortcut(walk.KeyE, walk.ModControl, focusSearch)
 	shortcut(walk.KeyF3, 0, focusSearch)
 	shortcut(walk.KeyTab, walk.ModControl, a.switchPane)
-	installAltKeyHook(a.altKey)
+	installKeyHook(a.hookKey)
 
 	a.searchPane.init()
 	for _, p := range a.panes {
 		p.init()
 	}
-	a.nav.init()
 	a.setNavVisible(!a.cfg.HideNav)
 	a.setupTray()
 	a.applyHotkey()
@@ -675,14 +678,43 @@ func (a *App) switchPane() {
 	}
 }
 
-// altKey: Alt+← zurück, Alt+→ vor, Alt+↑ nach oben, Alt+Enter Eigenschaften, Alt+D Adresse.
-func (a *App) altKey(vk uint32) bool {
+// hookKey: Tasten, die die Oberflächen-Bibliothek nicht meldet – Alt+← zurück, Alt+→ vor,
+// Alt+↑ nach oben, Alt+Enter Eigenschaften, Alt+D Adresse, Alt+P Vorschau, Strg+Umschalt+2/3/6
+// Ansicht, und alle Tasten der Symbolansicht. Hier wird nur entschieden – ausgeführt wird danach
+// im normalen Ablauf (Dialoge dürfen nicht im Tastatur-Haken laufen).
+func (a *App) hookKey(vk uint32, alt bool) bool {
 	if a.mw == nil || win.GetForegroundWindow() != a.mw.Handle() {
 		return false
 	}
 	p := a.activePane()
 	run := func(f func()) bool { a.mw.Synchronize(f); return true }
+	if !alt {
+		if !p.search && walk.ControlDown() && walk.ShiftDown() {
+			switch vk {
+			case '2':
+				return run(func() { p.setViewMode(2) })
+			case '3':
+				return run(func() { p.setViewMode(1) })
+			case '6':
+				return run(func() { p.setViewMode(0) })
+			}
+		}
+		for _, q := range a.panes {
+			q := q
+			if q.grid != nil && q.gridCW.Visible() && win.GetFocus() == q.gridCW.Handle() {
+				if gridKeys[vk] || (walk.ControlDown() && strings.ContainsRune("ACXVLN", rune(vk))) ||
+					(vk == win.VK_F10 && walk.ShiftDown()) {
+					return run(func() { q.grid.key(vk) })
+				}
+			}
+		}
+		return false
+	}
 	switch vk {
+	case 'P':
+		if !p.search {
+			return run(p.togglePreview)
+		}
 	case win.VK_LEFT:
 		if !p.search {
 			return run(p.goBack)
@@ -705,18 +737,40 @@ func (a *App) altKey(vk uint32) bool {
 	return false
 }
 
-// setNavVisible blendet die Navigationsleiste (Schnellzugriff, Netzlaufwerke, Dieser PC) ein/aus.
+// gridKeys: Tasten, die die Symbolansicht selbst behandelt (Pfeile, Bild auf/ab, Pos1/Ende …).
+var gridKeys = map[uint32]bool{win.VK_LEFT: true, win.VK_RIGHT: true, win.VK_UP: true, win.VK_DOWN: true,
+	win.VK_PRIOR: true, win.VK_NEXT: true, win.VK_HOME: true, win.VK_END: true, win.VK_RETURN: true,
+	win.VK_DELETE: true, win.VK_F2: true, win.VK_F5: true, win.VK_BACK: true, win.VK_APPS: true, win.VK_F4: true}
+
+// setNavVisible blendet die Ordnerbäume beider Seiten ein/aus.
 func (a *App) setNavVisible(on bool) {
 	changed := on == a.cfg.HideNav
 	a.cfg.HideNav = !on
-	a.nav.tv.SetVisible(on)
 	if on {
-		a.navBt.SetText("Navigation ausblenden")
+		a.navBt.SetText("Ordnerbäume ausblenden")
 	} else {
-		a.navBt.SetText("Navigation einblenden")
+		a.navBt.SetText("Ordnerbäume einblenden")
+	}
+	for _, p := range a.panes {
+		if p.nav != nil && p.nav.tv != nil {
+			if on {
+				a.cfg.HideTree[p.idx] = false
+			}
+			p.applyLayout()
+		}
 	}
 	if changed {
 		a.cfg.Save()
+	}
+}
+
+// refreshNavs baut Schnellzugriff, Netzlaufwerke und Dieser PC in beiden Ordnerbäumen neu auf.
+func (a *App) refreshNavs() {
+	for _, p := range a.panes {
+		if p.nav != nil && p.nav.tv != nil {
+			p.nav.refresh()
+			p.nav.reveal(p.model.folder)
+		}
 	}
 }
 
@@ -734,10 +788,17 @@ func (a *App) toggleHidden() {
 	}
 }
 
-// refreshExplorers liest beide unteren Ansichten neu (Auswahl bleibt).
+// refreshExplorers liest beide unteren Ansichten neu (Auswahl bleibt) und frischt die Ordnerbäume auf.
 func (a *App) refreshExplorers() {
 	for _, p := range a.panes {
 		p.loadFolder(false, "")
+	}
+	for _, p := range a.panes {
+		for _, q := range a.panes {
+			if q.model.folder != "" && p.nav != nil && p.nav.tv != nil {
+				p.nav.invalidate(q.model.folder)
+			}
+		}
 	}
 }
 
@@ -844,7 +905,7 @@ func (a *App) clipboardSet(p *Pane, cut bool) {
 		a.sticky(fmt.Sprintf("%d Element(e) kopiert – mit Strg+V einfügen (hier, im Explorer, in E-Mails, Google Drive …).", len(paths)))
 	}
 	for _, q := range a.allPanes() {
-		q.tv.Invalidate()
+		q.invalidateView()
 	}
 	a.updateCommands()
 }

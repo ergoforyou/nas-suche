@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image/jpeg"
 	"io"
 	"mime"
 	"net"
@@ -161,6 +162,10 @@ func (s *webServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.download(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/th/") {
+		s.thumb(w, r)
+		return
+	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") {
 		http.NotFound(w, r)
 		return
@@ -252,6 +257,11 @@ func (s *webServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true})
 	case "newfile":
 		s.newFile(w, r)
+	case "peek":
+		var req struct{ Path string }
+		readJSON(r, &req)
+		text, err := peekText(req.Path)
+		writeJSON(w, map[string]any{"text": text, "error": errText(err)})
 	case "hidden":
 		var req struct{ Show bool }
 		readJSON(r, &req)
@@ -392,6 +402,7 @@ func (s *webServer) hello(w http.ResponseWriter) {
 			"status":      s.host.StatusText(),
 			"indexing":    s.host.Indexing(),
 			"dl":          fmt.Sprintf("http://127.0.0.1:%d/dl/%s/", s.port, s.secret),
+			"th":          fmt.Sprintf("http://127.0.0.1:%d/th/%s/", s.port, s.secret),
 			"copyTargets": c.CopyTargets,
 			"favorites":   c.Favorites,
 			"folders":     c.Folders,
@@ -812,17 +823,47 @@ func renamePath(src, name string) (string, error) {
 	return dst, nil
 }
 
-// download: Datei für Chrome (Herausziehen auf den Desktop/Explorer, Übergabe an Webseiten).
-func (s *webServer) download(w http.ResponseWriter, r *http.Request) {
-	rest := strings.TrimPrefix(r.URL.EscapedPath(), "/dl/")
+// securedPath: Pfad aus /dl/<schlüssel>/<pfad> bzw. /th/… – nur mit dem Schlüssel dieser Sitzung.
+func (s *webServer) securedPath(w http.ResponseWriter, r *http.Request, prefix string) (string, bool) {
+	rest := strings.TrimPrefix(r.URL.EscapedPath(), prefix)
 	i := strings.Index(rest, "/")
 	if i < 0 || rest[:i] != s.secret {
 		http.Error(w, "nicht erlaubt", http.StatusForbidden)
-		return
+		return "", false
 	}
 	p, err := url.PathUnescape(rest[i+1:])
 	if err != nil {
 		http.NotFound(w, r)
+		return "", false
+	}
+	return p, true
+}
+
+// thumb: Miniatur für die Symbolansicht und das Vorschaufenster (JPEG, ?s=Größe in Pixeln).
+func (s *webServer) thumb(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.securedPath(w, r, "/th/")
+	if !ok {
+		return
+	}
+	size, _ := strconv.Atoi(r.URL.Query().Get("s"))
+	if size <= 0 {
+		size = 96
+	}
+	img, err := Thumbnail(p, size)
+	if err != nil || img == nil {
+		http.Error(w, "keine Vorschau", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=600")
+	jpeg.Encode(w, img, &jpeg.Options{Quality: 86})
+}
+
+// download: Datei für Chrome (Herausziehen auf den Desktop/Explorer, Übergabe an Webseiten,
+// mit ?inline=1 Anzeige im Vorschaufenster).
+func (s *webServer) download(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.securedPath(w, r, "/dl/")
+	if !ok {
 		return
 	}
 	f, err := os.Open(p)
@@ -844,6 +885,10 @@ func (s *webServer) download(w http.ResponseWriter, r *http.Request) {
 		ct = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(p)}))
+	disp := "attachment"
+	if r.URL.Query().Get("inline") == "1" {
+		disp = "inline"
+	}
+	w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": filepath.Base(p)}))
 	http.ServeContent(w, r, filepath.Base(p), st.ModTime(), f)
 }

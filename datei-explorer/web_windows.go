@@ -103,7 +103,7 @@ func (a *App) ClipboardFiles(paths []string, cut bool) error {
 			}
 		}
 		for _, q := range a.allPanes() {
-			q.tv.Invalidate()
+			q.invalidateView()
 		}
 		a.updateCommands()
 	})

@@ -9,4 +9,7 @@ require (
 	golang.org/x/text v0.22.0
 )
 
-require gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
+require (
+	golang.org/x/image v0.18.0 // indirect
+	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
+)

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ERGOFORYOU Datei-Explorer",
   "short_name": "Datei-Explorer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Explorer mit zwei Ansichten und blitzschneller Suche – Dateien verschieben, umbenennen, löschen und direkt in WhatsApp, Gmail, Drive oder Claude ziehen.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2BybKsgEIKluKW0W9Hz2Xq/3c43t6VXqXTlZ2UVJDHGgchqKKdyTW43KG4lpokBov3Nc6FVy8NXDLH7PJGMJrZ6vnBeHz1oqfcwl9B8E6ugihFEfrXMlx70EUuL6KZmh0l/P5niPGf4FBOtEMvvI++fD78aGn0fDRymb4Lop5Bj2k8FKICJkyVr8ubMblSHS3AkWQZ3kAGpmOdRBPtJj0K+N42gCCUy3teM0B+0zr3CwRLMgj4OWlS3bkqrEtmOwTQSjZf0X3IJuxagwwqlndsKdjwarD7S31fpnNXyscmiVrGfG7ymKuuCUeH3upj8d5zPErHtytzDRbNz3fJcNEQIDAQAB",
   "icons": {
