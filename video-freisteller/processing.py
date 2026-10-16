@@ -513,10 +513,17 @@ def bleed_colors(rgba: np.ndarray) -> np.ndarray:
     Unsichtbar, verhindert aber, dass VP9/H.264 (Farbe nur in halber
     Aufloesung) die alte Hintergrundfarbe in die Kantenpixel mischt –
     sonst entsteht ein farbiger Saum um die Figur.
+
+    Nur in einem schmalen Streifen direkt an der Figur; weiter aussen bleibt
+    der Original-Hintergrund stehen. Sonst zeigen Player ohne Transparenz
+    (Windows-Mediaplayer, VLC) rundherum eine Flaeche in Hautfarbe (rosa).
     """
     a = rgba[..., 3].astype(np.float32) / 255.0
-    clear = a < 0.02
-    if not clear.any() or clear.all():
+    h, w = a.shape
+    band = max(4, int(round(max(h, w) / 300)))
+    ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * band + 1, 2 * band + 1))
+    clear = (a < 0.02) & (cv2.dilate((a >= 0.02).astype(np.uint8), ker) > 0)
+    if not clear.any():
         return rgba
     # Push-Pull-Pyramide: vormultiplizierte Farbe + Alpha halbieren, bis alles
     # gedeckt ist, dann von grob nach fein die Luecken auffuellen. Laufzeit O(n).

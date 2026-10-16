@@ -58,6 +58,10 @@ Der Export erfolgt als **WebM mit Transparenz**. Alles wird lokal auf dem eigene
    etwas anheben (z. B. 0,1).
 4. Bei KI: „Kantenfarben bereinigen“ eingeschaltet lassen. Bei Farbe: „Kantenfarben entmischen“ eingeschaltet lassen.
 
+**Transparenz prüfen:** Der Windows-Mediaplayer, „Filme & TV“ und VLC zeigen bei WebM keine Transparenz an. Dort sieht man
+den alten Hintergrund. Nach dem Export deshalb auf **„Mit Transparenz ansehen“** klicken: Das öffnet das Video in Edge auf
+Schachbrett, Schwarz, Weiß usw.
+
 **Export (Strg+E)**
 
 | Format | Transparenz | Hinweis |

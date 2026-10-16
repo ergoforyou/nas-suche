@@ -1014,10 +1014,19 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setWindowTitle("Export fertig")
         box.setText(f"Gespeichert:\n{path}")
+        b_view = None
+        if path.lower().endswith(".webm"):
+            box.setInformativeText(
+                "Hinweis: Windows-Mediaplayer, „Filme & TV“ und VLC zeigen keine Transparenz – "
+                "dort sieht man den alten Hintergrund. Zum Prüfen „Mit Transparenz ansehen“ "
+                "nutzen (öffnet Edge/Chrome auf Schachbrett).")
+            b_view = box.addButton("Mit Transparenz ansehen", QMessageBox.ButtonRole.ActionRole)
         b_folder = box.addButton("Ordner öffnen", QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Ok)
         box.exec()
-        if box.clickedButton() == b_folder:
+        if b_view is not None and box.clickedButton() == b_view:
+            self.view_in_browser(path)
+        elif box.clickedButton() == b_folder:
             if os.name == "nt":
                 import subprocess
                 subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
@@ -1025,6 +1034,38 @@ class MainWindow(QMainWindow):
                 from PySide6.QtCore import QUrl
                 from PySide6.QtGui import QDesktopServices
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(path).parent)))
+
+    def view_in_browser(self, path):
+        """WebM mit Transparenz auf Schachbrett/Farbe im Browser anzeigen."""
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        url = QUrl.fromLocalFile(os.path.abspath(path)).toString()
+        page = P.user_data_dir() / "vorschau.html"
+        page.write_text(f"""<!doctype html><meta charset="utf-8"><title>Vorschau – {Path(path).name}</title>
+<style>
+body{{margin:0;font-family:Segoe UI,sans-serif;background:#222;color:#ddd;text-align:center}}
+#stage{{display:inline-block;margin:12px;background:repeating-conic-gradient(#bbb 0 25%,#888 0 50%) 0 0/24px 24px}}
+video{{display:block;max-width:95vw;max-height:80vh}}
+button{{margin:4px;padding:6px 12px}}
+</style>
+<p>{Path(path).name} – Hintergrund:
+<button onclick="bg('')">Schachbrett</button><button onclick="bg('#000')">Schwarz</button>
+<button onclick="bg('#fff')">Weiß</button><button onclick="bg('#e33')">Rot</button>
+<button onclick="bg('#2a6')">Grün</button></p>
+<div id="stage"><video src="{url}" controls autoplay loop muted></video></div>
+<script>function bg(c){{document.getElementById('stage').style.background=c||''}}</script>
+""", encoding="utf-8")
+        page_url = QUrl.fromLocalFile(str(page)).toString()
+        if os.name == "nt":
+            import subprocess
+            # Edge (Chromium) ist immer vorhanden und zeigt VP9-Transparenz korrekt.
+            try:
+                subprocess.Popen(["cmd", "/c", "start", "", "msedge", page_url],
+                                 creationflags=0x08000000)
+                return
+            except OSError:
+                pass
+        QDesktopServices.openUrl(QUrl(page_url))
 
     def _exp_failed(self, msg):
         self._exp_finish()
