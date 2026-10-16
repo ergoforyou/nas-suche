@@ -3,9 +3,10 @@
 // beim Abspielen wird die passende Maske auf das laufende Video gelegt.
 //
 // Dateiformat: "KIM1" | Breite u16 | Höhe u16 | fps u8 | 0 | Anzahl u16 | Masken …
+//              "KIM2" | wie KIM1 | Startzeit f32 (Sekunden) | Masken …   (nur ein Abschnitt des Videos)
 
-const MAGIC = 'KIM1';
-const HEADER = 12;
+const MAGIC = 'KIM2';
+const HEADER = 16;
 
 function seek(video, t) {
   return new Promise((resolve) => {
@@ -23,7 +24,7 @@ function seek(video, t) {
  * @param {(img: ImageData) => Promise<Uint8ClampedArray>} removeBackground liefert RGBA mit Alpha
  * @param {(done: number, total: number) => void} onProgress
  */
-export async function computeVideoMask(url, removeBackground, onProgress, { fps = 20, maxSide = 480 } = {}) {
+export async function computeVideoMask(url, removeBackground, onProgress, { fps = 20, maxSide = 480, start = 0, end = Infinity } = {}) {
   const v = document.createElement('video');
   v.muted = true;
   v.playsInline = true;
@@ -36,8 +37,11 @@ export async function computeVideoMask(url, removeBackground, onProgress, { fps 
   const scale = Math.min(1, maxSide / Math.max(v.videoWidth, v.videoHeight));
   const w = Math.max(2, Math.round(v.videoWidth * scale));
   const h = Math.max(2, Math.round(v.videoHeight * scale));
-  const duration = Math.min(30, v.duration || 0);
-  const n = Math.max(1, Math.min(65535, Math.ceil(duration * fps)));
+  // nur der gewählte Abschnitt (spart bei langen Videos viel Rechenzeit), höchstens 30 Sekunden
+  const t0 = Math.max(0, Math.min(start, (v.duration || 0) - 0.05));
+  const t1 = Math.min(v.duration || 0, end, t0 + 30);
+  const duration = t1;
+  const n = Math.max(1, Math.min(65535, Math.ceil((t1 - t0) * fps)));
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
@@ -50,9 +54,10 @@ export async function computeVideoMask(url, removeBackground, onProgress, { fps 
   view.setUint16(6, h, true);
   view.setUint8(8, fps);
   view.setUint16(10, n, true);
+  view.setFloat32(12, t0, true);
 
   for (let i = 0; i < n; i++) {
-    await seek(v, Math.min(duration - 0.001, i / fps));
+    await seek(v, Math.min(duration - 0.001, t0 + i / fps));
     g.drawImage(v, 0, 0, w, h);
     const rgba = await removeBackground(g.getImageData(0, 0, w, h));
     const base = HEADER + i * w * h;
@@ -66,11 +71,14 @@ export async function computeVideoMask(url, removeBackground, onProgress, { fps 
 /** Maskendatei laden. */
 export async function loadVideoMask(url) {
   const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
-  if (String.fromCharCode(...buf.subarray(0, 4)) !== MAGIC) throw new Error('Ungültige Maskendatei');
+  const magic = String.fromCharCode(...buf.subarray(0, 4));
+  if (magic !== 'KIM1' && magic !== 'KIM2') throw new Error('Ungültige Maskendatei');
   const view = new DataView(buf.buffer, buf.byteOffset);
   const w = view.getUint16(4, true);
   const h = view.getUint16(6, true);
   const fps = view.getUint8(8);
   const n = view.getUint16(10, true);
-  return { w, h, fps, n, frame: (i) => buf.subarray(HEADER + i * w * h, HEADER + (i + 1) * w * h) };
+  const head = magic === 'KIM2' ? 16 : 12;
+  const start = magic === 'KIM2' ? view.getFloat32(12, true) : 0;
+  return { w, h, fps, n, start, frame: (i) => buf.subarray(head + i * w * h, head + (i + 1) * w * h) };
 }

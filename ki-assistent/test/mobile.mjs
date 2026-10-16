@@ -349,6 +349,20 @@ const moodPose = await page.evaluate(async () => {
   return { target, hit };
 });
 check(moodPose.target > 0 && moodPose.hit, 'Pose für „beim Sprechen – fröhlich“ wird gezeigt', JSON.stringify(moodPose));
+// ---- Langes Video: Schnitt-Werkzeug öffnet sich gleich nach dem Hochladen, „2 s ab hier“ schneidet
+await page.click('#poseAdd');
+await page.waitForSelector('#pickSheet');
+await page.setInputFiles('#pickSheet input[type=file]', path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-lang.webm'));
+const toolOpen = await page.waitForSelector('#vtool video', { timeout: 20000 }).then(() => true, () => false);
+check(toolOpen, 'Langes Video: Schnitt-Werkzeug öffnet sich automatisch');
+if (toolOpen) {
+  await page.waitForFunction(() => document.querySelector('#vtool video').readyState >= 1);
+  await page.evaluate(() => new Promise((r) => { const v = document.querySelector('#vtool video'); v.onseeked = r; v.currentTime = 1; }));
+  await page.click('#vtool [data-act=two]');
+  await page.click('#vtool [data-act=apply]');
+  const cut = await page.evaluate(() => window.__app.persona().avatar.poses.at(-1).clip);
+  check(cut && Math.abs(cut.start - 1) < 0.06 && Math.abs(cut.end - 3) < 0.06, 'Video auf 2 Sekunden geschnitten', JSON.stringify(cut));
+}
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

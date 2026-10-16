@@ -280,7 +280,7 @@ export class Avatar {
     if (mode === 'ai') {
       // vorberechnete KI-Maske des passenden Einzelbilds anwenden
       const M = this.mask;
-      const a = M.frame(Math.min(M.n - 1, Math.max(0, Math.round(v.currentTime * M.fps))));
+      const a = M.frame(Math.min(M.n - 1, Math.max(0, Math.round((v.currentTime - (M.start ?? 0)) * M.fps))));
       for (let p = 0, i = 3; p < a.length; p++, i += 4) d[i] = a[p];
       g.putImageData(img, 0, 0);
       return;

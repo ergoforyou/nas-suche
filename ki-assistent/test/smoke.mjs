@@ -166,10 +166,15 @@ const vid = await page.evaluate(async () => {
   const w = bytes[4] | (bytes[5] << 8);
   const h = bytes[6] | (bytes[7] << 8);
   const n = bytes[10] | (bytes[11] << 8);
-  const at = (i, fx, fy) => bytes[12 + i * w * h + Math.round(h * fy) * w + Math.round(w * fx)];
-  return { frames: n, w, h, ms: Math.round(performance.now() - t1), wall: at(0, 0.03, 0.03), face: at(0, 0.5, 0.37), lastWall: at(n - 1, 0.97, 0.05), lastFace: at(n - 1, 0.5, 0.37) };
+  const head = String.fromCharCode(...bytes.subarray(0, 4)) === 'KIM2' ? 16 : 12;
+  const at = (i, fx, fy) => bytes[head + i * w * h + Math.round(h * fy) * w + Math.round(w * fx)];
+  // nur ein Abschnitt: weniger Bilder, Startzeit steht in der Datei
+  const part = await window.__app.computeVideoMask(url, (im) => window.__app.stt.removeBackground(im), null, { fps: 10, start: 0.3, end: 0.8 });
+  const partFrames = part[10] | (part[11] << 8);
+  const partStart = new DataView(part.buffer).getFloat32(12, true);
+  return { frames: n, w, h, ms: Math.round(performance.now() - t1), wall: at(0, 0.03, 0.03), face: at(0, 0.5, 0.37), lastWall: at(n - 1, 0.97, 0.05), lastFace: at(n - 1, 0.5, 0.37), partFrames, partStart: +partStart.toFixed(2) };
 });
-const vidOk = vid.frames > 5 && vid.wall < 60 && vid.lastWall < 60 && vid.face > 200 && vid.lastFace > 200;
+const vidOk = vid.frames > 5 && vid.wall < 60 && vid.lastWall < 60 && vid.face > 200 && vid.lastFace > 200 && vid.partFrames === 5 && vid.partStart === 0.3;
 ok &&= vidOk;
 console.log(vidOk ? '✔' : '✘', 'KI-Video-Freistellen', JSON.stringify(vid));
 

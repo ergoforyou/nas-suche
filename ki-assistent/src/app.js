@@ -2249,6 +2249,13 @@ $('avFile').onchange = async (e) => {
     delete av.clip;
     avatarChanged();
     previewEdited();
+    // Langes Video: erst den gewünschten Teil wählen (KI-Freistellung danach nur für diesen Teil)
+    const dur = await videoDuration(av.video);
+    if (dur > 4) {
+      status(`Das Video ist ${fmtSec(dur)} lang – wähle den Teil, den die Figur zeigen soll.`);
+      openVideoTool(av, { onApply: () => av.cutMode === 'ai' && computeMaskFor(av) });
+      return;
+    }
     if (av.cutMode === 'ai') await computeMaskFor(av);
     else if (av.cutMode === 'alpha') status('Video-Pose hinzugefügt – das Video ist schon freigestellt (Transparenz), wird so verwendet.');
     else status('Video-Pose hinzugefügt – Greenscreen erkannt, wird live entfernt.');
@@ -2356,6 +2363,25 @@ async function videoFirstFrame(url) {
   return c;
 }
 
+/** Länge eines Videos in Sekunden (0, wenn unbekannt). */
+async function videoDuration(url) {
+  const v = document.createElement('video');
+  v.preload = 'metadata';
+  v.muted = true;
+  v.src = url;
+  try {
+    await new Promise((resolve, reject) => {
+      v.onloadedmetadata = resolve;
+      v.onerror = reject;
+    });
+    return Number.isFinite(v.duration) ? v.duration : 0;
+  } catch {
+    return 0;
+  } finally {
+    v.removeAttribute('src');
+  }
+}
+
 /** Hat das Video schon einen transparenten Hintergrund (z. B. WebM VP9 mit Alpha)? */
 async function videoHasAlpha(url) {
   try {
@@ -2384,12 +2410,12 @@ async function computeMaskFor(pose) {
       pose.video,
       (img) => stt.removeBackground(img, progressStatus('Freistellen')),
       (done, total) => status(`Video wird per KI freigestellt … ${done} / ${total} Bilder`),
+      // nur der gewählte Abschnitt – bei langen Videos viel schneller
+      pose.clip ? { start: pose.clip.start, end: pose.clip.end } : {},
     );
-    // Abschnitte desselben Videos teilen sich die Maske: alle auf die neue umstellen
     const old = pose.mask;
     pose.mask = await desktop.saveMedia(bytes, 'mask');
-    for (const p of persona().avatar.poses ?? []) if (old && p.mask === old) p.mask = pose.mask;
-    if (old) desktop.deleteMedia(old);
+    if (old && !(persona().avatar.poses ?? []).some((p) => p.mask === old)) desktop.deleteMedia(old);
     pose.cutMode = 'ai';
     save();
     applyAvatar();
@@ -2605,7 +2631,7 @@ const fmtSec = (t) => `${(+t).toFixed(1).replace('.', ',')} s`;
  * desselben Videos als eigene Posen anlegen (z. B. Nicken, Lachen, Nachdenken aus einer Aufnahme) oder ein
  * einzelnes Bild als Grundbild übernehmen – dann passen Licht, Größe und Position von Bild und Video zusammen.
  */
-function openVideoTool(pose) {
+function openVideoTool(pose, { onApply } = {}) {
   document.getElementById('vtool')?.remove();
   const box = document.createElement('div');
   box.id = 'vtool';
@@ -2621,6 +2647,8 @@ function openVideoTool(pose) {
         <button data-act="fwd" title="ein Bild vor">▶|</button>
         <button data-act="start">⟦ Anfang hier</button>
         <button data-act="end">Ende hier ⟧</button>
+        <button data-act="two">2 s ab hier</button>
+        <button data-act="three">3 s ab hier</button>
         <button data-act="full">ganzes Video</button>
       </div>
       <div class="row wrap">
@@ -2643,6 +2671,12 @@ function openVideoTool(pose) {
     const clip = sel.end > sel.start + 0.2 ? `Abschnitt ${fmtSec(sel.start)} – ${fmtSec(sel.end)}` : 'ganzes Video';
     q('.vt-time').textContent = `${fmtSec(v.currentTime)} / ${fmtSec(dur)} · ${clip}`;
     pos.value = String(v.currentTime);
+    // gewählten Teil auf der Zeitleiste farbig zeigen
+    if (dur) {
+      const a = (sel.start / dur) * 100;
+      const b = (sel.end / dur) * 100;
+      pos.style.background = `linear-gradient(to right, var(--border) ${a}%, var(--accent) ${a}%, var(--accent) ${b}%, var(--border) ${b}%)`;
+    }
   };
   v.onloadedmetadata = () => {
     dur = v.duration || 0;
@@ -2666,6 +2700,12 @@ function openVideoTool(pose) {
     v.removeAttribute('src');
     box.remove();
   };
+  let applied = false;
+  // Schließen ohne „Abschnitt übernehmen“: ganzes Video bleibt – nach dem Hochladen trotzdem freistellen
+  const dismiss = () => {
+    close();
+    if (onApply && !applied) onApply();
+  };
   const clipOrNull = () => (sel.end > sel.start + 0.2 && (sel.start > 0.05 || sel.end < dur - 0.05) ? { start: +sel.start.toFixed(2), end: +sel.end.toFixed(2) } : null);
   const act = {
     back: () => (v.pause(), (v.currentTime = Math.max(0, v.currentTime - step))),
@@ -2684,6 +2724,16 @@ function openVideoTool(pose) {
       sel.end = Math.max(v.currentTime, sel.start + 0.3);
       showTime();
     },
+    two: () => {
+      sel.start = Math.min(v.currentTime, Math.max(0, dur - 2));
+      sel.end = Math.min(dur, sel.start + 2);
+      showTime();
+    },
+    three: () => {
+      sel.start = Math.min(v.currentTime, Math.max(0, dur - 3));
+      sel.end = Math.min(dur, sel.start + 3);
+      showTime();
+    },
     full: () => {
       Object.assign(sel, { start: 0, end: dur });
       showTime();
@@ -2698,6 +2748,10 @@ function openVideoTool(pose) {
       previewEdited();
       close();
       status(clip ? `Abschnitt übernommen: ${fmtSec(clip.start)} – ${fmtSec(clip.end)}.` : 'Es wird wieder das ganze Video verwendet.');
+      // KI-Freistellung passend zum Abschnitt (nur dieser Teil wird berechnet)
+      applied = true;
+      if (onApply) onApply();
+      else if (pose.cutMode === 'ai') computeMaskFor(pose);
     },
     newpose: () => {
       const clip = clipOrNull();
@@ -2705,6 +2759,10 @@ function openVideoTool(pose) {
       const poses = persona().avatar.poses;
       const copy = { ...structuredClone(pose), id: newId(), name: `${pose.name ?? 'Video'} – ${fmtSec(clip.start)}`, clip };
       poses.push(copy);
+      if (copy.cutMode === 'ai') {
+        copy.mask = null;
+        computeMaskFor(copy);
+      }
       save();
       applyAvatar();
       renderPoseList();
@@ -2723,10 +2781,10 @@ function openVideoTool(pose) {
       await useImageFile(new File([blob], 'standbild.png', { type: 'image/png' }));
       status('Standbild aus dem Video ist jetzt das Grundbild – Mund und Augen bitte prüfen.');
     },
-    close,
+    close: dismiss,
   };
   box.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () => act[b.dataset.act]()));
-  box.addEventListener('click', (e) => e.target === box && close());
+  box.addEventListener('click', (e) => e.target === box && dismiss());
 }
 
 $('avCutout').onclick = () => cutoutAvatar('color');
