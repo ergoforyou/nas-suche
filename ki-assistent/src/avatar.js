@@ -1276,7 +1276,8 @@ export class Avatar {
     // freischwebend etwas Rand lassen, damit beim Wiegen nichts abgeschnitten wird
     const fit = Math.min(W / this.w, H / this.h) * (this.transparent && !this.pipFit ? 0.94 : 1);
     // Bild-im-Bild: Fenster hat die Form der Figur – Figur füllt es ganz aus
-    const L = this.pipFit ? this.fitLayout({ mode: 'ganz', align: 'mitte' }, W, H) : this.fitMode ? this.fitLayout(this.fitMode, W, H) : this.layout;
+    // (mit Kamerafahrten: ab und zu langsam auf Oberkörper oder Gesicht und zurück)
+    const L = this.pipFit ? this.cameraLayout(now, dt, W, H, fit) : this.fitMode ? this.fitLayout(this.fitMode, W, H) : this.layout;
     this.fitPx = this.h * fit; // Figurhöhe in Gerätepixeln bei Maßstab 1
     const dw = this.w * fit * L.scale;
     const dh = this.h * fit * L.scale;
@@ -1312,6 +1313,107 @@ export class Avatar {
     const dh = this.h * f;
     const by = align === 'unten' ? H : align === 'oben' ? dh : (H + dh) / 2;
     return { x: 0, y: (by - (H + this.h * base) / 2) / H, scale: f / base };
+  }
+
+  /** Sichtbare Figur im Grundbild (0..1): leere, durchsichtige Ränder zählen nicht mit. */
+  visibleBox() {
+    const L0 = this.layers?.[0];
+    if (!L0) return { x0: 0, y0: 0, x1: 1, y1: 1 };
+    if (L0.visBox && L0.visBoxFor === L0.base) return L0.visBox;
+    let box = { x0: 0, y0: 0, x1: 1, y1: 1 };
+    if (L0.hasAlpha && !L0.isVrm && !L0.isVideo && L0.base) {
+      const s = Math.min(1, 160 / Math.max(L0.w, L0.h));
+      const w = Math.max(2, Math.round(L0.w * s));
+      const h = Math.max(2, Math.round(L0.h * s));
+      const c = this.doc.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(L0.base, 0, 0, w, h);
+      const d = g.getImageData(0, 0, w, h).data;
+      let x0 = w;
+      let y0 = h;
+      let x1 = -1;
+      let y1 = -1;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (d[(y * w + x) * 4 + 3] > 24) {
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            if (y > y1) y1 = y;
+          }
+        }
+      }
+      // etwas Luft lassen (Wiegen, Haare)
+      if (x1 >= 0) {
+        const px = 0.03;
+        box = {
+          x0: Math.max(0, x0 / w - px),
+          y0: Math.max(0, y0 / h - px),
+          x1: Math.min(1, (x1 + 1) / w + px),
+          y1: Math.min(1, (y1 + 1) / h + px),
+        };
+      }
+    }
+    L0.visBox = box;
+    L0.visBoxFor = L0.base;
+    return box;
+  }
+
+  /** Seitenverhältnis der sichtbaren Figur (für die Form des Bild-im-Bild-Fensters). */
+  visibleAspect() {
+    const b = this.visibleBox();
+    return ((b.x1 - b.x0) * this.w) / ((b.y1 - b.y0) * this.h);
+  }
+
+  /**
+   * Bild-im-Bild: virtuelle Kamera. Meist die ganze (sichtbare) Figur, zwischendurch langsam auf Oberkörper oder
+   * – beim Sprechen – das Gesicht, dann wieder zurück. Liefert ein Layout wie fitLayout.
+   */
+  cameraLayout(now, dt, W, H, fit) {
+    const box = this.visibleBox();
+    const C = (this.cam ??= { shot: 'ganz', until: now + 6000, x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 });
+    if (this.camera !== false && now > C.until) {
+      const r = Math.random();
+      const prev = C.shot;
+      // wechselt nie zweimal hintereinander in denselben Ausschnitt
+      if (prev !== 'ganz') C.shot = 'ganz';
+      else C.shot = this.speaking && r < 0.35 ? 'gesicht' : 'oberkoerper';
+      C.until = now + (C.shot === 'ganz' ? 7000 + Math.random() * 7000 : 4000 + Math.random() * 4000);
+    }
+    if (this.camera === false) C.shot = 'ganz';
+    // Zielausschnitt (normiert auf das Grundbild)
+    const cfg = this.layers?.[0]?.config ?? this.config ?? {};
+    const eyes = cfg.eyes ?? [];
+    const eyeY = eyes.length ? eyes.reduce((a, e) => a + e.y, 0) / eyes.length : null;
+    const faceX = eyes.length ? eyes.reduce((a, e) => a + e.x, 0) / eyes.length : (box.x0 + box.x1) / 2;
+    const mouthY = cfg.mouth?.y ?? (eyeY != null ? eyeY + 0.06 : null);
+    const bh = box.y1 - box.y0;
+    let t = { ...box };
+    if (C.shot !== 'ganz' && eyeY != null) {
+      const face = Math.max(0.04, (mouthY - eyeY) * 2.6); // Gesichtshöhe (normiert)
+      const cy = (eyeY + mouthY) / 2;
+      // Gesicht: ca. 2,4 Gesichtshöhen; Oberkörper: Kopf bis Brust, ca. 3,4 Gesichtshöhen
+      const h = Math.min(bh, face * (C.shot === 'gesicht' ? 2.4 : 3.4));
+      const y0 = Math.max(box.y0, C.shot === 'gesicht' ? cy - h * 0.48 : eyeY - face * 0.9);
+      // Breite passend zum Fenster, um die Gesichtsmitte
+      const w = Math.min(1, (h * this.h * (W / H)) / this.w);
+      const x0 = Math.min(Math.max(0, faceX - w / 2), 1 - w);
+      t = { x0, y0, x1: x0 + w, y1: Math.min(1, y0 + h) };
+    }
+    // weich hinfahren (langsamer Schwenk, ca. 1,5 s)
+    const k = Math.min(1, (dt || 16) / 900);
+    for (const key of ['x0', 'y0', 'x1', 'y1']) C[key] += (t[key] - C[key]) * k;
+    // Ausschnitt ins Fenster einpassen (ganz sichtbar, zentriert)
+    const rw = (C.x1 - C.x0) * this.w;
+    const rh = (C.y1 - C.y0) * this.h;
+    const f = Math.min(W / rw, H / rh);
+    const cx = this.flip ? 1 - (C.x0 + C.x1) / 2 : (C.x0 + C.x1) / 2;
+    const cy = (C.y0 + C.y1) / 2;
+    const bx = W / 2 + (0.5 - cx) * this.w * f;
+    const by = H / 2 + (1 - cy) * this.h * f;
+    return { x: (bx - W / 2) / W, y: (by - (H + this.h * fit) / 2) / H, scale: f / fit };
   }
 
   /** Feste Einpassung lösen (vor dem Verschieben/Skalieren von Hand). */

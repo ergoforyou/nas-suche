@@ -497,7 +497,7 @@ const pip = await page.evaluate(async () => {
   await window.__app.avatar.setConfig(av);
   window.__app.updatePipShape();
   const a = window.__app.avatar;
-  const figAspect = a.w / a.h;
+  const figAspect = a.visibleAspect();
   window.__app.state.settings.pipBg = 'farbe';
   window.__app.state.settings.pipBgColor = '#ff0000';
   window.__setPip(true);
@@ -512,6 +512,38 @@ const pip = await page.evaluate(async () => {
 check(Math.abs(pip.aspect - pip.figAspect) < 0.01, 'Bild-im-Bild-Fenster bekommt die Form der Figur', JSON.stringify(pip));
 check(Math.max(pip.fillsW, pip.fillsH) > 0.98, 'Figur füllt das Bild-im-Bild-Fenster aus');
 check(pip.corner[0] > 200 && pip.corner[1] < 40, 'Eigene Hintergrundfarbe im Bild-im-Bild');
+// Engerer Zuschnitt (sichtbare Figur statt ganzes Bild) und Kamerafahrt auf den Oberkörper
+const cam = await page.evaluate(async () => {
+  const c = document.createElement('canvas');
+  c.width = 400;
+  c.height = 400;
+  const g = c.getContext('2d');
+  g.fillStyle = '#3a6fd0';
+  g.fillRect(150, 40, 100, 320); // schmale Figur mit viel leerem Rand
+  g.fillStyle = '#f0d0b0';
+  g.beginPath();
+  g.arc(200, 80, 35, 0, 7);
+  g.fill();
+  const av = window.__app.persona().avatar;
+  Object.assign(av, { image: c.toDataURL('image/png'), original: null, eyes: [{ x: 0.47, y: 0.18, r: 0.02 }, { x: 0.53, y: 0.18, r: 0.02 }], mouth: { x: 0.5, y: 0.25, w: 0.05 }, faceRig: null, bodyRig: null, depth: null });
+  const calls = [];
+  window.KIPip.setAspect = (w, h) => calls.push(w / h);
+  await window.__app.avatar.setConfig(av);
+  window.__app.updatePipShape();
+  const a = window.__app.avatar;
+  window.__app.state.settings.pipCamera = true;
+  window.__setPip(true);
+  await new Promise((r) => setTimeout(r, 2500));
+  const whole = a.rect.h;
+  a.cam.shot = 'oberkoerper';
+  a.cam.until = performance.now() + 1e6;
+  await new Promise((r) => setTimeout(r, 3000));
+  const upper = a.rect.h;
+  window.__setPip(false);
+  return { aspect: calls.at(-1), whole, upper };
+});
+check(cam.aspect < 0.5, 'Bild-im-Bild-Fenster nach der sichtbaren Figur (leere Ränder zählen nicht)', JSON.stringify(cam));
+check(cam.upper > cam.whole * 1.25, 'Kamerafahrt zoomt auf den Oberkörper');
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();
