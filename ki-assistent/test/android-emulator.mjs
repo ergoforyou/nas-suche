@@ -193,7 +193,7 @@ if (BETA) {
   const live = await run(`return document.querySelector('#avatar').width > 0`);
   check(live, 'Figur zeichnet weiter im schwebenden Fenster');
   adb('shell', 'am', 'start', '-n', ACT);
-  for (let i = 0; i < 20 && fl.showing; i++) {
+  for (let i = 0; i < 20 && (fl.showing || fl.cls); i++) {
     await sleep(500);
     fl = await run(`return { showing: KIFloat.showing(), cls: document.documentElement.classList.contains('float-ov') }`);
   }
