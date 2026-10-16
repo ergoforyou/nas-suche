@@ -102,6 +102,16 @@ const TOOL_STATUS = {
   text_editor_code_execution: '🛠 arbeitet an einer Datei …',
 };
 
+const WEB_ERRORS = {
+  max_uses_exceeded: 'zu viele Suchen in einer Antwort',
+  too_many_requests: 'zu viele Anfragen, kurz warten',
+  unavailable: 'Suchdienst gerade nicht erreichbar',
+  query_too_long: 'Suchanfrage zu lang',
+  invalid_input: 'ungültige Anfrage',
+  url_not_accessible: 'Seite nicht erreichbar',
+  url_not_allowed: 'Seite gesperrt',
+};
+
 /** Datei-IDs aller Dateien, die Claude im Arbeitsbereich erzeugt hat. */
 function createdFileIds(content) {
   const ids = [];
@@ -195,6 +205,9 @@ async function chatAnthropic(client, { model, messages, effort, web, files, conv
         const b = ev.content_block;
         if (b.type === 'server_tool_use' && TOOL_STATUS[b.name]) send('status', TOOL_STATUS[b.name]);
         if (b.type === 'tool_use' && own?.status?.[b.name]) send('status', own.status[b.name]);
+        // Suche oder Seitenabruf bei Anthropic fehlgeschlagen: sichtbar machen statt still „nicht abrufbar“
+        const err = /_tool_result$/.test(b.type) && /error/.test(b.content?.type ?? '') ? b.content.error_code : null;
+        if (err) send('status', `${b.type.startsWith('web_fetch') ? 'Seitenabruf' : 'Internetsuche'} fehlgeschlagen: ${WEB_ERRORS[err] ?? err}`);
         if (b.type === 'text' && wroteText) sep = true;
       } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
         if (sep) {

@@ -144,6 +144,13 @@ const RULES = {
     memory: (items) =>
       `Was du aus früheren Gesprächen über dein Gegenüber weißt (dein Gedächtnis):\n${items}\n` +
       'Nutze dieses Wissen natürlich, wenn es passt, ohne es aufzuzählen.',
+    now: (d, tz) =>
+      `Jetzt ist ${d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz })}, ` +
+      `${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: tz })} Uhr (${tz}).`,
+    web:
+      'Du hast Internetzugang über die Werkzeuge web_search und web_fetch. Für aktuelle Dinge wie Wetter, Verkehr und ' +
+      'Staus, Nachrichten, Öffnungszeiten oder Preise suche selbst im Internet, statt zu sagen, dass du das nicht ' +
+      'abrufen kannst. Findest du nichts Passendes, sag kurz, wo du gesucht hast.',
   },
   en: {
     lang: 'Always answer in English.',
@@ -157,6 +164,12 @@ const RULES = {
     memory: (items) =>
       `What you remember about the user from earlier conversations (your memory):\n${items}\n` +
       'Use this knowledge naturally when relevant, without listing it.',
+    now: (d, tz) =>
+      `It is now ${d.toLocaleString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz })} (${tz}).`,
+    web:
+      'You have internet access through the web_search and web_fetch tools. For current information such as weather, ' +
+      'traffic, news, opening hours or prices, search the web yourself instead of saying you cannot look it up. If ' +
+      'you find nothing useful, briefly say where you searched.',
   },
 };
 
@@ -479,6 +492,8 @@ function buildMessages() {
   if (p.style !== 'frei') parts.push(r.lang);
   if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
   if (googleActive()) parts.push(googleLib.toolPrompt(new Date(), userTimeZone()));
+  else if (webActive()) parts.push(r.now(new Date(), userTimeZone()));
+  if (webActive()) parts.push(r.web);
   const sys = parts.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
   const h = history()
@@ -3486,6 +3501,7 @@ function toggleProviderFields() {
 }
 
 // ---------------------------------------------------------------- Google Kalender & Aufgaben
+const webActive = () => !LOCAL_ONLY && state.settings.provider === 'anthropic' && state.settings.claudeWeb;
 const userTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin';
 /** Werkzeuge nur für Claude/ChatGPT, nur wenn verbunden und eingeschaltet. */
 const googleActive = () =>
