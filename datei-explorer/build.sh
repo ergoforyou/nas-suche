@@ -1,0 +1,10 @@
+#!/bin/sh
+# Baut DateiExplorer.exe (Windows 10/11, 64 Bit) – auch von Linux aus.
+set -e
+cd "$(dirname "$0")"
+go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui --icon icon.png \
+  --product-name "Datei-Explorer" --file-description "ERGOFORYOU Datei-Explorer – zwei Ansichten und Suche" \
+  --product-version 1.0.0 --file-version 1.0.0 --original-filename DateiExplorer.exe
+VERSION=$(date -u +%Y%m%d%H%M%S)
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w -X main.buildVersion=$VERSION" -o DateiExplorer.exe .
+echo "Fertig: DateiExplorer.exe (Version $VERSION)"

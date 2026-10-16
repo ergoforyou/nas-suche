@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datei-Explorer – ERGOFORYOU</title>
+<link rel="icon" href="icons/32.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header id="banner">
+  <div class="accent"></div>
+  <div class="brand">ERGOFORYOU</div>
+  <div class="product"><div>Datei-Explorer</div><div class="slogan">Alles an seinem Platz.</div></div>
+  <div class="right">
+    <div class="ver" id="ver" title="Programmversion">Version …</div>
+    <div class="hint" id="hint">Alt+Umschalt+E öffnet den Explorer in Chrome</div>
+  </div>
+</header>
+<div id="toolbar">
+  <button id="newBt" title="Neuer Ordner (F7) oder neues Textdokument">Neu ▾</button>
+  <button id="cutBt" title="Strg+X – danach im Zielordner Einfügen = verschieben (auch in den Windows-Explorer)">Ausschneiden</button>
+  <button id="copyBt" title="Strg+C">Kopieren</button>
+  <button id="pasteBt" title="Strg+V – in den angezeigten Ordner">Einfügen</button>
+  <button id="renameBt" title="F2 – mehrere markiert: gemeinsamer Name mit Nummer">Umbenennen</button>
+  <button id="deleteBt" title="Entf = Papierkorb, Umschalt+Entf = endgültig">Löschen</button>
+  <span class="gap"></span>
+  <button id="toOtherCopyBt" title="Markierte Elemente in den Ordner der anderen Seite kopieren">Kopieren ⇄</button>
+  <button id="toOtherMoveBt" title="Markierte Elemente in den Ordner der anderen Seite verschieben">Verschieben ⇄</button>
+  <button id="propsBt" title="Alt+Enter">Eigenschaften</button>
+  <span class="grow"></span>
+  <button id="navBt">Navigation ausblenden</button>
+  <button id="refreshBt" title="Suchordner neu einlesen">Index aktualisieren</button>
+  <button id="settingsBt" title="Einstellungen des Programms (Suchordner, Netzlaufwerke …)">Einstellungen …</button>
+</div>
+<section class="pane search" id="paneS"></section>
+<div id="splitH" title="Ziehen = Höhe der Suche ändern (höchstens ein Drittel)"></div>
+<main id="main">
+  <nav id="nav" tabindex="-1"></nav>
+  <section class="pane explorer" id="pane0"></section>
+  <section class="pane explorer" id="pane1"></section>
+</main>
+<footer id="status">Verbinde …</footer>
+
+<div id="connect" class="modal-bg">
+  <div class="modal">
+    <h2>Verbinde mit dem Datei-Explorer …</h2>
+    <p id="connectText">Das Programm wird im Hintergrund gestartet.</p>
+    <div class="buttons"><button id="retryBt" hidden>Erneut versuchen</button></div>
+  </div>
+</div>
+
+<script src="conn.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
