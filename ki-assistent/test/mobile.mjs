@@ -831,11 +831,14 @@ await new Promise((r) => pc.listen(0, '127.0.0.1', r));
 const pcUrl = `127.0.0.1:${pc.address().port}`;
 const before2 = await page.evaluate(() => window.__app.state.personas.length);
 await page.evaluate(({ pcUrl }) => {
-  document.querySelector('#syncAddr').value = pcUrl;
+  // wie aus dem QR-Code: zuerst eine nicht erreichbare Adresse (z. B. WSL-Adapter), dann die richtige
+  document.querySelector('#syncAddr').value = `127.0.0.1:1,${pcUrl}`;
   document.querySelector('#syncCode').value = '123456';
   document.querySelector('#syncConnect').click();
 }, { pcUrl });
 await page.waitForFunction(() => document.querySelectorAll('#syncList button').length > 0, null, { timeout: 10000 }).catch(() => {});
+const chosenAddr = await page.evaluate(() => document.querySelector('#syncAddr').value);
+check(chosenAddr === pcUrl, 'Abgleich: mehrere Adressen – die erreichbare wird genommen', chosenAddr);
 await page.evaluate(() => document.querySelector('#syncList button')?.click());
 await page.waitForFunction((n) => window.__app.state.personas.length > n, before2, { timeout: 20000 }).catch(() => {});
 await page.evaluate(() => document.querySelector('#syncSend')?.click());

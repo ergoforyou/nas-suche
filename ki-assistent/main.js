@@ -219,10 +219,20 @@ function askRenderer(op, data) {
     win.webContents.send('sync:req', { rid, op, data });
   });
 }
-function lanAddress() {
-  const all = Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal);
-  const pref = all.find((i) => /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))/.test(i.address));
-  return (pref ?? all[0])?.address ?? '127.0.0.1';
+// Adressen im Heimnetz, beste zuerst: echte WLAN-/LAN-Adapter vor virtuellen (Hyper-V/WSL, Docker, VPN …),
+// sonst landet z. B. die 172.x-Adresse von WSL im QR-Code und das Handy erreicht den PC nicht
+const VIRTUAL_NIC = /vEthernet|Hyper-V|WSL|VirtualBox|VMware|Docker|Loopback|Tailscale|ZeroTier|TAP|TUN|VPN|Bluetooth|Npcap/i;
+function lanAddresses() {
+  const rank = (name, ip) =>
+    (VIRTUAL_NIC.test(name) ? 10 : 0) +
+    (/^192\.168\./.test(ip) ? 0 : /^10\./.test(ip) ? 1 : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 2 : /^169\.254\./.test(ip) ? 8 : 4) +
+    (/WLAN|Wi-?Fi|Wireless|Ethernet|LAN/i.test(name) ? 0 : 0.5);
+  const all = [];
+  for (const [name, list] of Object.entries(os.networkInterfaces())) {
+    for (const i of list ?? []) if (i.family === 'IPv4' && !i.internal) all.push({ ip: i.address, r: rank(name, i.address) });
+  }
+  all.sort((a, b) => a.r - b.r);
+  return all.length ? [...new Set(all.map((a) => a.ip))] : ['127.0.0.1'];
 }
 function stopSync() {
   clearTimeout(syncTimer);
@@ -271,7 +281,9 @@ ipcMain.handle('sync:start', async () => {
   });
   await new Promise((ok, fail) => syncServer.listen(0, '0.0.0.0', ok).on('error', fail));
   syncTimer = setTimeout(stopSync, 10 * 60e3);
-  return { url: `http://${lanAddress()}:${syncServer.address().port}`, code: syncCode };
+  const port = syncServer.address().port;
+  const urls = lanAddresses().map((ip) => `http://${ip}:${port}`);
+  return { url: urls[0], urls, code: syncCode };
 });
 
 // ---------------------------------------------------------------- Firmenwissen (nur Dienstlich)

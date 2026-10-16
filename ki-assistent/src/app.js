@@ -5147,12 +5147,15 @@ desktop.onSyncRequest?.(async (op, data) => {
 });
 $('syncPcStart').onclick = async () => {
   try {
-    const { url, code } = await desktop.syncStart();
+    const { url, urls = [url], code } = await desktop.syncStart();
     const qr = qrcode(0, 'M');
-    qr.addData(`KI-ABGLEICH ${url} ${code}`);
+    // alle Adressen in den QR-Code – das Handy probiert sie der Reihe nach
+    qr.addData(`KI-ABGLEICH ${urls.slice(0, 4).join(',')} ${code}`);
     qr.make();
     $('syncPcQr').innerHTML = qr.createSvgTag({ cellSize: 5, margin: 3, scalable: true });
-    $('syncPcInfo').textContent = `Adresse: ${url} · Code: ${code} (gültig 10 Minuten)`;
+    $('syncPcInfo').textContent =
+      `Adresse: ${urls[0].replace('http://', '')} · Code: ${code} (gültig 10 Minuten)` +
+      (urls.length > 1 ? ` · weitere Adressen: ${urls.slice(1).map((u) => u.replace('http://', '')).join(', ')}` : '');
     $('syncPcBox').hidden = false;
     $('syncPcStart').hidden = true;
   } catch (e) {
@@ -5167,18 +5170,42 @@ $('syncPcStop').onclick = async () => {
 
 // Handy: mit dem PC verbinden, Personas holen oder senden
 let syncTarget = null;
-async function syncFetch(path, opts = {}) {
-  const r = await fetch(`${syncTarget.url}${path}`, { ...opts, headers: { 'x-ki-code': syncTarget.code, ...(opts.headers ?? {}) } });
-  if (!r.ok) throw new Error(r.status === 403 ? 'Code falsch' : `${r.status} ${await r.text()}`);
+async function syncFetch(path, opts = {}, target = syncTarget) {
+  const r = await fetch(`${target.url}${path}`, { ...opts, headers: { 'x-ki-code': target.code, ...(opts.headers ?? {}) } });
+  if (!r.ok) throw new Error(r.status === 403 ? 'Code falsch – bitte den aktuellen Code vom PC nehmen' : `${r.status} ${await r.text()}`);
   return r;
 }
 async function syncConnect() {
-  const url = $('syncAddr').value.trim().replace(/\/+$/, '');
   const code = $('syncCode').value.trim();
-  if (!url || !code) return status('Bitte Adresse und Code vom PC eintragen (oder QR-Code scannen).');
-  syncTarget = { url: /^https?:/.test(url) ? url : `http://${url}`, code };
+  // eine oder mehrere Adressen (durch Komma getrennt, so kommen sie aus dem QR-Code)
+  const urls = $('syncAddr')
+    .value.split(/[,\s]+/)
+    .map((u) => u.trim().replace(/\/+$/, ''))
+    .filter(Boolean)
+    .map((u) => (/^https?:/.test(u) ? u : `http://${u}`));
+  if (!urls.length || !code) return status('Bitte Adresse und Code vom PC eintragen (oder QR-Code scannen).');
+  status('Verbinde mit dem PC …');
+  let info = null;
+  let lastErr = null;
+  for (const url of urls) {
+    const target = { url, code };
+    try {
+      info = await (await syncFetch('/info', { signal: AbortSignal.timeout(4000) }, target)).json();
+      syncTarget = target;
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (/Code falsch/.test(e.message)) break;
+    }
+  }
+  if (!info) {
+    const msg = /Code falsch/.test(lastErr?.message ?? '')
+      ? lastErr.message
+      : 'PC nicht erreichbar. Gleiches WLAN (kein Gast-WLAN)? Abgleich-Fenster am PC offen? Windows-Netzwerk auf „Privat“ und den KI-Assistenten in der Windows-Firewall zulassen.';
+    return status(`Keine Verbindung: ${msg}`);
+  }
+  $('syncAddr').value = syncTarget.url.replace('http://', '');
   try {
-    const info = await (await syncFetch('/info')).json();
     const list = await (await syncFetch('/personas')).json();
     const box = $('syncList');
     box.innerHTML = '';
@@ -5203,7 +5230,7 @@ async function syncConnect() {
     $('syncSend').hidden = false;
     status(`Verbunden mit ${info.name} – ${list.length} Persona(s).`);
   } catch (e) {
-    status(`Keine Verbindung zum PC (${e.message}) – gleiches WLAN? Abgleich-Fenster am PC offen?`);
+    status(`Abgleich: ${e.message}`);
   }
 }
 $('syncConnect').onclick = syncConnect;
