@@ -1445,21 +1445,20 @@ export class Avatar {
   cameraLayout(now, dt, W, H, fit) {
     const box = this.visibleBox();
     const C = (this.cam ??= { shot: 'ganz', until: now + 6000, x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1, talking: false });
-    // Kamera folgt dem Gespräch: Kommt die Antwort, fährt sie heran (bei starker Stimmung bis aufs Gesicht),
-    // während längerer Antworten wechselt sie zwischen Oberkörper und Gesicht, danach zurück zur ganzen Figur.
+    // Kamera folgt dem Gespräch: Kommt die Antwort, fährt sie langsam auf den Oberkörper (bis etwa zur Hüfte –
+    // nie näher), bei längeren Antworten zwischendurch kurz zurück zur ganzen Figur; danach wieder ganz.
     if (this.camera !== false) {
-      const strong = ['freudig', 'überrascht', 'traurig'].includes(this.moodCur?.name);
       if (this.speaking && !C.talking) {
         C.talking = true;
-        C.shot = strong ? 'gesicht' : 'oberkoerper';
-        C.until = now + 4000 + Math.random() * 3000;
+        C.shot = 'oberkoerper';
+        C.until = now + 8000 + Math.random() * 4000;
       } else if (!this.speaking && C.talking) {
         C.talking = false;
         C.shot = 'ganz';
         C.until = now + 1e9; // in Ruhe bleibt die ganze Figur
       } else if (this.speaking && now > C.until) {
-        C.shot = C.shot === 'gesicht' ? 'oberkoerper' : 'gesicht';
-        C.until = now + (C.shot === 'gesicht' ? 3000 + Math.random() * 2500 : 4000 + Math.random() * 3000);
+        C.shot = C.shot === 'ganz' ? 'oberkoerper' : 'ganz';
+        C.until = now + (C.shot === 'ganz' ? 3500 + Math.random() * 2000 : 8000 + Math.random() * 4000);
       }
     } else C.shot = 'ganz';
     // Zielausschnitt (normiert auf das Grundbild)
@@ -1472,10 +1471,9 @@ export class Avatar {
     let t = { ...box };
     if (C.shot !== 'ganz' && eyeY != null) {
       const face = Math.max(0.04, (mouthY - eyeY) * 2.6); // Gesichtshöhe (normiert)
-      const cy = (eyeY + mouthY) / 2;
-      // Gesicht: ca. 2,4 Gesichtshöhen; Oberkörper: Kopf bis Brust, ca. 3,4 Gesichtshöhen
-      const h = Math.min(bh, face * (C.shot === 'gesicht' ? 2.4 : 3.4));
-      const y0 = Math.max(box.y0, C.shot === 'gesicht' ? cy - h * 0.48 : eyeY - face * 0.9);
+      // Oberkörper: vom Scheitel bis etwa zur Hüfte (ca. 4,6 Gesichtshöhen) – nie enger
+      const h = Math.min(bh, face * 4.6);
+      const y0 = Math.max(box.y0, eyeY - face * 0.9);
       // Breite passend zum Fenster, um die Gesichtsmitte
       const w = Math.min(1, (h * this.h * (W / H)) / this.w);
       const x0 = Math.min(Math.max(0, faceX - w / 2), 1 - w);

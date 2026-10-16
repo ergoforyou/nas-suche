@@ -731,6 +731,8 @@ app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('window-all-closed', () => app.quit());
 
 ipcMain.on('win:minimize', () => win?.minimize());
+// Nur-Figur-Ansicht: Chatfenster bildschirmfüllend (Esc bzw. ✕ zurück)
+ipcMain.on('win:fullscreen', (_e, on) => win && !win.isDestroyed() && win.setFullScreen(!!on));
 ipcMain.on('win:close', () => win?.close());
 ipcMain.on('win:show', () => {
   win?.show();

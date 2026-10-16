@@ -606,7 +606,8 @@ const cam = await page.evaluate(async () => {
   return { aspect: calls.at(-1), whole, upper, after };
 });
 check(cam.aspect < 0.5, 'Bild-im-Bild-Fenster nach der sichtbaren Figur (leere Ränder zählen nicht)', JSON.stringify(cam));
-check(cam.upper > cam.whole * 1.25 && Math.abs(cam.after - cam.whole) < cam.whole * 0.08, 'Kamera zoomt heran, wenn die Antwort kommt, und danach zurück', JSON.stringify(cam));
+// höchstens bis zur Hüfte (die Test-Figur ist ein Brustbild – also nur wenig näher, nie aufs Gesicht)
+check(cam.upper > cam.whole * 1.02 && cam.upper < cam.whole * 1.6 && Math.abs(cam.after - cam.whole) < cam.whole * 0.08, 'Kamera fährt auf den Oberkörper (nicht aufs Gesicht) und danach zurück', JSON.stringify(cam));
 // ---- Persona als .kiavatar exportieren (mit Video) und wieder importieren
 const exp = await page.evaluate(async (webmB64) => {
   const av = window.__app.persona().avatar;
@@ -763,6 +764,18 @@ await page.waitForTimeout(1500);
 const qReq = claudeRequests.slice(qBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Formuliere aus diesen Angaben'));
 check(!!qReq && JSON.stringify(qReq.messages).includes('Wartung 2 Std.'), 'Schnellbefehl schickt Anweisung samt Text');
 await page.waitForFunction(() => !window.__app.state.busy, null, { timeout: 10000 }).catch(() => {});
+// ---- Nur-Figur-Ansicht: Umschalter blendet alles außer Figur und Mikrofon aus, ✕ springt zurück
+const full = await page.evaluate(async () => {
+  document.querySelector('#btnStageFull').click();
+  await new Promise((r) => setTimeout(r, 300));
+  const vis = (sel) => !!document.querySelector(sel).offsetParent || getComputedStyle(document.querySelector(sel)).position === 'fixed';
+  const on = { chat: vis('#chat'), composer: vis('.composer'), mic: vis('#fullMic'), stageH: document.querySelector('#stage').getBoundingClientRect().height, winH: innerHeight };
+  document.querySelector('#fullExit').click();
+  await new Promise((r) => setTimeout(r, 300));
+  return { on, back: { chat: vis('#chat'), composer: vis('.composer'), mic: vis('#fullMic') } };
+});
+check(!full.on.chat && !full.on.composer && full.on.mic && full.on.stageH > full.on.winH * 0.9, 'Nur-Figur-Ansicht: nur Figur und Mikrofon', JSON.stringify(full.on));
+check(full.back.chat && full.back.composer && !full.back.mic, 'Nur-Figur-Ansicht: ✕ springt zur ganzen App zurück', JSON.stringify(full.back));
 // ---- Sprechblase, wenn der Ton aus ist
 const bub = await page.evaluate(async () => {
   window.__app.state.settings.bubble = 'stumm';

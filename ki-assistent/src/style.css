@@ -322,6 +322,22 @@ body.floating .stage { display: none; }
 .quick-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
 .quick-row { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
 .quick-row textarea { grid-column: 1 / -1; resize: vertical; }
+/* Nur-Figur-Ansicht: alles außer der Bühne ausgeblendet, Bedienknöpfe unten über der Figur */
+.full-ctl { display: none; }
+.stage-full .titlebar, .stage-full .chat, .stage-full .composer, .stage-full .attachments, .stage-full .quick-bar,
+.stage-full .resize-handle { display: none !important; }
+.stage-full .stage { flex: 1 1 auto; height: auto !important; min-height: 0; }
+.stage-full .status { position: absolute; left: 0; right: 0; bottom: 84px; text-align: center; z-index: 3; }
+.stage-full .full-ctl {
+  display: flex; gap: 14px; position: absolute; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3;
+}
+.stage-full .full-ctl button {
+  width: 56px; height: 56px; border-radius: 50%; font-size: 24px; background: rgba(20, 24, 32, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(6px);
+}
+.stage-full .full-ctl button.on { background: #3d7be0; }
+.stage-full .full-ctl #fullMic.listening { background: #2e9b4f; }
+.pip .full-ctl, .float-ov .full-ctl { display: none !important; }
 .beta-badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #b26a00; color: #fff; vertical-align: middle; }
 
 /* Video-Werkzeug: Abschnitt wählen, Standbild übernehmen */

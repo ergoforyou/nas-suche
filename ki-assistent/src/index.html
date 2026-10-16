@@ -12,6 +12,7 @@
   <header class="titlebar">
     <span class="title"><span id="titleName">KI-Assistent</span> <span id="titleVersion" class="version"></span></span>
     <div class="titlebar-buttons">
+      <button id="btnStageFull" title="Nur die Figur – groß, mit Mikrofon (Esc oder ✕ zurück)">⛶</button>
       <button id="btnArea" title="Bereich wechseln (Dienstlich / Privat)">💼</button>
       <button id="btnPip" class="pip-only" title="Figur als Bild-im-Bild über anderen Apps">⧉</button>
       <button id="btnNewChat" title="Neuer Chat (Strg+N oder „Neuer Chat“ sagen) – Persona und Gedächtnis bleiben">🗨＋</button>
@@ -28,6 +29,11 @@
   <section class="stage" id="stage">
     <canvas id="avatar"></canvas>
     <div class="speech-bubble" id="speechBubble" hidden></div>
+    <div class="full-ctl" id="fullCtl">
+      <button id="fullMic" title="Sprechen">🎤</button>
+      <button id="fullLive" title="Live-Gespräch an/aus">📞</button>
+      <button id="fullExit" title="Zurück zur ganzen App (Esc)">✕</button>
+    </div>
     <div class="state-badge" id="stateBadge" hidden></div>
     <div class="resize-handle" id="stageResize" title="Größe ändern"></div>
   </section>
@@ -134,7 +140,7 @@
             <input id="avPipColor" type="color" value="#1e2430" hidden />
           </div>
         </label>
-        <label class="check"><input id="avPipCamera" type="checkbox" /> Kamerafahrten: kommt die Antwort, zoomt das Bild langsam auf Oberkörper bzw. Gesicht, danach zurück zur ganzen Figur
+        <label class="check"><input id="avPipCamera" type="checkbox" /> Kamerafahrten: kommt die Antwort, fährt das Bild langsam auf den Oberkörper (bis etwa zur Hüfte, nie näher), danach zurück zur ganzen Figur
           <span class="hint">(wirkt lebendiger; braucht gesetzte Augen/Mund)</span></label>
       </div>
       <h3>Lebendigkeit</h3>

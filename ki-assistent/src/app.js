@@ -3969,6 +3969,39 @@ $('avGreet').onchange = (e) => {
   save();
 };
 
+// ---------------------------------------------------------------- Nur-Figur-Ansicht (Umschalter im Chatfenster)
+// Die ganze App zeigt nur noch die Figur, groß, mit Mikrofon- und Live-Knopf; Esc oder ✕ springt zurück.
+function setStageFull(on) {
+  document.documentElement.classList.toggle('stage-full', on);
+  $('btnStageFull').classList.toggle('active', on);
+  avatar.pipFit = on;
+  // Kamerafahrt (Oberkörper) nur auf dem Handy; am PC bleibt die Figur, wie sie ist
+  avatar.camera = MOBILE && state.settings.pipCamera !== false;
+  avatar.cam = null;
+  if (!MOBILE) desktop.setFullScreen?.(on);
+  $('drawer').hidden = true;
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+  syncFullCtl();
+}
+function syncFullCtl() {
+  $('fullLive').classList.toggle('on', !!state.settings.handsFree);
+  $('fullMic').classList.toggle('listening', !!stt.listening);
+}
+$('btnStageFull').onclick = () => setStageFull(!document.documentElement.classList.contains('stage-full'));
+$('fullExit').onclick = () => setStageFull(false);
+$('fullMic').onclick = () => toggleMic();
+$('fullLive').onclick = () => {
+  setHandsFree(!state.settings.handsFree);
+  syncFullCtl();
+};
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.documentElement.classList.contains('stage-full')) {
+    e.stopImmediatePropagation();
+    setStageFull(false);
+  }
+}, true);
+setInterval(syncFullCtl, 400);
+
 // ---------------------------------------------------------------- Bereiche (Dienstlich / Privat) und Firmenwissen
 const AREA = desktop.area === 'privat' ? 'privat' : 'dienstlich';
 document.documentElement.classList.toggle('area-privat', AREA === 'privat');
