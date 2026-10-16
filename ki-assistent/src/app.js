@@ -2992,7 +2992,17 @@ async function bakeTransparentVideo(pose, clip, say, shouldStop = () => false, s
   const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4e6 });
   const chunks = [];
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-  rec.start(250);
+  // erstes Bild schon vor dem Start zeigen und auf den echten Start warten – sonst gehen auf langsamen
+  // Geräten die ersten Bilder verloren und das Video beginnt leer
+  g.drawImage(frames[0], 0, 0);
+  track.requestFrame();
+  await Promise.race([
+    new Promise((r) => {
+      rec.onstart = r;
+      rec.start(250);
+    }),
+    new Promise((r) => setTimeout(r, 1500)),
+  ]);
   const t0 = performance.now();
   for (let i = 0; i < frames.length; i++) {
     if (shouldStop()) {
