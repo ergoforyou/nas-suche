@@ -1,3 +1,4 @@
+# Baut die Windows-EXE des Video-Freistellers (Ergebnis unter Actions → Artefakte).
 name: Video-Freisteller (Windows-EXE)
 
 on:
