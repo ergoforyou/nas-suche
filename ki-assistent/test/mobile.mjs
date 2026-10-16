@@ -301,6 +301,54 @@ await page.waitForFunction(() => true);
 for (let i = 0; i < 40 && !ttsBody; i++) await page.waitForTimeout(250);
 check(/Sprich warm\./.test(ttsBody?.instructions ?? '') && /fröhlich/.test(ttsBody?.instructions ?? ''), 'Gefühl in der Stimme: Stimmung geht an die OpenAI-Stimme', ttsBody?.instructions);
 await page.evaluate(() => window.__app.tts.stop());
+// ---- Mehrere Videos für denselben Anlass: zweites Video ersetzt nicht das erste, beide kommen abwechselnd dran
+const alphaVideo = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-alpha.webm');
+const nBefore = await page.evaluate(() => window.__app.persona().avatar.poses.length);
+await page.locator('.pose-row button[title^="Diese Pose bearbeiten"]').last().click();
+page.once('dialog', (d) => d.accept()); // „als NEUE Pose hinzufügen?“ -> OK
+await page.click('#avUpload');
+await page.waitForSelector('#pickSheet');
+await page.setInputFiles('#pickSheet input[type=file]', alphaVideo);
+await page.waitForFunction((n) => window.__app.persona().avatar.poses.length === n + 1 && window.__app.persona().avatar.poses.at(-1).video, nBefore, { timeout: 20000 }).catch(() => {});
+const after = await page.evaluate(() => window.__app.persona().avatar.poses.map((p) => !!p.video));
+check(after.length === nBefore + 1 && after.slice(-2).every(Boolean), 'Zweites Video als neue Pose (erstes bleibt erhalten)', JSON.stringify(after));
+// alle Video-Posen auf „beim Nachdenken“, ohne Abschnitt, ohne Schleife
+const rotation = await page.evaluate(async () => {
+  const av = window.__app.persona().avatar;
+  for (const p of av.poses) if (p.video) Object.assign(p, { trigger: 'think', loop: false, clip: { start: 0, end: 1 } });
+  await window.__app.avatar.setConfig(av);
+  window.__app.avatar.previewPose(null); // Vorschau des Editors aus – wie nach dem Schließen der Einstellungen
+  window.__app.avatarState.thinking = true;
+  const seen = new Set();
+  for (let t = 0; t < 60; t++) {
+    await new Promise((r) => setTimeout(r, 200));
+    const L = window.__app.avatar.layers[window.__app.avatar.current];
+    if (L?.isVideo) seen.add(window.__app.avatar.current);
+  }
+  window.__app.avatarState.thinking = false;
+  return { seen: [...seen], videos: window.__app.avatar.layers.filter((L) => L.isVideo).length };
+});
+check(rotation.videos >= 2 && rotation.seen.length >= 2, 'Mehrere Videos desselben Anlasses laufen abwechselnd', JSON.stringify(rotation));
+// Stimmung als Anlass: fröhliche Pose beim fröhlichen Sprechen
+const moodPose = await page.evaluate(async () => {
+  const av = window.__app.persona().avatar;
+  const vids = av.poses.filter((p) => p.video);
+  vids.forEach((p, i) => (p.trigger = i === 0 ? 'speak:freudig' : 'idle'));
+  await window.__app.avatar.setConfig(av);
+  window.__app.avatar.previewPose(null);
+  const target = window.__app.avatar.layers.findIndex((L) => L.config?.trigger === 'speak:freudig');
+  window.__app.setMood('freudig');
+  window.__app.avatarState.speaking = true;
+  let hit = false;
+  for (let t = 0; t < 40 && !hit; t++) {
+    await new Promise((r) => setTimeout(r, 250));
+    window.__app.setMood('freudig');
+    hit = window.__app.avatar.current === target;
+  }
+  window.__app.avatarState.speaking = false;
+  return { target, hit };
+});
+check(moodPose.target > 0 && moodPose.hit, 'Pose für „beim Sprechen – fröhlich“ wird gezeigt', JSON.stringify(moodPose));
 check(!errors.length, 'keine Skriptfehler', errors.join(' | '));
 await browser.close();
 server.close();

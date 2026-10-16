@@ -2217,15 +2217,30 @@ $('avFile').onchange = async (e) => {
   if (!file) return;
   const av = target();
   if (file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name)) {
-    if (editIndex < 0) return status('Videos bitte als Pose hinzufügen (⚙ → Avatar → „＋ Pose hinzufügen“).');
+    // Videos sind immer Posen: ohne gewählte Pose – oder wenn die gewählte schon ein Video/Bild hat und das
+    // neue nicht ersetzen soll – wird automatisch eine neue Pose angelegt (sonst ersetzt das zweite Video das erste)
+    const cur = editIndex >= 0 ? persona().avatar.poses?.[editIndex] : null;
+    const addNew =
+      !cur ||
+      ((cur.video || cur.image) &&
+        confirm(`Video als NEUE Pose hinzufügen?\n\nOK = neue Pose (Anlass wie „${cur.name ?? 'diese Pose'}“)\nAbbrechen = Video von „${cur.name ?? 'dieser Pose'}“ ersetzen`));
+    if (addNew) {
+      const poses = (persona().avatar.poses ??= []);
+      poses.push({ id: newId(), name: `Video ${poses.length + 1}`, trigger: cur?.trigger ?? 'speak', image: null });
+      editIndex = poses.length - 1;
+      renderPoseList();
+    }
+    const av = target();
     if (file.size > 60 * 1024 * 1024) return status('Das Video ist zu groß (max. 60 MB). Kurze Clips von 2–5 Sekunden reichen.');
     status('Video wird gespeichert …');
-    if (av.video) desktop.deleteMedia(av.video);
+    // alte Datei nur löschen, wenn kein anderer Abschnitt sie noch nutzt
+    const sharedBy = (url) => (persona().avatar.poses ?? []).some((p) => p !== av && (p.video === url || p.mask === url));
+    if (av.video && !sharedBy(av.video)) desktop.deleteMedia(av.video);
     av.video = await desktop.saveMedia(new Uint8Array(await file.arrayBuffer()), file.name.split('.').pop());
     av.image = null;
     av.keyTol ??= 30;
     av.loop ??= false;
-    if (av.mask) desktop.deleteMedia(av.mask);
+    if (av.mask && !sharedBy(av.mask)) desktop.deleteMedia(av.mask);
     av.mask = null;
     // Schon freigestellt (WebM mit Transparenz) -> so übernehmen; Greenscreen -> schnelles Farbverfahren;
     // sonst (z. B. weiße Wand) KI-Freistellung
@@ -2370,8 +2385,11 @@ async function computeMaskFor(pose) {
       (img) => stt.removeBackground(img, progressStatus('Freistellen')),
       (done, total) => status(`Video wird per KI freigestellt … ${done} / ${total} Bilder`),
     );
-    if (pose.mask) desktop.deleteMedia(pose.mask);
+    // Abschnitte desselben Videos teilen sich die Maske: alle auf die neue umstellen
+    const old = pose.mask;
     pose.mask = await desktop.saveMedia(bytes, 'mask');
+    for (const p of persona().avatar.poses ?? []) if (old && p.mask === old) p.mask = pose.mask;
+    if (old) desktop.deleteMedia(old);
     pose.cutMode = 'ai';
     save();
     applyAvatar();
@@ -2406,10 +2424,19 @@ async function copyMarkersFromMain(pose) {
   return true;
 }
 
+// Anlässe für Posen. Genauere Anlässe (Stimmung, aufmerksames Zuhören) haben Vorrang, wenn es dafür Posen gibt;
+// mehrere Posen mit demselben Anlass werden abwechselnd gezeigt.
 const TRIGGERS = [
   ['speak', 'beim Sprechen'],
+  ['start', 'am Anfang einer Antwort (einmal)'],
+  ['speak:freudig', 'beim Sprechen – fröhlich'],
+  ['speak:nachdenklich', 'beim Sprechen – nachdenklich'],
+  ['speak:überrascht', 'beim Sprechen – überrascht'],
+  ['speak:traurig', 'beim Sprechen – mitfühlend'],
+  ['speak:ernst', 'beim Sprechen – ernst'],
   ['think', 'beim Nachdenken'],
   ['listen', 'beim Zuhören'],
+  ['listen:talk', 'aufmerksam zuhören, während ich rede'],
   ['idle', 'in Ruhe, ab und zu'],
 ];
 

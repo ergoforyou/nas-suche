@@ -650,36 +650,79 @@ export class Avatar {
     // Einmal abgespielte Videos kehren danach zum Grundbild zurück
     if (curL?.isVideo && this.videoEnded(curL) && !curL.config.loop) {
       this.switchPose(0, now);
-      this.poseUntil = now + 2500 + Math.random() * 4000;
+      // beim Nachdenken/Zuhören gleich das nächste Video, sonst etwas Pause mit dem Grundbild
+      const lasting = this.thinking || this.listening;
+      this.poseUntil = now + (lasting ? 400 + Math.random() * 1100 : 2500 + Math.random() * 4000);
       return;
     }
     if (n < 2) return this.switchPose(0, now);
-    const st = this.speaking ? 'speak' : this.thinking ? 'think' : this.listening ? 'listen' : 'idle';
-    const rnd = (a, b) => a + Math.random() * (b - a);
-    const cand = [];
-    for (let i = 1; i < n; i++) if ((this.layers[i].config.trigger ?? 'speak') === st) cand.push(i);
-    if (st !== this.poseState) {
-      this.poseState = st;
-      this.poseUntil = 0;
+    const base = this.speaking ? 'speak' : this.thinking ? 'think' : this.listening ? 'listen' : 'idle';
+    // Beginn einer Antwort merken (für Posen „am Anfang einer Antwort“)
+    if (this.speaking && !this.wasSpeaking) this.speakStart = now;
+    this.wasSpeaking = this.speaking;
+    // Genauere Anlässe haben Vorrang, wenn es dafür Posen gibt
+    const prefs = [];
+    if (base === 'speak') {
+      if (now - (this.speakStart ?? 0) < 2500 && !this.startPlayed) prefs.push('start');
+      const mood = this.moodCur?.name;
+      if (mood && mood !== 'ruhig') prefs.push(`speak:${mood}`);
+    } else if (base === 'listen') {
+      // Nutzer spricht gerade (oder eben noch): aufmerksam zuhören
+      const L = this.listen;
+      if (L?.talking || now - (L?.quietSince || 0) < 1500) prefs.push('listen:talk');
     }
+    if (base !== 'speak') this.startPlayed = false;
+    prefs.push(base);
+    const byTrigger = (t) => {
+      const out = [];
+      for (let i = 1; i < n; i++) if ((this.layers[i].config.trigger ?? 'speak') === t) out.push(i);
+      return out;
+    };
+    let st = base;
+    let cand = [];
+    for (const t of prefs) {
+      cand = byTrigger(t);
+      if (cand.length) {
+        st = t;
+        break;
+      }
+    }
+    if (st === 'start') this.startPlayed = true;
+    // Wechsel des Grundzustands (sprechen, nachdenken, zuhören, Ruhe) sofort zeigen; feinere Wechsel
+    // (Stimmung, aufmerksam zuhören) erst, wenn die aktuelle Pose ihre Zeit gehabt hat
+    if (base !== this.poseBase) {
+      this.poseBase = base;
+      this.poseUntil = 0;
+    } else if (st !== this.poseState && !(curL?.isVideo && !curL.config.loop && !this.videoEnded(curL))) {
+      this.poseUntil = Math.min(this.poseUntil, now + 600);
+    }
+    this.poseState = st;
     if (now < this.poseUntil) return;
-    const pick = (list) => list[Math.floor(Math.random() * list.length)];
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    // Abwechseln statt Zufall: mehrere Posen desselben Anlasses kommen der Reihe nach dran, nie zweimal hintereinander
+    this.rot ??= {};
+    const nextOf = (list) => {
+      if (!list.length) return 0;
+      const k = (this.rot[st] = ((this.rot[st] ?? -1) + 1) % list.length);
+      const pick = list[k];
+      return pick === this.current && list.length > 1 ? list[(k + 1) % list.length] : pick;
+    };
     let next = 0;
     let hold;
     if (st === 'idle') {
       // meist das Grundbild, ab und zu eine Ruhe-Pose
       if (this.current === 0 && cand.length && Math.random() < 0.45) {
-        next = pick(cand);
+        next = nextOf(cand);
         hold = rnd(2500, 5500);
       } else hold = rnd(5000, 12000);
-    } else if (st === 'speak') {
-      // beim Sprechen zwischen Grundbild und Sprech-Posen wechseln
-      const options = [0, ...cand].filter((i) => i !== this.current);
-      next = cand.length ? pick(options.length ? options : [0]) : 0;
-      hold = rnd(2200, 4500);
+    } else if (base === 'speak') {
+      // beim Sprechen: Grundbild (mit Lippenbewegung) und Sprech-Posen im Wechsel
+      next = cand.length && (this.current === 0 || st === 'start') ? nextOf(cand) : 0;
+      hold = next === 0 ? rnd(1800, 3500) : rnd(2200, 4500);
     } else {
-      next = cand.length ? pick(cand) : 0;
-      hold = 1e9; // bleibt, solange der Zustand anhält
+      next = nextOf(cand);
+      // mehrere Posen: nach einer Weile zur nächsten wechseln; eine einzige bleibt, solange der Zustand anhält
+      hold = cand.length > 1 ? rnd(5000, 9000) : 1e9;
     }
     const nextL = this.layers[next];
     if (nextL?.isVideo && !nextL.config.loop) hold = 1e9; // endet über "ended"
