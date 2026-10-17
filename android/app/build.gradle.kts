@@ -1,0 +1,26 @@
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "de.ergoforyou.avatar"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "de.ergoforyou.avatar"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.1-machbarkeitstest"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
+}

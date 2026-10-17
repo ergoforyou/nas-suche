@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Avatar Overlay</string>
+    <string name="a11y_label">Avatar Overlay – ChatGPT mitlesen</string>
+    <string name="a11y_description">Liest die Antworten der ChatGPT-App auf dem Bildschirm mit und lässt den schwebenden Avatar sie vorlesen. Es werden nur Inhalte der ChatGPT-App gelesen, nichts wird gespeichert oder versendet.</string>
+</resources>
