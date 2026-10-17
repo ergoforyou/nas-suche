@@ -185,7 +185,7 @@ check(!(await run(`return KIDevice.backgroundRunning()`)), 'Hintergrund-Dienst l
 
 // 4d) Beta: schwebende Figur über anderen Apps
 if (BETA) {
-  check(await run(`return typeof window.KIFloat?.now === 'function' && window.KIFloat.supported()`), 'Schwebende Figur: Schnittstelle vorhanden');
+  check(await run(`return typeof window.KIFloat?.now === 'function' && typeof window.KIFloat?.free === 'function' && window.KIFloat.supported()`), 'Schwebende Figur: Schnittstelle vorhanden (auch ⛶ = sofort schweben)');
   adb('shell', 'appops', 'set', APP, 'SYSTEM_ALERT_WINDOW', 'allow');
   await sleep(500);
   const allowed = await run(`return KIFloat.allowed()`);

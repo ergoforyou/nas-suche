@@ -1197,6 +1197,18 @@ const full = await page.evaluate(async () => {
 });
 check(!full.on.chat && !full.on.composer && full.on.mic && full.on.stageH > full.on.winH * 0.9, 'Nur-Figur-Ansicht: nur Figur und Mikrofon', JSON.stringify(full.on));
 check(full.back.chat && full.back.composer && !full.back.mic, 'Nur-Figur-Ansicht: ✕ springt zur ganzen App zurück', JSON.stringify(full.back));
+// Handy: ⛶ lässt die Figur frei über anderen Apps schweben (mit Erlaubnis), sonst Nur-Figur-Ansicht in der App
+const freeRes = await page.evaluate(async () => {
+  const keep = window.KIFloat;
+  let freed = 0;
+  window.KIFloat = { ...(keep ?? {}), supported: () => true, allowed: () => true, free: () => (freed++, true) };
+  document.querySelector('#btnStageFull').click();
+  await new Promise((r) => setTimeout(r, 200));
+  const inApp = document.documentElement.classList.contains('stage-full');
+  window.KIFloat = keep;
+  return { freed, inApp };
+});
+check(freeRes.freed === 1 && !freeRes.inApp, 'Handy: ⛶ startet die frei schwebende Figur (statt schwarzer Vollbild-Ansicht)', JSON.stringify(freeRes));
 // Nur-Figur-Ansicht: Figur mit Rand; zwei Finger verkleinern (Kamera schaltet auf Hand um), Lage wird gemerkt
 const fullZoom = await page.evaluate(async () => {
   const a = window.__app.avatar;

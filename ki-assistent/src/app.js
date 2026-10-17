@@ -4284,7 +4284,31 @@ function syncFullCtl() {
   if (dot) dot.className = `pip-dot ${stt.listening || state.hearing ? 'hoert' : avatarState.thinking || state.transcribing ? 'denkt' : tts.speaking ? 'spricht' : live ? 'live' : ''}`;
   floating.setControls?.({ live: !!state.settings.handsFree, speaking: !!(tts.speaking || state.busy) });
 }
-$('btnStageFull').onclick = () => setStageFull(!document.documentElement.classList.contains('stage-full'));
+/**
+ * Handy: ⛶ lässt die Figur frei über Startbildschirm und anderen Apps schweben (durchsichtig, Knöpfe darunter).
+ * Ohne die Android-Erlaubnis „Über anderen Apps einblenden“ (oder auf Wunsch) die Nur-Figur-Ansicht in der App.
+ */
+function freeFloat() {
+  const f = window.KIFloat;
+  if (!MOBILE || !f?.supported?.() || !f.free) return false;
+  if (!f.allowed()) {
+    if (
+      confirm(
+        'Damit die Figur frei über dem Startbildschirm und anderen Apps schwebt, braucht die App die Android-Erlaubnis ' +
+          '„Über anderen Apps einblenden“. Jetzt erlauben?\n\n(Abbrechen = Nur-Figur-Ansicht in der App)',
+      )
+    ) {
+      f.askPermission();
+      return true;
+    }
+    return false;
+  }
+  return !!f.free();
+}
+$('btnStageFull').onclick = () => {
+  if (!isStageFull() && freeFloat()) return;
+  setStageFull(!isStageFull());
+};
 $('fullExit').onclick = () => setStageFull(false);
 $('fullMic').onclick = () => toggleMic();
 $('fullStop').onclick = () => {

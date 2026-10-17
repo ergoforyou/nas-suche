@@ -318,12 +318,29 @@ public class MainActivity extends BridgeActivity {
     void refitFloat() {
         if (floatBox == null) return;
         DisplayMetrics m = getResources().getDisplayMetrics();
-        floatParams.height = Math.max(dp(90), Math.min(Math.round(floatParams.width * (float) pipH / pipW), Math.round(m.heightPixels * 0.85f)));
+        floatParams.height = Math.max(dp(90), Math.min(Math.round(floatParams.width * (float) pipH / pipW), Math.round(m.heightPixels * 0.85f))) + floatBarH();
         floatWm().updateViewLayout(floatBox, floatParams);
     }
 
     private int dp(float v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    /** Höhe der Knopfleiste unter der schwebenden Figur. */
+    private int floatBarH() {
+        return dp(48);
+    }
+
+    private android.widget.TextView floatLiveBtn;
+
+    /** Live-Knopf an der schwebenden Figur einfärben (blau = Live läuft). */
+    void paintFloatLive() {
+        if (floatLiveBtn == null) return;
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        bg.setColor(pipLive ? 0xF03D7BE0 : 0xD0141820);
+        bg.setStroke(dp(1), 0x55FFFFFF);
+        floatLiveBtn.setBackground(bg);
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -336,7 +353,7 @@ public class MainActivity extends BridgeActivity {
         int w = pref.getInt("w", Math.max(dp(120), Math.round(dm.widthPixels * 0.28f)));
         w = Math.max(dp(90), Math.min(w, dm.widthPixels));
         int h = Math.round(w * (float) pipH / pipW);
-        h = Math.max(dp(90), Math.min(h, Math.round(dm.heightPixels * 0.7f)));
+        h = Math.max(dp(90), Math.min(h, Math.round(dm.heightPixels * 0.7f))) + floatBarH();
         floatParams = new WindowManager.LayoutParams(w, h, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
                 | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -397,9 +414,14 @@ public class MainActivity extends BridgeActivity {
             }
         });
         floatBox = new FrameLayout(this) {
+            private boolean onFigure = true;
+
             @Override
             public boolean onInterceptTouchEvent(MotionEvent ev) {
-                return true; // alle Berührungen sind Gesten für das Fenster, nicht für die Seite
+                // Berührungen auf der Figur sind Gesten für das Fenster (nicht für die Seite); die Knopfleiste
+                // darunter bekommt ihre Berührungen selbst
+                if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) onFigure = ev.getY() < getHeight() - floatBarH();
+                return onFigure;
             }
 
             @Override
@@ -412,7 +434,41 @@ public class MainActivity extends BridgeActivity {
         };
         floatBox.setBackgroundColor(Color.TRANSPARENT);
         wv.setBackgroundColor(Color.TRANSPARENT);
-        floatBox.addView(wv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        FrameLayout.LayoutParams wl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        wl.bottomMargin = floatBarH();
+        floatBox.addView(wv, wl);
+        // Knopfleiste direkt unter der Figur (wandert mit): Sprechen, Live an/aus, zurück zur App
+        android.widget.LinearLayout bar = new android.widget.LinearLayout(this);
+        bar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER);
+        String[][] btns = { { "🎤", "talk" }, { "📞", "livetoggle" }, { "📱", "app" } };
+        floatLiveBtn = null;
+        for (String[] b : btns) {
+            android.widget.TextView tv = new android.widget.TextView(this);
+            tv.setText(b[0]);
+            tv.setTextSize(17);
+            tv.setGravity(Gravity.CENTER);
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            bg.setColor(0xD0141820);
+            bg.setStroke(dp(1), 0x55FFFFFF);
+            tv.setBackground(bg);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(dp(40), dp(40));
+            lp.setMargins(dp(4), 0, dp(4), 0);
+            final String what = b[1];
+            tv.setOnClickListener((v) -> {
+                if (what.equals("app")) {
+                    startActivity(new Intent(MainActivity.this, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
+                } else pushAction(what);
+            });
+            if (what.equals("livetoggle")) floatLiveBtn = tv;
+            bar.addView(tv, lp);
+        }
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, floatBarH());
+        bl.gravity = Gravity.BOTTOM;
+        floatBox.addView(bar, bl);
+        paintFloatLive();
         try {
             floatWm().addView(floatBox, floatParams);
         } catch (Exception e) {
@@ -436,7 +492,7 @@ public class MainActivity extends BridgeActivity {
         runJs("window.__setFloat && window.__setFloat(true)");
         if (!floatHintShown) {
             floatHintShown = true;
-            Toast.makeText(this, "Tippen: sprechen · doppelt: App · ziehen: verschieben · zwei Finger: Größe · lange drücken: Menü", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Figur ziehen: verschieben · zwei Finger: Größe · lange drücken: Menü · Knöpfe darunter: sprechen, Live, App", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -483,6 +539,7 @@ public class MainActivity extends BridgeActivity {
         }
         floatBox.removeView(wv);
         floatBox = null;
+        floatLiveBtn = null;
         if (webParent != null) webParent.addView(wv, Math.min(webIndex, webParent.getChildCount()), webLayout);
         wv.setBackgroundColor(Color.WHITE);
         if (floatStartedService) {
@@ -612,7 +669,7 @@ public class MainActivity extends BridgeActivity {
         if (floatBox == null || floatParams == null) return;
         DisplayMetrics m = getResources().getDisplayMetrics();
         int nw = Math.max(dp(90), Math.min(m.widthPixels, Math.round(floatParams.width * k)));
-        int nh = Math.round(nw * (float) pipH / pipW);
+        int nh = Math.round(nw * (float) pipH / pipW) + floatBarH();
         if (nh > m.heightPixels * 0.85f) return;
         floatParams.x -= (nw - floatParams.width) / 2;
         floatParams.y -= (nh - floatParams.height) / 2;
@@ -707,6 +764,20 @@ public class MainActivity extends BridgeActivity {
                 showFloat();
                 moveTaskToBack(true);
             });
+        }
+
+        /** Jetzt frei schweben lassen (Knopf ⛶) – auch wenn „beim Verlassen schweben“ aus ist. */
+        @JavascriptInterface
+        public boolean free() {
+            if (!canFloat()) return false;
+            runOnUiThread(() -> {
+                boolean was = floatEnabled;
+                floatEnabled = true;
+                showFloat();
+                floatEnabled = was;
+                if (floatBox != null) moveTaskToBack(true);
+            });
+            return true;
         }
 
         @JavascriptInterface
@@ -1107,6 +1178,12 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /** Eigenes Symbol der App (weiß, Vektor); fehlt es, das ältere eingebaute Android-Symbol. */
+    private int kiIcon(String name, int fallback) {
+        int id = getResources().getIdentifier(name, "drawable", getPackageName());
+        return id != 0 ? id : fallback;
+    }
+
     private RemoteAction pipAction(String what, int icon, String title, int req) {
         Intent i = new Intent(PIP_ACTION).setPackage(getPackageName()).putExtra("what", what);
         PendingIntent pi = PendingIntent.getBroadcast(this, req, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -1115,10 +1192,10 @@ public class MainActivity extends BridgeActivity {
 
     private ArrayList<RemoteAction> pipActions() {
         ArrayList<RemoteAction> a = new ArrayList<>();
-        a.add(pipAction("talk", android.R.drawable.ic_btn_speak_now, "Sprechen", 1));
-        a.add(pipAction("live", pipLive ? android.R.drawable.presence_audio_online : android.R.drawable.ic_menu_call,
+        a.add(pipAction("talk", kiIcon("ic_ki_mic", android.R.drawable.ic_btn_speak_now), "Sprechen", 1));
+        a.add(pipAction("live", pipLive ? kiIcon("ic_ki_live_on", android.R.drawable.presence_audio_online) : kiIcon("ic_ki_live", android.R.drawable.ic_menu_call),
             pipLive ? "Live-Gespräch beenden" : "Live-Gespräch starten", 2));
-        a.add(pipAction("app", android.R.drawable.ic_menu_revert, "Zur App", 3));
+        a.add(pipAction("app", kiIcon("ic_ki_app", android.R.drawable.ic_menu_revert), "Zur App", 3));
         return a;
     }
 
@@ -1149,7 +1226,9 @@ public class MainActivity extends BridgeActivity {
     private PictureInPictureParams pipParams() {
         PictureInPictureParams.Builder b = new PictureInPictureParams.Builder().setAspectRatio(new Rational(pipW, pipH));
         try {
-            b.setActions(pipActions());
+            ArrayList<RemoteAction> acts = pipActions();
+            b.setActions(acts);
+            Log.i("KI-Assistent", "Bild-im-Bild: " + acts.size() + " Knöpfe (Android erlaubt " + getMaxNumPictureInPictureActions() + ")");
         } catch (Exception e) {
             Log.w("KI-Assistent", "Bild-im-Bild-Knöpfe", e);
         }
@@ -1222,6 +1301,7 @@ public class MainActivity extends BridgeActivity {
                     if (pipLive == on) return;
                     pipLive = on;
                     applyParams();
+                    paintFloatLive();
                 });
             }
 
