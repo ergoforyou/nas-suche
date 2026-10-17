@@ -208,6 +208,33 @@ if (BETA) {
   // Antippen = sprechen (kommt als „talk“ an): Fensterposition aus den Einstellungen ist unbekannt – Ereignis direkt prüfen
   const live = await run(`return document.querySelector('#avatar').width > 0`);
   check(live, 'Figur zeichnet weiter im schwebenden Fenster');
+  // Knopfleiste unter der Figur wirklich antippen: 📞 (Mitte) schaltet das Live-Gespräch ein und wieder aus.
+  // Das Aktivierungswort hört dabei mit (hielt bisher das Mikrofon fest, Live startete dann nie).
+  // (nachgestellt wie in der Warteschleife des Aktivierungsworts: Abbrechen gibt das Mikrofon frei)
+  await run(`const a = window.__app; a.state.wakeListening = true; a.state.micActive = true;
+    const orig = a.stt.cancel.bind(a.stt);
+    a.stt.cancel = () => { if (a.state.wakeListening) { a.state.wakeListening = false; a.state.micActive = false; } return orig(); };
+    a.__sttCancel = orig; return true`);
+  const tapLive = async () => {
+    const pl = JSON.parse(await run(`return KIFloat.place()`));
+    if (!pl) return null;
+    adb('shell', 'input', 'tap', String(Math.round(pl.x + pl.w / 2)), String(Math.round(pl.y + pl.h - pl.bar / 2)));
+    return pl;
+  };
+  const before = await tapLive();
+  let lv = {};
+  for (let i = 0; i < 12 && !(lv.on && lv.shown); i++) {
+    await sleep(500);
+    lv = await run(`return { on: !!window.__app.state.settings.handsFree, intent: window.__app.lastIntent, shown: JSON.parse(KIFloat.place())?.live, wake: window.__app.state.wakeListening }`);
+  }
+  check(!!before && lv.on && lv.intent === 'livetoggle' && lv.shown && !lv.wake, 'Schwebende Figur: 📞 startet das Live-Gespräch (auch wenn das Aktivierungswort wartet), Knopf wird blau', JSON.stringify({ before, ...lv }));
+  await tapLive();
+  for (let i = 0; i < 12 && lv.on; i++) {
+    await sleep(500);
+    lv = await run(`return { on: !!window.__app.state.settings.handsFree, shown: JSON.parse(KIFloat.place())?.live }`);
+  }
+  check(!lv.on && !lv.shown, 'Schwebende Figur: 📞 beendet das Live-Gespräch wieder', JSON.stringify(lv));
+  await run(`window.__app.stt.cancel = window.__app.__sttCancel; return true`);
   adb('shell', 'am', 'start', '-n', ACT);
   for (let i = 0; i < 20 && (fl.showing || fl.cls); i++) {
     await sleep(500);

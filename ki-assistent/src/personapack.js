@@ -21,7 +21,14 @@ async function walk(obj, fn) {
 export async function packPersona(persona, { withMemory = false, version = '', onProgress } = {}) {
   const p = structuredClone(persona);
   delete p.id;
-  if (!withMemory) delete p.memory;
+  if (!withMemory) {
+    // Gedächtnis und Selbstbild nur auf Wunsch (enthalten Persönliches aus den Gesprächen)
+    delete p.memory;
+    delete p.selbst;
+    delete p.reflexion;
+  }
+  delete p.reflectTurns;
+  delete p.reflectedAt;
   const zip = new JSZip();
   const done = new Map();
   let n = 0;

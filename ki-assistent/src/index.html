@@ -305,7 +305,7 @@
       <p class="hint">Das Gedächtnis gehört zur aktiven Persona und liegt nur auf diesem Rechner
         (in der Datendatei der App). Es wird bei jeder Anfrage an LM Studio mitgeschickt.</p>
       <label class="check"><input id="mOn" type="checkbox" /> Gedächtnis für diese Persona verwenden</label>
-      <label class="check"><input id="mLearn" type="checkbox" /> Automatisch dazulernen (nach jeder Antwort)</label>
+      <label class="check"><input id="mLearn" type="checkbox" /> Automatisch dazulernen (gesammelt nach einigen Antworten)</label>
       <p class="hint">Beim Dazulernen fragt die App dein Modell in LM Studio kurz, welche Fakten aus dem Gespräch
         dauerhaft nützlich sind (z. B. Name, Beruf, Vorlieben, Absprachen). Du kannst auch einfach sagen:
         „Merk dir, dass …“.</p>
@@ -316,6 +316,25 @@
         <button id="mAdd">＋</button>
       </div>
       <button id="mClear" class="danger">Alles vergessen</button>
+
+      <h3>🪞 Selbstbild <span id="selfCount" class="hint"></span></h3>
+      <p class="hint">Hier schreibt die Figur selbst über sich: was gut ankommt, wo du sie korrigiert hast, was sie
+        künftig anders machen will. Sie notiert das im Gespräch und denkt ab und zu (etwa alle 12 Antworten, höchstens
+        alle 6 Stunden, in einer Gesprächspause) über die letzten Gespräche nach. Das Selbstbild geht in jedem Gespräch
+        mit, liegt nur auf diesem Gerät und ist je Bereich getrennt. Was du hier änderst oder selbst einträgst, lässt
+        die Figur stehen.</p>
+      <label class="check"><input id="selfOn" type="checkbox" /> Selbstbild für diese Persona verwenden</label>
+      <label class="check"><input id="selfReflect" type="checkbox" /> Ab und zu von selbst über die letzten Gespräche nachdenken</label>
+      <div id="selfList" class="memory-list"></div>
+      <div class="row">
+        <input id="selfNew" type="text" placeholder="Eigener Hinweis, z. B. „Ich frage nach, bevor ich lange recherchiere.“" style="flex:1" />
+        <button id="selfAdd">＋</button>
+      </div>
+      <p id="selfLast" class="hint"></p>
+      <div class="row wrap">
+        <button id="selfNow">🪞 Jetzt nachdenken</button>
+        <button id="selfClear" class="danger">Selbstbild löschen</button>
+      </div>
     </div>
 
     <div class="tab" data-tab="voice" hidden>

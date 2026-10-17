@@ -457,6 +457,8 @@ public class MainActivity extends BridgeActivity {
             lp.setMargins(dp(4), 0, dp(4), 0);
             final String what = b[1];
             tv.setOnClickListener((v) -> {
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                Log.i("KI-Assistent", "Schwebende Figur: Knopf " + what);
                 if (what.equals("app")) {
                     startActivity(new Intent(MainActivity.this, MainActivity.class)
                         .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -783,6 +785,14 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean showing() {
             return floatBox != null;
+        }
+
+        /** Lage des schwebenden Fensters (Bildschirm-Pixel) und Zustand des Live-Knopfs – für den Selbsttest. */
+        @JavascriptInterface
+        public String place() {
+            WindowManager.LayoutParams fp = floatParams;
+            if (floatBox == null || fp == null) return "null";
+            return "{\"x\":" + fp.x + ",\"y\":" + fp.y + ",\"w\":" + fp.width + ",\"h\":" + fp.height + ",\"bar\":" + floatBarH() + ",\"live\":" + pipLive + "}";
         }
 
         @JavascriptInterface

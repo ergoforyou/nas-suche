@@ -232,6 +232,7 @@ body.floating .stage { display: none; }
 .memory-row { display: flex; gap: 6px; align-items: center; }
 .memory-row input { flex: 1; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; color: var(--text); font-size: 13px; }
 .memory-row button { padding: 3px 8px; flex: none; }
+.memory-row .self-kind { flex: none; min-width: 64px; font-size: 11px; }
 #mNew { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; color: var(--text); }
 
 /* ---------- Stimme aufnehmen ---------- */

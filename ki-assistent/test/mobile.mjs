@@ -920,6 +920,56 @@ const savedRes = await page.evaluate(async () => {
   return { r, found: found.treffer?.[0]?.titel, list };
 });
 check(savedRes.r.gespeichert && savedRes.found === 'Wallbox-Recherche' && savedRes.list >= 1, 'Gespeichertes Wissen: speichern, finden, in der Liste', JSON.stringify(savedRes));
+// Selbstbild: die Figur notiert über sich selbst (Werkzeug), es geht im Systemtext mit; Nachdenken pflegt es
+const selfRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  p.selbst = [
+    { id: 'u1', text: 'Ich duze immer.', art: 'vorsatz', quelle: 'nutzer', created: 1 },
+    { id: 'a1', text: 'Ich antworte oft zu lang.', art: 'schwaeche', quelle: 'gespraech', created: 2 },
+  ];
+  const r = await app.runAppTool('selbst_notieren', { eintrag: 'Ich nenne bei Recherchen immer die Quelle.', art: 'vorsatz' });
+  const dup = await app.runAppTool('selbst_notieren', { eintrag: 'Ich nenne bei Recherchen immer die  Quelle.' });
+  const sys = app.buildMessages().filter((m) => m.role === 'system').map((m) => m.content).join('\n');
+  const ui = document.getElementById('selfList').textContent.includes('Quelle') || [...document.querySelectorAll('#selfList input')].some((i) => /Quelle/.test(i.value));
+  const res = app.applyReflection(p, {
+    gedanke: 'Ich war heute zu ausführlich.',
+    neu: [{ text: 'Ich fasse mich kürzer.', art: 'vorsatz' }],
+    aendern: [{ nr: 1, text: 'Ich sieze jetzt.' }],
+    streichen: [2],
+  });
+  return { ok: r.notiert, dup: dup.notiert, inSys: /Dein Selbstbild/.test(sys) && /Quelle/.test(sys) && /selbst_notieren/.test(sys), ui, texts: p.selbst.map((e) => e.text), added: res.added.length, removed: res.removed, last: p.reflexion.at(-1)?.text };
+});
+check(selfRes.ok && !selfRes.dup && selfRes.inSys && selfRes.ui, 'Selbstbild: Figur notiert über sich (Werkzeug), keine Doppelten, geht im Systemtext mit', JSON.stringify(selfRes));
+check(
+  selfRes.texts.includes('Ich duze immer.') && !selfRes.texts.includes('Ich sieze jetzt.') && !selfRes.texts.includes('Ich antworte oft zu lang.') &&
+    selfRes.texts.includes('Ich fasse mich kürzer.') && selfRes.last === 'Ich war heute zu ausführlich.',
+  'Selbstbild: Nachdenken ergänzt und streicht, Einträge des Nutzers bleiben unangetastet',
+  JSON.stringify(selfRes),
+);
+const reflBefore = claudeRequests.length;
+claudeQueue.push([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"gedanke":"Mir fällt auf, dass ich gern Tabellen nutze.","neu":[{"text":"Ich nutze Tabellen nur, wenn sie wirklich helfen.","art":"vorsatz"}],"aendern":[],"streichen":[]}' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 30 } },
+  { type: 'message_stop' },
+]);
+const reflRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const h = app.history();
+  while (h.length < 4) h.push({ role: 'user', content: 'Mach mal eine Übersicht.' }, { role: 'assistant', content: 'Hier eine Tabelle …' });
+  const r = await app.reflect(true);
+  const note = [...document.querySelectorAll('.msg.note')].at(-1)?.textContent ?? '';
+  return { added: r?.added?.length, thought: r?.thought, note, has: app.persona().selbst.some((e) => /Tabellen nur/.test(e.text) && e.quelle === 'reflexion'), turns: app.persona().reflectTurns };
+});
+const reflReq = claudeRequests.slice(reflBefore).find((r) => JSON.stringify(r.system ?? '').includes('Denk ehrlich über dich nach'));
+check(
+  !!reflReq && /Letzte Gespräche/.test(JSON.stringify(reflReq.messages)) && reflRes.added === 1 && reflRes.has && /🪞/.test(reflRes.note) && reflRes.turns === 0,
+  'Selbstbild: „Jetzt nachdenken“ – Figur denkt über die letzten Gespräche nach und ergänzt ihr Selbstbild',
+  JSON.stringify(reflRes),
+);
 const svBefore = claudeRequests.length;
 const svMsgs = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
 await page.fill('#input', 'Wie war das nochmal mit der Förderung für die Wallbox?');

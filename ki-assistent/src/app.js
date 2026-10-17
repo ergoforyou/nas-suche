@@ -110,6 +110,9 @@ function defaultPersona() {
     style: 'ausfuehrlich',
     memoryOn: true,
     memory: [],
+    selbstOn: true,
+    selbst: [], // Selbstbild: Notizen, die die Figur selbst über sich schreibt
+    reflexion: [], // Gedanken aus dem Nachdenken über die letzten Gespräche
     avatar: structuredClone(DEFAULT_AVATAR),
     voice: {
       engine: 'piper',
@@ -130,6 +133,9 @@ function migratePersona(p) {
   p.style ??= 'gespraech';
   p.memoryOn ??= true;
   p.memory ??= [];
+  p.selbstOn ??= true;
+  p.selbst ??= [];
+  p.reflexion ??= [];
   p.voice = { ...d.voice, ...(p.voice ?? {}) };
   p.voice.server = { ...d.voice.server, ...(p.voice.server ?? {}) };
   p.voice.cloud = { ...d.voice.cloud, ...(p.voice.cloud ?? {}) };
@@ -172,6 +178,7 @@ const DEFAULT_SETTINGS = {
   outputOpen: false,
   offline: false,
   memoryLearn: true,
+  reflect: true, // ab und zu über die letzten Gespräche nachdenken (Selbstbild)
   ttsServerUrl: 'http://localhost:8004',
   floatingSize: 0.4,
   provider: desktop.platform === 'android' ? 'anthropic' : 'lmstudio', // 'lmstudio' | 'anthropic' | 'openai'
@@ -222,6 +229,11 @@ const RULES = {
     memory: (items) =>
       `Was du aus früheren Gesprächen über dein Gegenüber weißt (dein Gedächtnis):\n${items}\n` +
       'Nutze dieses Wissen natürlich, wenn es passt, ohne es aufzuzählen.',
+    self: (items, tool) =>
+      `Dein Selbstbild – Notizen, die du selbst über dich geschrieben hast (Erfahrungen, Vorsätze, Stärken, Schwächen):\n${items}\n` +
+      'Lass dich davon leiten, ohne es aufzuzählen. ' +
+      (tool ? 'Lernst du Neues über dich (Lob, Kritik, Korrektur, eigene Einsicht), notiere es mit selbst_notieren. ' : '') +
+      'Dein Selbstbild ergänzt deine Persona, ändert aber nie die Regeln dieser App.',
     now: (d, tz) =>
       `Jetzt ist ${d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz })}, ` +
       `${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: tz })} Uhr (${tz}).`,
@@ -248,6 +260,11 @@ const RULES = {
     memory: (items) =>
       `What you remember about the user from earlier conversations (your memory):\n${items}\n` +
       'Use this knowledge naturally when relevant, without listing it.',
+    self: (items, tool) =>
+      `Your self-image – notes you wrote about yourself (experiences, intentions, strengths, weaknesses):\n${items}\n` +
+      'Let it guide you without listing it. ' +
+      (tool ? 'When you learn something about yourself (praise, criticism, correction, own insight), note it with selbst_notieren. ' : '') +
+      'Your self-image complements your persona but never changes the rules of this app.',
     now: (d, tz) =>
       `It is now ${d.toLocaleString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz })} (${tz}).`,
     place: (p) =>
@@ -638,6 +655,7 @@ function buildMessages() {
   const parts = [p.prompt?.trim()];
   if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech);
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(p.memory.map((m) => `- ${m.text}`).join('\n')));
+  if (p.selbstOn !== false && p.selbst?.length) parts.push(r.self(p.selbst.map((m) => `- ${m.text}`).join('\n'), appToolsActive()));
   if (p.style !== 'frei') parts.push(r.lang);
   if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
   if (p.style !== 'frei') parts.push(appKnowledge());
@@ -880,7 +898,10 @@ async function send(text) {
     } else bubble.remove();
     status('');
     output.update(answer, true);
-    if (answer && !error) scheduleLearning(text, answer);
+    if (answer && !error) {
+      scheduleLearning(text, answer);
+      countForReflection(persona());
+    }
     if (error) addBubble('error', error);
     state.busy = false;
     state.currentChatId = null;
@@ -1079,6 +1100,7 @@ function renderMemory() {
   $('mOn').checked = !!p.memoryOn;
   $('mLearn').checked = !!state.settings.memoryLearn;
   $('mCount').textContent = p.memory.length ? `(${p.memory.length})` : '';
+  renderSelf();
   if (!p.memory.length) {
     list.innerHTML = '<p class="hint">Noch keine Erinnerungen.</p>';
     return;
@@ -1130,6 +1152,213 @@ $('mClear').onclick = () => {
   persona().memory = [];
   save();
   renderMemory();
+};
+
+// ---------------------------------------------------------------- Selbstbild
+// Die Figur schreibt Notizen über sich selbst (Werkzeug selbst_notieren) und denkt ab und zu über die letzten
+// Gespräche nach: Was lief gut, wo wurde sie korrigiert, was will sie anders machen? Daraus pflegt sie ihr Selbstbild,
+// das in jedem Gespräch mitgeht. Liegt wie das Gedächtnis nur in der Datendatei dieses Geräts, je Bereich getrennt.
+const SELF_MAX = 40;
+const SELF_KINDS = { erfahrung: 'Erfahrung', vorsatz: 'Vorsatz', staerke: 'Stärke', schwaeche: 'Schwäche', vorliebe: 'Vorliebe' };
+const REFLECT_EVERY = 12; // Antworten
+const REFLECT_GAP = 6 * 3600e3; // höchstens alle 6 Stunden von selbst
+const REFLECT_PAUSE = 4 * 60e3; // erst in einer Gesprächspause
+
+function addSelf(p, text, art, quelle = 'gespraech') {
+  const t = String(text ?? '').trim().replace(/\s+/g, ' ');
+  if (t.length < 3 || t.length > 400) return null;
+  const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  p.selbst ??= [];
+  if (p.selbst.some((m) => norm(m.text) === norm(t))) return null;
+  const e = { id: newId(), text: t, art: SELF_KINDS[art] ? art : 'erfahrung', quelle, created: Date.now() };
+  p.selbst.push(e);
+  // begrenzen: älteste von der Figur selbst geschriebene Einträge fallen heraus, eigene Einträge des Nutzers bleiben
+  while (p.selbst.length > SELF_MAX) {
+    const i = p.selbst.findIndex((m) => m.quelle !== 'nutzer');
+    p.selbst.splice(i < 0 ? 0 : i, 1);
+  }
+  return e;
+}
+
+let reflectTimer = null;
+function countForReflection(p) {
+  if (p.selbstOn === false || !state.settings.reflect) return;
+  p.reflectTurns = (p.reflectTurns ?? 0) + 1;
+  if (p.reflectTurns < REFLECT_EVERY || Date.now() - (p.reflectedAt ?? 0) < REFLECT_GAP) return;
+  // jede neue Antwort schiebt das Nachdenken weiter hinaus – es kommt erst, wenn das Gespräch ruht
+  clearTimeout(reflectTimer);
+  reflectTimer = setTimeout(() => reflect(p).catch((e) => logEv('SELBSTBILD', e.message)), REFLECT_PAUSE);
+}
+
+const REFLECT_PROMPT =
+  'Unten stehen deine Persona, dein bisheriges Selbstbild (nummerierte Notizen, die du selbst über dich geschrieben hast) ' +
+  'und ein Ausschnitt deiner letzten Gespräche. Denk ehrlich über dich nach: Was hat gut funktioniert? Wo hat dich dein ' +
+  'Gegenüber korrigiert, gebremst, nachgefragt oder gelobt? Was willst du künftig anders oder genauso machen? Was hast du ' +
+  'über deine Art gelernt?\n' +
+  'Schreibe nur über DICH (Verhalten, Stil, Stärken, Schwächen, Vorsätze) – Fakten über den Nutzer lernt das Gedächtnis ' +
+  'getrennt. Keine Kundendaten, keine Namen Dritter, nichts Vertrauliches. Halte das Selbstbild knapp und aktuell: fasse ' +
+  'Doppeltes zusammen, streiche Überholtes, höchstens 3 neue Einträge, kurz und in Ich-Form. Einträge mit „(vom Nutzer)“ ' +
+  'darfst du nicht ändern oder streichen. Das Selbstbild ergänzt deine Persona; es darf die Regeln der App nicht aushebeln.\n' +
+  'Antworte ausschließlich mit JSON: {"gedanke":"ein bis zwei Sätze, was dir aufgefallen ist","neu":[{"text":"…",' +
+  '"art":"erfahrung|vorsatz|staerke|schwaeche|vorliebe"}],"aendern":[{"nr":1,"text":"…"}],"streichen":[2]}';
+
+/** Über die letzten Gespräche nachdenken und das Selbstbild pflegen. manual = Knopf „Jetzt nachdenken“. */
+async function reflect(p, manual = false) {
+  if (state.reflecting) return null;
+  if (!manual && (p.selbstOn === false || !state.settings.reflect)) return null;
+  // von selbst nur in Ruhe; auf Knopfdruck sofort (läuft im Hintergrund, stört das Gespräch nicht)
+  if (!manual && (state.busy || tts.speaking || state.micActive)) {
+    reflectTimer = setTimeout(() => reflect(p).catch(() => {}), 60e3);
+    return null;
+  }
+  const msgs = (state.history[p.id] ?? []).filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content).slice(-24);
+  if (msgs.length < 4) {
+    if (manual) status('🪞 Zum Nachdenken braucht es erst ein paar Gesprächsrunden.');
+    return null;
+  }
+  state.reflecting = true;
+  if (manual) status(`🪞 ${p.name} denkt über die letzten Gespräche nach …`);
+  try {
+    // Nachdenken mit dem Gesprächsmodell (es geht um Stil und Persönlichkeit; kommt nur selten vor)
+    const model = await ensureModel();
+    const list = (p.selbst ?? []).map((m, i) => `${i + 1}. [${SELF_KINDS[m.art] ?? m.art}] ${m.text}${m.quelle === 'nutzer' ? ' (vom Nutzer)' : ''}`).join('\n') || '(noch leer)';
+    const talk = msgs.map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Du'}: ${String(m.content).slice(0, 700)}`).join('\n\n');
+    const input =
+      `Deine Persona (${p.name}):\n${(p.prompt ?? '').slice(0, 800)}\n\nDein Selbstbild:\n${list}\n\nLetzte Gespräche:\n${talk}` +
+      (p.language === 'en' ? '\n\nWrite the entries and the thought in English.' : '');
+    const id = newId();
+    const raw = await new Promise((resolve) => {
+      let out = '';
+      chatRequest(
+        {
+          id,
+          ...llmParams(model),
+          ...(state.settings.provider === 'lmstudio' ? { temperature: 0.3 } : {}),
+          messages: [
+            { role: 'system', content: `Du bist ${p.name}. ${REFLECT_PROMPT}` },
+            { role: 'user', content: input },
+          ],
+        },
+        (ev) => {
+          if (ev.type === 'delta') out += ev.payload;
+          else if (ev.type === 'done' || ev.type === 'error') resolve(ev.type === 'done' ? out : '');
+        },
+      );
+    });
+    const j = raw.replace(/<think>[\s\S]*?<\/think>/g, '').match(/\{[\s\S]*\}/);
+    let r;
+    try {
+      r = JSON.parse(j?.[0] ?? '');
+    } catch {
+      if (manual) status('🪞 Nachdenken hat diesmal nichts Verwertbares ergeben.');
+      return null;
+    }
+    const res = applyReflection(p, r);
+    p.reflectedAt = Date.now();
+    p.reflectTurns = 0;
+    save();
+    if (p === persona()) {
+      renderSelf();
+      if (res.thought || res.added.length) {
+        const note = addBubble('note', `🪞 ${p.name} hat nachgedacht: ${res.thought || res.added.map((e) => e.text).join(' · ')}`);
+        note.title = 'Selbstbild (⚙ → Gedächtnis → Selbstbild)';
+      }
+    }
+    return res;
+  } finally {
+    state.reflecting = false;
+  }
+}
+
+/** Ergebnis des Nachdenkens übernehmen: Einträge des Nutzers bleiben unangetastet. */
+function applyReflection(p, r) {
+  p.selbst ??= [];
+  const byNr = (n) => p.selbst[Number(n) - 1];
+  const own = (e) => e && e.quelle !== 'nutzer';
+  const drop = new Set((Array.isArray(r?.streichen) ? r.streichen : []).map(byNr).filter(own));
+  let changed = 0;
+  for (const a of Array.isArray(r?.aendern) ? r.aendern : []) {
+    const e = byNr(a?.nr);
+    const t = String(a?.text ?? '').trim().replace(/\s+/g, ' ');
+    if (own(e) && !drop.has(e) && t.length >= 3 && t.length <= 400 && t !== e.text) {
+      e.text = t;
+      e.changed = Date.now();
+      changed++;
+    }
+  }
+  p.selbst = p.selbst.filter((e) => !drop.has(e));
+  const added = (Array.isArray(r?.neu) ? r.neu : []).slice(0, 3).map((n) => addSelf(p, n?.text, n?.art, 'reflexion')).filter(Boolean);
+  const thought = String(r?.gedanke ?? '').trim().slice(0, 500);
+  p.reflexion ??= [];
+  if (thought) p.reflexion.push({ created: Date.now(), text: thought, added: added.length, changed, removed: drop.size });
+  if (p.reflexion.length > 20) p.reflexion.splice(0, p.reflexion.length - 20);
+  return { thought, added, changed, removed: drop.size };
+}
+
+function renderSelf() {
+  const p = persona();
+  const list = $('selfList');
+  if (!list) return;
+  $('selfOn').checked = p.selbstOn !== false;
+  $('selfReflect').checked = !!state.settings.reflect;
+  $('selfCount').textContent = p.selbst?.length ? `(${p.selbst.length})` : '';
+  list.innerHTML = '';
+  if (!p.selbst?.length) list.innerHTML = '<p class="hint">Noch keine Notizen – sie entstehen im Gespräch und beim Nachdenken.</p>';
+  for (const m of [...(p.selbst ?? [])].reverse()) {
+    const row = document.createElement('div');
+    row.className = 'memory-row';
+    const tag = document.createElement('span');
+    tag.className = 'hint self-kind';
+    tag.textContent = SELF_KINDS[m.art] ?? m.art;
+    const input = document.createElement('input');
+    input.value = m.text;
+    input.title = `${new Date(m.created).toLocaleString('de-DE')} · ${m.quelle === 'nutzer' ? 'von dir' : m.quelle === 'reflexion' ? 'beim Nachdenken' : 'im Gespräch'}`;
+    input.onchange = () => {
+      m.text = input.value.trim();
+      m.quelle = 'nutzer'; // von Hand geändert: die Figur lässt den Eintrag künftig stehen
+      if (!m.text) p.selbst.splice(p.selbst.indexOf(m), 1);
+      save();
+      renderSelf();
+    };
+    const del = document.createElement('button');
+    del.textContent = '🗑';
+    del.title = 'Streichen';
+    del.onclick = () => {
+      p.selbst.splice(p.selbst.indexOf(m), 1);
+      save();
+      renderSelf();
+    };
+    row.append(tag, input, del);
+    list.appendChild(row);
+  }
+  const last = p.reflexion?.at(-1);
+  $('selfLast').textContent = last ? `Zuletzt nachgedacht (${new Date(last.created).toLocaleString('de-DE')}): ${last.text}` : 'Noch nicht nachgedacht.';
+}
+$('selfOn').onchange = (e) => {
+  persona().selbstOn = e.target.checked;
+  save();
+};
+$('selfReflect').onchange = (e) => {
+  state.settings.reflect = e.target.checked;
+  save();
+};
+const addSelfFromInput = () => {
+  if (addSelf(persona(), $('selfNew').value, 'vorsatz', 'nutzer')) {
+    $('selfNew').value = '';
+    save();
+    renderSelf();
+  }
+};
+$('selfAdd').onclick = addSelfFromInput;
+$('selfNew').onkeydown = (e) => e.key === 'Enter' && addSelfFromInput();
+$('selfNow').onclick = () => reflect(persona(), true).catch((e) => status(`🪞 Nachdenken: ${e.message}`));
+$('selfClear').onclick = () => {
+  const p = persona();
+  if (!confirm(`Selbstbild von „${p.name}“ löschen (${p.selbst?.length ?? 0} Notizen)?`)) return;
+  p.selbst = [];
+  p.reflexion = [];
+  save();
+  renderSelf();
 };
 
 function setBusyUi(busy) {
@@ -1350,11 +1579,16 @@ async function listenOnce({ handsFree = false } = {}) {
   }
 }
 
-function maybeListenHandsFree() {
+function maybeListenHandsFree(tries = 0) {
   if (!state.settings.handsFree) return;
   setTimeout(() => {
     // Live-Gespräch hört auch zu, während der Avatar denkt oder spricht
     const free = liveBargeIn() || (!state.busy && !tts.speaking);
+    // wartet gerade das Aktivierungswort aufs Mikrofon: freigeben, dann zuhören
+    if (state.settings.handsFree && free && state.wakeListening && tries < 10) {
+      stt.cancel();
+      return maybeListenHandsFree(tries + 1);
+    }
     if (state.settings.handsFree && free && !state.micActive) {
       listenOnce({ handsFree: true });
     }
@@ -1386,6 +1620,8 @@ function setHandsFree(on) {
   if (on) maybeListenHandsFree();
   else stt.cancel();
   updateBadge();
+  // Knöpfe überall nachziehen (Bild-im-Bild, schwebende Figur am Handy, freie Figur am PC)
+  syncFullCtl();
 }
 
 function progressStatus(label) {
@@ -2103,6 +2339,8 @@ $('pPresetNew').onclick = () => {
   p.name = preset.name.slice(0, 40);
   p.greeting = '';
   p.memory = [];
+  p.selbst = [];
+  p.reflexion = [];
   applyPreset(p, preset);
   switchTo(p);
   status(`Neue Persona „${p.name}“ angelegt – Avatar und Stimme wurden von der bisherigen übernommen.`);
@@ -2136,6 +2374,8 @@ $('personaCopy').onclick = () => {
   p.id = newId();
   p.name += ' (Kopie)';
   p.memory = [];
+  p.selbst = [];
+  p.reflexion = [];
   switchTo(p);
 };
 $('personaDelete').onclick = () => {
@@ -2151,7 +2391,9 @@ $('personaDelete').onclick = () => {
 // Persona als eine Datei (.kiavatar) mit allen Bildern, Videos, Masken und der 3D-Figur – für PC und Handy
 $('personaExport').onclick = async () => {
   const p = persona();
-  const withMemory = !!p.memory?.length && confirm('Auch das Gedächtnis (gelernte Fakten über dich) mit exportieren?\n\nOK = ja, Abbrechen = nein (empfohlen, wenn du die Datei weitergibst)');
+  const withMemory =
+    !!(p.memory?.length || p.selbst?.length) &&
+    confirm('Auch Gedächtnis (gelernte Fakten über dich) und Selbstbild der Figur mit exportieren?\n\nOK = ja, Abbrechen = nein (empfohlen, wenn du die Datei weitergibst)');
   const name = (p.name || 'Persona').replace(/[^\p{L}\p{N} _-]+/gu, '_');
   try {
     status('Persona wird gepackt …');
@@ -4410,19 +4652,20 @@ async function switchArea() {
 }
 /**
  * Personas für den anderen Bereich zusammenführen. Gleiche Persona (gleiche ID oder gleicher Name) wird aktualisiert,
- * behält dort aber ihr eigenes Gedächtnis; neue kommen ohne Gedächtnis dazu; Personas, die es nur dort gibt, bleiben.
+ * behält dort aber ihr eigenes Gedächtnis und Selbstbild; neue kommen ohne beides dazu; Personas, die es nur dort gibt, bleiben.
  */
 function carryPersonas(personas, activeId, other) {
   const theirs = (other?.personas ?? []).map((p) => ({ ...p }));
   let activeThere = activeId;
   for (const mine of personas) {
-    const { memory: _m, ...look } = mine;
+    const { memory: _m, selbst: _s, reflexion: _r, reflectTurns: _t, reflectedAt: _a, ...look } = mine;
     let i = theirs.findIndex((t) => t.id === mine.id);
     if (i < 0) i = theirs.findIndex((t) => t.name === mine.name);
     if (i >= 0) {
-      theirs[i] = { ...look, id: theirs[i].id, memory: theirs[i].memory ?? [] };
+      const t = theirs[i];
+      theirs[i] = { ...look, id: t.id, memory: t.memory ?? [], selbst: t.selbst ?? [], reflexion: t.reflexion ?? [], reflectTurns: t.reflectTurns, reflectedAt: t.reflectedAt };
       if (mine.id === activeId) activeThere = theirs[i].id;
-    } else theirs.push({ ...look, memory: [] });
+    } else theirs.push({ ...look, memory: [], selbst: [], reflexion: [] });
   }
   return { personas: theirs, activeId: activeThere };
 }
@@ -4543,6 +4786,15 @@ async function runAppTool(name, input) {
         .map((h) => ({ titel: h.doc.name, datum: fmtDate(h.doc.entry.created), inhalt: h.doc.entry.text.slice(0, 6000) })),
     };
   }
+  if (name === 'selbst_notieren') {
+    const p = persona();
+    const e = addSelf(p, input.eintrag, input.art, 'gespraech');
+    if (!e) return { notiert: false, grund: 'leer, zu lang oder schon vorhanden' };
+    save();
+    renderSelf();
+    status(`🪞 Selbstbild: „${e.text}“`);
+    return { notiert: true, eintraege: p.selbst.length };
+  }
   throw new Error(`Unbekanntes Werkzeug ${name}`);
 }
 /** Kurzes Grundwissen über diese App – damit die Figur Fragen zur Bedienung beantworten und ihre Möglichkeiten nutzen kann. */
@@ -4551,11 +4803,14 @@ function appKnowledge() {
     'Über dich und diese App (KI-Assistent, Version ' + APP_VERSION + '): Du bist eine Figur (Avatar) mit Stimme in einer App am PC und auf dem Android-Handy.',
     'Bereiche: „Dienstlich“ und „Privat“ (Knopf 💼/🏠 oben) – getrennte Chats, Gedächtnis und Google-Verbindung; Personas und API-Schlüssel kommen beim Wechsel mit.',
     'Gedächtnis: kurze Fakten über den Nutzer lernst du automatisch (⚙ → Gedächtnis).',
+    'Selbstbild: Ab und zu denkst du über die letzten Gespräche nach und pflegst Notizen über dich selbst ' +
+      '(⚙ → Gedächtnis → Selbstbild, dort kann der Nutzer alles sehen, ändern und löschen).',
   ];
   if (appToolsActive())
     lines.push(
       'Gespeichertes Wissen: Mit dem Werkzeug wissen_speichern legst du Rechercheergebnisse, Zusammenfassungen und Wichtiges dauerhaft ab ' +
         '(⚙ → Wissen); wissen_suchen findet sie wieder. Speichere, wenn der Nutzer darum bittet, und biete es nach längeren Recherchen kurz an.',
+      'Selbstbild: Mit selbst_notieren schreibst du jederzeit eine Notiz über dich selbst.',
     );
   if (AREA === 'dienstlich') lines.push('Firmenwissen (nur Dienstlich): eigene Dokumente wie Preislisten oder AGB, passende Abschnitte bekommst du automatisch.');
   if (MOBILE)
@@ -6077,6 +6332,8 @@ window.__app = {
   carryPersonas,
   filesNeeded,
   history,
+  reflect: (manual) => reflect(persona(), manual),
+  applyReflection,
   fragmentReason,
   voicedSeconds,
   runAppTool,
