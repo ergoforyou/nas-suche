@@ -18,6 +18,7 @@ import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
 import googleLib from '../google.js';
 import { CostMeter, fmtUsd, priceOf } from './kosten.js';
 import appToolsLib from '../apptools.js';
+import { stamp as stampSync, noteDeletions, snapshot as syncSnapshot, mergeSync, idsOf, personaText } from './abgleich.js';
 
 const $ = (id) => document.getElementById(id);
 const desktop = window.desktop;
@@ -292,15 +293,20 @@ const persona = () => state.personas.find((p) => p.id === state.activeId) ?? sta
 const history = () => (state.history[persona().id] ??= []);
 
 let saveTimer;
+// letzter bekannter Stand je Persona (Text und Figur) – daran erkennt der Abgleich, was sich geändert hat
+const syncCache = new Map();
 function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
+    stampSync(state, syncCache);
     desktop.saveData({
       settings: state.settings,
       personas: state.personas,
       activeId: state.activeId,
       history: state.history,
+      abgleich: state.abgleich,
     });
+    autoSyncSoon();
   }, 300);
 }
 
@@ -4405,6 +4411,8 @@ async function init() {
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;
   state.history = data.history ?? {};
   state.saved = Array.isArray(data.wissen) ? data.wissen : [];
+  state.abgleich = data.abgleich ?? { base: [], deleted: {} };
+  stampSync(state, syncCache, { record: true, initial: true });
   rebuildSaved();
   applyEdition();
   if (!LOCAL_ONLY) $('btnAttach').hidden = state.settings.provider !== 'anthropic';
@@ -4816,7 +4824,7 @@ function appKnowledge() {
   if (MOBILE)
     lines.push(
       'Handy: Live-Gespräch 📞, Nur-Figur-Ansicht ⛶, schwebende Figur über anderen Apps (antippen = sprechen/stoppen, lange drücken = Menü), ' +
-        'Aktivierungswort (⚙ → Handy), Abgleich von Personas und gespeichertem Wissen mit dem PC über WLAN (⚙ → Handy, gleicher Bereich); im Bereich Privat außerdem Notizen („Merk dir … bis Samstag“) und Fahrmodus.',
+        'Aktivierungswort (⚙ → Handy), automatischer Abgleich mit dem PC im WLAN (Personas, Chatverlauf, Gedächtnis, Selbstbild, Wissen; einmal per QR-Code koppeln, gleicher Bereich); im Bereich Privat außerdem Notizen („Merk dir … bis Samstag“) und Fahrmodus.',
     );
   else
     lines.push(
@@ -5897,6 +5905,20 @@ const b64ToBytes = async (b64) => new Uint8Array(await (await fetch(`data:applic
 // PC: Anfragen des Handys beantworten
 desktop.onSyncRequest?.(async (op, data) => {
   if (op === 'tool') return runAppTool(data?.name, data?.input ?? {});
+  if (op === 'abgleich') {
+    if (data?.area !== AREA) throw new Error(`anderer Bereich (PC: ${AREA})`);
+    if (state.busy) throw new Error('beschäftigt – gleich noch einmal');
+    syncMerge(data.stand);
+    state.abgleich.last = Date.now();
+    renderSyncState();
+    return { area: AREA, stand: syncSnapshot(state, state.abgleich) };
+  }
+  if (op === 'figur') {
+    const p = state.personas.find((x) => x.id === data?.id);
+    if (!p) throw new Error('Persona nicht gefunden');
+    await takeFigure(p, await b64ToBytes(data.b64), data.stamp);
+    return { ok: true };
+  }
   if (op === 'wissenList') return state.saved ?? [];
   if (op === 'wissenMerge') {
     const r = mergeSaved(data);
@@ -5939,8 +5961,16 @@ $('syncPcStop').onclick = async () => {
 // Handy: mit dem PC verbinden, Personas holen oder senden
 let syncTarget = null;
 async function syncFetch(path, opts = {}, target = syncTarget) {
-  const r = await fetch(`${target.url}${path}`, { ...opts, headers: { 'x-ki-code': target.code, ...(opts.headers ?? {}) } });
-  if (!r.ok) throw new Error(r.status === 403 ? 'Code falsch – bitte den aktuellen Code vom PC nehmen' : `${r.status} ${await r.text()}`);
+  const auth = target.token ? { 'x-ki-token': target.token } : { 'x-ki-code': target.code };
+  const r = await fetch(`${target.url}${path}`, { ...opts, headers: { ...auth, ...(opts.headers ?? {}) } });
+  if (!r.ok)
+    throw new Error(
+      r.status === 403
+        ? target.token
+          ? 'Code falsch – Kopplung am PC erneuert? Bitte den QR-Code dort neu scannen'
+          : 'Code falsch – bitte den aktuellen Code vom PC nehmen'
+        : `${r.status} ${await r.text()}`,
+    );
   return r;
 }
 async function syncConnect() {
@@ -6050,6 +6080,11 @@ $('syncScanFile').onchange = async (e) => {
   try {
     if (!('BarcodeDetector' in window)) throw new Error('QR-Erkennung wird hier nicht unterstützt – bitte Adresse und Code eintippen');
     const codes = await new window.BarcodeDetector({ formats: ['qr_code'] }).detect(await createImageBitmap(f));
+    const pairCode = codes.map((c) => c.rawValue).find((v) => /^KI-KOPPLUNG /.test(v));
+    if (pairCode) {
+      const [, urls, token] = pairCode.split(' ');
+      return pairWith(urls.split(',').filter(Boolean), token);
+    }
     const m = codes.map((c) => c.rawValue).find((v) => /^KI-ABGLEICH /.test(v));
     if (!m) throw new Error('kein Abgleich-Code im Bild');
     const [, url, code] = m.split(' ');
@@ -6063,6 +6098,213 @@ $('syncScanFile').onchange = async (e) => {
 function refreshSyncUi() {
   $('syncPcWrap').hidden = MOBILE || !desktop.syncStart;
   $('syncPhoneWrap').hidden = !MOBILE;
+  renderSyncState();
+}
+
+// ---------------------------------------------------------------- Automatischer Abgleich (PC = Mittelpunkt)
+// Das Handy gleicht sich von selbst mit dem PC ab, sobald beide im selben WLAN sind: beim Start, beim Zurückkehren in
+// die App, beim Verlassen, alle 5 Minuten und kurz nach Änderungen. Zusammengeführt wird auf beiden Seiten gleich
+// (abgleich.js); Figuren gehen nur hinterher, wenn sie sich geändert haben.
+
+/** Fremden Stand mit dem eigenen zusammenführen und übernehmen. */
+function syncMerge(remote) {
+  stampSync(state, syncCache);
+  noteDeletions(state, state.abgleich);
+  const m = mergeSync(syncSnapshot(state, state.abgleich, { limit: Infinity }), remote ?? {});
+  applySync(m);
+  return m;
+}
+
+/** Ergebnis übernehmen. Figuren bleiben, wie sie hier sind; neue Personas bekommen erst die Grundfigur (Stand -1). */
+function applySync(m) {
+  const rn = (id) => m.rename[id] ?? id;
+  const old = new Map(state.personas.map((p) => [rn(p.id), p]));
+  const wasActive = rn(state.activeId);
+  const before = JSON.stringify(personaText(persona()));
+  const lastBefore = history().at(-1)?.id ?? '';
+  const lenBefore = history().length;
+  state.personas = m.personas.map((mp) => {
+    const o = old.get(mp.id);
+    return migratePersona({
+      ...mp,
+      avatar: o?.avatar ?? structuredClone(DEFAULT_AVATAR),
+      avatarStamp: o ? (o.avatarStamp ?? 0) : -1,
+      reflectTurns: o?.reflectTurns ?? 0,
+    });
+  });
+  if (!state.personas.length) state.personas = [defaultPersona()];
+  state.history = m.history;
+  state.activeId = state.personas.some((p) => p.id === wasActive) ? wasActive : state.personas[0].id;
+  state.saved = m.saved;
+  saveSavedNow();
+  rebuildSaved();
+  state.abgleich.deleted = m.deleted;
+  stampSync(state, syncCache, { record: true });
+  state.abgleich.base = [...idsOf(state)];
+  save();
+  // Oberfläche nur nachziehen, wenn sich hier etwas sichtbar geändert hat
+  if (wasActive !== state.activeId || before !== JSON.stringify(personaText(persona()))) applyPersona();
+  else if (!state.busy && (history().length !== lenBefore || (history().at(-1)?.id ?? '') !== lastBefore)) {
+    renderChat();
+    output.setHistory(history());
+  }
+  renderMemory();
+}
+
+/** Figur (Bilder, Videos, Posen) aus einem Persona-Paket übernehmen – Texte, Gedächtnis usw. bleiben. */
+async function takeFigure(p, bytes, stampValue) {
+  const data = await unpackPersona(bytes, (b, ext) => desktop.saveMedia(b, ext));
+  if (!data?.avatar) throw new Error('keine Figur im Paket');
+  p.avatar = data.avatar;
+  p.avatarStamp = stampValue;
+  stampSync(state, syncCache, { record: true });
+  save();
+  if (p === persona()) applyAvatar();
+}
+
+const syncPcName = () => (MOBILE ? 'PC' : 'Handy');
+function renderSyncState() {
+  const pair = state.settings?.syncPair;
+  const last = state.abgleich?.last;
+  const when = (t) => (t ? new Date(t).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'noch nie');
+  if (MOBILE) {
+    const el = document.getElementById('syncAutoState');
+    if (!el) return;
+    el.textContent = pair?.token
+      ? `Gekoppelt mit dem PC (${(pair.urls ?? [])[0]?.replace('http://', '') ?? '?'}). Zuletzt abgeglichen: ${when(last)}${pair.error ? ` · letzter Versuch: ${pair.error}` : ''}`
+      : 'Noch nicht gekoppelt: am PC ⚙ → Bereich → „Handy automatisch abgleichen“ einschalten und den QR-Code oben mit „📷 QR-Code scannen“ lesen.';
+    $('syncNow').hidden = $('syncUnpair').hidden = !pair?.token;
+  } else {
+    const el = document.getElementById('syncAuto');
+    if (!el) return;
+    el.checked = !!state.settings.syncAuto;
+    $('syncAutoBox').hidden = !state.settings.syncAuto;
+    $('syncAutoLast').textContent = `Zuletzt mit dem ${syncPcName()} abgeglichen: ${when(last)}`;
+  }
+}
+
+// ---- PC: dauerhaften Abgleich-Dienst an- und ausschalten, Kopplung per QR-Code
+async function startAutoServe() {
+  if (MOBILE || !desktop.syncServe) return;
+  if (!state.settings.syncAuto) return desktop.syncUnserve?.();
+  if (!state.settings.syncToken) {
+    state.settings.syncToken = [...crypto.getRandomValues(new Uint8Array(18))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    save();
+  }
+  try {
+    const { urls } = await desktop.syncServe(state.settings.syncToken);
+    const qr = qrcode(0, 'M');
+    qr.addData(`KI-KOPPLUNG ${urls.slice(0, 4).join(',')} ${state.settings.syncToken}`);
+    qr.make();
+    $('syncAutoQr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 3, scalable: true });
+    $('syncAutoInfo').textContent = `Einmal mit dem Handy scannen (⚙ → Handy → „📷 QR-Code scannen“, gleicher Bereich). Adresse: ${urls[0].replace('http://', '')}`;
+  } catch (e) {
+    $('syncAutoInfo').textContent = `Abgleich-Dienst startet nicht: ${e.message}`;
+  }
+  renderSyncState();
+}
+$('syncAuto').onchange = (e) => {
+  state.settings.syncAuto = e.target.checked;
+  save();
+  startAutoServe();
+};
+$('syncAutoNew').onclick = async () => {
+  if (!confirm('Kopplung erneuern? Das bisher gekoppelte Handy muss dann den neuen QR-Code scannen.')) return;
+  state.settings.syncToken = '';
+  await desktop.syncUnserve?.();
+  startAutoServe();
+};
+
+// ---- Handy: PC finden und abgleichen
+async function findPc(pair) {
+  for (const url of pair.urls ?? []) {
+    const target = { url, token: pair.token };
+    try {
+      const info = await (await syncFetch('/info', { signal: AbortSignal.timeout(2500) }, target)).json();
+      if (info.area && info.area !== AREA) throw new Error(`der PC ist im Bereich ${info.area === 'privat' ? 'Privat' : 'Dienstlich'}`);
+      return target;
+    } catch (e) {
+      if (/Bereich|Code falsch/.test(e.message)) throw e;
+    }
+  }
+  return null;
+}
+let syncRunning = false;
+let syncSoonTimer = null;
+function autoSyncSoon(ms = 20000) {
+  if (!MOBILE || !state.settings?.syncPair?.token) return;
+  clearTimeout(syncSoonTimer);
+  syncSoonTimer = setTimeout(() => autoSync().catch(() => {}), ms);
+}
+async function autoSync({ manual = false } = {}) {
+  const pair = state.settings.syncPair;
+  if (!MOBILE || !pair?.token || syncRunning) return;
+  if (state.busy) return autoSyncSoon(30000);
+  const say = manual ? status : () => {};
+  syncRunning = true;
+  clearTimeout(syncSoonTimer);
+  try {
+    say('🔄 Abgleich mit dem PC …');
+    const target = await findPc(pair);
+    if (!target) throw new Error('PC nicht erreichbar (gleiches WLAN? KI-Assistent am PC offen?)');
+    stampSync(state, syncCache);
+    noteDeletions(state, state.abgleich);
+    const body = JSON.stringify({ area: AREA, stand: syncSnapshot(state, state.abgleich) });
+    const r = await (await syncFetch('/abgleich', { method: 'POST', body, headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(90000) }, target)).json();
+    syncMerge(r.stand);
+    // Figuren: nur die, die sich geändert haben (Stand -1 = hier noch keine Figur)
+    let figs = 0;
+    for (const rp of r.stand?.personas ?? []) {
+      const p = state.personas.find((x) => x.id === rp.id);
+      if (!p) continue;
+      const mine = p.avatarStamp ?? 0;
+      const theirs = rp.avatarStamp ?? 0;
+      if (theirs > mine) {
+        say(`🔄 Hole die Figur von „${p.name}“ …`);
+        await takeFigure(p, new Uint8Array(await (await syncFetch(`/persona?id=${encodeURIComponent(p.id)}`, {}, target)).arrayBuffer()), theirs);
+        figs++;
+      } else if (mine > theirs) {
+        say(`🔄 Sende die Figur von „${p.name}“ …`);
+        const bytes = await packPersona(p, { withMemory: false, version: APP_VERSION });
+        await syncFetch(`/figur?id=${encodeURIComponent(p.id)}&stamp=${mine}`, { method: 'POST', body: bytes, headers: { 'content-type': 'application/zip' } }, target);
+        figs++;
+      }
+    }
+    if (Array.isArray(r.urls) && r.urls.length) pair.urls = r.urls;
+    delete pair.error;
+    state.abgleich.last = Date.now();
+    save();
+    clearTimeout(syncSoonTimer); // das Speichern eben ist schon abgeglichen
+    say(`🔄 Mit dem PC abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.`);
+  } catch (e) {
+    pair.error = e.message;
+    logEv('ABGLEICH', e.message);
+    say(`Abgleich: ${e.message}`);
+  } finally {
+    syncRunning = false;
+    renderSyncState();
+  }
+}
+function pairWith(urls, token) {
+  state.settings.syncPair = { urls, token };
+  save();
+  status('Mit dem PC gekoppelt – gleiche jetzt ab …');
+  autoSync({ manual: true });
+}
+$('syncNow').onclick = () => autoSync({ manual: true });
+$('syncUnpair').onclick = () => {
+  if (!confirm('Kopplung mit dem PC lösen? Es wird dann nicht mehr automatisch abgeglichen (die Daten bleiben).')) return;
+  delete state.settings.syncPair;
+  save();
+  renderSyncState();
+};
+function startAutoSync() {
+  if (MOBILE) {
+    setTimeout(() => autoSync().catch(() => {}), 5000);
+    setInterval(() => !document.hidden && autoSync().catch(() => {}), 5 * 60e3);
+    // beim Zurückkehren holen, beim Verlassen abgeben
+    document.addEventListener('visibilitychange', () => autoSyncSoon(document.hidden ? 500 : 1500));
+  } else startAutoServe();
 }
 
 
@@ -6333,6 +6575,10 @@ window.__app = {
   filesNeeded,
   history,
   reflect: (manual) => reflect(persona(), manual),
+  syncMerge,
+  syncSnapshot: () => syncSnapshot(state, state.abgleich),
+  autoSync,
+  pairWith,
   applyReflection,
   fragmentReason,
   voicedSeconds,
@@ -6391,6 +6637,7 @@ init().then(() => {
   startOffice();
   loadKb();
   refreshSyncUi();
+  startAutoSync();
   desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);

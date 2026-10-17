@@ -242,7 +242,7 @@ ipcMain.handle('office:avatarVisible', (_e, on) => {
   if (avatarWin && !avatarWin.isDestroyed()) on ? avatarWin.showInactive() : avatarWin.hide();
 });
 
-// ---------------------------------------------------------------- Abgleich mit dem Handy im WLAN (nur Bereich Privat)
+// ---------------------------------------------------------------- Abgleich mit dem Handy im WLAN (je Bereich)
 // Kleiner Server im eigenen Netz, nur solange das Abgleich-Fenster offen ist (höchstens 10 Minuten), geschützt mit
 // einem zufälligen Code. Personas (mit Avatar, Posen, Schnellbefehlen) gehen direkt hin und her – ohne Cloud.
 let syncServer = null;
@@ -289,64 +289,86 @@ function stopSync() {
   syncCode = '';
 }
 ipcMain.handle('sync:stop', () => stopSync());
-ipcMain.handle('sync:start', async () => {
-  stopSync();
-  const http = require('node:http');
-  syncCode = String(Math.floor(100000 + Math.random() * 900000));
-  syncServer = http.createServer(async (req, res) => {
-    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-ki-code, content-type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
+async function readBody(req, max) {
+  const chunks = [];
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > max) throw new Error('zu groß');
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks);
+}
+// Anfragen des Handys (gleich für den kurzen Abgleich mit Code und den dauerhaften mit Kopplungsschlüssel)
+function syncHandler(authOk, ownUrls = () => []) {
+  return async (req, res) => {
+    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-ki-code, x-ki-token, content-type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
     if (req.method === 'OPTIONS') return res.writeHead(204, cors).end();
-    if (req.headers['x-ki-code'] !== syncCode) return res.writeHead(403, cors).end('Code falsch');
+    if (!authOk(req)) return res.writeHead(403, cors).end('Code falsch');
+    const json = (x) => res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(x));
     try {
       const url = new URL(req.url, 'http://x');
-      if (req.method === 'GET' && url.pathname === '/info') {
-        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify({ name: APP_NAME, area: AREA }));
-      }
-      if (req.method === 'GET' && url.pathname === '/personas') {
-        const list = await askRenderer('list');
-        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(list));
-      }
+      if (req.method === 'GET' && url.pathname === '/info') return json({ name: APP_NAME, area: AREA, urls: ownUrls() });
+      if (req.method === 'GET' && url.pathname === '/personas') return json(await askRenderer('list'));
       if (req.method === 'GET' && url.pathname === '/persona') {
         const b64 = await askRenderer('export', url.searchParams.get('id'));
         return res.writeHead(200, { ...cors, 'Content-Type': 'application/zip' }).end(Buffer.from(b64, 'base64'));
       }
       // gespeichertes Wissen: holen (alle Einträge) und senden (zusammenführen, nichts wird gelöscht)
-      if (req.method === 'GET' && url.pathname === '/wissen') {
-        const list = await askRenderer('wissenList');
-        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(list));
+      if (req.method === 'GET' && url.pathname === '/wissen') return json(await askRenderer('wissenList'));
+      if (req.method === 'POST' && url.pathname === '/wissen') return json(await askRenderer('wissenMerge', JSON.parse((await readBody(req, 50 * 1024 * 1024)).toString('utf8'))));
+      if (req.method === 'POST' && url.pathname === '/persona') return json({ name: await askRenderer('import', (await readBody(req, 500 * 1024 * 1024)).toString('base64')) });
+      // automatischer Abgleich: Stand des Handys zusammenführen, zusammengeführten Stand zurück
+      if (req.method === 'POST' && url.pathname === '/abgleich') {
+        const r = await askRenderer('abgleich', JSON.parse((await readBody(req, 200 * 1024 * 1024)).toString('utf8')));
+        return json({ ...r, urls: ownUrls() });
       }
-      if (req.method === 'POST' && url.pathname === '/wissen') {
-        const chunks = [];
-        let size = 0;
-        for await (const c of req) {
-          size += c.length;
-          if (size > 50 * 1024 * 1024) throw new Error('zu groß');
-          chunks.push(c);
-        }
-        const r = await askRenderer('wissenMerge', JSON.parse(Buffer.concat(chunks).toString('utf8')));
-        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(r));
-      }
-      if (req.method === 'POST' && url.pathname === '/persona') {
-        const chunks = [];
-        let size = 0;
-        for await (const c of req) {
-          size += c.length;
-          if (size > 500 * 1024 * 1024) throw new Error('zu groß');
-          chunks.push(c);
-        }
-        const name = await askRenderer('import', Buffer.concat(chunks).toString('base64'));
-        return res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify({ name }));
+      // geänderte Figur vom Handy
+      if (req.method === 'POST' && url.pathname === '/figur') {
+        const b64 = (await readBody(req, 500 * 1024 * 1024)).toString('base64');
+        return json(await askRenderer('figur', { id: url.searchParams.get('id'), stamp: Number(url.searchParams.get('stamp')) || 0, b64 }));
       }
       res.writeHead(404, cors).end();
     } catch (e) {
-      res.writeHead(500, cors).end(String(e.message));
+      res.writeHead(/beschäftigt/.test(e.message) ? 503 : 500, cors).end(String(e.message));
     }
-  });
+  };
+}
+ipcMain.handle('sync:start', async () => {
+  stopSync();
+  const http = require('node:http');
+  syncCode = String(Math.floor(100000 + Math.random() * 900000));
+  syncServer = http.createServer(syncHandler((req) => !!syncCode && req.headers['x-ki-code'] === syncCode));
   await new Promise((ok, fail) => syncServer.listen(0, '0.0.0.0', ok).on('error', fail));
   syncTimer = setTimeout(stopSync, 10 * 60e3);
   const port = syncServer.address().port;
   const urls = lanAddresses().map((ip) => `http://${ip}:${port}`);
   return { url: urls[0], urls, code: syncCode };
+});
+
+// Automatischer Abgleich: dauerhaft lauschen (fester Port je Bereich), solange er eingeschaltet ist. Zugang nur mit dem
+// Kopplungsschlüssel, den das Handy einmal per QR-Code bekommt.
+const AUTO_PORT = AREA === 'privat' ? 47821 : 47820;
+let autoServer = null;
+let autoToken = '';
+const autoUrls = () => lanAddresses().map((ip) => `http://${ip}:${AUTO_PORT}`);
+ipcMain.handle('sync:serve', async (_e, token) => {
+  if (!token || String(token).length < 16) throw new Error('Kopplungsschlüssel fehlt');
+  autoToken = String(token);
+  if (!autoServer) {
+    const http = require('node:http');
+    const srv = http.createServer(syncHandler((req) => !!autoToken && req.headers['x-ki-token'] === autoToken, autoUrls));
+    await new Promise((ok, fail) => srv.listen(AUTO_PORT, '0.0.0.0', ok).on('error', fail)).catch((e) => {
+      throw new Error(e.code === 'EADDRINUSE' ? `Port ${AUTO_PORT} ist schon belegt (läuft der KI-Assistent zweimal?)` : e.message);
+    });
+    autoServer = srv;
+  }
+  return { urls: autoUrls() };
+});
+ipcMain.handle('sync:unserve', () => {
+  autoServer?.close();
+  autoServer = null;
+  autoToken = '';
 });
 
 // ---------------------------------------------------------------- Firmenwissen (nur Dienstlich)
@@ -860,6 +882,23 @@ function runSmokeTest() {
       await new Promise((r) => setTimeout(r, 400));
       console.log('Figur-Knöpfe:', hasCtl, '| Live', live0, '->', live1);
       if (!hasCtl || live1 === live0) return fail('Knöpfe an der freien Figur');
+      // Automatischer Abgleich: Dienst einschalten und einmal so abgleichen, wie es das Handy tut (übers Netz, mit Schlüssel)
+      await js("(() => { const c = document.getElementById('syncAuto'); c.checked = true; c.dispatchEvent(new Event('change')); })()");
+      for (let i = 0; i < 30 && !autoServer; i++) await new Promise((r) => setTimeout(r, 200));
+      const token = await js('window.__app.state.settings.syncToken');
+      const base = `http://127.0.0.1:${AUTO_PORT}`;
+      const denied = (await fetch(`${base}/info`, { headers: { 'x-ki-token': 'falsch' } })).status;
+      const phone = await js('window.__app.syncSnapshot()');
+      const pid = await js('window.__app.persona().id');
+      phone.history[pid] = [...(phone.history[pid] ?? []), { id: 'vomhandy1', role: 'user', content: 'Frage vom Handy', t: Date.now() }];
+      phone.personas.push({ id: 'handylina', name: 'Handy-Lina', prompt: 'Du bist Lina.', language: 'de', style: 'gespraech', avatarStamp: 0, memory: [{ id: 'hm1', text: 'Jens trinkt Tee.', created: 1 }], selbst: [] });
+      const r = await fetch(`${base}/abgleich`, { method: 'POST', headers: { 'x-ki-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ area: AREA, stand: phone }) });
+      const back = r.ok ? await r.json() : { error: `${r.status} ${await r.text()}` };
+      const pcSide = await js("(() => { const a = window.__app; const l = a.state.personas.find((p) => p.name === 'Handy-Lina'); return { lina: !!l, mem: l?.memory?.length, fig: l?.avatarStamp, msg: a.history().some((m) => m.id === 'vomhandy1') }; })()");
+      console.log('Automatischer Abgleich:', denied, JSON.stringify(pcSide), back.error ?? `${back.stand?.personas?.length} Personas zurück`);
+      await js("(() => { const c = document.getElementById('syncAuto'); c.checked = false; c.dispatchEvent(new Event('change')); })()");
+      if (denied !== 403 || back.error || !pcSide.lina || pcSide.mem !== 1 || pcSide.fig !== -1 || !pcSide.msg || !back.stand?.personas?.some((p) => p.name === 'Handy-Lina'))
+        return fail('Automatischer Abgleich');
       console.log('SMOKE OK');
       quitting = true;
       app.exit(0);

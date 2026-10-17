@@ -615,6 +615,19 @@
           <div id="syncPcInfo" class="hint"></div>
           <button id="syncPcStop">Beenden</button>
         </div>
+        <h3>🔄 Automatisch abgleichen</h3>
+        <label class="check"><input id="syncAuto" type="checkbox" /> Handy automatisch abgleichen (im eigenen WLAN)</label>
+        <p class="hint">Personas, Chatverlauf, Gedächtnis, Selbstbild und gespeichertes Wissen werden zwischen PC und Handy
+          zusammengeführt – von selbst, sobald das Handy im selben WLAN ist und der KI-Assistent hier läuft. Figuren (Bilder,
+          Videos, Posen) gehen nur mit, wenn sie geändert wurden. Nie dabei: Einstellungen, API-Schlüssel, Google-Anmeldung
+          und Firmenwissen. Gelöschtes wird auf beiden Geräten gelöscht. Unverschlüsselt im eigenen Netz, Zugang nur mit dem
+          Kopplungsschlüssel im QR-Code.</p>
+        <div id="syncAutoBox" hidden>
+          <div id="syncAutoQr" style="width:180px;height:180px;background:#fff;border-radius:8px"></div>
+          <div id="syncAutoInfo" class="hint"></div>
+          <div id="syncAutoLast" class="hint"></div>
+          <button id="syncAutoNew">Kopplung erneuern</button>
+        </div>
       </div>
       <div id="savedWrap">
         <h3>💾 Gespeichertes Wissen</h3>
@@ -770,8 +783,8 @@
           <h3>Mit dem PC abgleichen <span class="beta-badge">Beta</span></h3>
           <p class="hint">Am PC im <b>gleichen Bereich</b> (Dienstlich oder Privat) unter ⚙ → Wissen „Mit Handy abgleichen“ öffnen,
             dann hier den QR-Code fotografieren oder Adresse und Code eintippen. Beide Geräte im selben WLAN; die Daten gehen
-            direkt, ohne Cloud. Übertragen werden Personas und das gespeicherte Wissen – kein Gedächtnis, keine Chats, keine
-            Schlüssel und kein Firmenwissen.</p>
+            direkt, ohne Cloud. Von Hand übertragen werden hier Personas und das gespeicherte Wissen – keine Schlüssel und
+            kein Firmenwissen.</p>
           <div class="row wrap">
             <button id="syncScan">📷 QR-Code scannen</button>
           </div>
@@ -786,6 +799,15 @@
           <div id="syncKnow" class="row wrap" hidden>
             <button id="syncKnowGet">⬇ Wissen vom PC holen</button>
             <button id="syncKnowSend">⬆ Wissen an den PC senden</button>
+          </div>
+          <h3>🔄 Automatisch abgleichen</h3>
+          <p class="hint">Einmal koppeln, dann gleicht das Handy Personas, Chatverlauf, Gedächtnis, Selbstbild und Wissen von
+            selbst mit dem PC ab, sobald es im selben WLAN ist (beim Öffnen, beim Verlassen, alle 5 Minuten und nach Änderungen).
+            Dazu am PC „Handy automatisch abgleichen“ einschalten und dessen QR-Code oben mit „📷 QR-Code scannen“ lesen.</p>
+          <p id="syncAutoState" class="hint"></p>
+          <div class="row wrap">
+            <button id="syncNow" hidden>🔄 Jetzt abgleichen</button>
+            <button id="syncUnpair" hidden>Kopplung lösen</button>
           </div>
         </div>
       </div>

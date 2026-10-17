@@ -970,6 +970,121 @@ check(
   'Selbstbild: „Jetzt nachdenken“ – Figur denkt über die letzten Gespräche nach und ergänzt ihr Selbstbild',
   JSON.stringify(reflRes),
 );
+
+// ---- Automatischer Abgleich: Zusammenführen (auf beiden Geräten gleich) und der ganze Ablauf am Handy
+const sync = await import('../src/abgleich.js');
+{
+  const pc = {
+    personas: [{ id: 'pcmax', name: 'Max', prompt: 'PC-Text', updated: 10, memory: [{ id: 'm1', text: 'Jens mag Kaffee.', created: 1 }], selbst: [] }],
+    history: { pcmax: [{ id: 'a', role: 'user', content: 'PC-Frage', t: 100 }] },
+    saved: [{ id: 'w1', title: 'Wallbox', text: 'alt', created: 1 }],
+    deleted: {},
+  };
+  const ph = {
+    personas: [{ id: 'aamax', name: 'max', prompt: 'Handy-Text', updated: 20, memory: [{ id: 'm2', text: 'Jens fährt Rad.', created: 2 }, { id: 'm3', text: 'jens mag kaffee', created: 3 }], selbst: [] }],
+    history: { aamax: [{ id: 'b', role: 'user', content: 'Handy-Frage', t: 50 }] },
+    saved: [{ id: 'w2', title: 'Wallbox', text: 'neu', created: 1, updated: 5 }],
+    deleted: {},
+  };
+  const canon = (m) => JSON.stringify({ p: m.personas.map(({ reflectTurns: _t, avatarStamp: _s, ...x }) => Object.fromEntries(Object.entries(x).sort())), h: m.history, w: m.saved.map((e) => e.text) });
+  const m1 = sync.mergeSync(pc, ph);
+  const m2 = sync.mergeSync(ph, pc);
+  const del = sync.mergeSync(pc, { ...ph, deleted: { a: 5, m1: 5 } });
+  const d = { base: ['x', 'y'], deleted: {} };
+  sync.noteDeletions({ personas: [{ id: 'x' }] }, d, 1000);
+  const res = {
+    id: m1.personas[0].id,
+    rename: m1.rename,
+    prompt: m1.personas[0].prompt,
+    mem: m1.personas[0].memory.map((e) => e.text),
+    hist: m1.history.aamax?.map((x) => x.id),
+    saved: m1.saved.map((e) => e.text),
+    same: canon(m1) === canon(m2),
+    delHist: del.history.aamax?.map((x) => x.id),
+    delMem: del.personas[0].memory.map((e) => e.id),
+    tomb: Object.keys(d.deleted),
+  };
+  check(
+    res.id === 'aamax' && res.rename.pcmax === 'aamax' && res.prompt === 'Handy-Text' && res.mem.length === 2 && res.hist.join() === 'b,a' && res.saved.join() === 'neu' && res.same,
+    'Abgleich: gleiche Persona wird erkannt (Name), neuerer Text gewinnt, Gedächtnis ohne Doppelte, Verlauf nach Zeit, Wissen neuerer Stand – auf beiden Geräten gleich',
+    JSON.stringify(res),
+  );
+  check(res.delHist.join() === 'b' && !res.delMem.includes('m1') && res.tomb.join() === 'y', 'Abgleich: Gelöschtes bleibt gelöscht (kommt nicht vom anderen Gerät zurück)', JSON.stringify(res));
+}
+const syncArea = await page.evaluate(() => window.__app.area);
+const syncActive = await page.evaluate(() => window.__app.persona().id);
+const pcHits = [];
+let pcFigure = null;
+let pcStand = null;
+await page.route('http://pc.test:47820/**', async (route) => {
+  const req = route.request();
+  const u = new URL(req.url());
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'x-ki-token, x-ki-code, content-type', 'access-control-allow-methods': 'GET, POST, OPTIONS' };
+  if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+  pcHits.push({ path: u.pathname, token: req.headers()['x-ki-token'] });
+  const json = (x) => route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify(x) });
+  if (u.pathname === "/info") return json({ name: "PC", area: syncArea, urls: ['http://pc.test:47820'] });
+  if (u.pathname === '/abgleich') {
+    const stand = JSON.parse(req.postData()).stand;
+    if (!pcStand) {
+      pcStand = structuredClone(stand);
+      // der PC hat inzwischen eigenes: eine Erinnerung, eine Antwort und eine neue Persona mit Figur
+      const p = stand.personas.find((x) => x.id === syncActive) ?? stand.personas[0];
+      p.memory.push({ id: 'pcmem', text: 'Vom PC gelernt: Jens fährt ein E-Auto.', created: Date.now() });
+      p.avatarStamp = -1; // Figur des Handys ist neuer -> Handy schickt sie
+      stand.history[p.id].push({ id: 'pcmsg', role: 'assistant', content: 'Antwort vom PC', t: Date.now() + 1 });
+      stand.personas.push({ id: 'pcneu', name: 'Büro-Lina', prompt: 'Du bist Lina.', language: 'de', style: 'gespraech', avatarStamp: 5, memory: [], selbst: [] });
+      stand.history.pcneu = [{ id: 'pcl1', role: 'user', content: 'Hallo Lina', t: 5 }];
+    }
+    return json({ area: syncArea, stand, urls: ['http://pc.test:47820'] });
+  }
+  if (u.pathname === '/figur') {
+    pcFigure = req.postDataBuffer();
+    return json({ ok: true });
+  }
+  if (u.pathname === '/persona' && pcFigure) return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/zip' }, body: pcFigure });
+  return route.fulfill({ status: 404, headers: cors });
+});
+const syncRes = await page.evaluate(async () => {
+  const app = window.__app;
+  app.state.busy = false;
+  app.pairWith(['http://unerreichbar.test:1', 'http://pc.test:47820'], 'a'.repeat(36));
+  for (let i = 0; i < 100 && !app.state.abgleich.last; i++) await new Promise((r) => setTimeout(r, 100));
+  const p = app.persona();
+  const lina = app.state.personas.find((x) => x.name === 'Büro-Lina');
+  return {
+    last: !!app.state.abgleich.last,
+    err: app.state.settings.syncPair?.error,
+    urls: app.state.settings.syncPair?.urls,
+    mem: p.memory.some((m) => /E-Auto/.test(m.text)),
+    chat: document.getElementById('chat').textContent.includes('Antwort vom PC'),
+    lina: !!lina,
+    linaFig: lina?.avatarStamp,
+    linaHist: app.state.history[lina?.id]?.length,
+    state: document.getElementById('syncAutoState').textContent,
+  };
+});
+check(
+  syncRes.last && !syncRes.err && syncRes.mem && syncRes.chat && syncRes.lina && syncRes.linaFig === 5 && syncRes.linaHist === 1 && /Gekoppelt/.test(syncRes.state),
+  'Abgleich am Handy: gekoppelt per QR-Inhalt, PC gefunden (zweite Adresse), Erinnerung, Antwort und neue Persona samt Figur vom PC übernommen',
+  JSON.stringify(syncRes),
+);
+check(
+  pcHits.length > 0 && pcHits.every((h) => h.token === 'a'.repeat(36)) && !!pcFigure && pcStand?.personas?.length >= 1 && Object.values(pcStand.history ?? {}).some((h) => h.length > 0),
+  'Abgleich am Handy: Stand mit Verlauf und geänderte Figur gehen an den PC (nur mit Kopplungsschlüssel)',
+  JSON.stringify({ hits: pcHits.map((h) => h.path), figur: pcFigure?.length }),
+);
+// Löschen am Handy: geht beim nächsten Abgleich als „gelöscht“ an den PC
+const delRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const gone = p.memory.find((m) => /E-Auto/.test(m.text));
+  p.memory.splice(p.memory.indexOf(gone), 1);
+  await app.autoSync({ manual: true });
+  return { id: gone.id, back: app.persona().memory.some((m) => m.id === gone.id) };
+});
+const lastStand = await page.evaluate(() => window.__app.syncSnapshot());
+check(!delRes.back && !!lastStand.deleted?.[delRes.id], 'Abgleich: am Handy Gelöschtes wird als gelöscht weitergegeben und kommt nicht zurück', JSON.stringify(delRes));
 const svBefore = claudeRequests.length;
 const svMsgs = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
 await page.fill('#input', 'Wie war das nochmal mit der Förderung für die Wallbox?');

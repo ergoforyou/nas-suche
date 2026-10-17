@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('desktop', {
   kbSave: (kb) => ipcRenderer.invoke('kb:save', kb),
   syncStart: () => ipcRenderer.invoke('sync:start'),
   syncStop: () => ipcRenderer.invoke('sync:stop'),
+  syncServe: (token) => ipcRenderer.invoke('sync:serve', token),
+  syncUnserve: () => ipcRenderer.invoke('sync:unserve'),
   onSyncRequest: (fn) => (syncHandler = fn),
   officePaste: (opts) => ipcRenderer.invoke('office:paste', opts),
   officeCopy: (text) => ipcRenderer.invoke('office:copy', text),
