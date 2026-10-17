@@ -332,6 +332,23 @@ public class MainActivity extends BridgeActivity {
     }
 
     private android.widget.TextView floatLiveBtn;
+    private android.widget.LinearLayout floatBar;
+
+    /** Knöpfe unter der Figur an die Fensterbreite anpassen – sonst ragen sie bei kleiner Figur hinaus und sitzen verschoben. */
+    void fitFloatBar(int width) {
+        if (floatBar == null) return;
+        int n = floatBar.getChildCount();
+        if (n == 0) return;
+        int gap = dp(3);
+        int size = Math.max(dp(24), Math.min(dp(40), width / n - 2 * gap));
+        for (int i = 0; i < n; i++) {
+            android.view.View v = floatBar.getChildAt(i);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(size, size);
+            lp.setMargins(gap, 0, gap, 0);
+            v.setLayoutParams(lp);
+            if (v instanceof android.widget.TextView) ((android.widget.TextView) v).setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, size * 0.45f);
+        }
+    }
 
     /** Live-Knopf an der schwebenden Figur einfärben (blau = Live läuft). */
     void paintFloatLive() {
@@ -439,6 +456,7 @@ public class MainActivity extends BridgeActivity {
         floatBox.addView(wv, wl);
         // Knopfleiste direkt unter der Figur (wandert mit): Sprechen, Live an/aus, zurück zur App
         android.widget.LinearLayout bar = new android.widget.LinearLayout(this);
+        floatBar = bar;
         bar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER);
         String[][] btns = { { "🎤", "talk" }, { "📞", "livetoggle" }, { "📱", "app" } };
@@ -470,6 +488,7 @@ public class MainActivity extends BridgeActivity {
         FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, floatBarH());
         bl.gravity = Gravity.BOTTOM;
         floatBox.addView(bar, bl);
+        fitFloatBar(floatParams.width);
         paintFloatLive();
         try {
             floatWm().addView(floatBox, floatParams);
@@ -677,6 +696,7 @@ public class MainActivity extends BridgeActivity {
         floatParams.y -= (nh - floatParams.height) / 2;
         floatParams.width = nw;
         floatParams.height = nh;
+        fitFloatBar(nw);
         try {
             floatWm().updateViewLayout(floatBox, floatParams);
         } catch (Exception e) {
@@ -792,7 +812,16 @@ public class MainActivity extends BridgeActivity {
         public String place() {
             WindowManager.LayoutParams fp = floatParams;
             if (floatBox == null || fp == null) return "null";
-            return "{\"x\":" + fp.x + ",\"y\":" + fp.y + ",\"w\":" + fp.width + ",\"h\":" + fp.height + ",\"bar\":" + floatBarH() + ",\"live\":" + pipLive + "}";
+            int[] loc = new int[2];
+            int lx = -1, ly = -1, lw = 0;
+            if (floatLiveBtn != null) {
+                floatLiveBtn.getLocationOnScreen(loc);
+                lw = floatLiveBtn.getWidth();
+                lx = loc[0] + lw / 2;
+                ly = loc[1] + floatLiveBtn.getHeight() / 2;
+            }
+            return "{\"x\":" + fp.x + ",\"y\":" + fp.y + ",\"w\":" + fp.width + ",\"h\":" + fp.height + ",\"bar\":" + floatBarH()
+                + ",\"liveX\":" + lx + ",\"liveY\":" + ly + ",\"liveW\":" + lw + ",\"live\":" + pipLive + "}";
         }
 
         @JavascriptInterface

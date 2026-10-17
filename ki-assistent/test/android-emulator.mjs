@@ -218,7 +218,8 @@ if (BETA) {
   const tapLive = async () => {
     const pl = JSON.parse(await run(`return KIFloat.place()`));
     if (!pl) return null;
-    adb('shell', 'input', 'tap', String(Math.round(pl.x + pl.w / 2)), String(Math.round(pl.y + pl.h - pl.bar / 2)));
+    // echte Bildschirmlage des 📞-Knopfs (Android setzt das Fenster ggf. unter die Statusleiste)
+    adb('shell', 'input', 'tap', String(pl.liveX), String(pl.liveY));
     return pl;
   };
   const before = await tapLive();
@@ -227,7 +228,7 @@ if (BETA) {
     await sleep(500);
     lv = await run(`return { on: !!window.__app.state.settings.handsFree, intent: window.__app.lastIntent, shown: JSON.parse(KIFloat.place())?.live, wake: window.__app.state.wakeListening }`);
   }
-  check(!!before && lv.on && lv.intent === 'livetoggle' && lv.shown && !lv.wake, 'Schwebende Figur: 📞 startet das Live-Gespräch (auch wenn das Aktivierungswort wartet), Knopf wird blau', JSON.stringify({ before, ...lv }));
+  check(!!before && before.liveW > 0 && before.liveX + before.liveW / 2 <= before.x + before.w + 1 && lv.on && lv.intent === 'livetoggle' && lv.shown && !lv.wake, 'Schwebende Figur: 📞 liegt im Fenster, startet das Live-Gespräch (auch wenn das Aktivierungswort wartet), Knopf wird blau', JSON.stringify({ before, ...lv }));
   await tapLive();
   for (let i = 0; i < 12 && lv.on; i++) {
     await sleep(500);
