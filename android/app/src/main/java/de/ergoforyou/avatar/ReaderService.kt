@@ -86,6 +86,8 @@ class ReaderService : AccessibilityService() {
 
     fun stopSpeaking() = speaker.stop()
 
+    fun reloadAvatar() = overlay?.loadAvatar()
+
     private fun chatGptRoot(): AccessibilityNodeInfo? =
         rootInActiveWindow?.takeIf { it.packageName == CHATGPT }
             ?: windows.firstNotNullOfOrNull { w -> w.root?.takeIf { it.packageName == CHATGPT } }

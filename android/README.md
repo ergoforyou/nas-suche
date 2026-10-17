@@ -5,8 +5,10 @@ macht weiterhin Spracherkennung, Denken und Gedächtnis (über dein Abo). Diese 
 angezeigten Antworttext über die Android-Bedienungshilfen mit und lässt den Avatar ihn mit der
 kostenlosen Sprachausgabe des Handys vorlesen. Keine API, keine Zusatzkosten.
 
-Der Avatar ist hier noch ein Platzhalter-Gesicht. Der echte Avatar kommt später als transparente
-WebView an dieselbe Stelle (`AvatarView.speaking` ist die Schnittstelle).
+Als Avatar kann ein eigenes Video gewählt werden (z. B. Idle-Animation). Es läuft stumm in
+Endlosschleife; die Hintergrundfarbe (Farbe der linken oberen Ecke) wird durchsichtig gestanzt.
+Am besten funktioniert ein einfarbiger Hintergrund (Grün, Schwarz, Weiß). Ohne Video erscheint
+ein Platzhalter-Gesicht. Beim Sprechen pulsiert der Avatar leicht.
 
 ## Installieren
 
@@ -16,6 +18,12 @@ WebView an dieselbe Stelle (`AvatarView.speaking` ist die Schnittstelle).
 3. App öffnen → **„1. Bedienungshilfe aktivieren“** → „Avatar Overlay“ einschalten.
    Ist der Schalter ausgegraut (Android 13+): *Einstellungen → Apps → Avatar Overlay → ⋮ →
    „Eingeschränkte Einstellungen zulassen“*, dann nochmal versuchen.
+
+## Avatar-Video einrichten
+
+In der App unter **Avatar → „Avatar-Video auswählen“** das Video wählen. Mit **„Toleranz
+Hintergrund“** einstellen, wie viel vom Hintergrund verschwindet (zu hoch = Avatar wird löchrig),
+mit **„Größe“** die Größe. Änderungen greifen beim Loslassen des Reglers.
 
 ## Was wir testen
 

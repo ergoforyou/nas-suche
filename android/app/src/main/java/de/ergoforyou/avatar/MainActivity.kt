@@ -11,12 +11,17 @@ import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 
 /** Einrichtung und Protokoll für den Machbarkeitstest. */
 class MainActivity : Activity() {
+    private companion object {
+        const val PICK_VIDEO = 1
+    }
+
     private lateinit var prefs: Prefs
     private lateinit var status: TextView
     private lateinit var logView: TextView
@@ -61,6 +66,34 @@ class MainActivity : Activity() {
                     ReaderService.instance?.setOverlayVisible(on)
                 }
             })
+            addView(section("Avatar"))
+            addView(button("Avatar-Video auswählen") {
+                startActivityForResult(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("video/*"),
+                    PICK_VIDEO,
+                )
+            })
+            addView(button("Platzhalter statt Video") {
+                prefs.videoUri = null
+                ReaderService.instance?.reloadAvatar()
+            })
+            addView(Switch(context).apply {
+                text = "Videohintergrund durchsichtig machen"
+                isChecked = prefs.removeBackground
+                setOnCheckedChangeListener { _, on ->
+                    prefs.removeBackground = on
+                    ReaderService.instance?.reloadAvatar()
+                }
+            })
+            addView(slider("Toleranz Hintergrund", 0, 100, prefs.tolerance) { prefs.tolerance = it })
+            addView(slider("Größe (dp)", 80, 400, prefs.sizeDp) { prefs.sizeDp = it })
+            addView(TextView(context).apply {
+                text = "Durchsichtig wird die Farbe der linken oberen Videoecke – am besten ein Video mit " +
+                    "einfarbigem Hintergrund (Grün, Schwarz oder Weiß)."
+                textSize = 12f
+            })
+
+            addView(section("Test"))
             addView(TextView(context).apply {
                 text = "Tipp: ChatGPT-Sprachausgabe stumm schalten bzw. Chat mit Diktierfunktion nutzen. " +
                     "Avatar lange drücken = ChatGPT-Bildschirmstruktur kopieren (für die Auswertung)."
@@ -95,6 +128,48 @@ class MainActivity : Activity() {
     override fun onPause() {
         EventLog.removeListener(logListener)
         super.onPause()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data
+        if (requestCode != PICK_VIDEO || resultCode != RESULT_OK || uri == null) return
+        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        prefs.videoUri = uri.toString()
+        ReaderService.instance?.reloadAvatar()
+        toast(if (ReaderService.instance != null) "Video gesetzt" else "Video gesetzt – erscheint, sobald Mitlesen aktiv ist")
+    }
+
+    private fun section(title: String) = TextView(this).apply {
+        text = title
+        textSize = 17f
+        setTypeface(typeface, Typeface.BOLD)
+        setPadding(0, (resources.displayMetrics.density * 16).toInt(), 0, 0)
+    }
+
+    /** Schieberegler, der den Avatar beim Loslassen mit dem neuen Wert neu lädt. */
+    private fun slider(label: String, min: Int, max: Int, value: Int, onChange: (Int) -> Unit): View {
+        val title = TextView(this).apply { text = "$label: $value" }
+        val bar = SeekBar(this).apply {
+            this.max = max - min
+            progress = value - min
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                    title.text = "$label: ${progress + min}"
+                }
+                override fun onStartTrackingTouch(bar: SeekBar) = Unit
+                override fun onStopTrackingTouch(bar: SeekBar) {
+                    onChange(bar.progress + min)
+                    ReaderService.instance?.reloadAvatar()
+                }
+            })
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(title)
+            addView(bar)
+        }
     }
 
     private fun button(label: String, onClick: (View) -> Unit) =

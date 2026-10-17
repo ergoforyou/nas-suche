@@ -1,13 +1,16 @@
 package de.ergoforyou.avatar
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
@@ -20,9 +23,17 @@ import kotlin.math.abs
  * lange drücken = Bildschirmstruktur von ChatGPT in die Zwischenablage kopieren.
  */
 @SuppressLint("ClickableViewAccessibility")
-class AvatarOverlay(context: Context, private val onLongPress: () -> Unit) {
+class AvatarOverlay(private val context: Context, private val onLongPress: () -> Unit) {
     private val windowManager = context.getSystemService(WindowManager::class.java)
-    private val avatar = AvatarView(context)
+    private val prefs = Prefs(context)
+    private val placeholder = AvatarView(context)
+    private val stage = FrameLayout(context)
+    private val pulse = ValueAnimator.ofFloat(1f, 1.04f).apply {
+        duration = 420
+        repeatMode = ValueAnimator.REVERSE
+        repeatCount = ValueAnimator.INFINITE
+        addUpdateListener { stage.scaleX = it.animatedValue as Float; stage.scaleY = it.animatedValue as Float }
+    }
     private val caption = TextView(context).apply {
         setTextColor(Color.WHITE)
         textSize = 13f
@@ -38,14 +49,15 @@ class AvatarOverlay(context: Context, private val onLongPress: () -> Unit) {
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
-        addView(avatar)
+        addView(stage)
         addView(caption)
     }
     private val params = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
         PixelFormat.TRANSLUCENT,
     ).apply {
         gravity = Gravity.TOP or Gravity.START
@@ -56,12 +68,13 @@ class AvatarOverlay(context: Context, private val onLongPress: () -> Unit) {
     private var showCaption = true
 
     init {
+        loadAvatar()
         var downX = 0f
         var downY = 0f
         var startX = 0
         var startY = 0
         var downTime = 0L
-        avatar.setOnTouchListener { _, e ->
+        stage.setOnTouchListener { _, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.rawX; downY = e.rawY
@@ -86,6 +99,21 @@ class AvatarOverlay(context: Context, private val onLongPress: () -> Unit) {
         }
     }
 
+    /** Baut den Avatar nach den aktuellen Einstellungen neu auf (Video, Größe, Hintergrund). */
+    fun loadAvatar() {
+        stage.removeAllViews()
+        val uri = prefs.videoUri?.let(Uri::parse)
+        if (uri == null) {
+            stage.addView(placeholder)
+            return
+        }
+        val size = (context.resources.displayMetrics.density * prefs.sizeDp).toInt()
+        stage.addView(
+            VideoAvatarView(context, uri, prefs.removeBackground, prefs.tolerance),
+            FrameLayout.LayoutParams(size, size),
+        )
+    }
+
     fun show() {
         if (shown) return
         windowManager.addView(root, params)
@@ -99,7 +127,14 @@ class AvatarOverlay(context: Context, private val onLongPress: () -> Unit) {
     }
 
     fun setSpeaking(speaking: Boolean) {
-        avatar.speaking = speaking
+        placeholder.speaking = speaking
+        if (speaking) {
+            if (!pulse.isStarted) pulse.start()
+        } else {
+            pulse.cancel()
+            stage.scaleX = 1f
+            stage.scaleY = 1f
+        }
     }
 
     fun setCaption(text: String) {
