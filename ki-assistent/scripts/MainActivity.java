@@ -1137,13 +1137,22 @@ public class MainActivity extends BridgeActivity {
             }
         };
         IntentFilter f = new IntentFilter(PIP_ACTION);
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(pipReceiver, f, Context.RECEIVER_NOT_EXPORTED);
-        else registerReceiver(pipReceiver, f);
+        try {
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(pipReceiver, f, Context.RECEIVER_NOT_EXPORTED);
+            else registerReceiver(pipReceiver, f);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Bild-im-Bild-Empfänger", e);
+            pipReceiver = null;
+        }
     }
 
     private PictureInPictureParams pipParams() {
         PictureInPictureParams.Builder b = new PictureInPictureParams.Builder().setAspectRatio(new Rational(pipW, pipH));
-        b.setActions(pipActions());
+        try {
+            b.setActions(pipActions());
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Bild-im-Bild-Knöpfe", e);
+        }
         if (Build.VERSION.SDK_INT >= 31) {
             b.setAutoEnterEnabled(pipEnabled && !(floatEnabled && canFloat()));
             b.setSeamlessResizeEnabled(true);
@@ -1152,7 +1161,12 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void applyParams() {
-        if (Build.VERSION.SDK_INT >= 26) setPictureInPictureParams(pipParams());
+        if (Build.VERSION.SDK_INT < 26) return;
+        try {
+            setPictureInPictureParams(pipParams());
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Bild-im-Bild", e);
+        }
     }
 
     @Override

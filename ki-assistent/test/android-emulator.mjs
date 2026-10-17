@@ -31,7 +31,11 @@ let pid = '';
 let targets = [];
 for (let i = 0; i < 60 && !targets.length; i++) {
   await sleep(1000);
-  pid = adb('shell', 'pidof', APP).split(/\s+/)[0] ?? '';
+  try {
+    pid = adb('shell', 'pidof', APP).split(/\s+/)[0] ?? '';
+  } catch {
+    pid = '';
+  }
   if (!pid) continue;
   try {
     adb('forward', 'tcp:9333', `localabstract:webview_devtools_remote_${pid}`);
@@ -40,6 +44,9 @@ for (let i = 0; i < 60 && !targets.length; i++) {
 }
 check(targets.length > 0, 'App gestartet, WebView erreichbar', `pid ${pid}`);
 if (!targets.length) {
+  try {
+    console.log('--- Absturzprotokoll ---\n' + adb('logcat', '-d', '-b', 'crash'));
+  } catch {}
   console.log(adb('logcat', '-d', '-t', '300'));
   process.exit(1);
 }
