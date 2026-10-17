@@ -32,7 +32,7 @@ den Konturen von „image N“ folgen soll.
 | **Invert** | Schwarze Linien auf Weiß statt Weiß auf Schwarz |
 | **Match output size** | txt2img: Breite und Höhe werden an das Seitenverhältnis der Vorlage angepasst. Das ist wichtig, damit die Kanten passen. |
 | **Reference max side** | Maximale Kantenlänge der Referenz (und der Ausgabe, wenn „Match“ aktiv ist) |
-| **Instruction** | Text, der an den Prompt angehängt wird. `{n}` wird zur Bildnummer. |
+| **Instruction** | Vorlage für den Prompt, der an Klein geht. `{n}` = Bildnummer, `{prompt}` = dein Prompt |
 
 `[Klein] Enable Reference` wird bei Bedarf nur für diese Generierung eingeschaltet und danach
 wieder zurückgesetzt. Die Erweiterung lässt sich mit dem eingebauten **ImageStitch** kombinieren.

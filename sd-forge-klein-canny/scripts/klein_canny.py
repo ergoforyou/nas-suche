@@ -26,8 +26,9 @@ print(f"{TAG} extension loaded ({__file__})")
 MODES = ["Canny", "Canny + Original", "Original (no preprocessing)"]
 
 DEFAULT_INSTRUCTION = (
-    "Use image {n} as a canny edge map: follow its outlines, composition, "
-    "pose and proportions exactly, but render a fully detailed image without visible lines."
+    "Turn the black-and-white canny edge map in image {n} into a finished, fully detailed image of: {prompt}. "
+    "Keep every outline, the pose, the proportions and the composition of image {n} exactly. "
+    "No visible lines, no sketch look, no edge map artifacts."
 )
 
 INFO = """
@@ -132,7 +133,7 @@ class KleinCannyReference(scripts.Script):
                 value=DEFAULT_INSTRUCTION,
                 lines=2,
                 label="Instruction",
-                info="{n} is replaced by the number of the reference image (image 1, image 2, ...)",
+                info="{n} = number of the reference image, {prompt} = your prompt (without {prompt} the text is appended)",
             )
 
             btn_preview = gr.Button("Show preview", variant="secondary")
@@ -215,10 +216,16 @@ class KleinCannyReference(scripts.Script):
         p.clear_prompt_cache()  # force re-encoding so the new references are picked up
 
         if add_instruction and instruction.strip() and mode != "Original (no preprocessing)":
-            text = instruction.replace("{n}", str(first_index)).strip()
+            template = instruction.replace("{n}", str(first_index)).strip()
+
+            def _apply(pr: str) -> str:
+                pr = pr.strip().rstrip(",.")
+                if "{prompt}" in template:
+                    return template.replace("{prompt}", pr or "the same subject")
+                return f"{pr}. {template}" if pr else template
 
             def _append(prompts):
-                return [f"{pr.rstrip().rstrip(',')}. {text}" if pr.strip() else text for pr in prompts]
+                return [_apply(pr) for pr in prompts]
 
             p.all_prompts = _append(p.all_prompts)
             if getattr(p, "all_hr_prompts", None):
@@ -226,6 +233,7 @@ class KleinCannyReference(scripts.Script):
 
         p.extra_generation_params["Klein Canny"] = f"{mode}, {int(low)}/{int(high)}, blur {int(blur)}" + (", inverted" if invert else "")
         print(f"{TAG} encoded {len(KleinCannyReference._own_latents)} reference(s) ({refs[0].size[0]}x{refs[0].size[1]}), first = image {first_index}")
+        print(f"{TAG} prompt sent to Klein: {p.all_prompts[0][:300]}")
 
     def postprocess(self, p, processed, *args):
         if self._own_latents:
