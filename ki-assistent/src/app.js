@@ -6030,7 +6030,6 @@ window.__app = {
   voicedSeconds,
   runAppTool,
   appKnowledge,
-  buildMessages,
   costs,
   priceOf,
   edition: EDITION,

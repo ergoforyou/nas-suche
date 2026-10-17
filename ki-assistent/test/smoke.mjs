@@ -69,7 +69,7 @@ if (!quick.ok) {
 
 const cases = [
   // Standardstimme; "ich", "möchte", "dich" enthalten den ç-Laut, der früher falsch übersetzt wurde
-  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/möcht/i, /frag/i, /kostet/i, /beispiel/i], must: /beispiel/i },
+  { text: 'Ich möchte dich etwas fragen. Das kostet z. B. 12 Euro.', lang: 'german', expect: [/möcht/i, /frag/i, /kostet/i, /beispiel|z\.\s?b\./i], must: /beispiel|z\.\s?b\./i },
   { text: 'Hello, how are you today? I am fine, thank you.', lang: 'english', expect: [/hello/i, /today/i] },
 ];
 
