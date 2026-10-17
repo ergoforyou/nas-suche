@@ -6,9 +6,9 @@ angezeigten Antworttext über die Android-Bedienungshilfen mit und lässt den Av
 kostenlosen Sprachausgabe des Handys vorlesen. Keine API, keine Zusatzkosten.
 
 Als Avatar kann ein eigenes Video gewählt werden (z. B. Idle-Animation). Es läuft stumm in
-Endlosschleife; die Hintergrundfarbe (Farbe der linken oberen Ecke) wird durchsichtig gestanzt.
-Am besten funktioniert ein einfarbiger Hintergrund (Grün, Schwarz, Weiß). Ohne Video erscheint
-ein Platzhalter-Gesicht. Beim Sprechen pulsiert der Avatar leicht.
+Endlosschleife in einer durchsichtigen WebView. Für einen durchsichtigen Hintergrund ein
+**WebM-Video mit Alphakanal** (VP8/VP9) verwenden – der normale Android-Videoplayer kann das nicht,
+die WebView schon. Ohne Video erscheint ein Platzhalter-Gesicht. Beim Sprechen pulsiert der Avatar.
 
 ## Installieren
 
@@ -19,11 +19,13 @@ ein Platzhalter-Gesicht. Beim Sprechen pulsiert der Avatar leicht.
    Ist der Schalter ausgegraut (Android 13+): *Einstellungen → Apps → Avatar Overlay → ⋮ →
    „Eingeschränkte Einstellungen zulassen“*, dann nochmal versuchen.
 
-## Avatar-Video einrichten
+## Avatar bedienen
 
-In der App unter **Avatar → „Avatar-Video auswählen“** das Video wählen. Mit **„Toleranz
-Hintergrund“** einstellen, wie viel vom Hintergrund verschwindet (zu hoch = Avatar wird löchrig),
-mit **„Größe“** die Größe. Änderungen greifen beim Loslassen des Reglers.
+- **Video wählen:** in der App unter *Avatar → „Avatar-Video auswählen“* (wird in die App kopiert).
+- **Am Avatar:** ziehen = verschieben, tippen = Bedienleiste:
+  **−** / **+** Größe, **CC** Untertitel an/aus, **✕** Avatar ausschalten (ausblenden, still,
+  liest nicht mehr mit). Wieder einschalten über *„Avatar aktiv“* in der App.
+- **Lange drücken** = ChatGPT-Bildschirmstruktur kopieren (für die Auswertung).
 
 ## Was wir testen
 

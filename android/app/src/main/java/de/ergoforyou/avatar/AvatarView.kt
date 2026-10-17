@@ -30,7 +30,8 @@ class AvatarView(context: Context) : View(context) {
     private val mouth = RectF()
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = (resources.displayMetrics.density * 96).toInt()
+        val default = (resources.displayMetrics.density * 96).toInt()
+        val size = minOf(resolveSize(default, widthMeasureSpec), resolveSize(default, heightMeasureSpec))
         setMeasuredDimension(size, size)
     }
 

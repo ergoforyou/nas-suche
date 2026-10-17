@@ -8,6 +8,7 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.webkit.MimeTypeMap
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -15,6 +16,7 @@ import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import java.io.File
 
 /** Einrichtung und Protokoll für den Machbarkeitstest. */
 class MainActivity : Activity() {
@@ -24,6 +26,7 @@ class MainActivity : Activity() {
 
     private lateinit var prefs: Prefs
     private lateinit var status: TextView
+    private lateinit var activeSwitch: Switch
     private lateinit var logView: TextView
     private val logListener: () -> Unit = { logView.text = EventLog.text() }
 
@@ -33,6 +36,14 @@ class MainActivity : Activity() {
         val pad = (resources.displayMetrics.density * 16).toInt()
 
         status = TextView(this).apply { textSize = 15f }
+        activeSwitch = Switch(this).apply {
+            text = "Avatar aktiv (anzeigen + mitlesen)"
+            setOnCheckedChangeListener { _, on ->
+                if (on == prefs.overlay) return@setOnCheckedChangeListener
+                val service = ReaderService.instance
+                if (service != null) service.setActive(on) else prefs.overlay = on
+            }
+        }
         logView = TextView(this).apply {
             typeface = Typeface.MONOSPACE
             textSize = 11f
@@ -58,14 +69,7 @@ class MainActivity : Activity() {
                     if (!on) ReaderService.instance?.stopSpeaking()
                 }
             })
-            addView(Switch(context).apply {
-                text = "Schwebenden Avatar anzeigen"
-                isChecked = prefs.overlay
-                setOnCheckedChangeListener { _, on ->
-                    prefs.overlay = on
-                    ReaderService.instance?.setOverlayVisible(on)
-                }
-            })
+            addView(activeSwitch)
             addView(section("Avatar"))
             addView(button("Avatar-Video auswählen") {
                 startActivityForResult(
@@ -74,22 +78,14 @@ class MainActivity : Activity() {
                 )
             })
             addView(button("Platzhalter statt Video") {
-                prefs.videoUri = null
+                prefs.videoPath?.let { File(it).delete() }
+                prefs.videoPath = null
                 ReaderService.instance?.reloadAvatar()
             })
-            addView(Switch(context).apply {
-                text = "Videohintergrund durchsichtig machen"
-                isChecked = prefs.removeBackground
-                setOnCheckedChangeListener { _, on ->
-                    prefs.removeBackground = on
-                    ReaderService.instance?.reloadAvatar()
-                }
-            })
-            addView(slider("Toleranz Hintergrund", 0, 100, prefs.tolerance) { prefs.tolerance = it })
-            addView(slider("Größe (dp)", 80, 400, prefs.sizeDp) { prefs.sizeDp = it })
+            addView(slider("Größe (dp)", 80, 480, prefs.sizeDp) { prefs.sizeDp = it })
             addView(TextView(context).apply {
-                text = "Durchsichtig wird die Farbe der linken oberen Videoecke – am besten ein Video mit " +
-                    "einfarbigem Hintergrund (Grün, Schwarz oder Weiß)."
+                text = "Für einen durchsichtigen Hintergrund ein WebM-Video mit Transparenz (Alphakanal) " +
+                    "verwenden. Am Avatar: tippen = Bedienleiste mit − / + (Größe), CC (Untertitel), ✕ (aus)."
                 textSize = 12f
             })
 
@@ -117,6 +113,7 @@ class MainActivity : Activity() {
         super.onResume()
         EventLog.addListener(logListener)
         logListener()
+        activeSwitch.isChecked = prefs.overlay
         status.text = if (ReaderService.instance != null) {
             "✅ Mitlesen ist aktiv"
         } else {
@@ -135,10 +132,25 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         val uri = data?.data
         if (requestCode != PICK_VIDEO || resultCode != RESULT_OK || uri == null) return
-        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        prefs.videoUri = uri.toString()
-        ReaderService.instance?.reloadAvatar()
-        toast(if (ReaderService.instance != null) "Video gesetzt" else "Video gesetzt – erscheint, sobald Mitlesen aktiv ist")
+        toast("Video wird übernommen …")
+        // Lokal kopieren: die WebView spielt es dann direkt aus dem App-Speicher ab.
+        Thread {
+            val result = runCatching {
+                val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(contentResolver.getType(uri)) ?: "webm"
+                filesDir.listFiles { f -> f.name.startsWith("avatar-video.") }?.forEach { it.delete() }
+                val target = File(filesDir, "avatar-video.$ext")
+                contentResolver.openInputStream(uri)!!.use { input -> target.outputStream().use { input.copyTo(it) } }
+                target
+            }
+            runOnUiThread {
+                result.onSuccess {
+                    prefs.videoPath = it.absolutePath
+                    ReaderService.instance?.reloadAvatar()
+                    EventLog.add("Avatar-Video gesetzt: ${it.name} (${it.length() / 1024} KB)")
+                    toast("Video gesetzt")
+                }.onFailure { toast("Video konnte nicht übernommen werden: ${it.message}") }
+            }
+        }.start()
     }
 
     private fun section(title: String) = TextView(this).apply {

@@ -55,14 +55,14 @@ class ReaderService : AccessibilityService() {
         instance = this
         prefs = Prefs(this)
         speaker = Speaker(this) { overlay?.setSpeaking(it) }
-        overlay = AvatarOverlay(this, onLongPress = ::copyScreenStructure)
-        setOverlayVisible(prefs.overlay)
+        overlay = AvatarOverlay(this, onLongPress = ::copyScreenStructure, onClose = { setActive(false) })
+        setActive(prefs.overlay)
         handler.post(tick)
         EventLog.add("Mitlesen aktiv – öffne jetzt ChatGPT")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        if (event.packageName != CHATGPT) return
+        if (event.packageName != CHATGPT || !prefs.overlay) return
         // Throttle statt Debounce: beim Streaming kommen ständig Events, wir wollen trotzdem mitlesen.
         if (!scanScheduled) {
             scanScheduled = true
@@ -80,8 +80,17 @@ class ReaderService : AccessibilityService() {
         super.onDestroy()
     }
 
-    fun setOverlayVisible(visible: Boolean) {
-        if (visible) overlay?.show() else overlay?.hide()
+    /** Avatar an/aus. Aus = ausgeblendet, still und es wird nicht mehr mitgelesen. */
+    fun setActive(active: Boolean) {
+        prefs.overlay = active
+        if (active) {
+            tracker.reset()
+            overlay?.show()
+        } else {
+            speaker.stop()
+            overlay?.hide()
+        }
+        EventLog.add(if (active) "Avatar eingeschaltet" else "Avatar ausgeschaltet")
     }
 
     fun stopSpeaking() = speaker.stop()
