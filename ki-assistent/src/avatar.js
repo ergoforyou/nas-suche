@@ -1368,6 +1368,7 @@ export class Avatar {
     // Bild-im-Bild: Fenster hat die Form der Figur – Figur füllt es ganz aus
     // (mit Kamerafahrten: ab und zu langsam auf Oberkörper oder Gesicht und zurück)
     const L = this.pipFit ? this.cameraLayout(now, dt, W, H, fit) : this.fitMode ? this.fitLayout(this.fitMode, W, H) : this.layout;
+    this.lastLayout = L; // zuletzt gezeigte Lage (z. B. um von der Kamera nahtlos auf Handbetrieb zu wechseln)
     this.fitPx = this.h * fit; // Figurhöhe in Gerätepixeln bei Maßstab 1
     const dw = this.w * fit * L.scale;
     const dh = this.h * fit * L.scale;
@@ -1504,7 +1505,8 @@ export class Avatar {
     // Ausschnitt ins Fenster einpassen (ganz sichtbar, zentriert)
     const rw = (C.x1 - C.x0) * this.w;
     const rh = (C.y1 - C.y0) * this.h;
-    const f = Math.min(W / rw, H / rh);
+    // camMargin < 1: etwas Rand lassen (Nur-Figur-Ansicht), im echten Bild-im-Bild füllt die Figur das Fenster
+    const f = Math.min(W / rw, H / rh) * (this.camMargin ?? 1);
     const cx = this.flip ? 1 - (C.x0 + C.x1) / 2 : (C.x0 + C.x1) / 2;
     const cy = (C.y0 + C.y1) / 2;
     const bx = W / 2 + (0.5 - cx) * this.w * f;

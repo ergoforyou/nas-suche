@@ -356,12 +356,33 @@ new RubberBand($('stage'), avatar, {
   tapToTalk: MOBILE,
   onTap: () => talkOrStop(),
   onActivate: () => toggleMic(),
+  // Nur-Figur-Ansicht: beim ersten Anpassen von Hand die Kamerafahrt beenden (ohne Sprung)
+  onManual: () => {
+    if (!isStageFull() || !avatar.pipFit) return;
+    avatar.layout = { ...(avatar.lastLayout ?? avatar.layout) };
+    avatar.fitMode = null;
+    avatar.pipFit = false;
+  },
   onChange: (layout) => {
-    persona().avatar.stage = { ...layout };
-    persona().avatar.stageFit = null;
+    if (isStageFull()) persona().avatar.fullStage = { ...layout };
+    else {
+      persona().avatar.stage = { ...layout };
+      persona().avatar.stageFit = null;
+    }
     save();
   },
   onFit: (fit) => {
+    if (isStageFull()) {
+      // ↺ = wieder automatische Kamera; sonst die gewählte Einpassung als feste Lage merken
+      if (!fit) {
+        persona().avatar.fullStage = null;
+        avatar.camMargin = FULL_MARGIN;
+        avatar.cam = null;
+        avatar.pipFit = true;
+      } else persona().avatar.fullStage = { ...avatar.fitLayout(fit) };
+      save();
+      return;
+    }
     persona().avatar.stageFit = fit;
     persona().avatar.stage = null;
     save();
@@ -1445,7 +1466,9 @@ if (MOBILE) {
   // im Bild-im-Bild: Figur füllt das Fenster, gewählter Hintergrund
   const native = window.__setPip;
   window.__setPip = (on) => {
-    avatar.pipFit = !!on;
+    // im Bild-im-Bild füllt die Figur das Fenster; danach wie vorher (Nur-Figur-Ansicht: Kamera oder eigene Lage)
+    avatar.pipFit = on ? true : isStageFull() && !persona().avatar.fullStage;
+    avatar.camMargin = on ? 1 : isStageFull() ? FULL_MARGIN : 1;
     avatar.camera = state.settings.pipCamera !== false;
     avatar.cam = null; // Kamera startet mit der ganzen Figur
     avatar.bgStyle = on ? pipBgStyle() : null;
@@ -4131,10 +4154,26 @@ $('avGreet').onchange = (e) => {
 
 // ---------------------------------------------------------------- Nur-Figur-Ansicht (Umschalter im Chatfenster)
 // Die ganze App zeigt nur noch die Figur, groß, mit Mikrofon- und Live-Knopf; Esc oder ✕ springt zurück.
+const isStageFull = () => document.documentElement.classList.contains('stage-full');
+const FULL_MARGIN = MOBILE ? 0.86 : 0.92;
+let normalLayout = null;
 function setStageFull(on) {
+  if (on && !isStageFull()) normalLayout = { layout: { ...avatar.layout }, fitMode: avatar.fitMode };
   document.documentElement.classList.toggle('stage-full', on);
   $('btnStageFull').classList.toggle('active', on);
-  avatar.pipFit = on;
+  // Nur-Figur-Ansicht: eigene, von Hand angepasste Lage – sonst automatische Kamera mit etwas Rand
+  const own = on ? persona().avatar.fullStage : null;
+  if (on && own) {
+    avatar.fitMode = null;
+    avatar.layout = { ...own };
+  }
+  avatar.pipFit = on && !own;
+  avatar.camMargin = on ? FULL_MARGIN : 1;
+  if (!on && normalLayout) {
+    avatar.layout = normalLayout.layout;
+    avatar.fitMode = normalLayout.fitMode;
+    normalLayout = null;
+  }
   // Kamerafahrt (Oberkörper) nur auf dem Handy; am PC bleibt die Figur, wie sie ist
   avatar.camera = MOBILE && state.settings.pipCamera !== false;
   avatar.cam = null;
@@ -4147,6 +4186,14 @@ function syncFullCtl() {
   $('fullLive').classList.toggle('on', !!state.settings.handsFree);
   $('fullMic').classList.toggle('listening', !!stt.listening);
   $('fullStop').hidden = !(tts.speaking || state.busy);
+  // Bild-im-Bild: Live-Knopf zeigt den Zustand; kleiner Punkt zeigt zuhören / nachdenken / Live bereit
+  const live = !!state.settings.handsFree;
+  if (MOBILE && state.pipLiveSent !== live) {
+    state.pipLiveSent = live;
+    window.KIPip?.setLive?.(live);
+  }
+  const dot = $('pipDot');
+  if (dot) dot.className = `pip-dot ${stt.listening || state.hearing ? 'hoert' : avatarState.thinking || state.transcribing ? 'denkt' : tts.speaking ? 'spricht' : live ? 'live' : ''}`;
   floating.setControls?.({ live: !!state.settings.handsFree, speaking: !!(tts.speaking || state.busy) });
 }
 $('btnStageFull').onclick = () => setStageFull(!document.documentElement.classList.contains('stage-full'));

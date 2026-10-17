@@ -2,6 +2,8 @@ package de.ergoforyou.kiassistent;
 
 import android.Manifest;
 import android.app.PictureInPictureParams;
+import android.app.PendingIntent;
+import android.app.RemoteAction;
 import android.app.StatusBarManager;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
@@ -74,6 +76,10 @@ import javax.crypto.spec.GCMParameterSpec;
  */
 public class MainActivity extends BridgeActivity {
     private boolean pipEnabled = true;
+    // Bild-im-Bild: eigene Knöpfe (Sprechen, Live an/aus, zurück zur App)
+    private static final String PIP_ACTION = "de.ergoforyou.kiassistent.PIP";
+    private boolean pipLive = false;
+    private android.content.BroadcastReceiver pipReceiver;
     /** die laufende Oberfläche (für Erinnerungen, die bei offener App angesagt werden) */
     static WeakReference<MainActivity> current = new WeakReference<>(null);
     boolean resumed;
@@ -1101,8 +1107,43 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private RemoteAction pipAction(String what, int icon, String title, int req) {
+        Intent i = new Intent(PIP_ACTION).setPackage(getPackageName()).putExtra("what", what);
+        PendingIntent pi = PendingIntent.getBroadcast(this, req, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        return new RemoteAction(Icon.createWithResource(this, icon), title, title, pi);
+    }
+
+    private ArrayList<RemoteAction> pipActions() {
+        ArrayList<RemoteAction> a = new ArrayList<>();
+        a.add(pipAction("talk", android.R.drawable.ic_btn_speak_now, "Sprechen", 1));
+        a.add(pipAction("live", pipLive ? android.R.drawable.presence_audio_online : android.R.drawable.ic_menu_call,
+            pipLive ? "Live-Gespräch beenden" : "Live-Gespräch starten", 2));
+        a.add(pipAction("app", android.R.drawable.ic_menu_revert, "Zur App", 3));
+        return a;
+    }
+
+    private void registerPipReceiver() {
+        if (pipReceiver != null || Build.VERSION.SDK_INT < 26) return;
+        pipReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                String what = i.getStringExtra("what");
+                if ("talk".equals(what)) pushAction("talk");
+                else if ("live".equals(what)) pushAction("livetoggle");
+                else if ("app".equals(what)) {
+                    startActivity(new Intent(MainActivity.this, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
+                }
+            }
+        };
+        IntentFilter f = new IntentFilter(PIP_ACTION);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(pipReceiver, f, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(pipReceiver, f);
+    }
+
     private PictureInPictureParams pipParams() {
         PictureInPictureParams.Builder b = new PictureInPictureParams.Builder().setAspectRatio(new Rational(pipW, pipH));
+        b.setActions(pipActions());
         if (Build.VERSION.SDK_INT >= 31) {
             b.setAutoEnterEnabled(pipEnabled && !(floatEnabled && canFloat()));
             b.setSeamlessResizeEnabled(true);
@@ -1137,6 +1178,7 @@ public class MainActivity extends BridgeActivity {
             }, 500); // Freigabe-Dialog erst verschwinden lassen
         });
         super.onCreate(savedInstanceState);
+        registerPipReceiver();
         applyParams();
         bridge.getWebView().addJavascriptInterface(new Object() {
             @JavascriptInterface
@@ -1157,6 +1199,16 @@ public class MainActivity extends BridgeActivity {
             @JavascriptInterface
             public boolean supported() {
                 return Build.VERSION.SDK_INT >= 26;
+            }
+
+            /** Live-Gespräch an/aus: Knopf im Bild-im-Bild zeigt den Zustand. */
+            @JavascriptInterface
+            public void setLive(boolean on) {
+                runOnUiThread(() -> {
+                    if (pipLive == on) return;
+                    pipLive = on;
+                    applyParams();
+                });
             }
 
             /** Seitenverhältnis des Fensters = Form der Figur (Android erlaubt 1:2,39 bis 2,39:1). */
@@ -1201,6 +1253,10 @@ public class MainActivity extends BridgeActivity {
         if (carReceiver != null) {
             try { unregisterReceiver(carReceiver); } catch (Exception ignored) {}
             carReceiver = null;
+        }
+        if (pipReceiver != null) {
+            try { unregisterReceiver(pipReceiver); } catch (Exception ignored) {}
+            pipReceiver = null;
         }
         hideBubble();
         hideFloatMenu();

@@ -1173,6 +1173,54 @@ const full = await page.evaluate(async () => {
 });
 check(!full.on.chat && !full.on.composer && full.on.mic && full.on.stageH > full.on.winH * 0.9, 'Nur-Figur-Ansicht: nur Figur und Mikrofon', JSON.stringify(full.on));
 check(full.back.chat && full.back.composer && !full.back.mic, 'Nur-Figur-Ansicht: ✕ springt zur ganzen App zurück', JSON.stringify(full.back));
+// Nur-Figur-Ansicht: Figur mit Rand; zwei Finger verkleinern (Kamera schaltet auf Hand um), Lage wird gemerkt
+const fullZoom = await page.evaluate(async () => {
+  const a = window.__app.avatar;
+  const normal = { ...a.layout };
+  document.querySelector('#btnStageFull').click();
+  await new Promise((r) => setTimeout(r, 1200));
+  const camBefore = a.pipFit;
+  const r0 = { ...a.rect };
+  const c = a.canvas.getBoundingClientRect();
+  // Rand um die sichtbare Figur (durchsichtige Bildränder zählen nicht)
+  const vb = a.visibleBox();
+  const fx0 = r0.x + vb.x0 * r0.w;
+  const fx1 = r0.x + vb.x1 * r0.w;
+  const fy0 = r0.y + vb.y0 * r0.h;
+  const fy1 = r0.y + vb.y1 * r0.h;
+  const margin = { left: fx0, top: fy0, right: c.width - fx1, bottom: c.height - fy1 };
+  const cx = c.left + r0.x + r0.w / 2;
+  const cy = c.top + r0.y + r0.h / 2;
+  const ev = (type, id, x, y) => a.canvas.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, button: 0, pointerId: id, bubbles: true, pointerType: 'touch' }));
+  ev('pointerdown', 31, cx - 100, cy);
+  await new Promise((r) => setTimeout(r, 40));
+  ev('pointerdown', 32, cx + 100, cy);
+  for (let i = 1; i <= 5; i++) {
+    ev('pointermove', 31, cx - 100 + i * 10, cy);
+    ev('pointermove', 32, cx + 100 - i * 10, cy);
+  }
+  ev('pointerup', 31, cx - 50, cy);
+  ev('pointerup', 32, cx + 50, cy);
+  await new Promise((r) => setTimeout(r, 300));
+  const r1 = { ...a.rect };
+  const saved = window.__app.persona().avatar.fullStage;
+  document.querySelector('#fullExit').click();
+  await new Promise((r) => setTimeout(r, 300));
+  const restored = Math.abs(a.layout.scale - normal.scale) < 1e-6 && !a.pipFit;
+  // erneut öffnen: eigene Lage statt Kamera
+  document.querySelector('#btnStageFull').click();
+  await new Promise((r) => setTimeout(r, 300));
+  const reopen = { cam: a.pipFit, scale: a.layout.scale };
+  document.querySelector('#fullExit').click();
+  await new Promise((r) => setTimeout(r, 200));
+  return { camBefore, margin, h0: r0.h, h1: r1.h, saved: !!saved, restored, reopen, savedScale: saved?.scale };
+});
+const minMargin = Math.min(fullZoom.margin.left, fullZoom.margin.top, fullZoom.margin.right, fullZoom.margin.bottom);
+check(
+  fullZoom.camBefore && minMargin > 4 && fullZoom.h1 < fullZoom.h0 * 0.7 && fullZoom.saved && fullZoom.restored && !fullZoom.reopen.cam && Math.abs(fullZoom.reopen.scale - fullZoom.savedScale) < 1e-6,
+  'Nur-Figur-Ansicht: Rand um die Figur, zwei Finger verkleinern, eigene Lage wird gemerkt',
+  JSON.stringify(fullZoom),
+);
 // ---- Sprechblase, wenn der Ton aus ist
 const bub = await page.evaluate(async () => {
   window.__app.state.settings.bubble = 'stumm';

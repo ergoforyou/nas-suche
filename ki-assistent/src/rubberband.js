@@ -124,6 +124,7 @@ export class RubberBand {
       const f = grow ? 1.08 : 1 / 1.08;
       if (this.opts.kind === 'window') this.opts.desktop.avatarResize(f, this.avatar.w / this.avatar.h);
       else {
+        this.opts.onManual?.();
         this.avatar.freeLayout?.();
         const L = this.avatar.layout;
         this.avatar.layout = { ...L, scale: Math.max(0.2, Math.min(4, L.scale * f)) };
@@ -161,6 +162,7 @@ export class RubberBand {
 
   /** Einpassung setzen (null = Standard) und merken. */
   applyFit(fit) {
+    if (fit) this.opts.onManual?.();
     this.avatar.fitMode = fit;
     if (!fit) this.avatar.layout = { ...(this.avatar.defaultLayout ?? { x: 0, y: 0, scale: 1 }) };
     this.markFit();
@@ -197,6 +199,7 @@ export class RubberBand {
         try {
           this.avatar.canvas.setPointerCapture(e.pointerId);
         } catch {}
+        this.opts.onManual?.();
         this.avatar.freeLayout?.();
         this.markFit();
         this.touches = new Map([...this.fingers].slice(-2));
@@ -243,6 +246,7 @@ export class RubberBand {
     try {
       canvas.setPointerCapture(e.pointerId);
     } catch {}
+    this.opts.onManual?.();
     this.avatar.freeLayout?.();
     this.markFit();
     this.touches.set(e.pointerId, p);
@@ -383,6 +387,7 @@ export class RubberBand {
     }
     const handle = e.target;
     handle.setPointerCapture(e.pointerId);
+    this.opts.onManual?.();
     this.avatar.freeLayout?.();
     this.markFit();
     const r = { ...this.avatar.rect };

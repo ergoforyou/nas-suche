@@ -387,3 +387,12 @@ body.floating .stage { display: none; }
 .saved-doc { flex-direction: column; align-items: stretch; }
 .saved-doc .row { align-items: center; gap: 6px; }
 .saved-body { margin-top: 6px; padding: 8px; background: var(--panel-2); border-radius: 8px; font-size: 13px; max-height: 320px; overflow: auto; }
+
+/* Bild-im-Bild: kleiner Zustandspunkt (zuhören grün, nachdenken gelb, spricht blau, Live bereit blau umrandet) */
+.pip-dot { display: none; }
+.pip .pip-dot { display: block; position: absolute; top: 8px; right: 8px; width: 14px; height: 14px; border-radius: 50%;
+                z-index: 4; border: 2px solid rgba(255,255,255,.85); background: transparent; opacity: 0; transition: opacity .2s; }
+.pip .pip-dot.hoert { background: #2e9b4f; opacity: 1; }
+.pip .pip-dot.denkt { background: #e0a030; opacity: 1; }
+.pip .pip-dot.spricht { background: #3d7be0; opacity: 1; }
+.pip .pip-dot.live { border-color: #3d7be0; opacity: 1; }
