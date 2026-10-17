@@ -633,31 +633,46 @@ function updateBadge() {
 function buildMessages() {
   const p = persona();
   const r = RULES[p.language] ?? RULES.de;
+  // Gleichbleibender Teil (Persona, Regeln, App-Wissen) und wechselnder Zusammenhang (Uhrzeit, Ort, Auszüge)
+  // getrennt: Claude speichert den gleichbleibenden Teil zwischen – Folgefragen kosten dann deutlich weniger
   const parts = [p.prompt?.trim()];
   if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech);
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(p.memory.map((m) => `- ${m.text}`).join('\n')));
   if (p.style !== 'frei') parts.push(r.lang);
   if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
-  if (googleActive()) parts.push(googleLib.toolPrompt(new Date(), userTimeZone()));
-  else if (webActive() || state.place) parts.push(r.now(new Date(), userTimeZone()));
-  if (state.place) parts.push(r.place(state.place));
-  if (state.kbHits?.length) parts.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
-  if (state.savedHits?.length) parts.push(savedPrompt(state.savedHits));
   if (p.style !== 'frei') parts.push(appKnowledge());
   if (state.drive) parts.push(r.drive);
   if (webActive()) parts.push(r.web);
+  const ctx = [];
+  if (googleActive()) ctx.push(googleLib.toolPrompt(new Date(), userTimeZone()));
+  else if (webActive() || state.place) ctx.push(r.now(new Date(), userTimeZone()));
+  if (state.place) ctx.push(r.place(state.place));
+  if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
+  if (state.savedHits?.length) ctx.push(savedPrompt(state.savedHits));
   const sys = parts.filter(Boolean).join('\n\n');
+  const ctxText = ctx.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
-  const h = history()
-    .slice(-state.settings.historyLimit)
-    .map((m) => {
-      let content = m.content;
-      if (m.files?.length) content += `\n\n(Erstellte Dateien: ${m.files.map((f) => f.name).join(', ')})`;
-      if (!m.attachments?.length) return { role: m.role, content };
-      if (!withFiles) return { role: m.role, content: `${content}\n\n(Anhang: ${m.attachments.map((a) => a.name).join(', ')})`.trim() };
-      return { role: m.role, content, attachments: m.attachments.map((a) => ({ ...a, data: attachmentData.get(a.key) })) };
-    });
-  return sys ? [{ role: 'system', content: sys }, ...h] : h;
+  // Verlauf in Zehnerschritten kürzen statt bei jeder Frage (sonst ändert sich der Anfang jedes Mal und der
+  // zwischengespeicherte Verlauf wäre wertlos): es gehen zwischen historyLimit und historyLimit + 9 Nachrichten mit
+  const all = history();
+  const start = Math.floor(Math.max(0, all.length - state.settings.historyLimit) / 10) * 10;
+  const h = all.slice(start).map((m) => {
+    let content = m.content;
+    if (m.files?.length) content += `\n\n(Erstellte Dateien: ${m.files.map((f) => f.name).join(', ')})`;
+    if (!m.attachments?.length) return { role: m.role, content };
+    if (!withFiles) return { role: m.role, content: `${content}\n\n(Anhang: ${m.attachments.map((a) => a.name).join(', ')})`.trim() };
+    return { role: m.role, content, attachments: m.attachments.map((a) => ({ ...a, data: attachmentData.get(a.key) })) };
+  });
+  if (state.settings.provider === 'anthropic') {
+    return [
+      ...(sys ? [{ role: 'system', content: sys, cache: true }] : []),
+      ...(ctxText ? [{ role: 'system', content: ctxText, ctx: true }] : []),
+      ...h,
+    ];
+  }
+  // andere Anbieter (LM Studio, ChatGPT): wie bisher ein gemeinsamer Systemtext
+  const all2 = [sys, ctxText].filter(Boolean).join('\n\n');
+  return all2 ? [{ role: 'system', content: all2 }, ...h] : h;
 }
 
 /** Entfernt <think>…</think>-Abschnitte von Reasoning-Modellen aus dem Stream. */
@@ -895,7 +910,7 @@ async function send(text) {
       id,
       ...llmParams(model),
       ...(state.settings.provider === 'anthropic'
-        ? { web: state.settings.claudeWeb, files: state.settings.claudeFiles, conversation: `${persona().id}:${chatSerial}` }
+        ? { web: state.settings.claudeWeb, files: state.settings.claudeFiles && filesNeeded(text, attachments), conversation: `${persona().id}:${chatSerial}` }
         : {}),
       ...(googleActive() ? { google: true, timeZone: userTimeZone() } : {}),
       ...(appToolsActive() ? { appTools: true } : {}),
@@ -952,6 +967,20 @@ const LEARN_PROMPT = {
     'there is nothing new.',
 };
 
+/**
+ * Datei-Werkzeuge (Code-Ausführung, Office-Skills) nur mitschicken, wenn sie gebraucht werden: bei Anhängen, wenn nach
+ * einem Dokument gefragt wird oder gerade eins entstanden ist – sonst kosten ihre Beschreibungen bei jeder Frage mit.
+ */
+const FILE_WORDS = /\b(datei|dokument|excel|word|powerpoint|präsentation|folien?|tabelle|liste als|pdf|docx|xlsx|pptx|csv|diagramm|auswertung|exportier|herunterlad|anhang|brief als|vorlage)\w*/i;
+function filesNeeded(text, attachments) {
+  if (attachments?.length) return true;
+  if (FILE_WORDS.test(text ?? '')) return true;
+  // gerade wurde eine Datei erstellt oder angehängt: Folgefragen („mach die Spalte breiter“) brauchen sie weiter
+  return history()
+    .slice(-4)
+    .some((m) => m.files?.length || m.attachments?.length);
+}
+
 let learnTimer = null;
 function cancelLearning() {
   clearTimeout(learnTimer);
@@ -959,11 +988,21 @@ function cancelLearning() {
   state.learnId = null;
 }
 
+// Lernen fürs Gedächtnis gesammelt statt nach jeder Antwort (spart Anfragen): nach 3 Antworten, nach 3 Minuten Ruhe
+// oder sofort, wenn ausdrücklich „merk dir …“ gesagt wurde
+let learnQueue = [];
 function scheduleLearning(question, answer) {
   const p = persona();
   if (!p.memoryOn || !state.settings.memoryLearn) return;
-  cancelLearning();
-  learnTimer = setTimeout(() => learn(p, question, answer).catch(() => {}), 1200);
+  learnQueue.push({ p, q: question, a: answer });
+  clearTimeout(learnTimer);
+  const now = learnQueue.length >= 3 || /\b(merk|merke|vergiss nicht|notier)\w*/i.test(question);
+  learnTimer = setTimeout(flushLearning, now ? 1200 : 3 * 60e3);
+}
+function flushLearning() {
+  const items = learnQueue.filter((x) => x.p === persona());
+  learnQueue = [];
+  if (items.length) learn(items[0].p, items).catch(() => {});
 }
 
 function addMemory(p, text) {
@@ -977,14 +1016,15 @@ function addMemory(p, text) {
   return true;
 }
 
-async function learn(p, question, answer) {
-  const model = await ensureModel();
+async function learn(p, items) {
+  // Hilfsaufgabe: bei Claude immer das günstige Haiku (auch wenn das Gespräch mit Sonnet/Opus läuft)
+  const model = state.settings.provider === 'anthropic' ? 'claude-haiku-5-5' : await ensureModel();
   const known = p.memory.map((m) => `- ${m.text}`).join('\n') || '(noch nichts)';
   const lang = p.language === 'en' ? 'en' : 'de';
-  const excerpt =
-    lang === 'en'
-      ? `Known facts:\n${known}\n\nExcerpt:\nUser: ${question}\nAssistant: ${answer.slice(0, 2500)}`
-      : `Bekannte Fakten:\n${known}\n\nGesprächsausschnitt:\nNutzer: ${question}\nAssistent: ${answer.slice(0, 2500)}`;
+  const turns = items
+    .map(({ q, a }) => (lang === 'en' ? `User: ${q}\nAssistant: ${a.slice(0, 1500)}` : `Nutzer: ${q}\nAssistent: ${a.slice(0, 1500)}`))
+    .join('\n\n');
+  const excerpt = lang === 'en' ? `Known facts:\n${known}\n\nExcerpt:\n${turns}` : `Bekannte Fakten:\n${known}\n\nGesprächsausschnitt:\n${turns}`;
   const id = newId();
   state.learnId = id;
   const raw = await new Promise((resolve) => {
@@ -993,6 +1033,7 @@ async function learn(p, question, answer) {
       {
         id,
         ...llmParams(model),
+        ...(state.settings.provider === 'anthropic' ? { effort: 'low' } : {}),
         ...(state.settings.provider === 'lmstudio' ? { temperature: 0 } : {}),
         messages: [
           { role: 'system', content: LEARN_PROMPT[lang] },
@@ -1005,7 +1046,11 @@ async function learn(p, question, answer) {
       },
     );
   });
-  if (state.learnId !== id) return; // abgebrochen
+  if (state.learnId !== id) {
+    // abgebrochen (neue Frage kam dazwischen): beim nächsten Durchgang mitnehmen
+    learnQueue = [...items, ...learnQueue].slice(-6);
+    return;
+  }
   state.learnId = null;
   const text = raw.replace(/<think>[\s\S]*?<\/think>/g, '');
   const m = text.match(/\[[\s\S]*\]/);
@@ -5774,7 +5819,11 @@ function rtInstructions() {
   const keep = state.settings.moodTags;
   state.settings.moodTags = false;
   try {
-    return (buildMessages()[0]?.content ?? '') + '\n\nDu sprichst gerade live mit dem Nutzer: antworte natürlich, kurz und gesprochen.';
+    const sys = buildMessages()
+      .filter((m) => m.role === 'system')
+      .map((m) => m.content)
+      .join('\n\n');
+    return sys + '\n\nDu sprichst gerade live mit dem Nutzer: antworte natürlich, kurz und gesprochen.';
   } finally {
     state.settings.moodTags = keep;
   }
@@ -6026,6 +6075,8 @@ function startPhoneFeatures() {
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
   carryPersonas,
+  filesNeeded,
+  history,
   fragmentReason,
   voicedSeconds,
   runAppTool,

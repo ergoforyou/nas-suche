@@ -55,11 +55,25 @@ function attachmentBlocks(attachments, uploaded = {}) {
 }
 
 // Claude: Systemprompt getrennt, Nachrichten müssen mit "user" beginnen und abwechseln
+/**
+ * Nachrichten ins Claude-Format. Prompt-Caching (spart bei jeder Folgefrage den Großteil der Eingabekosten):
+ * - Systemnachricht mit cache: true = gleichbleibender Teil (Persona, Regeln, App-Wissen) – wird zwischengespeichert
+ * - Systemnachricht mit ctx: true = wechselnder Zusammenhang (Uhrzeit, Ort, passende Auszüge) – kommt vor die
+ *   aktuelle Frage statt in den Systemtext, sonst wäre der Zwischenspeicher bei jeder Frage hinfällig
+ * - der Verlauf bis zur letzten Antwort wird ebenfalls zwischengespeichert
+ */
 function toClaudeMessages(messages, uploaded) {
   let system = '';
+  let cache = false;
+  let ctx = '';
   const out = [];
   for (const m of messages) {
     if (m.role === 'system') {
+      if (m.ctx) {
+        ctx += (ctx ? '\n\n' : '') + m.content;
+        continue;
+      }
+      if (m.cache) cache = true;
       system += (system ? '\n\n' : '') + m.content;
       continue;
     }
@@ -74,7 +88,23 @@ function toClaudeMessages(messages, uploaded) {
     } else out.push({ role: m.role, content });
   }
   while (out.length && out[0].role !== 'user') out.shift();
-  return { system, messages: out };
+  const blocks = (c) => (typeof c === 'string' ? [{ type: 'text', text: c }] : [...c]);
+  if (ctx) {
+    const u = out.findLast((m) => m.role === 'user');
+    if (u) u.content = [{ type: 'text', text: `<kontext>\n${ctx}\n</kontext>` }, ...blocks(u.content)];
+    else system += (system ? '\n\n' : '') + ctx;
+  }
+  if (!cache || !system) return { system, messages: out };
+  // Merkpunkte: Ende des gleichbleibenden Systemtexts (mit den Werkzeugen davor) und letzte Antwort im Verlauf
+  const a = out.findLast((m) => m.role === 'assistant');
+  if (a) {
+    const b = blocks(a.content).filter((x) => x.type !== 'text' || x.text);
+    if (b.length) {
+      b[b.length - 1] = { ...b[b.length - 1], cache_control: { type: 'ephemeral' } };
+      a.content = b;
+    }
+  }
+  return { system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }], messages: out };
 }
 
 // Werkzeuge, die Claude bei Anthropic selbst ausführt (nichts davon läuft auf diesem Rechner)
@@ -86,8 +116,9 @@ function claudeTools(model, { web, files }) {
     // Version nehmen, damit Claude nicht zwei Arbeitsbereiche gleichzeitig hat.
     const dynamic = !files && !/haiku/.test(model);
     tools.push(
-      { type: dynamic ? 'web_search_20260209' : 'web_search_20250305', name: 'web_search', max_uses: 5 },
-      { type: dynamic ? 'web_fetch_20260209' : 'web_fetch_20250910', name: 'web_fetch', max_uses: 5 },
+      // höchstens 3 Suchen und 3 Seitenabrufe pro Antwort (jede Suche kostet; mehr bringt selten mehr)
+      { type: dynamic ? 'web_search_20260209' : 'web_search_20250305', name: 'web_search', max_uses: 3 },
+      { type: dynamic ? 'web_fetch_20260209' : 'web_fetch_20250910', name: 'web_fetch', max_uses: 3 },
     );
   }
   if (files) tools.push({ type: 'code_execution_20260521', name: 'code_execution' });

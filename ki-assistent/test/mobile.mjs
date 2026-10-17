@@ -693,7 +693,7 @@ await page.waitForFunction(() => /Zahnarzt/.test([...document.querySelectorAll('
 const calReq = googleCalls.find((c) => c.url.includes('/calendar/'));
 const firstReq = claudeRequests[nReq];
 const secondReq = claudeRequests[nReq + 1];
-check(firstReq?.tools?.some((t) => t.name === 'kalender_termine_lesen') && /Google-Kalender/.test(JSON.stringify(firstReq?.system ?? '')), 'Claude bekommt Kalender-Werkzeuge und Datum/Uhrzeit', '');
+check(firstReq?.tools?.some((t) => t.name === 'kalender_termine_lesen') && /Google-Kalender/.test(JSON.stringify([firstReq?.system, firstReq?.messages])), 'Claude bekommt Kalender-Werkzeuge und Datum/Uhrzeit', '');
 check(calReq?.auth === 'Bearer AT1' && /timeMin=2026-10-1[67]T/.test(decodeURIComponent(calReq.url)), 'Kalender mit Token und Zeitraum abgefragt', calReq?.url?.slice(0, 120));
 check(JSON.stringify(secondReq?.messages?.at(-1) ?? '').includes('Zahnarzt'), 'Ergebnis geht als tool_result zurück an Claude');
 check(/Zahnarzt/.test(await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].pop()?.textContent ?? '')), 'Antwort mit Termin im Chat');
@@ -802,7 +802,7 @@ const phone = await page.evaluate(async () => {
   const out = { tab: !!document.querySelector('#tabs [data-tab=phone]') && getComputedStyle(document.querySelector('#tabs [data-tab=phone]')).display !== 'none' };
   app.state.settings.place = 'Hannover-List';
   app.state.place = await app.currentPlace();
-  out.prompt = app.buildMessages()[0]?.content ?? '';
+  out.prompt = app.buildMessages().filter((m) => m.role === 'system').map((m) => m.content).join('\n');
   app.state.place = '';
   app.state.settings.place = '';
   // Android-Schnittstelle nachbilden
@@ -874,6 +874,11 @@ const kbRes = await page.evaluate(
 check(kbRes.area === 'dienstlich' && kbRes.added.length === 3, 'Firmenwissen: Text, Word und PDF aufgenommen', JSON.stringify(kbRes));
 check(kbRes.wartung === 'Preisliste.txt' && kbRes.frist === 'AGB.docx' && kbRes.beratung === 'Leistungen.pdf', 'Firmenwissen: Suche findet das passende Dokument', JSON.stringify(kbRes));
 check(kbRes.none === 0, 'Firmenwissen: fremde Fragen bekommen keine Auszüge');
+// Rest aus dem Teilen-Test entfernen (der Anhang würde sonst mitgehen) und einen kurzen Vorlauf anlegen
+await page.evaluate(() => {
+  document.querySelectorAll('#attachments .chip button').forEach((b) => b.click());
+  window.__app.history().push({ role: 'user', content: 'Guten Morgen' }, { role: 'assistant', content: 'Guten Morgen! Was steht an?' });
+});
 const kbBefore = claudeRequests.length;
 const msgsBefore = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
 await page.fill('#input', 'Was kostet die Wartung pro Stunde?');
@@ -882,13 +887,31 @@ await page
   .waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !document.querySelector('.msg.assistant.typing'), msgsBefore, { timeout: 15000 })
   .catch(() => {});
 const chatReq = claudeRequests.slice(kbBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Wartung pro Stunde'));
-const sys = JSON.stringify(chatReq?.system ?? '');
+const sys = JSON.stringify([chatReq?.system, chatReq?.messages]);
 check(!!chatReq && /internen Firmendokumenten/.test(sys) && /85 Euro/.test(sys) && !/Zahlungsfrist/.test(sys), 'Nur passende Abschnitte gehen an Claude', sys.slice(-200));
 const kbNote = await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? '');
 check(/Firmenwissen mitgegeben: Preisliste\.txt/.test(kbNote), 'Antwort zeigt, welches Dokument mitgegeben wurde', kbNote.slice(-80));
 // Gespeichertes Wissen: Claude bekommt die Werkzeuge und das App-Grundwissen; Speichern/Suchen über das Werkzeug
 const toolNames = (chatReq?.tools ?? []).map((t) => t.name);
 check(toolNames.includes('wissen_speichern') && toolNames.includes('wissen_suchen') && /Über dich und diese App/.test(sys) && /wissen_speichern/.test(sys), 'Claude kennt die App und kann Wissen speichern (Werkzeuge im Auftrag)', JSON.stringify(toolNames));
+// Kosten sparen: Zwischenspeicher-Merkpunkte, wechselnder Zusammenhang an der Frage, Suchgrenze, Datei-Werkzeuge nur bei Bedarf
+const lastUser = [...(chatReq?.messages ?? [])].reverse().find((m) => m.role === 'user');
+const sysArr = Array.isArray(chatReq?.system) ? chatReq.system : [];
+const cacheRes = {
+  sysCached: !!sysArr[0]?.cache_control,
+  sysStatic: !/Firmendokumenten|Jetzt ist/.test(JSON.stringify(chatReq?.system)),
+  ctxAtQuestion: /<kontext>[\s\S]*Firmendokumenten/.test(JSON.stringify(lastUser?.content)),
+  histCached: (chatReq?.messages ?? []).some((m) => m.role === 'assistant' && JSON.stringify(m.content).includes('cache_control')),
+  searchMax: (chatReq?.tools ?? []).find((t) => t.name === 'web_search')?.max_uses,
+  noFiles: !(chatReq?.tools ?? []).some((t) => t.name === 'code_execution'),
+};
+check(
+  cacheRes.sysCached && cacheRes.sysStatic && cacheRes.ctxAtQuestion && cacheRes.histCached && cacheRes.searchMax === 3 && cacheRes.noFiles,
+  'Kosten: Zwischenspeicher für Systemtext und Verlauf, Zusammenhang an der Frage, höchstens 3 Suchen, keine Datei-Werkzeuge ohne Bedarf',
+  JSON.stringify(cacheRes),
+);
+const filesWanted = await page.evaluate(() => ({ excel: window.__app.filesNeeded('Mach mir daraus eine Excel-Tabelle', []), plain: window.__app.filesNeeded('Wie wird das Wetter?', []) }));
+check(filesWanted.excel && !filesWanted.plain, 'Datei-Werkzeuge nur, wenn nach einer Datei gefragt wird', JSON.stringify(filesWanted));
 const savedRes = await page.evaluate(async () => {
   const app = window.__app;
   const r = await app.runAppTool('wissen_speichern', { titel: 'Wallbox-Recherche', inhalt: 'Förderung für die Wallbox: KfW 442 bis 10.200 Euro, Antrag vor dem Kauf stellen. Quelle: kfw.de' });
@@ -905,7 +928,8 @@ await page
   .waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !document.querySelector('.msg.assistant.typing'), svMsgs, { timeout: 15000 })
   .catch(() => {});
 const svReq = claudeRequests.slice(svBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Wallbox'));
-check(/gespeicherten Wissen/.test(JSON.stringify(svReq?.system ?? '')) && /KfW 442/.test(JSON.stringify(svReq?.system ?? '')), 'Gespeichertes Wissen geht bei passender Frage automatisch mit', JSON.stringify(svReq?.system ?? '').slice(-160));
+const svAll = JSON.stringify([svReq?.system, svReq?.messages]);
+check(/gespeicherten Wissen/.test(svAll) && /KfW 442/.test(svAll), 'Gespeichertes Wissen geht bei passender Frage automatisch mit', svAll.slice(-160));
 // Bereich Privat: eigene Daten, kein Firmenwissen – Claude-/OpenAI-Schlüssel kommen beim Wechsel mit
 const keysBefore = await page.evaluate(async () => {
   const k = (await window.__keyFile()) ?? {};
@@ -975,7 +999,7 @@ const privF = await page.evaluate(async () => {
   window.desktop.saveFileAs = orig;
   delete window.KIDevice;
   app.setDrive(true);
-  const drive = { full: document.documentElement.classList.contains('stage-full'), live: app.state.settings.handsFree, prompt: /Fahrmodus/.test(app.buildMessages()[0]?.content ?? '') };
+  const drive = { full: document.documentElement.classList.contains('stage-full'), live: app.state.settings.handsFree, prompt: /Fahrmodus/.test(app.buildMessages().filter((m) => m.role === 'system').map((m) => m.content).join('\n')) };
   app.setDrive(false);
   await window.desktop.setKey('anthropic', '');
   return {
