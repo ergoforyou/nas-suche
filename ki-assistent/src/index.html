@@ -626,7 +626,12 @@
           <div id="syncAutoQr" style="width:180px;height:180px;background:#fff;border-radius:8px"></div>
           <div id="syncAutoInfo" class="hint"></div>
           <div id="syncAutoLast" class="hint"></div>
-          <button id="syncAutoNew">Kopplung erneuern</button>
+          <p class="hint">Ohne Kamera: „Adresse + Code anzeigen“ und beides am Handy unter „Mit dem PC abgleichen“ eintippen –
+            das Handy wird dabei gleich dauerhaft gekoppelt.</p>
+          <div class="row wrap">
+            <button id="syncAutoCode">Adresse + Code anzeigen</button>
+            <button id="syncAutoNew">Kopplung erneuern</button>
+          </div>
         </div>
       </div>
       <div id="savedWrap">
@@ -787,8 +792,9 @@
             kein Firmenwissen.</p>
           <div class="row wrap">
             <button id="syncScan">📷 QR-Code scannen</button>
+            <button id="syncScanPhoto">🖼 Foto des QR-Codes wählen</button>
           </div>
-          <input id="syncScanFile" type="file" accept="image/*" capture="environment" hidden />
+          <input id="syncScanFile" type="file" accept="image/*" hidden />
           <div class="row">
             <input id="syncAddr" type="text" placeholder="Adresse, z. B. 192.168.1.20:52000" autocomplete="off" style="flex:2" />
             <input id="syncCode" type="text" inputmode="numeric" placeholder="Code" autocomplete="off" style="flex:1" />
@@ -851,6 +857,14 @@
         <p class="hint">Speichert die letzten Ereignisse der App als Textdatei – ohne Gesprächsinhalte und ohne Schlüssel. Die Datei
           schickst du mir, dann sehe ich, was auf deinem Handy schiefgelaufen ist.</p>
         <button id="privBug">🐞 Fehlerprotokoll speichern</button>
+      </div>
+      <div id="phAudioWrap">
+        <h3>🎧 Headset</h3>
+        <label class="check"><input id="phBtHeadset" type="checkbox" /> Verbundenes Headset (Bluetooth oder Kabel) zum Sprechen
+          und Hören verwenden</label>
+        <p class="hint">Solange die App zuhört, schaltet Android in den Telefonie-Modus – ohne diese Einstellung käme der Ton
+          dann aus dem Handy statt aus dem Headset. Über Bluetooth klingt es dabei wie beim Telefonieren (Headset-Mikrofon).
+          <span id="phAudioDev"></span></p>
       </div>
       <div id="phFloatWrap" hidden>
         <h3>Schwebende Figur <span class="beta-badge">Beta</span></h3>

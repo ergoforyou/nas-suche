@@ -77,6 +77,21 @@ function toClaudeMessages(messages, uploaded) {
       system += (system ? '\n\n' : '') + m.content;
       continue;
     }
+    // frühere Werkzeugaufrufe der App (gespeichert, notiert …) als echte Aufrufe zeigen – sonst sieht Claude im Verlauf
+    // nur „Ich habe es gespeichert“ und behauptet das später, ohne das Werkzeug aufzurufen
+    if (m.role === 'assistant' && Array.isArray(m.tools) && m.tools.length) {
+      const ids = m.tools.map((_, i) => `toolu_verlauf_${out.length}_${i}`);
+      const last = out.at(-1);
+      const uses = m.tools.map((t, i) => ({ type: 'tool_use', id: ids[i], name: t.name, input: t.input && typeof t.input === 'object' ? t.input : {} }));
+      if (last?.role === 'assistant') last.content = [...(typeof last.content === 'string' ? [{ type: 'text', text: last.content }] : last.content), ...uses];
+      else out.push({ role: 'assistant', content: uses });
+      out.push({
+        role: 'user',
+        content: m.tools.map((t, i) => ({ type: 'tool_result', tool_use_id: ids[i], content: String(t.result ?? 'erledigt'), ...(t.error ? { is_error: true } : {}) })),
+      });
+      if (m.content) out.push({ role: 'assistant', content: m.content });
+      continue;
+    }
     const extra = m.role === 'user' ? attachmentBlocks(m.attachments, uploaded) : [];
     const content = extra.length ? [...extra, { type: 'text', text: m.content || '(siehe Anhang)' }] : m.content;
     const last = out.at(-1);

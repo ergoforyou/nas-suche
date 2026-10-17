@@ -183,6 +183,18 @@ await run(`KIDevice.setBackground(false); return true`);
 await sleep(1500);
 check(!(await run(`return KIDevice.backgroundRunning()`)), 'Hintergrund-Dienst lässt sich beenden');
 
+// 4c) Kamera in der App (QR-Code des PCs scannen statt Dateiauswahl): WebView bekommt ein Kamerabild
+{
+  const cam = await run(`try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    const ok = s.getVideoTracks().some((t) => t.readyState === 'live');
+    s.getTracks().forEach((t) => t.stop());
+    return { ok };
+  } catch (e) { return { ok: false, err: String(e.name || e) }; }`);
+  // Emulator ohne Kamera: NotFoundError ist in Ordnung – entscheidend ist, dass die Erlaubnis nicht fehlt (NotAllowedError)
+  check(cam?.ok || cam?.err === 'NotFoundError', 'Kamera für den QR-Scan in der App erlaubt', JSON.stringify(cam));
+}
+
 // 4d) Beta: schwebende Figur über anderen Apps
 if (BETA) {
   check(await run(`return typeof window.KIFloat?.now === 'function' && typeof window.KIFloat?.free === 'function' && window.KIFloat.supported()`), 'Schwebende Figur: Schnittstelle vorhanden (auch ⛶ = sofort schweben)');

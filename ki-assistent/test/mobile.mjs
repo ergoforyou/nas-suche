@@ -971,6 +971,40 @@ check(
   JSON.stringify(reflRes),
 );
 
+// Werkzeugaufrufe kommen als echte Aufrufe in den Verlauf (sonst behauptet die KI später „gespeichert“ ohne Aufruf)
+claudeQueue.push([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_test1', name: 'wissen_speichern', input: {} } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ titel: 'Werkzeug-Test', inhalt: 'Inhalt aus dem Werkzeugtest' }) } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 5 } },
+  { type: 'message_stop' },
+]);
+const toolBefore = claudeRequests.length;
+for (const q of ['Speicher bitte den Werkzeug-Test', 'Und was steht jetzt drin?']) {
+  const n = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+  await page.evaluate(() => (window.__app.state.busy = false));
+  await page.fill('#input', q);
+  await page.click('#btnSend');
+  await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !document.querySelector('.msg.assistant.typing') && !window.__app.state.busy, n, { timeout: 15000 }).catch(() => {});
+}
+const toolReq = claudeRequests.slice(toolBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Und was steht jetzt drin'));
+const toolMsgs = JSON.stringify(toolReq?.messages ?? []);
+const toolEntry = await page.evaluate(() => window.__app.history().find((m) => m.tools?.length)?.tools?.[0]);
+check(
+  toolEntry?.name === 'wissen_speichern' && /gespeichert/.test(toolEntry?.result ?? '') && /"type":"tool_use"[^}]*"name":"wissen_speichern"/.test(toolMsgs) && /"type":"tool_result"/.test(toolMsgs),
+  'Werkzeugaufrufe stehen als echte Aufrufe im Verlauf (Speichern wird nicht nur behauptet)',
+  JSON.stringify({ toolEntry, req: !!toolReq }),
+);
+// QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
+{
+  const { default: qrcodeGen } = await import('qrcode-generator');
+  const q = qrcodeGen(0, 'M');
+  q.addData('KI-KOPPLUNG http://192.168.1.20:47820,http://10.0.0.5:47820 ' + 'c'.repeat(36));
+  q.make();
+  const read = await page.evaluate((url) => window.__app.readQrImage(url), q.createDataURL(6, 4));
+  check(read === 'KI-KOPPLUNG http://192.168.1.20:47820,http://10.0.0.5:47820 ' + 'c'.repeat(36), 'QR-Code des PCs wird aus einem Bild gelesen (auch ohne Barcode-Erkennung)', String(read));
+}
 // ---- Automatischer Abgleich: Zusammenführen (auf beiden Geräten gleich) und der ganze Ablauf am Handy
 const sync = await import('../src/abgleich.js');
 {
@@ -1195,13 +1229,18 @@ const received = [];
 const pcWissen = [{ title: 'Vom PC: Wallbox-Angebote', text: 'Drei Angebote verglichen: A 1.290 €, B 1.450 €, C 1.180 € (inkl. Montage).', created: Date.now() - 5000 }];
 let wissenIn = null;
 let pcArea = 'privat';
+let kopplungDone = false;
 const pcPack = Buffer.from(file?.b64 ?? '', 'base64');
 const pc = http.createServer((req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'x-ki-code, content-type', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' };
   if (req.method === 'OPTIONS') return res.writeHead(204, cors).end();
   if (req.headers['x-ki-code'] !== '123456') return res.writeHead(403, cors).end();
   const u = new URL(req.url, 'http://x');
-  if (u.pathname === '/info') return res.writeHead(200, cors).end(JSON.stringify({ name: 'KI-Assistent Cloud Beta', area: pcArea }));
+  if (u.pathname === '/info') return res.writeHead(200, cors).end(JSON.stringify({ name: 'KI-Assistent Cloud Beta', area: pcArea, kopplung: !kopplungDone }));
+  if (u.pathname === '/kopplung') {
+    kopplungDone = true;
+    return res.writeHead(200, cors).end(JSON.stringify({ urls: ['http://pc.test:47820'], token: 'd'.repeat(36) }));
+  }
   if (u.pathname === '/wissen' && req.method === 'GET') return res.writeHead(200, cors).end(JSON.stringify(pcWissen));
   if (u.pathname === '/wissen' && req.method === 'POST') {
     const parts = [];
@@ -1237,6 +1276,10 @@ await page.evaluate(({ pcUrl }) => {
 await page.waitForFunction(() => document.querySelectorAll('#syncList button').length > 0, null, { timeout: 10000 }).catch(() => {});
 const chosenAddr = await page.evaluate(() => document.querySelector('#syncAddr').value);
 check(chosenAddr === pcUrl, 'Abgleich: mehrere Adressen – die erreichbare wird genommen', chosenAddr);
+await page.waitForFunction(() => window.__app.state.settings.syncPair?.token === 'd'.repeat(36), null, { timeout: 5000 }).catch(() => {});
+check(await page.evaluate(() => window.__app.state.settings.syncPair?.token === 'd'.repeat(36)), 'Ohne Kamera: Adresse und Code eintippen koppelt das Handy gleich dauerhaft');
+await page.waitForFunction(() => !!window.__app.state.settings.syncPair?.urls && !window.__syncBusy, null, { timeout: 3000 }).catch(() => {});
+await page.waitForTimeout(1500); // automatischer Abgleich nach dem Koppeln läuft durch
 await page.evaluate(() => document.querySelector('#syncList button')?.click());
 await page.waitForFunction((n) => window.__app.state.personas.length > n, before2, { timeout: 20000 }).catch(() => {});
 await page.evaluate(() => document.querySelector('#syncSend')?.click());

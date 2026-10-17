@@ -397,3 +397,10 @@ body.floating .stage { display: none; }
 .pip .pip-dot.denkt { background: #e0a030; opacity: 1; }
 .pip .pip-dot.spricht { background: #3d7be0; opacity: 1; }
 .pip .pip-dot.live { border-color: #3d7be0; opacity: 1; }
+
+/* QR-Code scannen (Handy): Kamerabild mit Rahmen */
+.qr-scan { position: fixed; inset: 0; z-index: 9999; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.qr-scan video { width: 100%; max-height: 70vh; object-fit: cover; }
+.qr-scan .qr-frame { position: absolute; top: 50%; left: 50%; width: 60vmin; height: 60vmin; transform: translate(-50%, -60%); border: 3px solid #3d7be0; border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); pointer-events: none; }
+.qr-scan p { color: #fff; margin: 0; z-index: 1; }
+.qr-scan button { z-index: 1; }

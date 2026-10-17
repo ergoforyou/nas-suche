@@ -99,6 +99,7 @@ let xml = fs.readFileSync(manifest, 'utf8');
 const PERMS = [
   'android.permission.RECORD_AUDIO',
   'android.permission.MODIFY_AUDIO_SETTINGS',
+  'android.permission.CAMERA', // QR-Code des PCs scannen (Kopplung für den Abgleich)
   // ungefährer Ort für Wetter/Verkehr (nur wenn eingeschaltet; Android fragt beim ersten Mal)
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_FINE_LOCATION',
@@ -126,6 +127,8 @@ for (const entry of PERMS) {
   const max = maxSdk ? ` android:maxSdkVersion="${maxSdk}"` : '';
   xml = xml.replace('</manifest>', `    <uses-permission android:name="${perm}"${max} />\n</manifest>`);
 }
+// Kamera nur für den QR-Code – die App läuft auch auf Geräten ohne Kamera
+if (!xml.includes('android.hardware.camera')) xml = xml.replace('</manifest>', '    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>');
 if (!xml.includes('usesCleartextTraffic')) xml = xml.replace('<application', '<application\n        android:usesCleartextTraffic="true"');
 // Bild-im-Bild: Aktivität darf als kleines schwebendes Fenster laufen
 if (!xml.includes('supportsPictureInPicture')) {

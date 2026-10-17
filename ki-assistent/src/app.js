@@ -13,6 +13,7 @@ import { detectBodyRig, bodyHandles } from './bodyrig.js';
 import { openMarkEditor } from './markeditor.js';
 import { packPersona, unpackPersona } from './personapack.js';
 import qrcode from 'qrcode-generator';
+import jsQR from 'jsqr';
 import { debugVoice, synthesize, piperState } from './piper.js';
 import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
 import googleLib from '../google.js';
@@ -372,6 +373,21 @@ const stt = new SpeechInput({
   },
 });
 
+// Handy: Headset als Sprechgerät, solange das Mikrofon offen ist (sonst käme der Ton aus dem Handy)
+function voiceRoute(on) {
+  if (!MOBILE || !window.KIDevice?.voiceRoute) return;
+  const name = window.KIDevice.voiceRoute(!!on && state.settings.btHeadset !== false) || '';
+  if (on && name !== (state.voiceDevice ?? '')) {
+    logEv('AUDIO', name ? `Sprechgerät: ${name}` : 'Sprechgerät: Handy');
+    if (name) status(`🎧 Sprechen und Hören über ${name}`);
+  }
+  if (on) state.voiceDevice = name;
+  const el = document.getElementById('phAudioDev');
+  if (el) el.textContent = state.voiceDevice ? `Zuletzt verwendet: ${state.voiceDevice}.` : '';
+}
+stt.onMicOpen = () => voiceRoute(true);
+stt.onMicClose = () => voiceRoute(false);
+
 // Figur im Chatfenster: anklicken = Rahmen zum Verschieben/Skalieren, Doppelklick = sprechen
 new RubberBand($('stage'), avatar, {
   kind: 'layout',
@@ -681,6 +697,7 @@ function buildMessages() {
   const all = history();
   const start = Math.floor(Math.max(0, all.length - state.settings.historyLimit) / 10) * 10;
   const h = all.slice(start).map((m) => {
+    if (m.tools?.length && state.settings.provider === 'anthropic') return { role: m.role, content: m.content, tools: m.tools };
     let content = m.content;
     if (m.files?.length) content += `\n\n(Erstellte Dateien: ${m.files.map((f) => f.name).join(', ')})`;
     if (!m.attachments?.length) return { role: m.role, content };
@@ -829,6 +846,7 @@ async function send(text) {
   renderPending();
   const entry = { role: 'user', content: text, ...(attachments.length ? { attachments } : {}) };
   history().push(entry);
+  state.turnTools = [];
   decorateBubble(addBubble('user', text), entry);
   save();
   output.begin(text || attachments.map((a) => a.name).join(', '));
@@ -896,7 +914,8 @@ async function send(text) {
     const kbDocs = [...new Set((state.kbHits ?? []).map((h) => h.doc.name))];
     if (answer && kbDocs.length) answer += `\n\n📚 *Aus dem Firmenwissen mitgegeben: ${kbDocs.join(', ')}*`;
     if (answer || created.length) {
-      const entry = { role: 'assistant', content: answer, ...(created.length ? { files: created } : {}) };
+      const tools = takeTurnTools();
+      const entry = { role: 'assistant', content: answer, ...(created.length ? { files: created } : {}), ...(tools.length ? { tools } : {}) };
       fillBubble(bubble, 'assistant', answer);
       decorateBubble(bubble, entry);
       history().push(entry);
@@ -1972,6 +1991,7 @@ function fillSettings() {
   $('phBgTalk').checked = !!s.bgTalk;
   $('phPower').value = s.powerSave ?? 'auto';
   $('phFloat').checked = !!s.floatOverlay;
+  $('phBtHeadset').checked = s.btHeadset !== false;
   $('phFloatDock').checked = s.floatDock !== false;
   $('avTod').checked = s.todMood !== false;
   $('kbUse').checked = s.kbUse !== false;
@@ -4776,8 +4796,33 @@ function savedPrompt(hits) {
   );
 }
 /** Werkzeug-Aufruf der KI (läuft hier in der Oberfläche). */
+/**
+ * Werkzeugaufrufe dieser Antwort merken: sie kommen mit in den Verlauf (als echte Werkzeugaufrufe). Sonst stünde dort nur
+ * „Ich habe es gespeichert“ – und die KI ahmt das später nach, ohne das Werkzeug wirklich aufzurufen.
+ */
+function takeTurnTools() {
+  const t = state.turnTools ?? [];
+  state.turnTools = [];
+  return t;
+}
+const shortVal = (v) => (typeof v === 'string' && v.length > 400 ? `${v.slice(0, 400)} …` : v);
 async function runAppTool(name, input) {
+  const rec = { name, input: Object.fromEntries(Object.entries(input ?? {}).map(([k, v]) => [k, shortVal(v)])) };
+  (state.turnTools ??= []).push(rec);
+  try {
+    const out = await runAppToolInner(name, input);
+    rec.result = JSON.stringify(out).slice(0, 600);
+    return out;
+  } catch (e) {
+    rec.result = `Fehler: ${e.message}`;
+    rec.error = true;
+    throw e;
+  }
+}
+async function runAppToolInner(name, input) {
   if (name === 'wissen_speichern') {
+    // beim Streamen kann eine lange Eingabe unvollständig ankommen: klar melden, statt Leeres zu speichern
+    if (!String(input?.titel ?? '').trim() || !String(input?.inhalt ?? '').trim()) throw new Error('titel oder inhalt fehlt – bitte vollständig erneut aufrufen');
     const r = addSaved(input.titel, input.inhalt);
     fireEvent('success', 2500);
     status(`💾 Im Wissen gespeichert: „${r.title}“`);
@@ -4819,6 +4864,8 @@ function appKnowledge() {
       'Gespeichertes Wissen: Mit dem Werkzeug wissen_speichern legst du Rechercheergebnisse, Zusammenfassungen und Wichtiges dauerhaft ab ' +
         '(⚙ → Wissen); wissen_suchen findet sie wieder. Speichere, wenn der Nutzer darum bittet, und biete es nach längeren Recherchen kurz an.',
       'Selbstbild: Mit selbst_notieren schreibst du jederzeit eine Notiz über dich selbst.',
+      'Sag erst, dass etwas gespeichert oder notiert ist, wenn das Werkzeug es bestätigt hat – nie ohne Aufruf. Ging etwas schief, ' +
+        'sag es einmal kurz und versuch es erneut, ohne dich mehrfach zu entschuldigen.',
     );
   if (AREA === 'dienstlich') lines.push('Firmenwissen (nur Dienstlich): eigene Dokumente wie Preislisten oder AGB, passende Abschnitte bekommst du automatisch.');
   if (MOBILE)
@@ -5569,6 +5616,11 @@ $('phFloat').onchange = (e) => {
   refreshFloat();
 };
 $('phBattery').onclick = () => dev()?.askBatteryExempt?.();
+$('phBtHeadset').onchange = (e) => {
+  state.settings.btHeadset = e.target.checked;
+  save();
+  if (stt.stream) voiceRoute(true); // gleich umschalten, falls das Mikrofon gerade offen ist
+};
 $('phFloatAllow').onclick = () => floater()?.askPermission();
 $('phFloatNow').onclick = () => {
   $('drawer').hidden = true;
@@ -6010,6 +6062,13 @@ async function syncConnect() {
     return status(`Der PC ist im Bereich ${name(info.area)}, das Handy in ${name(AREA)} – bitte auf beiden Geräten denselben Bereich wählen.`);
   }
   $('syncKnow').hidden = false;
+  // ohne Kamera: ist am PC der automatische Abgleich an, gleich dauerhaft koppeln
+  if (info.kopplung) {
+    try {
+      const k = await (await syncFetch('/kopplung')).json();
+      if (k.token && k.urls?.length) pairWith(k.urls, k.token);
+    } catch {}
+  }
   try {
     const list = await (await syncFetch('/personas')).json();
     const box = $('syncList');
@@ -6071,26 +6130,93 @@ $('syncKnowSend').onclick = async () => {
     status(`Senden fehlgeschlagen: ${e.message}`);
   }
 };
-// QR-Code mit der Handykamera lesen (Barcode-Erkennung der WebView)
-$('syncScan').onclick = () => $('syncScanFile').click();
+// QR-Code vom PC lesen: Kamera direkt in der App (die Dateiauswahl von Android öffnet sonst nur die Galerie)
+const QR_RE = /^KI-(KOPPLUNG|ABGLEICH) /;
+function handleQrText(text) {
+  if (!text) return;
+  if (/^KI-KOPPLUNG /.test(text)) {
+    const [, urls, token] = text.split(' ');
+    return pairWith(urls.split(',').filter(Boolean), token);
+  }
+  const [, url, code] = text.split(' ');
+  $('syncAddr').value = url;
+  $('syncCode').value = code;
+  syncConnect();
+}
+/** QR-Code in einem Bild oder Videobild suchen (Barcode-Erkennung der WebView, sonst jsQR). */
+async function findQr(source, w, h, det, canvas) {
+  if (det) {
+    try {
+      const hit = (await det.detect(source)).map((c) => c.rawValue).find((v) => QR_RE.test(v));
+      if (hit) return hit;
+    } catch {}
+  }
+  const k = Math.min(1, 900 / Math.max(w, h));
+  canvas.width = Math.max(1, Math.round(w * k));
+  canvas.height = Math.max(1, Math.round(h * k));
+  const g = canvas.getContext('2d', { willReadFrequently: true });
+  g.drawImage(source, 0, 0, canvas.width, canvas.height);
+  const r = jsQR(g.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
+  return r && QR_RE.test(r.data) ? r.data : null;
+}
+const qrDetector = () => {
+  try {
+    return 'BarcodeDetector' in window ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null;
+  } catch {
+    return null;
+  }
+};
+function scanQr() {
+  return new Promise((resolve, reject) => {
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false })
+      .then(async (stream) => {
+        const box = document.createElement('div');
+        box.className = 'qr-scan';
+        box.innerHTML = '<video playsinline muted></video><div class="qr-frame"></div><p>QR-Code vom PC in den Rahmen halten</p><button>Abbrechen</button>';
+        document.body.append(box);
+        const video = box.querySelector('video');
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+        const det = qrDetector();
+        const canvas = document.createElement('canvas');
+        let done = false;
+        const finish = (val) => {
+          if (done) return;
+          done = true;
+          stream.getTracks().forEach((t) => t.stop());
+          box.remove();
+          resolve(val);
+        };
+        box.querySelector('button').onclick = () => finish(null);
+        const tick = async () => {
+          if (done) return;
+          if (video.readyState >= 2 && video.videoWidth) {
+            const val = await findQr(video, video.videoWidth, video.videoHeight, det, canvas);
+            if (val) return finish(val);
+          }
+          setTimeout(tick, 200);
+        };
+        tick();
+      })
+      .catch(() => reject(new Error('Kamera nicht verfügbar – bitte der App die Kamera erlauben, ein Foto wählen oder Adresse und Code eintippen')));
+  });
+}
+$('syncScan').onclick = () =>
+  scanQr()
+    .then(handleQrText)
+    .catch((e) => status(`QR-Code: ${e.message}`));
+// Ersatz: Foto des QR-Codes aus der Galerie
+$('syncScanPhoto').onclick = () => $('syncScanFile').click();
 $('syncScanFile').onchange = async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f) return;
   try {
-    if (!('BarcodeDetector' in window)) throw new Error('QR-Erkennung wird hier nicht unterstützt – bitte Adresse und Code eintippen');
-    const codes = await new window.BarcodeDetector({ formats: ['qr_code'] }).detect(await createImageBitmap(f));
-    const pairCode = codes.map((c) => c.rawValue).find((v) => /^KI-KOPPLUNG /.test(v));
-    if (pairCode) {
-      const [, urls, token] = pairCode.split(' ');
-      return pairWith(urls.split(',').filter(Boolean), token);
-    }
-    const m = codes.map((c) => c.rawValue).find((v) => /^KI-ABGLEICH /.test(v));
-    if (!m) throw new Error('kein Abgleich-Code im Bild');
-    const [, url, code] = m.split(' ');
-    $('syncAddr').value = url;
-    $('syncCode').value = code;
-    syncConnect();
+    const bmp = await createImageBitmap(f);
+    const val = await findQr(bmp, bmp.width, bmp.height, qrDetector(), document.createElement('canvas'));
+    if (!val) throw new Error('kein Abgleich-Code im Bild');
+    handleQrText(val);
   } catch (err) {
     status(`QR-Code: ${err.message}`);
   }
@@ -6208,6 +6334,7 @@ $('syncAuto').onchange = (e) => {
   save();
   startAutoServe();
 };
+$('syncAutoCode').onclick = () => $('syncPcStart').click();
 $('syncAutoNew').onclick = async () => {
   if (!confirm('Kopplung erneuern? Das bisher gekoppelte Handy muss dann den neuen QR-Code scannen.')) return;
   state.settings.syncToken = '';
@@ -6338,6 +6465,7 @@ async function startRealtime() {
   rt = { pc, user: null, bot: null, botText: '' };
   status('Echtzeit-Gespräch wird verbunden …');
   try {
+    voiceRoute(true);
     const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     rt.mic = mic;
     mic.getTracks().forEach((t) => pc.addTrack(t, mic));
@@ -6437,7 +6565,8 @@ async function startRealtime() {
           });
         }
         if (rt.bot && rt.botText.trim()) {
-          history().push({ role: 'assistant', content: rt.botText.trim() });
+          const tools = takeTurnTools();
+          history().push({ role: 'assistant', content: rt.botText.trim(), ...(tools.length ? { tools } : {}) });
           save();
         }
         rt.bot = null;
@@ -6468,6 +6597,7 @@ function stopRealtime() {
     rt.dc?.close();
     rt.pc.close();
     rt.mic?.getTracks().forEach((t) => t.stop());
+    if (!stt.stream) voiceRoute(false);
     rt.ctx?.close();
     if (rt.audioEl) rt.audioEl.srcObject = null;
   } catch {}
@@ -6579,6 +6709,11 @@ window.__app = {
   syncSnapshot: () => syncSnapshot(state, state.abgleich),
   autoSync,
   pairWith,
+  // QR-Code aus einem Bild lesen (ohne Barcode-Erkennung der WebView, also mit jsQR)
+  readQrImage: async (url) => {
+    const bmp = await createImageBitmap(await (await fetch(url)).blob());
+    return findQr(bmp, bmp.width, bmp.height, null, document.createElement('canvas'));
+  },
   applyReflection,
   fragmentReason,
   voicedSeconds,

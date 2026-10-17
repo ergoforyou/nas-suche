@@ -38,9 +38,11 @@ export class SpeechInput {
     try {
       this.processor?.disconnect();
     } catch {}
+    const wasOpen = !!this.stream;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.ctx?.close().catch(() => {});
     this.stream = null;
+    if (wasOpen) this.onMicClose?.();
     this.ctx = null;
     this.processor = null;
   }
@@ -101,6 +103,7 @@ export class SpeechInput {
 
   async ensureMic() {
     if (this.stream) return;
+    this.onMicOpen?.(); // Handy: Headset als Sprechgerät wählen, bevor das Mikrofon aufgeht
     const audio = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: this.deviceId ? { ...audio, deviceId: { exact: this.deviceId } } : audio });

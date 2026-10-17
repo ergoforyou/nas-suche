@@ -308,7 +308,9 @@ function syncHandler(authOk, ownUrls = () => []) {
     const json = (x) => res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }).end(JSON.stringify(x));
     try {
       const url = new URL(req.url, 'http://x');
-      if (req.method === 'GET' && url.pathname === '/info') return json({ name: APP_NAME, area: AREA, urls: ownUrls() });
+      if (req.method === 'GET' && url.pathname === '/info') return json({ name: APP_NAME, area: AREA, urls: ownUrls(), kopplung: !!autoServer });
+      // Koppeln ohne Kamera: wer Adresse und Code eingetippt hat, bekommt den Kopplungsschlüssel für den automatischen Abgleich
+      if (req.method === 'GET' && url.pathname === '/kopplung') return json(autoServer ? { urls: autoUrls(), token: autoToken } : {});
       if (req.method === 'GET' && url.pathname === '/personas') return json(await askRenderer('list'));
       if (req.method === 'GET' && url.pathname === '/persona') {
         const b64 = await askRenderer('export', url.searchParams.get('id'));

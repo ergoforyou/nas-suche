@@ -332,6 +332,79 @@ public class MainActivity extends BridgeActivity {
     }
 
     private android.widget.TextView floatLiveBtn;
+
+    // ---- Headset für Sprache (siehe Device.voiceRoute)
+    private volatile boolean voiceWanted;
+    private boolean scoStarted;
+    private boolean deviceWatch;
+
+    String routeVoice(boolean on) {
+        android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return "";
+        watchAudioDevices(am);
+        try {
+            if (Build.VERSION.SDK_INT >= 31) {
+                if (!on) {
+                    am.clearCommunicationDevice();
+                    return "";
+                }
+                // Reihenfolge: Bluetooth (LE, klassisch), dann Kabel/USB-Headset
+                int[] prefer = { android.media.AudioDeviceInfo.TYPE_BLE_HEADSET, android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET, android.media.AudioDeviceInfo.TYPE_USB_HEADSET };
+                java.util.List<android.media.AudioDeviceInfo> devs = am.getAvailableCommunicationDevices();
+                for (int type : prefer) {
+                    for (android.media.AudioDeviceInfo d : devs) {
+                        if (d.getType() != type) continue;
+                        boolean ok = am.setCommunicationDevice(d);
+                        String name = String.valueOf(d.getProductName());
+                        Log.i("KI-Assistent", "Sprechgerät: " + name + " (" + type + ") " + (ok ? "gewählt" : "abgelehnt"));
+                        if (ok) return name;
+                    }
+                }
+                am.clearCommunicationDevice();
+                return "";
+            }
+            // Android 8–11: Bluetooth-Sprechverbindung (SCO) selbst aufbauen
+            if (on && am.isBluetoothScoAvailableOffCall() && hasBtHeadset(am)) {
+                am.startBluetoothSco();
+                am.setBluetoothScoOn(true);
+                scoStarted = true;
+                return "Bluetooth-Headset";
+            }
+            if (scoStarted) {
+                am.setBluetoothScoOn(false);
+                am.stopBluetoothSco();
+                scoStarted = false;
+            }
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Sprechgerät", e);
+        }
+        return "";
+    }
+
+    private boolean hasBtHeadset(android.media.AudioManager am) {
+        for (android.media.AudioDeviceInfo d : am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)) {
+            if (d.getType() == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO) return true;
+        }
+        return false;
+    }
+
+    /** Headset während des Gesprächs ein- oder ausgesteckt bzw. verbunden: Sprechgerät neu wählen. */
+    private void watchAudioDevices(android.media.AudioManager am) {
+        if (deviceWatch || Build.VERSION.SDK_INT < 23) return;
+        deviceWatch = true;
+        am.registerAudioDeviceCallback(new android.media.AudioDeviceCallback() {
+            @Override
+            public void onAudioDevicesAdded(android.media.AudioDeviceInfo[] added) {
+                if (voiceWanted) routeVoice(true);
+            }
+
+            @Override
+            public void onAudioDevicesRemoved(android.media.AudioDeviceInfo[] removed) {
+                if (voiceWanted) routeVoice(true);
+            }
+        }, new android.os.Handler(android.os.Looper.getMainLooper()));
+    }
     private android.widget.LinearLayout floatBar;
 
     /** Knöpfe unter der Figur an die Fensterbreite anpassen – sonst ragen sie bei kleiner Figur hinaus und sitzen verschoben. */
@@ -837,6 +910,17 @@ public class MainActivity extends BridgeActivity {
 
     /** Schnittstelle für Teilen, Schnellstart, Standort-Namen, Erinnerungen, Hintergrund-Gespräch und Akku. */
     public class Device {
+        /**
+         * Sprechen über Headset: solange das Mikrofon offen ist, steht Android im Telefonie-Modus – der Ton ginge dann an
+         * Lautsprecher/Hörmuschel, obwohl ein Bluetooth-Headset verbunden ist. Deshalb das Headset ausdrücklich als
+         * Sprechgerät wählen (Mikrofon und Ton). Liefert den Namen des Geräts oder "" (Handy selbst).
+         */
+        @JavascriptInterface
+        public String voiceRoute(boolean on) {
+            voiceWanted = on;
+            return routeVoice(on);
+        }
+
         @JavascriptInterface
         public String takeIntents() {
             synchronized (pendingEvents) {
