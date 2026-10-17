@@ -370,13 +370,35 @@ function toWav(samples, rate = 16000) {
  * Spracherkennung in der Cloud (OpenAI). Läuft auf jedem Gerät schnell – auch auf dem Handy und auf schwächeren PCs.
  * @param {*} client OpenAI-Client, @param {*} toFile toFile aus dem OpenAI-SDK
  */
-async function transcribeOpenAI(client, toFile, audio, { language, model } = {}) {
-  const res = await client.audio.transcriptions.create({
+let noLogprobs = false;
+/**
+ * Cloud-Spracherkennung. Mit withConfidence: { text, conf } – conf (0..1) = mittlere Sicherheit der erkannten
+ * Wörter (nur gpt-4o-transcribe/-mini liefern das; sonst null). Hilft, Wortfetzen aus Hintergrundgeräuschen zu verwerfen.
+ */
+async function transcribeOpenAI(client, toFile, audio, { language, model, prompt, withConfidence = false } = {}) {
+  const m = model || 'gpt-4o-transcribe';
+  const wantProbs = withConfidence && !noLogprobs && /^gpt-4o.*transcribe/.test(m);
+  const params = async (probs) => ({
     file: await toFile(toWav(audio), 'sprache.wav', { type: 'audio/wav' }),
-    model: model || 'gpt-4o-transcribe',
+    model: m,
     ...(language ? { language: language === 'english' ? 'en' : 'de' } : {}),
+    ...(prompt ? { prompt } : {}),
+    ...(probs ? { response_format: 'json', include: ['logprobs'] } : {}),
   });
-  return String(res.text ?? '').trim();
+  let res;
+  try {
+    res = await client.audio.transcriptions.create(await params(wantProbs));
+  } catch (err) {
+    // Konto/Modell kennt die Sicherheitswerte nicht: ohne sie weiter (und nicht wieder versuchen)
+    if (!wantProbs || err?.status !== 400) throw err;
+    noLogprobs = true;
+    res = await client.audio.transcriptions.create(await params(false));
+  }
+  const text = String(res.text ?? '').trim();
+  if (!withConfidence) return text;
+  const lp = Array.isArray(res.logprobs) ? res.logprobs.map((t) => t.logprob).filter((x) => typeof x === 'number') : [];
+  const conf = lp.length ? Math.exp(lp.reduce((a, b) => a + b, 0) / lp.length) : null;
+  return { text, conf };
 }
 
 const { APP_TOOLS, APP_TOOL_STATUS } = require('./apptools.js');

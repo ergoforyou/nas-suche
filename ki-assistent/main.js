@@ -1408,13 +1408,13 @@ ipcMain.handle('tts:cloud:speak', async (_e, { text, voice, model, instructions,
 });
 
 // Spracherkennung in der Cloud (OpenAI): schnell auch auf schwächeren PCs; nur in der Cloud-Ausgabe
-ipcMain.handle('stt:cloud', async (_e, { audio, language, model }) => {
+ipcMain.handle('stt:cloud', async (_e, { audio, language, model, prompt, withConfidence }) => {
   const blocked = cloudBlocked('openai');
   if (blocked) throw new Error(blocked);
   try {
     const { client } = openaiClient();
     const { toFile } = require('openai');
-    return await transcribeOpenAI(client, toFile, audio instanceof Float32Array ? audio : Float32Array.from(audio), { language, model });
+    return await transcribeOpenAI(client, toFile, audio instanceof Float32Array ? audio : Float32Array.from(audio), { language, model, prompt, withConfidence });
   } catch (err) {
     throw new Error(friendlyCloudError(err, 'Cloud-Spracherkennung', require('openai').default));
   }

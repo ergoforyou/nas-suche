@@ -81,6 +81,30 @@ await page.waitForFunction(() => window.__app, null, { timeout: 30000 });
 check((await page.evaluate(() => window.__app.edition)) === 'mobile', 'Android-Ausgabe aktiv');
 check((await page.evaluate(() => window.__app.state.settings.provider)) === 'anthropic', 'Claude ist Standard');
 check(!(await page.isVisible('#btnFloat')) && !(await page.isVisible('#btnClose')), 'Desktop-Knöpfe ausgeblendet');
+// Wortfetzen im Live-Gespräch: Füllwörter, einzelne Wörter, unsichere Erkennung, zu wenig Stimme
+const frag = await page.evaluate(() => {
+  const F = window.__app.fragmentReason;
+  const tone = (sec, amp) => Float32Array.from({ length: 16000 * sec }, (_, i) => Math.sin(i / 8) * amp);
+  const quiet = new Float32Array(16000);
+  const mix = new Float32Array(32000);
+  mix.set(tone(0.2, 0.2)); // 0,2 s Geräusch, Rest Stille
+  return {
+    filler: F('Äh, hm.', null),
+    word: F('Tabelle', null),
+    ok: F('Stopp!', null),
+    real: F('Wie wird das Wetter morgen?', null),
+    unsure: F('der die', 0.3),
+    sureShort: F('Wie spät ist es?', 0.9),
+    v1: window.__app.voicedSeconds(tone(1, 0.2), 0.01),
+    v0: window.__app.voicedSeconds(quiet, 0.01),
+    vMix: window.__app.voicedSeconds(mix, 0.01),
+  };
+});
+check(
+  frag.filler && frag.word && !frag.ok && !frag.real && frag.unsure && !frag.sureShort && frag.v1 > 0.9 && frag.v0 === 0 && frag.vMix < 0.25,
+  'Live-Gespräch: Füllwörter, Einzelwort-Fetzen, unsichere Erkennung und reine Geräusche werden aussortiert',
+  JSON.stringify(frag),
+);
 // Kostenzähler: Preise (Listenpreise) und Anzeige in der Titelleiste
 const price = await page.evaluate(() => {
   const P = window.__app.priceOf;

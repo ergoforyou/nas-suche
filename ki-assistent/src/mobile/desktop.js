@@ -352,9 +352,9 @@ const api = {
       }));
     }
   },
-  transcribeCloud: async (audio, language, model) => {
+  transcribeCloud: async (audio, language, model, opts = {}) => {
     try {
-      return await transcribeOpenAI(await openaiClient(), toFile, audio, { language, model });
+      return await transcribeOpenAI(await openaiClient(), toFile, audio, { language, model, ...opts });
     } catch (err) {
       throw new Error(friendlyCloudError(err, 'Cloud-Spracherkennung', OpenAI));
     }

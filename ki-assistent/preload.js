@@ -84,7 +84,7 @@ contextBridge.exposeInMainWorld('desktop', {
   openaiTtsModels: () => ipcRenderer.invoke('openai:ttsModels'),
   anthropicModels: () => ipcRenderer.invoke('anthropic:models'),
   ttsCloudSpeak: (opts) => ipcRenderer.invoke('tts:cloud:speak', opts),
-  transcribeCloud: (audio, language, model) => ipcRenderer.invoke('stt:cloud', { audio, language, model }),
+  transcribeCloud: (audio, language, model, opts = {}) => ipcRenderer.invoke('stt:cloud', { audio, language, model, ...opts }),
   pickSaveTarget: (name) => ipcRenderer.invoke('file:pickTarget', { name }),
   writeSaveTarget: (target, bytes) => ipcRenderer.invoke('file:writeTarget', { target, bytes }),
   googleStatus: () => ipcRenderer.invoke('google:status'),

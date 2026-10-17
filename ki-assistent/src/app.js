@@ -1103,7 +1103,11 @@ function stopAll() {
 // Typische Whisper-"Halluzinationen" bei Stille herausfiltern.
 const NOISE = [
   /^untertitel/i,
-  /^vielen dank( fürs zuschauen)?[.!]*$/i,
+  /copyright/i,
+  /^vielen dank( fürs zuschauen| fürs zuhören| für ihre aufmerksamkeit)?[.!]*$/i,
+  /^(danke|danke schön|dankeschön) (fürs|für's|für das) (zuhören|zuschauen)[.!]*$/i,
+  /^bis zum nächsten mal[.!]*$/i,
+  /^(swr|zdf|ard|wdr|ndr|br) ?\d{4}/i,
   /^thanks? (you )?for watching/i,
   /^thank you[.!]*$/i,
   /^\W*$/,
@@ -1111,6 +1115,42 @@ const NOISE = [
   /^\(.*\)$/,
   /amara\.org/i,
 ];
+
+// ---- Wortfetzen aussortieren (vor allem im Live-Gespräch: Räuspern, Tastatur, Stimmen im Hintergrund)
+const FILLER = new Set(['äh', 'ähm', 'öh', 'öhm', 'eh', 'ehm', 'hm', 'hmm', 'mhm', 'mmh', 'ah', 'oh', 'uh', 'tja', 'na', 'so', 'also', 'ok', 'okay', 'oke', 'gut']);
+// Einzelne Wörter, die als Antwort Sinn ergeben
+const ONE_WORD_OK = new Set(['ja', 'nein', 'jein', 'stopp', 'stop', 'halt', 'danke', 'weiter', 'genau', 'richtig', 'falsch', 'hallo', 'tschüss', 'abbrechen', 'nochmal', 'wiederholen', 'gerne', 'bitte', 'klar', 'yes', 'no']);
+/** Wie viele Sekunden der Aufnahme sind wirklich Stimme (lauter als die Schwelle)? */
+function voicedSeconds(audio, thr) {
+  const n = 320; // 20 ms
+  let voiced = 0;
+  for (let i = 0; i + n <= audio.length; i += n) {
+    let sum = 0;
+    for (let j = i; j < i + n; j++) sum += audio[j] * audio[j];
+    if (Math.sqrt(sum / n) > thr) voiced++;
+  }
+  return (voiced * n) / 16000;
+}
+/** Warum dieser erkannte Text im Live-Gespräch kein echter Beitrag ist (oder null, wenn er passt). */
+function fragmentReason(text, conf) {
+  const words = text.toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return 'leer';
+  if (words.every((w) => FILLER.has(w))) return 'nur Füllwort';
+  const name = (persona().name || '').toLowerCase();
+  if (words.length === 1 && !ONE_WORD_OK.has(words[0]) && words[0] !== name) {
+    // ein einzelnes Wort ergibt nur als Antwort auf eine Rückfrage Sinn
+    const last = [...history()].reverse().find((m) => m.role === 'assistant')?.content ?? '';
+    if (!/\?\s*$/.test(last.trim())) return 'einzelnes Wort';
+  }
+  // Cloud-Erkennung war sich unsicher: kurze Fetzen verwerfen, längere nur bei sehr geringer Sicherheit
+  if (conf != null && (conf < 0.35 || (conf < 0.55 && words.length <= 3))) return 'unsicher erkannt';
+  return null;
+}
+/** Hinweis auf eine Eingabe, die bewusst nicht verschickt wurde. */
+function overheard(text, why) {
+  status(text ? `Überhört (${why}): „${text.slice(0, 60)}“` : `Überhört (${why})`);
+  logEv?.('STT', `überhört (${why}): ${text}`);
+}
 
 // ---- Live-Gespräch: Dazwischenreden und Echo-Schutz
 const liveBargeIn = () => state.settings.handsFree && state.settings.bargeIn;
@@ -1143,14 +1183,17 @@ const waitIdle = async (ms) => {
 
 /** Spracherkennung; scheitert der Download des gewählten Modells, mit einem kleineren weiterversuchen. */
 const STT_FALLBACKS = ['onnx-community/whisper-base', 'onnx-community/whisper-tiny'];
-async function transcribeWithFallback(audio) {
+async function transcribeWithFallback(audio, { withConfidence = false } = {}) {
   if (state.settings.sttEngine === 'cloud' && desktop.transcribeCloud) {
     const keys = await desktop.keyStatus().catch(() => ({}));
     if (keys.openai) {
       try {
-        const text = await desktop.transcribeCloud(audio, stt.language, state.settings.sttCloudModel);
+        // kurzer Hinweis auf den Zusammenhang hilft der Erkennung (Namen, Thema); Sicherheit nur im Live-Gespräch
+        const prompt = `Gespräch mit dem Assistenten ${persona().name || 'Max'}.`;
+        const r = await desktop.transcribeCloud(audio, stt.language, state.settings.sttCloudModel, { prompt, withConfidence });
         costs.add({ kind: 'stt', model: state.settings.sttCloudModel || 'gpt-4o-transcribe', seconds: audio.length / 16000 });
-        return text;
+        if (typeof r === 'string') return withConfidence ? { text: r, conf: null } : r;
+        return withConfidence ? r : r?.text ?? '';
       } catch (e) {
         status(`Cloud-Spracherkennung: ${e.message} – nutze Whisper auf dem Gerät.`);
       }
@@ -1165,15 +1208,19 @@ async function transcribeWithFallback(audio) {
     // auf dem Handy als Ersatz das kleinere Modell (schneller geladen, weniger Speicher)
     if (MOBILE && /whisper-small/.test(stt.model)) stt.model = 'onnx-community/whisper-base';
   }
+  const local = async () => {
+    const t = await stt.transcribe(audio, progressStatus('Spracherkennung'));
+    return withConfidence ? { text: t, conf: null } : t;
+  };
   try {
-    return await stt.transcribe(audio, progressStatus('Spracherkennung'));
+    return await local();
   } catch (e) {
     if (!/unavailable|trying to load file|fetch|network|503/i.test(String(e?.message ?? e))) throw e;
     for (const m of STT_FALLBACKS.filter((m) => m !== stt.model)) {
       const wanted = stt.model;
       try {
         stt.model = m;
-        const text = await stt.transcribe(audio, progressStatus('Spracherkennung'));
+        const text = await local();
         status(`Hinweis: „${wanted.split('/').pop()}“ ließ sich nicht laden – nutze vorerst „${m.split('/').pop()}“.`);
         return text;
       } catch {
@@ -1197,8 +1244,10 @@ async function listenOnce({ handsFree = false } = {}) {
       threshold: () => state.settings.sensitivity * (live && tts.speaking ? 2.5 : 1),
       // während der Avatar spricht keine Absenkung der Schwelle (sonst unterbricht ihn sein eigenes Echo)
       adaptive: () => !(live && tts.speaking),
-      // im Freihand-Modus mindestens ~¼ s Stimme, damit Tastenklicks nichts auslösen
-      startMs: () => (!handsFree ? 0 : tts.speaking ? 300 : 200),
+      // im Live-Gespräch sinkt die Schwelle höchstens auf die Hälfte (sonst lösen leise Hintergrundgeräusche aus)
+      minThreshold: () => (handsFree ? state.settings.sensitivity * 0.5 : 0.003),
+      // im Freihand-Modus mindestens ~⅓ s Stimme, damit Tastenklicks und Räuspern nichts auslösen
+      startMs: () => (!handsFree ? 0 : tts.speaking ? 350 : 300),
       silenceMs: handsFree ? state.settings.livePauseMs : 1100,
       onSpeechStart: () => {
         duringSpeech = tts.speaking || Date.now() - (state.lastSpeakEnd ?? 0) < 1000;
@@ -1218,16 +1267,27 @@ async function listenOnce({ handsFree = false } = {}) {
     state.hearing = false;
     updateBadge();
     if (!audio || audio.length < 16000 * 0.35) return;
+    // genug echte Stimme? (Aufnahmen mit kurzem Geräusch und langer Stille gar nicht erst erkennen lassen)
+    const voiced = voicedSeconds(audio, state.settings.sensitivity * 0.6);
+    if (voiced < (handsFree ? 0.4 : 0.15)) {
+      if (handsFree) overheard('', 'nur kurzes Geräusch');
+      return;
+    }
     state.transcribing = true;
     updateBadge();
-    const text = await transcribeWithFallback(audio);
+    const res = await transcribeWithFallback(audio, { withConfidence: handsFree });
+    const text = (typeof res === 'string' ? res : res?.text ?? '').trim();
     state.timing.heard = performance.now();
     status('');
     state.transcribing = false;
     updateBadge();
-    if (!text || NOISE.some((r) => r.test(text.trim()))) {
+    if (!text || NOISE.some((r) => r.test(text))) {
       if (handsFree && audio.length > 16000) status('Nicht verstanden – bitte noch einmal sagen.');
       return;
+    }
+    if (handsFree) {
+      const why = fragmentReason(text, res?.conf ?? null);
+      if (why) return overheard(text, why);
     }
     if (handsFree && duringSpeech && isEcho(text)) return;
     fireEvent('ack', 1500);
@@ -1657,6 +1717,7 @@ function fillSettings() {
   $('sMood').checked = s.moodTags !== false;
   $('sLivePause').value = String(s.livePauseMs);
   $('sSens').value = s.sensitivity;
+  fillMics();
 
   $('cUrl').value = s.baseUrl;
   $('cTemp').value = s.temperature;
@@ -3773,6 +3834,32 @@ $('sLivePause').onchange = (e) => {
   state.settings.livePauseMs = +e.target.value;
   save();
 };
+// ---- Mikrofon wählen (z. B. Headset statt Tischmikrofon, wenn mehrere angeschlossen sind)
+async function fillMics() {
+  const sel = $('sMic');
+  if (!sel || !navigator.mediaDevices?.enumerateDevices) return;
+  let devs = [];
+  try {
+    devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
+  } catch {}
+  const cur = state.settings.micId || '';
+  sel.innerHTML = '';
+  sel.add(new Option('Standard des Systems', ''));
+  devs.forEach((d, i) => sel.add(new Option(d.label || `Mikrofon ${i + 1}`, d.deviceId)));
+  if (cur && !devs.some((d) => d.deviceId === cur)) sel.add(new Option('(gewähltes Mikrofon nicht angeschlossen – nutze Standard)', cur));
+  sel.value = cur;
+  $('sMicHint').textContent =
+    devs.length > 1 && !cur ? `${devs.length} Mikrofone gefunden – am besten das Headset wählen (Tischmikrofone hören den ganzen Raum mit).` : '';
+}
+$('sMic').onchange = (e) => {
+  state.settings.micId = e.target.value;
+  stt.setDevice(e.target.value);
+  save();
+  fillMics();
+  status('Mikrofon gewechselt – gilt ab dem nächsten Zuhören.');
+  if (state.settings.handsFree) maybeListenHandsFree();
+};
+navigator.mediaDevices?.addEventListener?.('devicechange', () => fillMics());
 $('sSens').oninput = (e) => {
   state.settings.sensitivity = +e.target.value;
   save();
@@ -4013,6 +4100,7 @@ async function refreshModels() {
 async function init() {
   const data = (await desktop.loadData()) ?? {};
   state.settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
+  stt.setDevice(state.settings.micId || '');
   if (!['german', 'english'].includes(state.settings.sttLang)) state.settings.sttLang = 'persona';
   // Ältere Installationen einmalig umstellen: Cloud-Erkennung (Cloud-Ausgabe) und genaueres lokales Modell
   if ((data.settings?.sttDefaults ?? 0) < 2) {
@@ -5914,6 +6002,8 @@ function startPhoneFeatures() {
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
   carryPersonas,
+  fragmentReason,
+  voicedSeconds,
   runAppTool,
   appKnowledge,
   buildMessages,

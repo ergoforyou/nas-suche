@@ -23,6 +23,26 @@ export class SpeechInput {
     this.language = 'german';
     this.stream = null;
     this.ctx = null;
+    this.deviceId = ''; // gewähltes Mikrofon ('' = Standard des Systems)
+  }
+
+  /** Anderes Mikrofon wählen: das offene wird geschlossen, beim nächsten Zuhören öffnet sich das neue. */
+  setDevice(id) {
+    if ((id || '') === this.deviceId) return;
+    this.deviceId = id || '';
+    this.closeMic();
+  }
+
+  closeMic() {
+    if (this.rec) this.cancel?.();
+    try {
+      this.processor?.disconnect();
+    } catch {}
+    this.stream?.getTracks().forEach((t) => t.stop());
+    this.ctx?.close().catch(() => {});
+    this.stream = null;
+    this.ctx = null;
+    this.processor = null;
   }
 
   call(msg, onProgress, transfer) {
@@ -81,9 +101,14 @@ export class SpeechInput {
 
   async ensureMic() {
     if (this.stream) return;
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    const audio = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: this.deviceId ? { ...audio, deviceId: { exact: this.deviceId } } : audio });
+    } catch (e) {
+      // gewähltes Mikrofon nicht angeschlossen: Standard des Systems nehmen
+      if (!this.deviceId || !/NotFound|Overconstrained/i.test(e?.name ?? '')) throw e;
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio });
+    }
     this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
     const src = this.ctx.createMediaStreamSource(this.stream);
     this.processor = this.ctx.createScriptProcessor(2048, 1, 1);
@@ -99,7 +124,7 @@ export class SpeechInput {
    */
   // threshold und startMs dürfen Funktionen sein (Live-Gespräch: strenger, solange der Avatar spricht).
   // startMs: so lange muss es laut sein, bis es als Sprechen gilt. onSpeechStart: Beginn des Sprechens.
-  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000, startMs = 0, adaptive = true, onSpeechStart } = {}) {
+  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000, startMs = 0, adaptive = true, minThreshold = 0.003, onSpeechStart } = {}) {
     await this.ensureMic();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
     return new Promise((resolve) => {
@@ -115,6 +140,7 @@ export class SpeechInput {
         maxMs,
         startMs,
         adaptive,
+        minThreshold,
         loudFor: 0,
         onSpeechStart,
         resolve,
@@ -138,7 +164,7 @@ export class SpeechInput {
     // Ruhepegel mitlernen: Leise Headset-Mikrofone erreichen die eingestellte Schwelle oft nie.
     // Die Schwelle sinkt dann bis auf das Vierfache des Ruhepegels – höher als eingestellt wird sie nie.
     const th = value(r.threshold);
-    const loud = rms > (value(r.adaptive) ? Math.min(th, Math.max(this.floor * 4, 0.003)) : th);
+    const loud = rms > (value(r.adaptive) ? Math.min(th, Math.max(this.floor * 4, value(r.minThreshold) ?? 0.003)) : th);
 
     if (!r.speaking) {
       // Kurzen Vorlauf behalten, damit der Wortanfang nicht abgeschnitten wird.
