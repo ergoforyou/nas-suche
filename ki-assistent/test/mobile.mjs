@@ -1038,6 +1038,66 @@ await page.evaluate(() => {
   const p = window.__app.persona();
   p.avatar.poses = p.avatar.poses.filter((x) => x.id !== 'gtest');
 });
+// Offene Themen: beim ersten Gespräch nach einer Pause gehen fällige Themen mit, danach gelten sie als angesprochen
+const yesterday = new Date(Date.now() - 86400e3).toISOString().slice(0, 10);
+await page.evaluate((y) => {
+  const app = window.__app;
+  const p = app.persona();
+  p.themen = [];
+  app.addTopic(p, 'Jens hatte gestern einen Zahnarzttermin.', y);
+  const h = app.history();
+  for (const m of h) m.t = Date.now() - 6 * 3600e3; // letztes Gespräch ist 6 Stunden her
+  app.state.busy = false;
+}, yesterday);
+const topicBefore = claudeRequests.length;
+{
+  const n = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+  await page.fill('#input', 'Guten Abend!');
+  await page.click('#btnSend');
+  await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !window.__app.state.busy, n, { timeout: 15000 }).catch(() => {});
+}
+const topicReq = claudeRequests.slice(topicBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Guten Abend'));
+const topicRes = await page.evaluate(() => ({ asked: !!window.__app.persona().themen?.[0]?.asked, due: window.__app.dueTopics(window.__app.persona()).length }));
+check(
+  /Offene Themen[\s\S]*Zahnarzttermin/.test(JSON.stringify(topicReq?.messages ?? '')) && topicRes.asked && topicRes.due === 0,
+  'Offene Themen: nach einer Pause darf die Figur nachfragen, danach nicht noch einmal',
+  JSON.stringify(topicRes),
+);
+// Persönliche Begrüßung: nach längerer Pause, mit dem Hilfsmodell, steht danach im Verlauf
+claudeQueue.push([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Schön, dass du wieder da bist! Wie lief es beim Zahnarzt?' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 12 } },
+  { type: 'message_stop' },
+]);
+const greetBefore = claudeRequests.length;
+const greetRes = await page.evaluate(async () => {
+  const app = window.__app;
+  for (const m of app.history()) m.t = Date.now() - 5 * 3600e3;
+  app.state.busy = false;
+  await app.personalGreeting();
+  const last = app.history().at(-1);
+  return { greet: !!last?.greet, text: last?.content, chat: document.getElementById('chat').textContent.includes('Schön, dass du wieder da bist') };
+});
+const greetReq = claudeRequests.slice(greetBefore).find((r) => JSON.stringify(r.system ?? '').includes('gerade die App geöffnet'));
+check(greetRes.greet && greetRes.chat && /haiku/.test(greetReq?.model ?? ''), 'Persönliche Begrüßung nach einer Pause (günstiges Hilfsmodell)', JSON.stringify({ ...greetRes, model: greetReq?.model }));
+// Ruhe-Video-Knopf legt eine Pose mit dem Anlass „Ruhe“ an
+const restBtnRes = await page.evaluate(() => {
+  const app = window.__app;
+  const input = document.getElementById('avFile');
+  const click = input.click;
+  input.click = () => {}; // Dateiauswahl im Test nicht öffnen
+  document.getElementById('poseAddRest').click();
+  input.click = click;
+  const p = app.persona();
+  const pose = p.avatar.poses.at(-1);
+  const out = { trigger: pose?.trigger, name: pose?.name };
+  p.avatar.poses.pop();
+  return out;
+});
+check(restBtnRes.trigger === "rest" && /Ruhe-Video/.test(restBtnRes.name), 'Knopf „Ruhe-Video statt Standbild“ legt eine Ruhe-Pose an', JSON.stringify(restBtnRes));
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
 {
   const { default: qrcodeGen } = await import('qrcode-generator');

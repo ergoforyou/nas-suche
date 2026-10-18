@@ -212,6 +212,7 @@
       <div id="poseList" class="pose-list"></div>
       <div class="row wrap">
         <button id="poseAdd">＋ Pose hinzufügen</button>
+        <button id="poseAddRest" title="Kurzes Video (2–5 s), das statt des Standbilds läuft, wenn die Figur nichts tut – mit zwei Videos im Wechsel">🎞 Ruhe-Video statt Standbild …</button>
         <button id="poseEditMain">Grundbild bearbeiten</button>
       </div>
       <p class="hint edit-info" id="editInfo"></p>
@@ -322,6 +323,17 @@
         <button id="mAdd">＋</button>
       </div>
       <button id="mClear" class="danger">Alles vergessen</button>
+
+      <h3>💬 Gesprächsgefühl</h3>
+      <label class="check"><input id="cGreet" type="checkbox" /> Persönliche Begrüßung beim Start <span class="hint">(nach mindestens
+        4 Stunden Pause: passend zu Tageszeit, heutigen Terminen und dem letzten Gespräch – mit dem günstigen Hilfsmodell)</span></label>
+      <label class="check"><input id="cThink" type="checkbox" /> Denklaute <span class="hint">(dauert die Antwort, sagt die Figur
+        kurz „Hm, Moment …“ statt still zu warten – nur mit Sprachausgabe)</span></label>
+      <h3>📌 Offene Themen <span id="tCount" class="hint"></span></h3>
+      <p class="hint">Merkt sich die Figur beim Dazulernen: Termine, Vorhaben, Entscheidungen – Dinge, nach denen ein Freund später
+        fragen würde („Wie war der Zahnarzttermin?“). Beim ersten Gespräch nach einer Pause darf sie nach einem davon fragen;
+        danach (oder nach 3 Wochen) verschwindet es.</p>
+      <div id="tList" class="memory-list"></div>
 
       <h3>🪞 Selbstbild <span id="selfCount" class="hint"></span></h3>
       <p class="hint">Hier schreibt die Figur selbst über sich: was gut ankommt, wo du sie korrigiert hast, was sie

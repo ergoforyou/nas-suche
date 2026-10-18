@@ -26,6 +26,7 @@ export async function packPersona(persona, { withMemory = false, version = '', o
     delete p.memory;
     delete p.selbst;
     delete p.reflexion;
+    delete p.themen;
   }
   delete p.reflectTurns;
   delete p.reflectedAt;

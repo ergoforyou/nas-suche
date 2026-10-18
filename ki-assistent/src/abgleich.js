@@ -11,7 +11,7 @@ const SELF_MAX = 40;
 const REFLEX_MAX = 20;
 
 // Teile einer Persona, die nicht als „Text“ zählen: eigene Regeln beim Zusammenführen bzw. gerätebezogen
-const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp']);
+const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp']);
 const newId = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 const norm = (x) => String(x ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -36,7 +36,7 @@ export function stamp(data, cache, { now = Date.now(), record = false, initial =
     });
   }
   for (const p of data.personas ?? []) {
-    for (const e of [...(p.memory ?? []), ...(p.selbst ?? [])]) e.id ??= newId();
+    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? [])]) e.id ??= newId();
     const text = JSON.stringify(personaText(p));
     const av = JSON.stringify(p.avatar ?? null);
     const c = cache.get(p.id);
@@ -54,7 +54,7 @@ export function idsOf(data) {
   const ids = new Set();
   for (const p of data.personas ?? []) {
     ids.add(p.id);
-    for (const e of [...(p.memory ?? []), ...(p.selbst ?? [])]) if (e.id) ids.add(e.id);
+    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? [])]) if (e.id) ids.add(e.id);
     for (const m of data.history?.[p.id] ?? []) if (m.id) ids.add(m.id);
   }
   for (const e of data.saved ?? []) if (e.id) ids.add(e.id);
@@ -160,6 +160,8 @@ export function mergeSync(a, b) {
         same: (x, y) => norm(x.text) === norm(y.text),
         keep: (e) => e.quelle === 'nutzer',
       }),
+      // offene Themen: „schon angesprochen“ auf einem Gerät gilt für beide (neuerer Stand gewinnt)
+      themen: mergeEntries(pa.themen, pb.themen, { dead, max: 20, same: (x, y) => norm(x.text) === norm(y.text) }),
       reflexion: [...new Map([...(pa.reflexion ?? []), ...(pb.reflexion ?? [])].map((r) => [r.created, r])).values()]
         .sort((x, y) => x.created - y.created)
         .slice(-REFLEX_MAX),

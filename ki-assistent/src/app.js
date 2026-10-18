@@ -115,6 +115,7 @@ function defaultPersona() {
     selbstOn: true,
     selbst: [], // Selbstbild: Notizen, die die Figur selbst über sich schreibt
     reflexion: [], // Gedanken aus dem Nachdenken über die letzten Gespräche
+    themen: [], // offene Themen, nach denen die Figur später fragen kann
     avatar: structuredClone(DEFAULT_AVATAR),
     voice: {
       engine: 'piper',
@@ -138,6 +139,7 @@ function migratePersona(p) {
   p.selbstOn ??= true;
   p.selbst ??= [];
   p.reflexion ??= [];
+  p.themen ??= [];
   p.voice = { ...d.voice, ...(p.voice ?? {}) };
   p.voice.server = { ...d.voice.server, ...(p.voice.server ?? {}) };
   p.voice.cloud = { ...d.voice.cloud, ...(p.voice.cloud ?? {}) };
@@ -712,6 +714,7 @@ function buildMessages() {
   if (state.place) ctx.push(r.place(state.place));
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
   if (state.savedHits?.length) ctx.push(savedPrompt(state.savedHits));
+  if (state.topicsNow?.length) ctx.push(topicsPrompt(state.topicsNow, p.language === 'en' ? 'en' : 'de'));
   const sys = parts.filter(Boolean).join('\n\n');
   const ctxText = ctx.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
@@ -870,6 +873,9 @@ async function send(text) {
   const entry = { role: 'user', content: text, ...(attachments.length ? { attachments } : {}) };
   history().push(entry);
   state.turnTools = [];
+  // erste Frage nach einer längeren Pause: offene Themen mitgeben (die KI darf bei Gelegenheit nachfragen)
+  const prevMsg = history().at(-2);
+  state.topicsNow = !prevMsg || Date.now() - (prevMsg.t ?? Date.now()) > 3 * 3600e3 ? dueTopics(persona()) : [];
   decorateBubble(addBubble('user', text), entry);
   save();
   output.begin(text || attachments.map((a) => a.name).join(', '));
@@ -885,6 +891,8 @@ async function send(text) {
   // Anlässe für die Figur: verabschieden, geschafft
   let byePending = FAREWELL.test(text);
   let wrote = false;
+  let fillerTimer = null; // Denklaut (siehe unten)
+  let usedTopics = []; // offene Themen, die diesmal mitgehen
   const think = new ThinkFilter();
   const moods = new MoodFilter(); // Stimmungsmarken wie [freudig] steuern die Mimik und werden entfernt
   let guessed = null;
@@ -921,6 +929,10 @@ async function send(text) {
 
   const finish = (error) => {
     clearTimeout(renderTimer);
+    clearTimeout(fillerTimer);
+    // angesprochene Themen nicht noch einmal mitgeben
+    if (!error) for (const t of usedTopics) t.asked = t.changed = Date.now();
+    state.topicsNow = [];
     avatarState.wait = null;
     if (error) fireEvent('error', 4000);
     else if (created.length || wrote) fireEvent('success', 3500);
@@ -977,6 +989,17 @@ async function send(text) {
   state.savedHits = savedIndex?.n ? searchIndex(savedIndex, text, 3) : [];
   const id = newId();
   state.currentChatId = id;
+  // Denklaut: kommt nach gut einer Sekunde noch nichts, sagt die Figur kurz „Hm, Moment …“ (statt Stille)
+  fillerTimer =
+    speak && state.settings.thinkSounds !== false
+      ? setTimeout(() => {
+          if (state.currentChatId !== id || !avatarState.thinking || tts.speaking || Math.random() > 0.75) return;
+          const f = pickFiller(persona().language === 'en' ? 'en' : 'de');
+          state.spoken = (state.spoken + ' ' + f).slice(-1500);
+          tts.enqueue(f, { mood: 'nachdenklich' });
+        }, 1300)
+      : null;
+  usedTopics = state.topicsNow ?? []; // werden nach der Antwort geleert (die Anfrage braucht sie noch)
   chatRequest(
     {
       id,
@@ -1029,14 +1052,19 @@ const LEARN_PROMPT = {
     'dauerhaft nützliche Fakten über den Nutzer zurück (z. B. Name, Beruf, Firma, Projekte, Vorlieben, Abneigungen, ' +
     'wichtige Termine, Absprachen, ausdrückliche Bitten wie „merk dir …“). Keine Allgemeinwissen-Fakten, nichts über den ' +
     'Assistenten selbst, nichts Vorübergehendes, nichts schon Bekanntes. Jeder Fakt als kurzer, eigenständiger Satz in ' +
-    'der dritten Person. Antworte ausschließlich mit einem JSON-Array von Strings, z. B. ["Jens arbeitet bei ergoforyou."]. ' +
-    'Wenn es nichts Neues gibt: []',
+    'der dritten Person. Außerdem offene Themen: Dinge, nach denen ein Freund später fragen würde (Termin, Vorhaben, ' +
+    'Problem, Entscheidung, auf eine Antwort warten), mit Datum, falls genannt. Keine Kundendaten, keine Namen Dritter. ' +
+    'Antworte ausschließlich mit JSON: {"fakten":["Jens arbeitet bei ergoforyou."],"themen":[{"text":"Jens hat am ' +
+    'Dienstag einen Zahnarzttermin.","wann":"2026-10-20"}]} – "wann" nur, wenn ein Datum feststeht, sonst null. ' +
+    'Wenn es nichts Neues gibt: {"fakten":[],"themen":[]}',
   en:
     'You maintain the long-term memory of a personal assistant. Read the excerpt and return ONLY new, lastingly useful ' +
     'facts about the user (name, job, company, projects, preferences, dislikes, important dates, agreements, explicit ' +
     '"remember that…" requests). No general knowledge, nothing about the assistant, nothing temporary, nothing already ' +
-    'known. Each fact as a short standalone sentence in third person. Reply only with a JSON array of strings, or [] if ' +
-    'there is nothing new.',
+    'known. Each fact as a short standalone sentence in third person. Also open topics: things a friend would ask about ' +
+    'later (appointment, plan, problem, decision, waiting for an answer), with a date if mentioned. No customer data, no ' +
+    'third-party names. Reply only with JSON: {"fakten":["…"],"themen":[{"text":"…","wann":"YYYY-MM-DD"}]} – "wann" ' +
+    'only if a date is known, else null. If there is nothing new: {"fakten":[],"themen":[]}',
 };
 
 /**
@@ -1088,6 +1116,111 @@ function addMemory(p, text) {
   return true;
 }
 
+// ---- Denklaute: kurz etwas sagen, während die Antwort noch entsteht (abwechselnd, nie zweimal derselbe hintereinander)
+const FILLERS = {
+  de: ['Hm, Moment.', 'Gute Frage …', 'Lass mich kurz überlegen.', 'Einen Moment.', 'Mal sehen …', 'Okay, Moment …'],
+  en: ['Hm, one moment.', 'Good question …', 'Let me think.', 'One second.', "Let's see …"],
+};
+let lastFiller = '';
+function pickFiller(lang) {
+  const list = FILLERS[lang].filter((f) => f !== lastFiller);
+  lastFiller = list[Math.floor(Math.random() * list.length)];
+  return lastFiller;
+}
+function topicsPrompt(topics, lang) {
+  const list = topics.map((t) => `- ${t.text}${t.due ? ` (${t.due})` : ''}`).join('\n');
+  return lang === 'en'
+    ? `Open topics from earlier conversations – if it fits naturally, briefly ask about one of them (at most one, not pushy, only if the user isn't in a hurry):\n${list}`
+    : `Offene Themen aus früheren Gesprächen – wenn es natürlich passt, frag kurz nach einem davon (höchstens einem, nicht aufdringlich, nicht wenn es gerade eilig ist):\n${list}`;
+}
+
+// ---- Persönliche Begrüßung beim Start (nach mindestens 4 Stunden Pause): Tageszeit, heutige Termine, letztes
+// Gespräch, offene Themen – ein, zwei natürliche Sätze statt „Wie kann ich helfen?“. Mit dem günstigen Hilfsmodell.
+async function personalGreeting() {
+  const p = persona();
+  if (state.settings.personalGreet === false || state.busy) return;
+  const h = history();
+  const last = h.at(-1);
+  // nur nach einem früheren Gespräch und einer längeren Pause (ein leerer Chat zeigt den festen Begrüßungstext)
+  // (Nachricht ohne Zeitpunkt = gerade eben entstanden, noch nicht gespeichert)
+  if (!last || Date.now() - (last.t ?? Date.now()) < 4 * 3600e3) return;
+  const lang = p.language === 'en' ? 'en' : 'de';
+  const topics = dueTopics(p).slice(-1); // höchstens ein Thema – bei der Begrüßung nicht ausfragen
+  const ctx = [r_now(lang)];
+  if (googleActive() && desktop.googleUpcoming) {
+    try {
+      const up = await desktop.googleUpcoming({ timeZone: userTimeZone(), hours: 14 });
+      const termine = (up?.termine ?? []).slice(0, 4).map((e) => `- ${e.titel ?? e.title ?? 'Termin'} ${e.beginn ? `(${String(e.beginn).slice(11, 16) || 'ganztägig'})` : ''}`);
+      if (termine.length) ctx.push(`${lang === 'en' ? 'Today' : 'Heute'}:\n${termine.join('\n')}`);
+    } catch {}
+  }
+  const prev = h.slice(-2).map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Du'}: ${String(m.content).slice(0, 300)}`).join('\n');
+  if (prev) ctx.push(`${lang === 'en' ? 'Last conversation' : 'Letztes Gespräch'}:\n${prev}`);
+  if (p.memoryOn && p.memory?.length) ctx.push(`${lang === 'en' ? 'You know' : 'Du weißt'}:\n${p.memory.slice(-12).map((m) => `- ${m.text}`).join('\n')}`);
+  if (topics.length) ctx.push(`${lang === 'en' ? 'Open topics' : 'Offene Themen'}:\n${topics.map((t) => `- ${t.text}`).join('\n')}`);
+  const sys =
+    `${p.prompt ?? ''}\n\n` +
+    (lang === 'en'
+      ? `You are ${p.name}. The user just opened the app. Greet them with one or two short, natural spoken sentences that fit the time of day and situation; mention at most one open topic or today's appointment if it fits. No lists, no Markdown, no "How can I help you" phrases. Answer in English.`
+      : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.`);
+  const model = state.settings.provider === 'anthropic' ? 'claude-haiku-5-5' : await ensureModel().catch(() => null);
+  if (!model) return;
+  const before = h.length;
+  const text = await new Promise((resolve) => {
+    let out = '';
+    chatRequest(
+      {
+        id: newId(),
+        ...llmParams(model),
+        ...(state.settings.provider === 'anthropic' ? { effort: 'low' } : {}),
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: ctx.join('\n\n') },
+        ],
+      },
+      (ev) => {
+        if (ev.type === 'delta') out += ev.payload;
+        else if (ev.type === 'done' || ev.type === 'error') resolve(ev.type === 'done' ? out : '');
+      },
+    );
+  });
+  const clean = text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/\[[^\]]{1,30}\]/g, '').trim();
+  // inzwischen hat jemand etwas gefragt oder die Persona gewechselt: Begrüßung verwerfen
+  if (!clean || state.busy || persona() !== p || history().length !== before) return;
+  for (const t of topics) t.asked = t.changed = Date.now();
+  const entry = { role: 'assistant', content: clean, greet: true };
+  h.push(entry);
+  decorateBubble(addBubble('assistant', clean), entry);
+  save();
+  fireEvent('greet', 3500);
+  if (state.settings.speak && !state.dnd) {
+    tts.newTurn();
+    tts.enqueue(clean, { mood: 'freudig', text: clean });
+  }
+}
+const r_now = (lang) => (RULES[lang] ?? RULES.de).now(new Date(), userTimeZone());
+
+// ---- Offene Themen: worauf man später zurückkommt („Wie war der Termin?“) – höchstens 20, nach 3 Wochen vergessen
+const TOPIC_MAX = 20;
+const TOPIC_DAYS = 21;
+function addTopic(p, text, when) {
+  const t = String(text ?? '').trim().replace(/\s+/g, ' ');
+  if (t.length < 5 || t.length > 300) return false;
+  const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  p.themen ??= [];
+  if (p.themen.some((m) => norm(m.text) === norm(t))) return false;
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(String(when ?? '')) ? when : null;
+  p.themen.push({ id: newId(), text: t, due, created: Date.now() });
+  if (p.themen.length > TOPIC_MAX) p.themen.splice(0, p.themen.length - TOPIC_MAX);
+  return true;
+}
+/** Themen, nach denen sich jetzt nachfragen lässt: fällig (Datum vorbei) oder ohne Datum ab dem nächsten Tag. */
+function dueTopics(p, now = Date.now()) {
+  const today = new Date(now).toISOString().slice(0, 10);
+  p.themen = (p.themen ?? []).filter((t) => now - t.created < TOPIC_DAYS * 86400e3 && !t.asked);
+  return p.themen.filter((t) => (t.due ? t.due <= today : now - t.created > 12 * 3600e3)).slice(-3);
+}
+
 async function learn(p, items) {
   // Hilfsaufgabe: bei Claude immer das günstige Haiku (auch wenn das Gespräch mit Sonnet/Opus läuft)
   const model = state.settings.provider === 'anthropic' ? 'claude-haiku-5-5' : await ensureModel();
@@ -1125,14 +1258,24 @@ async function learn(p, items) {
   }
   state.learnId = null;
   const text = raw.replace(/<think>[\s\S]*?<\/think>/g, '');
-  const m = text.match(/\[[\s\S]*\]/);
-  if (!m) return;
-  let facts;
+  // neues Format {"fakten":[…],"themen":[…]}; ältere/kleine Modelle liefern manchmal nur das Array der Fakten
+  let facts = [];
+  let topics = [];
   try {
-    facts = JSON.parse(m[0]);
+    const obj = text.match(/\{[\s\S]*\}/);
+    if (obj) {
+      const j = JSON.parse(obj[0]);
+      facts = Array.isArray(j.fakten) ? j.fakten : [];
+      topics = Array.isArray(j.themen) ? j.themen : [];
+    } else {
+      const arr = text.match(/\[[\s\S]*\]/);
+      if (arr) facts = JSON.parse(arr[0]);
+    }
   } catch {
     return;
   }
+  const newTopics = topics.filter((t) => t && addTopic(p, t.text, t.wann));
+  if (newTopics.length) save();
   const added = (Array.isArray(facts) ? facts : []).filter((f) => typeof f === 'string' && addMemory(p, f));
   if (!added.length) return;
   save();
@@ -1152,6 +1295,7 @@ function renderMemory() {
   $('mLearn').checked = !!state.settings.memoryLearn;
   $('mCount').textContent = p.memory.length ? `(${p.memory.length})` : '';
   renderSelf();
+  renderTopics();
   if (!p.memory.length) {
     list.innerHTML = '<p class="hint">Noch keine Erinnerungen.</p>';
     return;
@@ -1181,6 +1325,41 @@ function renderMemory() {
   });
 }
 
+function renderTopics() {
+  const p = persona();
+  const list = $('tList');
+  if (!list) return;
+  $('cGreet').checked = state.settings.personalGreet !== false;
+  $('cThink').checked = state.settings.thinkSounds !== false;
+  const topics = (p.themen ?? []).filter((t) => !t.asked);
+  $('tCount').textContent = topics.length ? `(${topics.length})` : '';
+  list.innerHTML = topics.length ? '' : '<p class="hint">Noch keine offenen Themen.</p>';
+  for (const t of [...topics].reverse()) {
+    const row = document.createElement('div');
+    row.className = 'memory-row';
+    const span = document.createElement('input');
+    span.value = t.due ? `${t.text} (${t.due})` : t.text;
+    span.readOnly = true;
+    const del = document.createElement('button');
+    del.textContent = '🗑';
+    del.title = 'Nicht mehr nachfragen';
+    del.onclick = () => {
+      p.themen.splice(p.themen.indexOf(t), 1);
+      save();
+      renderTopics();
+    };
+    row.append(span, del);
+    list.appendChild(row);
+  }
+}
+$('cGreet').onchange = (e) => {
+  state.settings.personalGreet = e.target.checked;
+  save();
+};
+$('cThink').onchange = (e) => {
+  state.settings.thinkSounds = e.target.checked;
+  save();
+};
 $('mOn').onchange = (e) => {
   persona().memoryOn = e.target.checked;
   save();
@@ -2398,6 +2577,7 @@ $('pPresetNew').onclick = () => {
   p.memory = [];
   p.selbst = [];
   p.reflexion = [];
+  p.themen = [];
   applyPreset(p, preset);
   switchTo(p);
   status(`Neue Persona „${p.name}“ angelegt – Avatar und Stimme wurden von der bisherigen übernommen.`);
@@ -2433,6 +2613,7 @@ $('personaCopy').onclick = () => {
   p.memory = [];
   p.selbst = [];
   p.reflexion = [];
+  p.themen = [];
   switchTo(p);
 };
 $('personaDelete').onclick = () => {
@@ -3474,6 +3655,16 @@ $('poseAdd').onclick = () => {
   poses.push({ id: newId(), name: `Pose ${poses.length + 1}`, trigger: 'speak', image: null });
   editIndex = poses.length - 1;
   renderPoseList();
+  $('avFile').click();
+};
+// Ruhe-Video: läuft statt des Standbilds, solange die Figur nichts tut (Anlass „Ruhe“)
+$('poseAddRest').onclick = () => {
+  const poses = (persona().avatar.poses ??= []);
+  const n = poses.filter((x) => x.trigger === 'rest').length;
+  poses.push({ id: newId(), name: `Ruhe-Video ${n + 1}`, trigger: 'rest', image: null });
+  editIndex = poses.length - 1;
+  renderPoseList();
+  status('Ruhe-Video wählen (2–5 Sekunden, Anfang und Ende wie das Grundbild) – mit zwei Videos wechselt die Figur ab.');
   $('avFile').click();
 };
 $('poseEditMain').onclick = () => setEditIndex(-1);
@@ -4738,14 +4929,14 @@ function carryPersonas(personas, activeId, other) {
   const theirs = (other?.personas ?? []).map((p) => ({ ...p }));
   let activeThere = activeId;
   for (const mine of personas) {
-    const { memory: _m, selbst: _s, reflexion: _r, reflectTurns: _t, reflectedAt: _a, ...look } = mine;
+    const { memory: _m, selbst: _s, reflexion: _r, themen: _th, reflectTurns: _t, reflectedAt: _a, ...look } = mine;
     let i = theirs.findIndex((t) => t.id === mine.id);
     if (i < 0) i = theirs.findIndex((t) => t.name === mine.name);
     if (i >= 0) {
       const t = theirs[i];
-      theirs[i] = { ...look, id: t.id, memory: t.memory ?? [], selbst: t.selbst ?? [], reflexion: t.reflexion ?? [], reflectTurns: t.reflectTurns, reflectedAt: t.reflectedAt };
+      theirs[i] = { ...look, id: t.id, memory: t.memory ?? [], selbst: t.selbst ?? [], reflexion: t.reflexion ?? [], themen: t.themen ?? [], reflectTurns: t.reflectTurns, reflectedAt: t.reflectedAt };
       if (mine.id === activeId) activeThere = theirs[i].id;
-    } else theirs.push({ ...look, memory: [], selbst: [], reflexion: [] });
+    } else theirs.push({ ...look, memory: [], selbst: [], reflexion: [], themen: [] });
   }
   return { personas: theirs, activeId: activeThere };
 }
@@ -6913,6 +7104,9 @@ window.__app = {
   autoSync,
   pairWith,
   nasSync,
+  personalGreeting: () => personalGreeting(),
+  addTopic,
+  dueTopics,
   // QR-Code aus einem Bild lesen (ohne Barcode-Erkennung der WebView, also mit jsQR)
   readQrImage: async (url) => {
     const bmp = await createImageBitmap(await (await fetch(url)).blob());
@@ -6980,6 +7174,8 @@ init().then(() => {
   desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);
+  // persönliche Begrüßung (nach längerer Pause), sobald die Figur steht
+  setTimeout(() => personalGreeting().catch(() => {}), 2500);
   ensureFaceRig();
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
   if (!state.settings.offline && state.settings.handsFree) setTimeout(() => stt.warmup().catch(() => {}), 3000);
