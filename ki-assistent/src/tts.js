@@ -4,7 +4,13 @@
 // passende Stimme (Deutsch/Englisch) gewählt.
 import { synthesize, preloadVoice } from './piper.js';
 import { visemeUnits, visemeTimeline, visemeAt } from './visemes.js';
-import { MOOD_VOICE } from './mood.js';
+import { MOOD_VOICE, MOOD_PIPER } from './mood.js';
+
+/** Tempo und Lebendigkeit der Piper-Stimme für eine Stimmung. */
+function piperProsody(rate, mood) {
+  const p = MOOD_PIPER[mood];
+  return p ? { rate: rate * p.rate, noise: p.noise, noiseW: p.noiseW } : { rate };
+}
 
 export const PIPER_VOICES = {
   de: [
@@ -272,7 +278,8 @@ export class SpeechOutput {
           : engine === 'cloud'
             ? this.synthCloud(clean, meta?.mood)
             : synthesize(clean, this.voiceFor(clean), {
-              rate: this.rate,
+              // Gefühl: Piper kennt keinen Sprechstil, aber Tempo und Lebendigkeit lassen sich je Stimmung anpassen
+              ...piperProsody(this.rate, this.cloud?.emotion !== false ? meta?.mood : null),
               onProgress: ({ loaded, total }) =>
                 total && this.onStatus(`Stimme wird geladen … ${Math.round((loaded / total) * 100)} % (nur beim ersten Mal)`),
             });

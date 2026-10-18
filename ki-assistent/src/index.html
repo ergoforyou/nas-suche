@@ -251,6 +251,9 @@
       <label>Bewegungsstärke (Kopf und Körper) <input id="avMotion" type="range" min="0" max="2.5" step="0.1" /></label>
       <label>Kopfbewegung im Leerlauf <span class="hint">(ganz links = Kopf bleibt still, solange die Figur nichts tut)</span>
         <input id="avIdleHead" type="range" min="0" max="1" step="0.05" /></label>
+      <label class="check"><input id="avCalm" type="checkbox" /> Ruhiges Foto <span class="hint">(bei einem Einzelbild bewegen
+        sich nur Augen, Mund, Brauen und ein angedeutetes Atmen – das ganze Bild wiegt und verformt sich nicht; Videos und
+        3D-Figuren bewegen sich wie gewohnt)</span></label>
       <label class="check"><input id="avFlip" type="checkbox" /> Figur spiegeln (links/rechts)</label>
       <label class="check"><input id="sMood" type="checkbox" /> Mimik passend zur Antwort <span class="hint">(das Sprachmodell setzt eine unsichtbare Stimmungsmarke wie [freudig] – die Figur lächelt, staunt oder schaut ernst; klappt mit Claude, ChatGPT und LM Studio)</span></label>
       <p class="hint">Figur im Chatfenster antippen: Rahmen zum Verschieben und Vergrößern, oben im Rahmen Schnellwahl „Füllen“, „Ganz“, „Unten“, „Oben“ und ↺ Standard. Auf dem Handy auch mit zwei Fingern zoomen. Doppelklick: sprechen.</p>
@@ -633,6 +636,25 @@
             <button id="syncAutoNew">Kopplung erneuern</button>
           </div>
         </div>
+      </div>
+      <div id="nasWrap" hidden>
+        <h3>🗄 Synology NAS <span class="beta-badge">Privat</span></h3>
+        <p class="hint">PC und Handy gleichen Personas, Chatverlauf, Gedächtnis, Selbstbild und Wissen über einen Ordner auf deiner
+          NAS ab – unabhängig voneinander, der PC muss dafür nicht laufen. Dazu jeden Tag eine Sicherung (30 Tage).
+          Einrichtung auf der NAS: im Paket-Zentrum „WebDAV Server“ installieren und HTTP (Port 5005) einschalten, in der
+          File Station einen Ordner anlegen, z. B. „ki-assistent“ in deinem Benutzerordner (home). Adresse dann:
+          <b>http://IP-der-NAS:5005/home/ki-assistent</b>. Auf PC und Handy dieselbe Adresse und denselben Benutzer eintragen.
+          Unterwegs: mit dem Tailscale-Paket die Tailscale-Adresse der NAS eintragen.</p>
+        <input id="nasUrl" type="text" placeholder="http://192.168.1.10:5005/home/ki-assistent" autocomplete="off" />
+        <div class="row">
+          <input id="nasUser" type="text" placeholder="Benutzer der NAS" autocomplete="off" style="flex:1" />
+          <input id="nasPass" type="password" placeholder="Passwort" autocomplete="new-password" style="flex:1" />
+        </div>
+        <p class="hint">Das Passwort bleibt verschlüsselt auf diesem Gerät (wie die API-Schlüssel) und wird nirgends angezeigt.
+          Im eigenen Netz geht die Verbindung unverschlüsselt – für unterwegs Tailscale verwenden.</p>
+        <label class="check"><input id="nasAuto" type="checkbox" /> Automatisch abgleichen (beim Öffnen, beim Verlassen, alle 10 Minuten und nach Änderungen)</label>
+        <div class="row wrap"><button id="nasNow">🗄 Jetzt abgleichen</button></div>
+        <p id="nasState" class="hint"></p>
       </div>
       <div id="savedWrap">
         <h3>💾 Gespeichertes Wissen</h3>

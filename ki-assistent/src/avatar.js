@@ -168,6 +168,8 @@ export class Avatar {
     this.config = config;
     this.motion = config.motion ?? 1;
     this.idleHead = config.idleHead ?? 0.25; // Kopfbewegung im Leerlauf (0 = still)
+    // Ruhiges Foto: ein Einzelbild nicht als Ganzes wiegen und verformen (wirkt künstlich) – nur Augen, Mund, Atmen
+    this.calmPhoto = config.calmPhoto !== false;
     this.vrmYaw = config.vrmYaw ?? 0; // 3D-Figur: Drehung in Grad
     this.turnYaw = config.turnYaw ?? 0; // Bild-Figur: leichte Drehung in Grad (braucht Tiefenkarte)
     this.turnAuto = !!config.turnAuto; // Bild-Figur: im Leerlauf leicht mitdrehen
@@ -545,7 +547,7 @@ export class Avatar {
     if (!this.faceWarp) this.renderEyes(this.frameCtx, this.blink);
     let out = this.frame;
     // Körper-Rig: Schultern, Brust und Arme per Verformung
-    if (this.bodyWarp) out = this.bodyWarp.render(out, bodyHandles(this.bodyRig, this.w, this.h, this.bodyState()));
+    if (this.bodyWarp && !this.calmNow) out = this.bodyWarp.render(out, bodyHandles(this.bodyRig, this.w, this.h, this.bodyState()));
     // Gesichts-Rig: Blinzeln, Blick, Brauen und Mundform per Verformung (statt aufgemalter Lider)
     if (this.faceWarp) out = this.faceWarp.render(out, faceHandles(this.faceRig, this.w, this.h, this.faceState()));
     if (out !== this.frame) {
@@ -607,6 +609,12 @@ export class Avatar {
     // Sakkaden sind schnell
     F.gx += (F.tx - F.gx) * 0.35;
     F.gy += (F.ty - F.gy) * 0.35;
+    // Mikrobewegungen: echte Augen stehen nie ganz still – kleine Sprünge zwischen den großen
+    if (now > (F.microNext ?? 0)) {
+      F.mx = (Math.random() * 2 - 1) * 0.07;
+      F.my = (Math.random() * 2 - 1) * 0.04;
+      F.microNext = now + 250 + Math.random() * 600;
+    }
     // Brauen: Nachdenken/Zuhören hebt, beim Sprechen kurz bei Betonungen
     const lvl = this.level;
     if (this.speaking && lvl > 0.55 && F.lastLevel < 0.35 && Math.random() < 0.35) F.browKick = 0.6;
@@ -623,9 +631,10 @@ export class Avatar {
     const smileBase = this.speaking ? 0.3 : this.thinking ? 0.05 : this.listening ? 0.25 : 0.2;
     F.smile += (Math.max(-0.5, Math.min(1, smileBase + mc.smile)) - F.smile) * 0.05;
     F.shape += ((this.speaking ? this.state.shape ?? 0 : 0) * Math.min(1, this.open * 2) - F.shape) * 0.35;
-    const m = Math.min(1.5, this.motion ?? 1);
+    // Augen und Mimik bleiben auch beim ruhigen Foto voll lebendig – sie tragen dort den ganzen Ausdruck
+    const m = this.calmNow ? Math.max(1, Math.min(1.5, this.motion ?? 1)) : Math.min(1.5, this.motion ?? 1);
     const brow = Math.max(-1, Math.min(1, (F.brow + F.browKick) * m));
-    return { blink: this.blink, gazeX: F.gx * m, gazeY: F.gy * m, brow, smile: F.smile * m, shape: F.shape };
+    return { blink: this.blink, gazeX: (F.gx + (F.mx ?? 0)) * m, gazeY: (F.gy + (F.my ?? 0)) * m, brow, smile: F.smile * m, shape: F.shape };
   }
 
   // ---------- Posen: passend zum Zustand wechseln, weich überblenden ----------
@@ -1113,7 +1122,8 @@ export class Avatar {
   /** Kopf über dem Hals verschieben/neigen (zeilenweise, ohne Nahtstelle). */
   renderPose() {
     const h = this.head;
-    const m = this.motion;
+    // ruhiges Foto: Kopf nur ganz leicht bewegen (stärkeres Verschieben verzerrt Hals und Hintergrund)
+    const m = this.motion * (this.calmNow ? 0.2 : 1);
     const B = this.behaviour;
     if (!h || !B || m <= 0) return this.frame;
     const ctx = this.posedCtx;
@@ -1341,6 +1351,8 @@ export class Avatar {
     if (this.prev != null && this.layers[this.prev]) visible.push([this.layers[this.prev], 1]);
     const cur = this.layers[this.current] ?? this.layers[0];
     visible.push([cur, this.prev != null ? fade : 1]);
+    // gerade ein Foto (kein Video, keine 3D-Figur) zu sehen? Dann ruhig: die Ebenen erben calmNow
+    this.calmNow = !!this.calmPhoto && !cur.isVideo && !cur.isVrm;
     const drawn = visible.map(([L, a]) => {
       L.buildFrame();
       return [L, L.renderPose(), a];
@@ -1354,8 +1366,11 @@ export class Avatar {
     }
 
     // Körperbewegung: atmen, wiegen, beim Sprechen nicken (3D-Figuren bewegen sich selbst)
-    const m = this.layers[0]?.isVrm ? 0 : this.motion;
-    const breathe = Math.sin(t * 1.7) * (this.layers[0]?.bodyWarp ? 0.002 : 0.006) * m;
+    const vrm = this.layers[0]?.isVrm;
+    // ruhiges Foto: kaum Wiegen und Nicken des ganzen Bildes, Atmen nur angedeutet
+    const m = vrm ? 0 : this.motion * (this.calmNow ? 0.12 : 1);
+    const mb = vrm ? 0 : this.motion * (this.calmNow ? 0.45 : 1);
+    const breathe = Math.sin(t * 1.7) * (this.layers[0]?.bodyWarp ? 0.002 : 0.006) * mb;
     const sway = (Math.sin(t * 0.55) * 0.006 + Math.sin(t * 0.23) * 0.004) * m;
     const energy = this.moodCur?.energy ?? 1;
     const talk = this.speaking ? (Math.sin(t * 6.3) * 0.006 + Math.sin(t * 3.1) * 0.004) * this.open * m * energy : 0;

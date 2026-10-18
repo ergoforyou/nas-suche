@@ -105,3 +105,13 @@ export const MOOD_VOICE = {
   traurig: 'Gefühl jetzt: mitfühlend und sanft – leiser, langsamer, warm.',
   ernst: 'Gefühl jetzt: sachlich und ernst – klar, bestimmt, ohne Lächeln.',
 };
+
+// Piper (Stimme auf dem Gerät): Tempo (rate), Lebendigkeit der Betonung (noise) und Rhythmus (noiseW) je Stimmung
+export const MOOD_PIPER = {
+  freudig: { rate: 1.06, noise: 0.78, noiseW: 0.9 },
+  ruhig: { rate: 0.96, noise: 0.6, noiseW: 0.75 },
+  nachdenklich: { rate: 0.92, noise: 0.62, noiseW: 0.85 },
+  überrascht: { rate: 1.08, noise: 0.85, noiseW: 0.95 },
+  traurig: { rate: 0.88, noise: 0.55, noiseW: 0.7 },
+  ernst: { rate: 0.97, noise: 0.56, noiseW: 0.7 },
+};

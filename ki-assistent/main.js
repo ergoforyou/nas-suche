@@ -373,6 +373,33 @@ ipcMain.handle('sync:unserve', () => {
   autoToken = '';
 });
 
+// ---------------------------------------------------------------- Synology NAS (WebDAV, vorerst nur Privat)
+// Anfragen laufen hier im Hauptprozess (die NAS erlaubt keine Browser-Zugriffe aus der Oberfläche heraus); das
+// Passwort liegt verschlüsselt bei den Schlüsseln und geht nie an die Oberfläche.
+const nasAllowed = () => {
+  if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');
+};
+ipcMain.handle('nas:setPassword', (_e, pw) => {
+  nasAllowed();
+  writeKey('nas', pw);
+  return true;
+});
+ipcMain.handle('nas:hasPassword', () => AREA === 'privat' && !!readKeyFile().nas);
+ipcMain.handle('nas:req', async (_e, { base, user, method = 'GET', path: rel = '', body, headers = {} }) => {
+  nasAllowed();
+  const root = new URL(String(base).endsWith('/') ? base : `${base}/`);
+  if (!/^https?:$/.test(root.protocol)) throw new Error('Adresse muss mit http:// oder https:// beginnen');
+  const url = new URL(String(rel).replace(/^\/+/, ''), root);
+  const auth = `Basic ${Buffer.from(`${user ?? ''}:${getKey('nas') ?? ''}`).toString('base64')}`;
+  let r;
+  try {
+    r = await fetch(url, { method, headers: { Authorization: auth, ...headers }, body: body ? Buffer.from(body) : undefined, signal: AbortSignal.timeout(180000) });
+  } catch (e) {
+    throw new Error(/certificate|self.signed|CERT/i.test(String(e.cause?.message ?? e.message)) ? 'Zertifikat der NAS wird nicht anerkannt – im eigenen Netz http://…:5005 nehmen' : `NAS nicht erreichbar (${e.cause?.code ?? e.message})`);
+  }
+  return { status: r.status, etag: r.headers.get('etag'), body: new Uint8Array(await r.arrayBuffer()) };
+});
+
 // ---------------------------------------------------------------- Firmenwissen (nur Dienstlich)
 const kbFile = () => path.join(app.getPath('userData'), 'wissen.json');
 ipcMain.handle('kb:load', () => {

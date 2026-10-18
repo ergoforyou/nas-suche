@@ -195,6 +195,41 @@ check(!(await run(`return KIDevice.backgroundRunning()`)), 'Hintergrund-Dienst l
   check(cam?.ok || cam?.err === 'NotFoundError', 'Kamera für den QR-Scan in der App erlaubt', JSON.stringify(cam));
 }
 
+// 4c2) Netzwerkanfragen über Android (für die Synology-NAS per WebDAV): Server auf dem Testrechner, im Emulator 10.0.2.2
+{
+  const http = await import('node:http');
+  const store = new Map();
+  const srv = http.createServer((req, res) => {
+    if (req.headers.authorization !== `Basic ${Buffer.from('jens:geheim').toString('base64')}`) return res.writeHead(401).end();
+    const parts = [];
+    req.on('data', (c) => parts.push(c));
+    req.on('end', () => {
+      if (req.method === 'PUT') {
+        store.set(req.url, Buffer.concat(parts));
+        return res.writeHead(201, { ETag: '"e1"' }).end();
+      }
+      if (req.method === 'GET' && store.has(req.url)) return res.writeHead(200, { ETag: '"e1"' }).end(store.get(req.url));
+      res.writeHead(404).end();
+    });
+  });
+  await new Promise((r) => srv.listen(0, '0.0.0.0', r));
+  const port = srv.address().port;
+  const net = await run(`
+    const call = (method, path, auth, body) => new Promise((resolve) => {
+      const id = Math.random().toString(36).slice(2);
+      const prev = window.__kiHttpDone;
+      window.__kiHttpDone = (i, r) => { if (i === id) { window.__kiHttpDone = prev; resolve(r); } else prev && prev(i, r); };
+      KIDevice.httpStart(id, method, 'http://10.0.2.2:${port}/' + path, JSON.stringify({ Authorization: auth }), body ? btoa(body) : '');
+    });
+    const good = 'Basic ' + btoa('jens:geheim');
+    const put = await call('PUT', 'stand.json', good, '{"hallo":"NAS"}');
+    const get = await call('GET', 'stand.json', good);
+    const bad = await call('GET', 'stand.json', 'Basic ' + btoa('jens:falsch'));
+    return { put: put.status, get: get.status, etag: get.etag, body: atob(get.body || ''), bad: bad.status };`);
+  srv.close();
+  check(net?.put === 201 && net?.get === 200 && net?.body === '{"hallo":"NAS"}' && net?.etag === '"e1"' && net?.bad === 401, 'Netzwerkanfragen über Android (NAS/WebDAV): Senden, Holen, ETag, Anmeldung', JSON.stringify(net));
+}
+
 // 4d) Beta: schwebende Figur über anderen Apps
 if (BETA) {
   check(await run(`return typeof window.KIFloat?.now === 'function' && typeof window.KIFloat?.free === 'function' && window.KIFloat.supported()`), 'Schwebende Figur: Schnittstelle vorhanden (auch ⛶ = sofort schweben)');

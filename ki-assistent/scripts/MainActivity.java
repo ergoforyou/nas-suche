@@ -921,6 +921,60 @@ public class MainActivity extends BridgeActivity {
             return routeVoice(on);
         }
 
+        /**
+         * Netzwerkanfrage über Android (z. B. an die Synology-NAS per WebDAV – die NAS erlaubt keine Zugriffe aus der
+         * WebView heraus). Läuft im Hintergrund; das Ergebnis kommt über window.__kiHttpDone(id, {status, etag, body}).
+         */
+        @JavascriptInterface
+        public void httpStart(final String id, final String method, final String url, final String headersJson, final String bodyB64) {
+            new Thread(() -> {
+                JSONObject out = new JSONObject();
+                java.net.HttpURLConnection c = null;
+                try {
+                    c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    c.setRequestMethod(method);
+                    c.setConnectTimeout(8000);
+                    c.setReadTimeout(180000);
+                    c.setUseCaches(false);
+                    JSONObject h = new JSONObject(headersJson == null || headersJson.isEmpty() ? "{}" : headersJson);
+                    java.util.Iterator<String> keys = h.keys();
+                    while (keys.hasNext()) {
+                        String k = keys.next();
+                        c.setRequestProperty(k, h.getString(k));
+                    }
+                    if (bodyB64 != null && !bodyB64.isEmpty()) {
+                        byte[] body = android.util.Base64.decode(bodyB64, android.util.Base64.NO_WRAP);
+                        c.setDoOutput(true);
+                        c.setFixedLengthStreamingMode(body.length);
+                        try (OutputStream os = c.getOutputStream()) {
+                            os.write(body);
+                        }
+                    }
+                    int code = c.getResponseCode();
+                    java.io.InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                    java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                    if (is != null) {
+                        byte[] chunk = new byte[65536];
+                        int n;
+                        while ((n = is.read(chunk)) > 0) buf.write(chunk, 0, n);
+                        is.close();
+                    }
+                    out.put("status", code);
+                    String etag = c.getHeaderField("ETag");
+                    if (etag != null) out.put("etag", etag);
+                    out.put("body", android.util.Base64.encodeToString(buf.toByteArray(), android.util.Base64.NO_WRAP));
+                } catch (Exception e) {
+                    try {
+                        out.put("status", 0);
+                        out.put("error", String.valueOf(e.getMessage()));
+                    } catch (Exception ignored) {}
+                } finally {
+                    if (c != null) c.disconnect();
+                }
+                runJs("window.__kiHttpDone && window.__kiHttpDone(" + JSONObject.quote(id) + "," + out.toString() + ")");
+            }).start();
+        }
+
         @JavascriptInterface
         public String takeIntents() {
             synchronized (pendingEvents) {

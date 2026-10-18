@@ -171,7 +171,7 @@ export function preloadVoice(id, onProgress) {
 let synthChain = Promise.resolve();
 
 /** Erzeugt Sprache. rate > 1 = schneller (ohne Tonhöhe zu verändern). Liefert { audio, sampleRate }. */
-export function synthesize(text, voiceId, { rate = 1, onProgress } = {}) {
+export function synthesize(text, voiceId, { rate = 1, noise, noiseW, onProgress } = {}) {
   const run = synthChain.then(async () => {
     piperState.step = 'Stimme laden';
     const { config, session } = await loadVoice(voiceId, onProgress);
@@ -187,7 +187,7 @@ export function synthesize(text, voiceId, { rate = 1, onProgress } = {}) {
       input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
       scales: new ort.Tensor(
         'float32',
-        Float32Array.from([inf.noise_scale ?? 0.667, (inf.length_scale ?? 1) / rate, inf.noise_w ?? 0.8]),
+        Float32Array.from([noise ?? inf.noise_scale ?? 0.667, (inf.length_scale ?? 1) / rate, noiseW ?? inf.noise_w ?? 0.8]),
         [3],
       ),
     };

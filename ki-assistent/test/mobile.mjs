@@ -1369,11 +1369,72 @@ check(/Wie spät ist es/.test(rtRes.msgs[0] ?? '') && /Es ist gleich drei/.test(
 check(rtRes.maxLevel > 0.05, 'Echtzeit: Lippen bewegen sich mit der Antwortstimme', String(rtRes.maxLevel));
 check(rtRes.noMood && rtRes.voice === 'marin', 'Echtzeit: Persona-Anweisungen ohne Stimmungsmarken, Stimme gewählt');
 check(privF.drive.full && privF.drive.live && privF.drive.prompt && !privF.after.full && !privF.after.live, 'Fahrmodus: Nur-Figur, Live, kurze Antworten – und wieder aus', JSON.stringify(privF.drive));
+// Synology NAS (nur Privat): Abgleich über WebDAV – nachgebildete NAS mit ETags; ein anderes Gerät hat schon geschrieben
+const nasRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const files = new Map();
+  let n = 0;
+  let collide = 1; // einmal schreibt „das andere Gerät“ genau dazwischen
+  const empty = new Uint8Array();
+  window.desktop.nasHasPassword = async () => true;
+  window.desktop.nasSetPassword = async () => true;
+  window.desktop.nasReq = async ({ method, path, body, headers = {} }) => {
+    const f = files.get(path);
+    if (method === 'GET') return f ? { status: 200, etag: f.etag, body: f.body } : { status: 404, etag: null, body: empty };
+    if (method === 'PUT') {
+      if (path === 'stand.json' && collide > 0 && headers['If-Match']) {
+        collide--;
+        files.set(path, { ...f, etag: `"anders${++n}"` });
+        return { status: 412, etag: null, body: empty };
+      }
+      if (headers['If-Match'] && f && headers['If-Match'] !== f.etag) return { status: 412, etag: null, body: empty };
+      if (headers['If-None-Match'] === '*' && f) return { status: 412, etag: null, body: empty };
+      files.set(path, { etag: `"e${++n}"`, body: new Uint8Array(body) });
+      return { status: f ? 204 : 201, etag: null, body: empty };
+    }
+    if (method === 'DELETE') {
+      files.delete(path);
+      return { status: 204, etag: null, body: empty };
+    }
+    return { status: 405, etag: null, body: empty };
+  };
+  // Stand „vom PC“: dieselbe Persona mit einer zusätzlichen Erinnerung
+  const other = app.syncSnapshot();
+  const pid = app.persona().id;
+  const op = other.personas.find((p) => p.id === pid);
+  op.memory = [...(op.memory ?? []), { id: 'nasm1', text: 'Von der NAS: Jens mag Bergtouren.', created: Date.now() }];
+  other.history[pid] = [...(other.history[pid] ?? []), { id: 'nash1', role: 'assistant', content: 'Antwort vom PC über die NAS', t: Date.now() + 5 }];
+  files.set('stand.json', { etag: '"pc1"', body: new TextEncoder().encode(JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: 'privat', stand: other, figuren: {} })) });
+  app.state.busy = false;
+  app.state.settings.nas = { url: 'http://nas.test:5005/home/ki-assistent', user: 'jens', auto: true };
+  const ok = await app.nasSync({ manual: true });
+  const doc = JSON.parse(new TextDecoder().decode(files.get('stand.json').body));
+  const day = new Date().toISOString().slice(0, 10);
+  return {
+    ok,
+    err: app.state.settings.nas.error,
+    mem: app.persona().memory.some((m) => m.id === 'nasm1'),
+    chat: document.getElementById('chat').textContent.includes('Antwort vom PC über die NAS'),
+    upMem: doc.stand.personas.find((p) => p.id === pid)?.memory?.some((m) => m.id === 'nasm1'),
+    figs: Object.keys(doc.figuren ?? {}).length,
+    figFile: [...files.keys()].some((k) => /^figur-/.test(k)),
+    backup: files.has(`sicherung-${day}.json`),
+    retried: collide === 0,
+    shown: !document.getElementById('nasWrap').hidden,
+    state: document.getElementById('nasState').textContent,
+  };
+});
+check(
+  nasRes.ok && !nasRes.err && nasRes.mem && nasRes.chat && nasRes.upMem && nasRes.figs > 0 && nasRes.figFile && nasRes.backup && nasRes.retried && nasRes.shown,
+  'NAS (Privat): Stand vom anderen Gerät übernommen, eigener Stand und Figur hochgeladen, Tagessicherung, gleichzeitiges Schreiben erkannt',
+  JSON.stringify(nasRes),
+);
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);
-const back = await page.evaluate(() => ({ area: window.__app.area, history: Object.values(window.__app.state.history ?? {}).flat().length }));
+const back = await page.evaluate(() => ({ area: window.__app.area, history: Object.values(window.__app.state.history ?? {}).flat().length, nas: !document.getElementById('nasWrap').hidden }));
 check(back.area === 'dienstlich' && back.history > 0, 'Zurück in Dienstlich: alles wieder da', JSON.stringify(back));
+check(!back.nas, 'NAS-Abgleich gibt es im Bereich Dienstlich (noch) nicht');
 // Dienstlich: Aktivierungswort und WLAN-Abgleich sind da, die Privat-Extras nicht
 const dienst = await page.evaluate(() => {
   document.getElementById('btnSettings').click();

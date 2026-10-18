@@ -296,7 +296,10 @@ const history = () => (state.history[persona().id] ??= []);
 let saveTimer;
 // letzter bekannter Stand je Persona (Text und Figur) – daran erkennt der Abgleich, was sich geändert hat
 const syncCache = new Map();
-function save() {
+// quiet = Speichern nach einem Abgleich: stößt keinen neuen Abgleich an (sonst gliche die App endlos im Kreis ab)
+let saveLoud = false;
+function save({ quiet = false } = {}) {
+  if (!quiet) saveLoud = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     stampSync(state, syncCache);
@@ -307,7 +310,11 @@ function save() {
       history: state.history,
       abgleich: state.abgleich,
     });
-    autoSyncSoon();
+    if (saveLoud) {
+      autoSyncSoon();
+      nasSoon();
+    }
+    saveLoud = false;
   }, 300);
 }
 
@@ -1943,6 +1950,7 @@ function fillSettings() {
   $('avEyeR').value = target().eyes?.[0]?.r ?? 0.03;
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
+  $('avCalm').checked = p.avatar.calmPhoto !== false;
   $('avVrmOff').hidden = !p.avatar.vrm;
   $('avVrmSave').hidden = !p.avatar.vrm;
   fillRigInfo();
@@ -2699,6 +2707,12 @@ $('avIdleHead').oninput = (e) => {
   persona().avatar.idleHead = +e.target.value;
   avatar.idleHead = +e.target.value;
   if (floating.avatar) floating.avatar.idleHead = +e.target.value;
+  save();
+};
+$('avCalm').onchange = (e) => {
+  persona().avatar.calmPhoto = e.target.checked;
+  avatar.calmPhoto = e.target.checked;
+  if (floating.avatar) floating.avatar.calmPhoto = e.target.checked;
   save();
 };
 $('avMotion').oninput = (e) => {
@@ -6267,7 +6281,7 @@ function applySync(m) {
   state.abgleich.deleted = m.deleted;
   stampSync(state, syncCache, { record: true });
   state.abgleich.base = [...idsOf(state)];
-  save();
+  save({ quiet: true });
   // Oberfläche nur nachziehen, wenn sich hier etwas sichtbar geändert hat
   if (wasActive !== state.activeId || before !== JSON.stringify(personaText(persona()))) applyPersona();
   else if (!state.busy && (history().length !== lenBefore || (history().at(-1)?.id ?? '') !== lastBefore)) {
@@ -6284,7 +6298,7 @@ async function takeFigure(p, bytes, stampValue) {
   p.avatar = data.avatar;
   p.avatarStamp = stampValue;
   stampSync(state, syncCache, { record: true });
-  save();
+  save({ quiet: true });
   if (p === persona()) applyAvatar();
 }
 
@@ -6400,8 +6414,7 @@ async function autoSync({ manual = false } = {}) {
     if (Array.isArray(r.urls) && r.urls.length) pair.urls = r.urls;
     delete pair.error;
     state.abgleich.last = Date.now();
-    save();
-    clearTimeout(syncSoonTimer); // das Speichern eben ist schon abgeglichen
+    save({ quiet: true });
     say(`🔄 Mit dem PC abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.`);
   } catch (e) {
     pair.error = e.message;
@@ -6425,7 +6438,159 @@ $('syncUnpair').onclick = () => {
   save();
   renderSyncState();
 };
+// ---------------------------------------------------------------- Synology NAS (WebDAV, vorerst nur Privat)
+// PC und Handy gleichen sich unabhängig voneinander mit einer Datei auf der NAS ab (stand.json) – der PC muss dafür
+// nicht laufen, Firewall und getrennte WLANs spielen keine Rolle. Zusammengeführt wird wie beim WLAN-Abgleich; wer
+// zuletzt schreibt, prüft per ETag, dass niemand dazwischen geschrieben hat. Figuren liegen als eigene Dateien daneben,
+// einmal am Tag kommt eine Sicherung dazu (30 Tage). Alles flach in einem Ordner (Android kann keine Ordner anlegen).
+const NAS_FIG_MAX = 80 * 1024 * 1024; // größere Figuren (lange Videos) lieber per Export/WLAN übertragen
+const nasActive = () => AREA === 'privat' && !!desktop.nasReq && !!state.settings?.nas?.url && !!state.settings?.nas?.user;
+const nasReq = (method, path, body, headers = {}) => desktop.nasReq({ base: state.settings.nas.url, user: state.settings.nas.user, method, path, body, headers });
+function nasError(status) {
+  if (status === 401 || status === 403) return 'Benutzer oder Passwort falsch (oder kein Zugriff auf den Ordner)';
+  if (status === 404 || status === 409) return 'Ordner nicht gefunden – bitte in der File Station anlegen und die Adresse prüfen';
+  if (status === 405) return 'WebDAV ist auf der NAS nicht eingeschaltet (Paket „WebDAV Server“)';
+  if (status === 507) return 'Kein Speicherplatz mehr auf der NAS';
+  return `NAS antwortet mit Fehler ${status}`;
+}
+let nasRunning = false;
+let nasSoonTimer = null;
+function nasSoon(ms = 30000) {
+  if (!nasActive() || state.settings.nas.auto === false) return;
+  clearTimeout(nasSoonTimer);
+  nasSoonTimer = setTimeout(() => nasSync().catch(() => {}), ms);
+}
+async function nasSync({ manual = false } = {}) {
+  if (!nasActive() || nasRunning) return;
+  const cfg = state.settings.nas;
+  if (!manual && cfg.auto === false) return;
+  if (state.busy) return nasSoon(30000);
+  nasRunning = true;
+  clearTimeout(nasSoonTimer);
+  const say = manual ? status : () => {};
+  try {
+    say('🗄 Abgleich mit der NAS …');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const got = await nasReq('GET', 'stand.json');
+      if (got.status !== 200 && got.status !== 404) throw new Error(nasError(got.status));
+      let doc = null;
+      if (got.status === 200) {
+        try {
+          doc = JSON.parse(new TextDecoder().decode(got.body));
+        } catch {
+          throw new Error('stand.json auf der NAS ist beschädigt (Sicherungen liegen daneben)');
+        }
+        if (doc.area && doc.area !== AREA) throw new Error('auf der NAS liegt ein Stand aus einem anderen Bereich');
+      }
+      if (doc?.stand) syncMerge(doc.stand);
+      else {
+        stampSync(state, syncCache);
+        noteDeletions(state, state.abgleich);
+      }
+      // Figuren: nur geänderte übertragen (Stand -1 = hier noch keine eigene Figur)
+      const figuren = { ...(doc?.figuren ?? {}) };
+      let figs = 0;
+      for (const p of state.personas) {
+        const f = figuren[p.id];
+        const mine = p.avatarStamp ?? 0;
+        if (f && f.stamp > mine) {
+          say(`🗄 Hole die Figur von „${p.name}“ …`);
+          const r = await nasReq('GET', f.file);
+          if (r.status === 200) {
+            await takeFigure(p, r.body, f.stamp);
+            figs++;
+          }
+        } else if (mine >= 0 && (!f || mine > f.stamp)) {
+          const bytes = await packPersona(p, { withMemory: false, version: APP_VERSION });
+          if (bytes.length > NAS_FIG_MAX) {
+            logEv('NAS', `Figur von ${p.name} zu groß (${Math.round(bytes.length / 1e6)} MB) – nicht übertragen`);
+            continue;
+          }
+          say(`🗄 Sende die Figur von „${p.name}“ …`);
+          const file = `figur-${p.id}-${mine}.kiavatar`;
+          const put = await nasReq('PUT', file, bytes, { 'Content-Type': 'application/zip' });
+          if (![200, 201, 204].includes(put.status)) throw new Error(nasError(put.status));
+          if (f?.file && f.file !== file) nasReq('DELETE', f.file).catch(() => {});
+          figuren[p.id] = { stamp: mine, file };
+          figs++;
+        }
+      }
+      for (const id of Object.keys(figuren)) {
+        if (state.personas.some((p) => p.id === id)) continue;
+        nasReq('DELETE', figuren[id].file).catch(() => {});
+        delete figuren[id];
+      }
+      const body = new TextEncoder().encode(
+        JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), stand: syncSnapshot(state, state.abgleich), figuren }),
+      );
+      const cond = got.status === 200 && got.etag ? { 'If-Match': got.etag } : got.status === 404 ? { 'If-None-Match': '*' } : {};
+      const put = await nasReq('PUT', 'stand.json', body, { 'Content-Type': 'application/json', ...cond });
+      if (put.status === 412) continue; // das andere Gerät war gerade schneller: neu holen und noch einmal
+      if (![200, 201, 204].includes(put.status)) throw new Error(nasError(put.status));
+      // einmal am Tag eine Sicherung, 30 Tage aufheben
+      const day = new Date().toISOString().slice(0, 10);
+      if (cfg.backupDay !== day) {
+        const b = await nasReq('PUT', `sicherung-${day}.json`, body, { 'Content-Type': 'application/json' });
+        if ([200, 201, 204].includes(b.status)) {
+          cfg.backupDay = day;
+          nasReq('DELETE', `sicherung-${new Date(Date.now() - 31 * 86400e3).toISOString().slice(0, 10)}.json`).catch(() => {});
+        }
+      }
+      cfg.last = Date.now();
+      delete cfg.error;
+      save({ quiet: true });
+      say(`🗄 Mit der NAS abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.`);
+      return true;
+    }
+    throw new Error('die NAS war gerade mehrfach belegt – gleich noch einmal');
+  } catch (e) {
+    cfg.error = e.message;
+    logEv('NAS', e.message);
+    say(`NAS: ${e.message}`);
+    return false;
+  } finally {
+    nasRunning = false;
+    renderNasState();
+  }
+}
+async function renderNasState() {
+  const wrap = document.getElementById('nasWrap');
+  if (!wrap) return;
+  wrap.hidden = AREA !== 'privat' || !desktop.nasReq;
+  if (wrap.hidden) return;
+  const cfg = state.settings.nas ?? {};
+  if (document.activeElement !== $('nasUrl')) $('nasUrl').value = cfg.url ?? '';
+  if (document.activeElement !== $('nasUser')) $('nasUser').value = cfg.user ?? '';
+  $('nasAuto').checked = cfg.auto !== false;
+  const hasPw = await desktop.nasHasPassword?.().catch(() => false);
+  $('nasPass').placeholder = hasPw ? 'Passwort gespeichert (zum Ändern neu eingeben)' : 'Passwort';
+  const when = cfg.last ? new Date(cfg.last).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'noch nie';
+  $('nasState').textContent = `Zuletzt mit der NAS abgeglichen: ${when}${cfg.error ? ` · letzter Versuch: ${cfg.error}` : ''}`;
+}
+const nasField = (key, val) => {
+  state.settings.nas = { ...(state.settings.nas ?? {}), [key]: val };
+  save({ quiet: true });
+};
+$('nasUrl').onchange = (e) => nasField('url', e.target.value.trim().replace(/\/+$/, ''));
+$('nasUser').onchange = (e) => nasField('user', e.target.value.trim());
+$('nasAuto').onchange = (e) => nasField('auto', e.target.checked);
+$('nasPass').onchange = async (e) => {
+  try {
+    await desktop.nasSetPassword(e.target.value);
+    e.target.value = '';
+    renderNasState();
+  } catch (err) {
+    status(`NAS: ${err.message}`);
+  }
+};
+$('nasNow').onclick = () => nasSync({ manual: true });
+
 function startAutoSync() {
+  // NAS: beim Start, beim Zurückkehren/Verlassen und alle 10 Minuten (PC und Handy)
+  renderNasState();
+  setTimeout(() => nasSync().catch(() => {}), 8000);
+  setInterval(() => !document.hidden && nasSync().catch(() => {}), 10 * 60e3);
+  document.addEventListener('visibilitychange', () => nasSoon(document.hidden ? 500 : 1500));
   if (MOBILE) {
     setTimeout(() => autoSync().catch(() => {}), 5000);
     setInterval(() => !document.hidden && autoSync().catch(() => {}), 5 * 60e3);
@@ -6709,6 +6874,7 @@ window.__app = {
   syncSnapshot: () => syncSnapshot(state, state.abgleich),
   autoSync,
   pairWith,
+  nasSync,
   // QR-Code aus einem Bild lesen (ohne Barcode-Erkennung der WebView, also mit jsQR)
   readQrImage: async (url) => {
     const bmp = await createImageBitmap(await (await fetch(url)).blob());

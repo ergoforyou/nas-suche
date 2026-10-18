@@ -27,6 +27,12 @@ async function readJson(path) {
 async function writeJson(path, value) {
   await Filesystem.writeFile({ path, directory: Directory.Data, encoding: Encoding.UTF8, data: JSON.stringify(value), recursive: true });
 }
+// Antworten der Android-Netzwerkanfragen (KIDevice.httpStart) – kommen über window.__kiHttpDone zurück
+const httpWaiters = new Map();
+window.__kiHttpDone = (id, r) => {
+  httpWaiters.get(id)?.(r);
+  httpWaiters.delete(id);
+};
 function toBase64(bytes) {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
@@ -188,6 +194,37 @@ const api = {
   keyStatus: async () => {
     const k = await getKeys();
     return { anthropic: !!k.anthropic, openai: !!k.openai, encrypted: !!vault() };
+  },
+  // ---- Synology NAS (WebDAV, vorerst nur Privat): Anfragen über Android selbst (die NAS erlaubt keine Zugriffe aus
+  // der WebView heraus); das Passwort liegt verschlüsselt bei den Schlüsseln
+  nasSetPassword: async (pw) => {
+    if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');
+    const k = await getKeys();
+    const clean = String(pw ?? '').trim();
+    if (clean) k.nas = clean;
+    else delete k.nas;
+    await storeKeys(k);
+    return true;
+  },
+  nasHasPassword: async () => AREA === 'privat' && !!(await getKeys()).nas,
+  nasReq: async ({ base, user, method = 'GET', path = '', body, headers = {} }) => {
+    if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');
+    if (!window.KIDevice?.httpStart) throw new Error('NAS-Zugriff braucht die Android-App');
+    const root = new URL(String(base).endsWith('/') ? base : `${base}/`);
+    if (!/^https?:$/.test(root.protocol)) throw new Error('Adresse muss mit http:// oder https:// beginnen');
+    const url = new URL(String(path).replace(/^\/+/, ''), root).href;
+    const pw = (await getKeys()).nas ?? '';
+    const auth = `Basic ${toBase64(new TextEncoder().encode(`${user ?? ''}:${pw}`))}`;
+    const id = Math.random().toString(36).slice(2);
+    const r = await new Promise((resolve) => {
+      httpWaiters.set(id, resolve);
+      window.KIDevice.httpStart(id, method, url, JSON.stringify({ Authorization: auth, ...headers }), body ? toBase64(body) : '');
+    });
+    if (r.error) throw new Error(`NAS nicht erreichbar (${r.error})`);
+    const bin = atob(r.body || '');
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return { status: r.status, etag: r.etag || null, body: out };
   },
   setKey: async (provider, key) => {
     const k = await getKeys();
