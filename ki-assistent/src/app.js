@@ -15,7 +15,7 @@ import { packPersona, unpackPersona } from './personapack.js';
 import qrcode from 'qrcode-generator';
 import jsQR from 'jsqr';
 import { debugVoice, synthesize, piperState } from './piper.js';
-import { MoodFilter, guessMood, MOOD_PROMPT } from './mood.js';
+import { MoodFilter, guessMood, MOOD_PROMPT, GESTURES, gesturePrompt } from './mood.js';
 import googleLib from '../google.js';
 import { CostMeter, fmtUsd, priceOf } from './kosten.js';
 import appToolsLib from '../apptools.js';
@@ -363,6 +363,7 @@ tts.onShape = (v) => (avatarState.shape = avatarState.shape * 0.5 + v * 0.5);
 tts.onViseme = (v) => (avatarState.viseme = v);
 tts.onItem = (meta) => {
   if (meta?.mood) setMood(meta.mood);
+  if (meta?.gesture) playGesture(meta.gesture); // Geste genau zum Satz, der jetzt gesprochen wird
   const floatOn = document.documentElement.classList.contains('float-ov');
   if (meta?.text && (state.settings.bubble === 'immer' || (floatOn && state.settings.bubble !== 'aus'))) showBubble(meta.text);
 };
@@ -675,6 +676,19 @@ function updateBadge() {
   $('btnMic').classList.toggle('handsfree', state.settings.handsFree);
 }
 
+/** Gesten, für die die Persona ein Video oder Bild hat (Anlass „Geste: …“). */
+function availableGestures(p = persona()) {
+  const set = new Set();
+  for (const pose of p.avatar?.poses ?? []) {
+    const m = /^event:geste:(.+)$/.exec(pose.trigger ?? '');
+    if (m && GESTURES[m[1]] && (pose.video || pose.image)) set.add(m[1]);
+  }
+  return [...set];
+}
+function playGesture(name) {
+  fireEvent(`geste:${name}`, 2600);
+}
+
 // ---------------------------------------------------------------- LM Studio
 function buildMessages() {
   const p = persona();
@@ -687,6 +701,8 @@ function buildMessages() {
   if (p.selbstOn !== false && p.selbst?.length) parts.push(r.self(p.selbst.map((m) => `- ${m.text}`).join('\n'), appToolsActive()));
   if (p.style !== 'frei') parts.push(r.lang);
   if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
+  const gestures = availableGestures(p);
+  if (state.settings.moodTags && gestures.length) parts.push(gesturePrompt(gestures, p.language === 'en' ? 'en' : 'de'));
   if (p.style !== 'frei') parts.push(appKnowledge());
   if (state.drive) parts.push(r.drive);
   if (webActive()) parts.push(r.web);
@@ -877,12 +893,14 @@ async function send(text) {
   const splitter = new SentenceSplitter((s) => {
     // Hält sich das Modell nicht an die Marken, wird die Stimmung aus dem Satz erraten
     const mood = moods.tagged ? moods.current : (guessed = guessMood(s) ?? guessed);
+    const gesture = moods.takeGesture();
     if (!speak) {
       if (state.settings.bubble !== 'aus') showBubble(s);
+      if (gesture) playGesture(gesture);
       return mood && setMood(mood);
     }
     state.spoken = (state.spoken + ' ' + s).slice(-1500); // für den Echo-Filter im Live-Gespräch
-    tts.enqueue(s, { mood, text: s });
+    tts.enqueue(s, { mood, text: s, gesture });
   });
   const filter = (text) => {
     const before = moods.current;
@@ -930,6 +948,7 @@ async function send(text) {
     } else bubble.remove();
     status('');
     output.update(answer, true);
+    state.lastExchange = Date.now();
     if (answer && !error) {
       scheduleLearning(text, answer);
       countForReflection(persona());
@@ -1557,6 +1576,9 @@ async function listenOnce({ handsFree = false } = {}) {
       silenceMs: handsFree ? state.settings.livePauseMs : 1100,
       onSpeechStart: () => {
         duringSpeech = tts.speaking || Date.now() - (state.lastSpeakEnd ?? 0) < 1000;
+        // nach einer Pause angesprochen: die Figur wendet sich zu (Anlass „zuwenden“)
+        if (!tts.speaking && !state.busy && Date.now() - (state.lastExchange ?? 0) > 15000) fireEvent('turn', 2500);
+        state.lastExchange = Date.now();
         if (handsFree) {
           state.hearing = true;
           updateBadge();
@@ -1951,6 +1973,7 @@ function fillSettings() {
   $('avMotion').value = p.avatar.motion ?? 1;
   $('avIdleHead').value = p.avatar.idleHead ?? 0.25;
   $('avCalm').checked = p.avatar.calmPhoto !== false;
+  $('avShowTrig').checked = !!state.settings.showTriggers;
   $('avVrmOff').hidden = !p.avatar.vrm;
   $('avVrmSave').hidden = !p.avatar.vrm;
   fillRigInfo();
@@ -2709,6 +2732,16 @@ $('avIdleHead').oninput = (e) => {
   if (floating.avatar) floating.avatar.idleHead = +e.target.value;
   save();
 };
+$('avShowTrig').onchange = (e) => {
+  state.settings.showTriggers = e.target.checked;
+  save();
+};
+// Anlässe sichtbar machen: welches Video/welche Pose gerade aus welchem Anlass läuft
+avatar.onPose = (cfg, trigger) => {
+  if (!state.settings.showTriggers || !cfg) return;
+  const label = (TRIGGERS.find(([v]) => v === trigger) ?? [, trigger])[1];
+  status(`▶ ${cfg.name || (cfg.video ? 'Video' : 'Pose')} – ${label}`);
+};
 $('avCalm').onchange = (e) => {
   persona().avatar.calmPhoto = e.target.checked;
   avatar.calmPhoto = e.target.checked;
@@ -3273,6 +3306,11 @@ const TRIGGERS = [
   ['event:success', 'geschafft – freuen (Datei fertig, Termin eingetragen)'],
   ['event:error', 'Entschuldigung (etwas hat nicht geklappt)'],
   ['event:reminder', 'Erinnerung ansagen (Termin, Aufgabe)'],
+  ['event:turn', 'zuwenden – wenn ich sie nach einer Pause anspreche (einmal)'],
+  ['idle:away', 'in Ruhe zur Seite schauen / abwenden (nach 1 min Ruhe, ab und zu)'],
+  ['idle:morning', 'morgens in Ruhe, ab und zu (z. B. strecken, Kaffee) – 6 bis 10 Uhr'],
+  ['idle:evening', 'abends in Ruhe, ab und zu (z. B. gähnen) – ab 20 Uhr'],
+  ...Object.entries(GESTURES).map(([k, label]) => [`event:geste:${k}`, `Geste: ${label}`]),
 ];
 
 function setEditIndex(i) {

@@ -996,6 +996,48 @@ check(
   'Werkzeugaufrufe stehen als echte Aufrufe im Verlauf (Speichern wird nicht nur behauptet)',
   JSON.stringify({ toolEntry, req: !!toolReq }),
 );
+// Gesten passend zum Inhalt: Marke [geste:nicken] wird entfernt und spielt den Anlass „Geste: nicken“
+await page.evaluate(() => {
+  const p = window.__app.persona();
+  p.avatar.poses = [...(p.avatar.poses ?? []), { id: 'gtest', name: 'Nicken', trigger: 'event:geste:nicken', image: p.avatar.image }];
+  window.__gestSeen = [];
+  const st = window.__app.avatarState;
+  let ev = st.event;
+  Object.defineProperty(st, 'event', { configurable: true, get: () => ev, set: (v) => { ev = v; if (v?.name) window.__gestSeen.push(v.name); } });
+});
+claudeQueue.push([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '[freudig] [geste:nic' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'ken] Ja, genau so machen wir das.' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 9 } },
+  { type: 'message_stop' },
+]);
+const gestBefore = claudeRequests.length;
+{
+  const n = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+  await page.evaluate(() => (window.__app.state.busy = false));
+  await page.fill('#input', 'Machen wir das so?');
+  await page.click('#btnSend');
+  await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !window.__app.state.busy, n, { timeout: 15000 }).catch(() => {});
+  await page.waitForFunction(() => window.__gestSeen.includes('geste:nicken'), null, { timeout: 8000 }).catch(() => {});
+}
+const gestRes = await page.evaluate(() => ({
+  seen: window.__gestSeen,
+  text: [...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? '',
+}));
+const gestReq = claudeRequests.slice(gestBefore).find((r) => JSON.stringify(r.messages ?? '').includes('Machen wir das so'));
+const gestSys = JSON.stringify(gestReq?.system ?? '');
+check(
+  gestRes.seen.includes('geste:nicken') && /Ja, genau so/.test(gestRes.text) && !/geste|\[/.test(gestRes.text) && /\[geste:nicken\]/.test(gestSys) && !/schulterzucken/.test(gestSys),
+  'Gesten: Marke unsichtbar, passende Geste ausgelöst, im Prompt nur Gesten mit Video',
+  JSON.stringify({ ...gestRes, sys: /geste/.test(gestSys) }),
+);
+await page.evaluate(() => {
+  const p = window.__app.persona();
+  p.avatar.poses = p.avatar.poses.filter((x) => x.id !== 'gtest');
+});
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
 {
   const { default: qrcodeGen } = await import('qrcode-generator');

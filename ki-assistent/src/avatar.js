@@ -747,8 +747,14 @@ export class Avatar {
       // Warten: Kalender, Internet/Datei oder einfach länger als 3 s
       if (this.state.wait === 'calendar') prefs.push('think:calendar');
       if (this.state.wait || now - (this.thinkStart ?? now) > 3000) prefs.push('think:long');
-    } else if (now - this.lastBusy > 5 * 60e3) {
-      prefs.push('idle:bored');
+    } else {
+      // Ruhe: gelangweilt (5 min), Tageszeit (morgens/abends), zur Seite schauen (1 min) – was es an Posen gibt
+      const quiet = now - this.lastBusy;
+      if (quiet > 5 * 60e3) prefs.push('idle:bored');
+      const h = new Date().getHours();
+      if (h >= 6 && h < 10) prefs.push('idle:morning');
+      if (h >= 20) prefs.push('idle:evening');
+      if (quiet > 60e3) prefs.push('idle:away');
     }
     if (base !== 'speak') this.startPlayed = false;
     prefs.push(base);
@@ -802,7 +808,7 @@ export class Avatar {
       hold = sim ? Math.max(1500, sim.until - now) : Math.max(1500, ev.until - now);
     } else if (base === 'idle') {
       // meist das Grundbild (oder Ruhe-Video), ab und zu eine Ruhe-Pose (gelangweilt: öfter)
-      if (isHome(this.current) && cand.length && Math.random() < (st === 'idle:bored' ? 0.8 : 0.45)) {
+      if (isHome(this.current) && cand.length && Math.random() < (st === 'idle:bored' || st === 'idle:away' ? 0.8 : 0.45)) {
         next = nextOf(cand);
         hold = rnd(2500, 5500);
       } else {
@@ -820,6 +826,8 @@ export class Avatar {
     }
     const nextL = this.layers[next];
     if (nextL?.isVideo && !nextL.config.loop) hold = 1e9; // endet über "ended"
+    // Anlass mitteilen (für „Anlässe anzeigen“), nur bei einem Wechsel
+    if (next !== this.current && next !== 0) this.onPose?.(nextL?.config ?? null, st);
     this.switchPose(next, now);
     this.poseUntil = now + hold;
   }

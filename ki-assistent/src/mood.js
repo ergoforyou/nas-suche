@@ -25,6 +25,34 @@ const WORDS = [...Object.keys(MOODS), ...Object.keys(ALIASES)].sort((a, b) => b.
 // Marke: [freudig], [Stimmung: freudig], (*[freudig]*) – nur bekannte Wörter, damit Markdown-Links unberührt bleiben
 const TAG = new RegExp(`\\**\\[(?:stimmung|mood)?\\s*:?\\s*(${WORDS})\\]\\**[ \\t]*`, 'giu');
 
+// Gesten passend zum Inhalt: das Sprachmodell setzt vor einen Satz eine Marke wie [geste:nicken]; die Figur spielt dazu
+// ein kurzes Video (Anlass „Geste: …“). Die Marke wird – wie die Stimmung – aus Text und Sprachausgabe entfernt.
+export const GESTURES = {
+  nicken: 'nicken (Zustimmung, „ja, genau“)',
+  kopfschütteln: 'Kopf schütteln („nein“, „leider nicht“)',
+  lachen: 'lachen (Witz, etwas Lustiges)',
+  schulterzucken: 'Schulterzucken („keine Ahnung“, „kommt drauf an“)',
+  abwägen: 'abwägen mit den Händen („einerseits … andererseits“)',
+  aufzählen: 'an den Fingern aufzählen („erstens, zweitens“)',
+  zeigen: 'zeigen / hindeuten („schau mal hier“, Ergebnis vorstellen)',
+  fragend: 'fragend, Kopf leicht geneigt (wenn du eine Frage stellst)',
+};
+const GESTURE_ALIASES = { kopfschuetteln: 'kopfschütteln', abwaegen: 'abwägen', aufzaehlen: 'aufzählen', nod: 'nicken', laugh: 'lachen', shrug: 'schulterzucken', point: 'zeigen' };
+const GTAG = /\**\[(?:geste|gesture)\s*:\s*([\p{L}-]+)\]\**[ \t]*/giu;
+export const normalizeGesture = (w) => {
+  const k = String(w ?? '').toLowerCase();
+  return GESTURES[k] ? k : GESTURE_ALIASES[k] ?? null;
+};
+/** Anweisung für das Sprachmodell – nur mit den Gesten, für die es Videos gibt. */
+export function gesturePrompt(names, lang = 'de') {
+  const list = names.map((n) => (lang === 'en' ? n : GESTURES[n] ?? n)).join('; ');
+  return lang === 'en'
+    ? `You can show gestures: put an invisible tag like [geste:nicken] right before a sentence it fits. Available: ${list}. ` +
+        'Only where it really fits – at most one per sentence and not in every sentence. The user never sees the tags.'
+    : `Du kannst Gesten zeigen: setze direkt vor einen passenden Satz eine unsichtbare Marke wie [geste:nicken]. Verfügbar: ${list}. ` +
+        'Nur, wo es wirklich passt – höchstens eine pro Satz und nicht in jedem Satz. Die Marken sieht und hört der Nutzer nicht.';
+}
+
 export const normalizeMood = (w) => {
   const k = String(w ?? '').toLowerCase();
   return MOODS[k] ? k : ALIASES[k] ?? null;
@@ -48,9 +76,21 @@ export class MoodFilter {
     this.buf = '';
     this.current = null;
     this.tagged = false;
+    this.gesture = null; // zuletzt markierte Geste – gehört zum Satz, der gerade entsteht
+  }
+  /** Geste für den gerade fertigen Satz abholen (einmalig). */
+  takeGesture() {
+    const g = this.gesture;
+    this.gesture = null;
+    return g;
   }
   push(text) {
     this.buf += text;
+    // Gesten-Marken entfernen und merken (auch unbekannte Gesten verschwinden aus dem Text)
+    this.buf = this.buf.replace(GTAG, (_, g) => {
+      this.gesture = normalizeGesture(g) ?? this.gesture;
+      return '';
+    });
     let out = '';
     TAG.lastIndex = 0;
     let m;
