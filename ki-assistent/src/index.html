@@ -347,7 +347,15 @@
         <input id="mNew" type="text" placeholder="Neue Erinnerung, z. B. „Jens mag kurze Antworten“" style="flex:1" />
         <button id="mAdd">＋</button>
       </div>
-      <button id="mClear" class="danger">Alles vergessen</button>
+      <div class="row wrap">
+        <button id="mTidy" title="Doppeltes zusammenfassen, Widersprüche auflösen (das Neuere gilt), Vorübergehendes streichen">🧹 Aufräumen</button>
+        <button id="mTidyUndo" hidden>↩ Rückgängig</button>
+        <button id="mClear" class="danger">Alles vergessen</button>
+      </div>
+      <p id="mTidyInfo" class="hint"></p>
+      <details id="mTidyDetailsBox" class="hint" hidden><summary>Was beim letzten Aufräumen geändert wurde</summary><pre id="mTidyDetails" class="tidy-details"></pre></details>
+      <p class="hint">Das Aufräumen läuft auch von selbst (nach etwa 15 neu gelernten Fakten, spätestens wöchentlich).
+        👤 Was du selbst eingetragen oder bearbeitet hast, bleibt dabei immer unverändert.</p>
 
       <h3>💬 Gesprächsgefühl</h3>
       <label class="check"><input id="cGreet" type="checkbox" /> Persönliche Begrüßung beim Start <span class="hint">(nach mindestens

@@ -406,6 +406,8 @@ body.floating .stage { display: none; }
 .qr-scan button { z-index: 1; }
 
 /* App-Sperre (Handy) */
+.memory-row.mine input { border-left: 3px solid var(--accent, #4a8); }
+.tidy-details { white-space: pre-wrap; font: inherit; margin: 4px 0 0; }
 .steckbrief { border: 1px solid var(--line, #444); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
 .steckbrief summary { cursor: pointer; font-weight: 600; }
 .sb-traits { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px 12px; }
