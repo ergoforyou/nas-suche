@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Agentur-PDF – lokaler Dienst (PDF-Kern, OCR, Konvertierung)"
 requires-python = ">=3.12"
 dependencies = [
-    "pymupdf>=1.24",
+    "pymupdf>=1.24,<2",  # 2.0 ändert u. a. das Umbenennen von Formularfeldern – erst prüfen
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "pillow>=10",
