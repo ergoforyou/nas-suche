@@ -32,6 +32,8 @@ jobs:
         run: python -m pytest -q
 
       - name: Symbol erzeugen
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: python packaging/make_icon.py
 
       - name: EXE bauen (PyInstaller)
