@@ -616,7 +616,10 @@ def erstelle_app(
     async def extern_ausfuehren(aktion: str, dateien: list[str]) -> None:
         dateien = [os.path.abspath(d) for d in dateien]
         if aktion == "zusammenfuehren":
-            zusammenfuehren_sammeln(dateien)
+            from ..kern.stapel import dateien_sammeln
+
+            # Ordner (Rechtsklick auf Ordner) → unterstützte Dateien darin, alphabetisch
+            zusammenfuehren_sammeln([str(p) for p in dateien_sammeln(dateien)] if any(os.path.isdir(d) for d in dateien) else dateien)
         elif aktion == "umwandeln":
             umwandeln_starten(eintraege_aufloesen([{"pfad": d} for d in dateien]), speichern=True)
         else:  # öffnen

@@ -28,6 +28,9 @@ RECHTSKLICK IM EXPLORER
     • Mit Agentur-PDF öffnen
     • Zu einer PDF zusammenführen   (auch mehrere Dateien markiert)
     • In PDF umwandeln
+  Rechtsklick auf einen Ordner: „Inhalt zu einer PDF zusammenführen“
+  (alle passenden Dateien darin, alphabetisch – Reihenfolge im Dialog
+  noch änderbar).
   Unter Windows 11 unter „Weitere Optionen anzeigen“.
 
 ALLE ARBEITSPLÄTZE: GEMEINSAMER ORDNER AUF DEM NAS

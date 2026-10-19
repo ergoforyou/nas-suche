@@ -21,6 +21,14 @@ def test_eintraege_fuer_typen():
     assert ("MUIVerb", "Zu einer PDF zusammenführen") in verb.werte
 
 
+def test_ordner_zusammenfuehren():
+    liste = eintraege(AUFRUF)
+    pfad = r"Software\Classes\Directory\shell\AgenturPDF.Zusammenfuehren"
+    verb = next(s for s in liste if s.pfad == pfad)
+    assert ("MUIVerb", "Inhalt zu einer PDF zusammenführen") in verb.werte
+    assert next(dict(s.werte)[""] for s in liste if s.pfad == pfad + r"\command") == AUFRUF + ' --zusammenfuehren "%1"'
+
+
 def test_reg_export_escaped():
     text = als_reg_datei(eintraege(AUFRUF))
     assert text.startswith("Windows Registry Editor Version 5.00")

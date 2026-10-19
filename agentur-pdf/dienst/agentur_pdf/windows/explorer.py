@@ -8,6 +8,7 @@ Einträge je unterstütztem Dateityp (SystemFileAssociations):
 * „Mit Agentur-PDF öffnen“
 * „Zu einer PDF zusammenführen“ – auch bei Mehrfachauswahl (MultiSelectModel)
 * „In PDF umwandeln“ – für alles außer PDF
+Zusätzlich auf Ordnern: „Inhalt zu einer PDF zusammenführen“.
 
 Hinweis Windows 11: Dort erscheinen klassische Einträge unter „Weitere
 Optionen anzeigen“ (Umschalt+F10). Ein Eintrag direkt im neuen Menü erfordert
@@ -23,6 +24,7 @@ from pathlib import Path
 from ..kern.konvertierung import ALLE, PDF
 
 PROGID = "AgenturPDF.Dokument"
+ORDNER_VERB = "AgenturPDF.Zusammenfuehren"
 BASIS = r"Software\Classes"
 
 
@@ -58,6 +60,10 @@ def eintraege(aufruf: str, symbol: str | None = None) -> list[Schluessel]:
                 Schluessel(basis, (("MUIVerb", titel), ("Icon", f"{symbol},0"), ("MultiSelectModel", "Player")))
             )
             liste.append(Schluessel(rf"{basis}\command", (("", f'{aufruf} {schalter}"%1"'),)))
+    # Rechtsklick auf einen Ordner: alle unterstützten Dateien darin (alphabetisch)
+    ordner = rf"{BASIS}\Directory\shell\{ORDNER_VERB}"
+    liste.append(Schluessel(ordner, (("MUIVerb", "Inhalt zu einer PDF zusammenführen"), ("Icon", f"{symbol},0"))))
+    liste.append(Schluessel(rf"{ordner}\command", (("", f'{aufruf} --zusammenfuehren "%1"'),)))
     # „Öffnen mit“ + Kandidat für das Standard-PDF-Programm (Auswahl trifft der
     # Benutzer in den Windows-Einstellungen – Windows erlaubt das nicht per Programm)
     liste += [
@@ -117,6 +123,7 @@ def entfernen() -> None:
     for endung in ALLE:
         for verb in ("AgenturPDF.1Oeffnen", "AgenturPDF.2Zusammenfuehren", "AgenturPDF.3Umwandeln"):
             loeschen(rf"{BASIS}\SystemFileAssociations\{endung}\shell\{verb}")
+    loeschen(rf"{BASIS}\Directory\shell\{ORDNER_VERB}")
     loeschen(rf"{BASIS}\{PROGID}")
     loeschen(r"Software\AgenturPDF")
     for pfad, name in ((rf"{BASIS}\.pdf\OpenWithProgids", PROGID), (r"Software\RegisteredApplications", "Agentur-PDF")):

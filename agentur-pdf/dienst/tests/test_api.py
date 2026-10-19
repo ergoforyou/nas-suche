@@ -144,6 +144,20 @@ def test_extern_sammelt_explorer_aufrufe(client, brief, tmp_path):
     assert ereignisse[0]["dateien"] == [str(brief), str(zweite)]
 
 
+def test_extern_ordner_zusammenfuehren(client, brief, tmp_path):
+    """Rechtsklick auf einen Ordner: alle unterstützten Dateien darin, alphabetisch."""
+    import time as _t
+
+    ordner = tmp_path / "Unterlagen Muster"
+    ordner.mkdir()
+    for name in ("2_Antrag.pdf", "1_Anschreiben.pdf", "notiz.xyz", "~$offen.pdf"):
+        (ordner / name).write_bytes(brief.read_bytes())
+    client.post("/api/extern", json={"aktion": "zusammenfuehren", "dateien": [str(ordner)]})
+    _t.sleep(1.2)
+    (e,) = [e for e in client.get("/api/ereignisse").json()["ereignisse"] if e["art"] == "zusammenfuehren"]
+    assert [p.rsplit("/", 1)[-1].rsplit("\\", 1)[-1] for p in e["dateien"]] == ["1_Anschreiben.pdf", "2_Antrag.pdf"]
+
+
 def test_extern_oeffnen(client, brief):
     client.post("/api/extern", json={"aktion": "oeffnen", "dateien": [str(brief)]})
     ereignisse = client.get("/api/ereignisse").json()["ereignisse"]

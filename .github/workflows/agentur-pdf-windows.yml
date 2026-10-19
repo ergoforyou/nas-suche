@@ -98,6 +98,7 @@ jobs:
           Start-Process -Wait -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$ziel", "/TASKS=explorer"
           if (-not (Test-Path "$ziel\Agentur-PDF.exe")) { Write-Error "Agentur-PDF.exe wurde nicht installiert"; exit 1 }
           if (-not (Test-Path "$ziel\Chrome-Erweiterung\manifest.json")) { Write-Error "Chrome-Erweiterung fehlt"; exit 1 }
+          if (-not (Test-Path "HKCU:\Software\Classes\Directory\shell\AgenturPDF.Zusammenfuehren\command")) { Write-Error "Ordner-Rechtsklick fehlt"; exit 1 }
           $link = (Get-ItemProperty "HKCU:\Software\Classes\agentur-pdf\shell\open\command").'(default)'
           "Start-Link: $link"
           if ($link -notlike "*$ziel*") { Write-Error "Link agentur-pdf:// fehlt"; exit 1 }
