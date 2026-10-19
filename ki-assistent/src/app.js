@@ -1349,8 +1349,9 @@ function renderTopics() {
   $('cGreet').checked = state.settings.personalGreet !== false;
   $('cThink').checked = state.settings.thinkSounds !== false;
   const topics = (p.themen ?? []).filter((t) => !t.asked);
-  $('tCount').textContent = topics.length ? `(${topics.length})` : '';
-  list.innerHTML = topics.length ? '' : '<p class="hint">Noch keine offenen Themen.</p>';
+  const done = (p.themen ?? []).length - topics.length;
+  $('tCount').textContent = topics.length || done ? `(${topics.length} offen${done ? `, ${done} schon angesprochen` : ''})` : '';
+  list.innerHTML = topics.length ? '' : `<p class="hint">${done ? 'Alle Themen sind schon angesprochen.' : 'Noch keine offenen Themen.'}</p>`;
   for (const t of [...topics].reverse()) {
     const row = document.createElement('div');
     row.className = 'memory-row';
@@ -2699,6 +2700,7 @@ const switchTo = (p) => {
   save();
   applyPersona();
   fillSettings();
+  renderMemory(); // Gedächtnis, Selbstbild, offene Themen der neuen Persona anzeigen
 };
 $('personaNew').onclick = () => {
   const p = defaultPersona();
@@ -2735,9 +2737,8 @@ $('personaDelete').onclick = () => {
 // Persona als eine Datei (.kiavatar) mit allen Bildern, Videos, Masken und der 3D-Figur – für PC und Handy
 /** Auswahl, was mitgeht (Gedächtnis, Wissen, Verlauf). Liefert null bei Abbruch. */
 function askExportParts(p) {
-  const memN = (p.memory?.length ?? 0) + (p.selbst?.length ?? 0) + (p.themen?.length ?? 0);
   const histN = (state.history[p.id] ?? []).length;
-  $('expMemN').textContent = `(${memN} Einträge)`;
+  $('expMemN').textContent = `(Gedächtnis ${p.memory?.length ?? 0} · Selbstbild ${p.selbst?.length ?? 0} · offene Themen ${p.themen?.length ?? 0})`;
   $('expWissenN').textContent = `(${state.saved?.length ?? 0} Einträge, Bereich ${AREA === 'privat' ? 'Privat' : 'Dienstlich'})`;
   $('expHistN').textContent = `(${histN} Nachrichten)`;
   const dlg = $('exportDlg');
@@ -2772,7 +2773,11 @@ $('personaExport').onclick = async () => {
     });
     if (desktop.saveFileAs) await desktop.saveFileAs(`${name}.kiavatar`, bytes);
     else await desktop.exportSave(name, 'kiavatar', 'KI-Avatar (Persona)', bytes);
-    const what = [parts.mem && 'Gedächtnis', parts.wissen && 'Wissen', parts.hist && 'Verlauf'].filter(Boolean);
+    const what = [
+      parts.mem && `Gedächtnis ${p.memory?.length ?? 0}, Selbstbild ${p.selbst?.length ?? 0}, offene Themen ${p.themen?.length ?? 0}`,
+      parts.wissen && `Wissen ${state.saved?.length ?? 0}`,
+      parts.hist && `Verlauf ${state.history[p.id]?.length ?? 0}`,
+    ].filter(Boolean);
     status(`Persona „${p.name}“ exportiert${what.length ? ` mit ${what.join(', ')}` : ''} (${(bytes.length / 1e6).toFixed(1)} MB) – auf dem anderen Gerät unter ⚙ → Persona → „Persona importieren“ laden.`);
   } catch (err) {
     status(`Export fehlgeschlagen: ${err.message}`);
@@ -2824,7 +2829,7 @@ async function importPersonaBytes(bytes, { fromFile = false } = {}) {
     renderChat();
     output.setHistory(history());
     renderMemory();
-    status(`„${local.name}“ zusammengeführt – Gedächtnis ${merged.memory.length}, Selbstbild ${merged.selbst.length}, Verlauf ${state.history[local.id].length} Nachrichten${got.length ? `; ${got.join('; ')}` : ''}.`);
+    importReport(`„${local.name}“ zusammengeführt`, merged, data, verlauf, got, fromFile);
     return local.name;
   }
   const p = migratePersona({ ...defaultPersona(), ...data, id: newId() });
@@ -2836,9 +2841,23 @@ async function importPersonaBytes(bytes, { fromFile = false } = {}) {
     renderChat();
     output.setHistory(history());
   }
-  const with_ = [p.memory.length && 'Gedächtnis', verlauf?.length && 'Verlauf'].filter(Boolean);
-  status(`Persona „${p.name}“ übernommen – mit Avatar, Posen und Videos${with_.length ? `, ${with_.join(', ')}` : ''}${got.length ? `; ${got.join('; ')}` : ''}.`);
+  importReport(`Persona „${p.name}“ übernommen (mit Avatar, Posen und Videos)`, p, data, verlauf, got, fromFile);
   return p.name;
+}
+/** Was beim Import angekommen ist – je Teil „aus der Datei → jetzt hier“, damit Fehlendes sofort auffällt. */
+function importReport(title, p, data, verlauf, got, show) {
+  const n = (x) => (Array.isArray(x) ? x.length : 0);
+  const lines = [
+    `Gedächtnis: ${n(data.memory)} aus der Datei → jetzt ${n(p.memory)}`,
+    `Selbstbild: ${n(data.selbst)} aus der Datei → jetzt ${n(p.selbst)}`,
+    `Offene Themen: ${n(data.themen)} aus der Datei → jetzt ${n(p.themen)}`,
+    `Chatverlauf: ${n(verlauf)} aus der Datei → jetzt ${n(state.history[p.id])}`,
+    ...got,
+  ];
+  if (!('memory' in data)) lines.unshift('(Die Datei enthält kein Gedächtnis/Selbstbild – beim Export den ersten Haken setzen.)');
+  logEv('IMPORT', lines.join(' | '));
+  status(`${title} – ${lines.join('; ')}.`);
+  if (show) alert(`${title}\n\n${lines.join('\n')}`);
 }
 $('clearHistory').onclick = () => {
   if (!confirm('Gesprächsverlauf dieser Persona löschen?')) return;

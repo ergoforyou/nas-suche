@@ -771,6 +771,8 @@ const exp = await page.evaluate(async (webmB64) => {
   const url = await window.desktop.saveMedia(bytes, 'webm');
   av.poses = [{ id: 'v1', name: 'Nicken', trigger: 'listen', video: url, cutMode: 'alpha', clip: { start: 0.5, end: 2 } }];
   window.__app.persona().memory = [{ id: 'mk1', text: 'Jens trinkt Kaffee schwarz', created: 1 }];
+  window.__app.persona().selbst = [{ id: 'sb1', text: 'Ich fasse mich kurz.', art: 'vorsatz', quelle: 'gespraech', created: 1 }];
+  window.__app.persona().themen = [{ id: 'th1', text: 'Zahnarzttermin am Freitag', created: 1 }];
   window.__savedBefore = window.__saved.length;
   return { personas: window.__app.state.personas.length, name: window.__app.persona().name, id: window.__app.persona().id, image: av.image.slice(0, 40), hist: window.__app.history().length };
 }, fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-alpha.webm')).toString('base64'));
@@ -791,11 +793,15 @@ await page.setInputFiles('#pickSheet input[type=file]', packPath);
 await page.waitForFunction((n) => window.__app.state.personas.length > n, exp.personas, { timeout: 20000 }).catch(() => {});
 const imp = await page.evaluate(() => {
   const p = window.__app.persona();
-  return { personas: window.__app.state.personas.length, name: p.name, image: p.avatar.image?.slice(0, 40), pose: p.avatar.poses?.[0], mem: p.memory.map((m) => m.text), hist: window.__app.history().length };
+  return { personas: window.__app.state.personas.length, name: p.name, image: p.avatar.image?.slice(0, 40), pose: p.avatar.poses?.[0], mem: p.memory.map((m) => m.text), self: (p.selbst ?? []).map((m) => m.text), topics: (p.themen ?? []).map((m) => m.text), ui: { self: [...document.querySelectorAll('#selfList input, #selfList textarea')].some((i) => i.value.includes('Ich fasse mich kurz')) || document.getElementById('selfList').textContent.includes('Ich fasse mich kurz'), topics: [...document.querySelectorAll('#tList input')].some((i) => i.value.includes('Zahnarzttermin')) }, hist: window.__app.history().length };
 });
 check(imp.personas === exp.personas + 1 && imp.name.startsWith(exp.name) && imp.image === exp.image, 'Persona importiert (Name, Bild)', JSON.stringify({ name: imp.name }));
 check(imp.pose?.video && /^blob:|^http/.test(imp.pose.video) && imp.pose.clip?.start === 0.5 && imp.pose.trigger === 'listen', 'Video-Pose samt Abschnitt und Anlass übernommen', JSON.stringify(imp.pose));
-check(imp.mem.includes('Jens trinkt Kaffee schwarz') && imp.hist === exp.hist && exp.hist > 0, 'Komplett-Export: Gedächtnis und Chatverlauf kommen mit', JSON.stringify({ mem: imp.mem, hist: imp.hist, vorher: exp.hist }));
+check(
+  imp.mem.includes('Jens trinkt Kaffee schwarz') && imp.self.includes('Ich fasse mich kurz.') && imp.topics.includes('Zahnarzttermin am Freitag') && imp.ui.self && imp.ui.topics && imp.hist === exp.hist && exp.hist > 0,
+  'Komplett-Export: Gedächtnis, Selbstbild, offene Themen und Chatverlauf kommen mit (auch in der Anzeige)',
+  JSON.stringify({ mem: imp.mem, self: imp.self, topics: imp.topics, ui: imp.ui, hist: imp.hist, vorher: exp.hist }),
+);
 // gleiche Persona noch einmal importieren und zusammenführen: lokal Neues bleibt, Fehlendes kommt zurück, nichts doppelt
 const mergeIn = await page.evaluate((id) => {
   const app = window.__app;
@@ -804,6 +810,8 @@ const mergeIn = await page.evaluate((id) => {
   app.state.activeId = id;
   const p = app.persona();
   p.memory = [{ id: 'mk2', text: 'Der Hund heißt Bello', created: 2 }];
+  p.selbst = [];
+  p.themen = [];
   app.history().push({ id: 'nur-hier', role: 'user', content: 'Nur auf diesem Gerät', t: Date.now() });
   return { personas: app.state.personas.length, hist: app.history().length };
 }, exp.id);
@@ -814,10 +822,11 @@ await page.setInputFiles('#pickSheet input[type=file]', packPath);
 await page.waitForFunction(() => window.__app.persona().memory.length >= 2, null, { timeout: 20000 }).catch(() => {});
 const merged = await page.evaluate(() => {
   const p = window.__app.persona();
-  return { personas: window.__app.state.personas.length, mem: p.memory.map((m) => m.text).sort(), hist: window.__app.history().length, mine: window.__app.history().some((m) => m.id === 'nur-hier'), name: p.name };
+  return { personas: window.__app.state.personas.length, mem: p.memory.map((m) => m.text).sort(), self: (p.selbst ?? []).map((m) => m.text), topics: (p.themen ?? []).map((m) => m.text), hist: window.__app.history().length, mine: window.__app.history().some((m) => m.id === 'nur-hier'), name: p.name };
 });
 check(
-  merged.personas === mergeIn.personas && merged.mem.join('|') === 'Der Hund heißt Bello|Jens trinkt Kaffee schwarz' && merged.mine && merged.hist === mergeIn.hist && merged.name === exp.name,
+  merged.personas === mergeIn.personas && merged.mem.join('|') === 'Der Hund heißt Bello|Jens trinkt Kaffee schwarz' && merged.mine &&
+    merged.self.includes('Ich fasse mich kurz.') && merged.topics.includes('Zahnarzttermin am Freitag') && merged.hist === mergeIn.hist && merged.name === exp.name,
   'Import in vorhandene Persona: zusammengeführt (Gedächtnis ergänzt, eigener Verlauf bleibt, nichts doppelt)',
   JSON.stringify({ ...merged, vorher: mergeIn }),
 );
