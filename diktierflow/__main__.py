@@ -32,6 +32,9 @@ def _single_instance() -> object | None:
 
 
 def main() -> None:
+    if "--selbsttest" in sys.argv:
+        from .selftest import main as selftest
+        sys.exit(selftest())
     _setup_logging()
     log = logging.getLogger("diktierflow")
     if _single_instance() is None:

@@ -30,6 +30,19 @@ Spracheingabe für Windows nach dem Vorbild von Wispr Flow: Tastenkombination dr
    Alternativ setzt du die Umgebungsvariablen `ANTHROPIC_API_KEY` und `OPENAI_API_KEY`.
 5. Optional: „Mit Windows starten“ anhaken.
 
+### Erster Test: `selbsttest.bat`
+
+Vor dem ersten richtigen Einsatz `selbsttest.bat` doppelklicken. Der Test prüft nacheinander:
+
+1. ob alle Bibliotheken installiert sind
+2. ob die API-Schlüssel gültig sind, mit einem Mini-Aufruf an Claude
+3. das Mikrofon: 5 Sekunden Aufnahme mit Pegelprüfung
+4. die Spracherkennung dieser Aufnahme, Cloud und optional lokal
+5. ob `Strg+Win+Leertaste` erkannt wird
+6. das Einfügen in den Editor
+
+Jeder Punkt meldet `OK` oder `FEHLER` mit einem Hinweis, was zu tun ist. **Wichtig:** Wispr Flow vorher beenden, sonst belegen beide dieselbe Tastenkombination.
+
 Eine eigenständige EXE ohne Python-Installation baut `build_exe.bat` nach `dist\DiktierFlow\`.
 
 **Lokales Whisper:** Beim ersten Einsatz wird das Modell einmalig heruntergeladen. Für `large-v3-turbo` sind das etwa 1,6 GB. Auf einem Laptop ohne Grafikkarte dauert die Erkennung damit etwa so lange wie das Diktat selbst. Wer es schneller braucht, wählt in den Einstellungen `small`.
