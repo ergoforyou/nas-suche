@@ -1,0 +1,15 @@
+# Kern
+numpy>=1.26
+sounddevice>=0.4.7
+pynput>=1.7.7
+pyperclip>=1.9
+psutil>=5.9
+pillow>=10.0
+pystray>=0.19
+# Cloud
+anthropic>=1.0
+openai>=1.50
+# Windows: Textfeld erneut lesen (Lernen aus Korrekturen)
+uiautomation>=2.0.20; sys_platform == "win32"
+# Lokale Spracherkennung (Offline / Datenschutz-Modus)
+faster-whisper>=1.1
