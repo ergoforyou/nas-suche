@@ -1,0 +1,1021 @@
+{
+  "id": "38bea94a-6bfe-4a9a-babb-245ca55ce9d8",
+  "revision": 0,
+  "last_node_id": 63,
+  "last_link_id": 18,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "MarkdownNote",
+      "pos": [
+        -2200,
+        -420
+      ],
+      "size": [
+        700,
+        330
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "# MiniMax H3 – Video-Workflow\n\n**Ablauf**\n1. **Start-/Endbild** laden (Gruppe 1). Kein Endbild? Gruppe *1b* markieren → `Ctrl+B` (Bypass).\n2. **Format** in beiden `ImageScale`-Nodes setzen (Breite × Höhe, gleiche Werte!). H3 übernimmt das Seitenverhältnis der Bilder.\n3. **Prompt, Dauer (4–15 s), Auflösung** im H3-Node einstellen → **Probelauf** (768P) starten.\n4. Gefällt das Ergebnis: Gruppe **3A** (`Ctrl+M`) aktivieren, **gleichen Prompt** einfügen, erneut *Queue*. Der Probelauf wird **nicht** neu berechnet (Seed = fixed) – nur der 2K-Upscale.\n5. Alternative: Gruppe **3B** = kostenloser lokaler Upscaler (Upscale-Modell nötig).\n\n**Nur Text, keine Bilder?** Gruppe 1/1b/2 stummschalten, Gruppe **0** aktivieren.\n**Figuren/Produkte als Referenz?** Gruppe **R** (Reference to Video, bis 9 Bilder).\n"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "LoadImage",
+      "pos": [
+        -2200,
+        40
+      ],
+      "size": [
+        320,
+        380
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "start.png",
+        "image"
+      ],
+      "title": "Startbild"
+    },
+    {
+      "id": 11,
+      "type": "ImageScale",
+      "pos": [
+        -1850,
+        40
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3,
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScale"
+      },
+      "widgets_values": [
+        "lanczos",
+        1280,
+        720,
+        "center"
+      ],
+      "title": "Format Startbild (B × H)"
+    },
+    {
+      "id": 12,
+      "type": "LoadImage",
+      "pos": [
+        -2200,
+        500
+      ],
+      "size": [
+        320,
+        380
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "ende.png",
+        "image"
+      ],
+      "title": "Endbild (optional)"
+    },
+    {
+      "id": 13,
+      "type": "ImageScale",
+      "pos": [
+        -1850,
+        500
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            4,
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScale"
+      },
+      "widgets_values": [
+        "lanczos",
+        1280,
+        720,
+        "center"
+      ],
+      "title": "Format Endbild (gleich wie Start!)"
+    },
+    {
+      "id": 20,
+      "type": "MinimaxHailuo03FirstLastFrameNode",
+      "pos": [
+        -1480,
+        40
+      ],
+      "size": [
+        420,
+        360
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": 4,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            5,
+            6,
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MinimaxHailuo03FirstLastFrameNode"
+      },
+      "widgets_values": [
+        "MiniMax H3",
+        "Eine durchgehende, filmische Einstellung ohne Schnitt. Beginne exakt mit Bild 1 und ende exakt mit Bild 2. Beschreibe hier Kamerabewegung, Handlung und Stimmung. Gleicher Stil, flüssige Bewegung, kein Text, keine Logos.",
+        "768P",
+        5,
+        42,
+        "fixed",
+        false
+      ],
+      "title": "MiniMax H3 – Start/Ende → Video",
+      "color": "#432",
+      "bgcolor": "#653",
+      "showAdvanced": false
+    },
+    {
+      "id": 21,
+      "type": "SaveVideo",
+      "pos": [
+        -1000,
+        40
+      ],
+      "size": [
+        480,
+        420
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_probe",
+        "auto",
+        "auto"
+      ],
+      "title": "Probelauf ansehen / speichern"
+    },
+    {
+      "id": 30,
+      "type": "MinimaxHailuo03RegenerateNode",
+      "pos": [
+        -1480,
+        600
+      ],
+      "size": [
+        420,
+        300
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 6
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 7,
+          "shape": 7
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": 8,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MinimaxHailuo03RegenerateNode"
+      },
+      "widgets_values": [
+        "MiniMax H3",
+        "Eine durchgehende, filmische Einstellung ohne Schnitt. Beginne exakt mit Bild 1 und ende exakt mit Bild 2. Beschreibe hier Kamerabewegung, Handlung und Stimmung. Gleicher Stil, flüssige Bewegung, kein Text, keine Logos.",
+        "2K",
+        false
+      ],
+      "title": "Upscale: H3 Regenerate → 2K",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 31,
+      "type": "SaveVideo",
+      "pos": [
+        -1000,
+        600
+      ],
+      "size": [
+        480,
+        420
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 9
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_2K",
+        "auto",
+        "auto"
+      ],
+      "title": "Finales Video 2K"
+    },
+    {
+      "id": 40,
+      "type": "GetVideoComponents",
+      "pos": [
+        -1480,
+        1180
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            12
+          ]
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            14
+          ]
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetVideoComponents"
+      }
+    },
+    {
+      "id": 41,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        -1480,
+        1320
+      ],
+      "size": [
+        300,
+        60
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UpscaleModelLoader"
+      },
+      "widgets_values": [
+        "RealESRGAN_x2.pth"
+      ]
+    },
+    {
+      "id": 42,
+      "type": "ImageUpscaleWithModel",
+      "pos": [
+        -1150,
+        1180
+      ],
+      "size": [
+        260,
+        50
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "upscale_model",
+          "type": "UPSCALE_MODEL",
+          "link": 11
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageUpscaleWithModel"
+      }
+    },
+    {
+      "id": 43,
+      "type": "CreateVideo",
+      "pos": [
+        -860,
+        1180
+      ],
+      "size": [
+        280,
+        80
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 13
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 14,
+          "shape": 7
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "link": 15,
+          "widget": {
+            "name": "fps"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24
+      ]
+    },
+    {
+      "id": 44,
+      "type": "SaveVideo",
+      "pos": [
+        -550,
+        1180
+      ],
+      "size": [
+        420,
+        380
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 16
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_local_upscale",
+        "auto",
+        "auto"
+      ],
+      "title": "Video lokal hochskaliert"
+    },
+    {
+      "id": 50,
+      "type": "MinimaxHailuo03TextToVideoNode",
+      "pos": [
+        0,
+        -420
+      ],
+      "size": [
+        420,
+        330
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MinimaxHailuo03TextToVideoNode"
+      },
+      "widgets_values": [
+        "MiniMax H3",
+        "Beschreibe hier dein Video: Szene, Kamera, Handlung, Stil.",
+        "768P",
+        "16:9",
+        5,
+        42,
+        "fixed",
+        false
+      ],
+      "title": "MiniMax H3 – nur Text → Video",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 51,
+      "type": "SaveVideo",
+      "pos": [
+        460,
+        -420
+      ],
+      "size": [
+        420,
+        330
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 17
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_t2v",
+        "auto",
+        "auto"
+      ]
+    },
+    {
+      "id": 60,
+      "type": "MinimaxHailuo03ReferenceNode",
+      "pos": [
+        0,
+        160
+      ],
+      "size": [
+        420,
+        360
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MinimaxHailuo03ReferenceNode"
+      },
+      "widgets_values": [
+        "MiniMax H3",
+        "Die Person aus Bild 1 hält das Produkt aus Bild 2 ... (Handlung, Kamera, Stil)",
+        "768P",
+        "adaptive",
+        5,
+        42,
+        "fixed",
+        false
+      ],
+      "title": "MiniMax H3 – Referenzbilder → Video",
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 61,
+      "type": "LoadImage",
+      "pos": [
+        -360,
+        160
+      ],
+      "size": [
+        320,
+        360
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "referenz_1.png",
+        "image"
+      ],
+      "title": "Referenzbild 1 → image_1"
+    },
+    {
+      "id": 62,
+      "type": "LoadImage",
+      "pos": [
+        -360,
+        560
+      ],
+      "size": [
+        320,
+        360
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "referenz_2.png",
+        "image"
+      ],
+      "title": "Referenzbild 2 → image_2"
+    },
+    {
+      "id": 63,
+      "type": "SaveVideo",
+      "pos": [
+        460,
+        160
+      ],
+      "size": [
+        420,
+        380
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 18
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_ref",
+        "auto",
+        "auto"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      10,
+      0,
+      11,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      12,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      11,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      13,
+      0,
+      20,
+      1,
+      "IMAGE"
+    ],
+    [
+      5,
+      20,
+      0,
+      21,
+      0,
+      "VIDEO"
+    ],
+    [
+      6,
+      20,
+      0,
+      30,
+      0,
+      "VIDEO"
+    ],
+    [
+      7,
+      11,
+      0,
+      30,
+      1,
+      "IMAGE"
+    ],
+    [
+      8,
+      13,
+      0,
+      30,
+      2,
+      "IMAGE"
+    ],
+    [
+      9,
+      30,
+      0,
+      31,
+      0,
+      "VIDEO"
+    ],
+    [
+      10,
+      20,
+      0,
+      40,
+      0,
+      "VIDEO"
+    ],
+    [
+      11,
+      41,
+      0,
+      42,
+      0,
+      "UPSCALE_MODEL"
+    ],
+    [
+      12,
+      40,
+      0,
+      42,
+      1,
+      "IMAGE"
+    ],
+    [
+      13,
+      42,
+      0,
+      43,
+      0,
+      "IMAGE"
+    ],
+    [
+      14,
+      40,
+      1,
+      43,
+      1,
+      "AUDIO"
+    ],
+    [
+      15,
+      40,
+      2,
+      43,
+      2,
+      "FLOAT"
+    ],
+    [
+      16,
+      43,
+      0,
+      44,
+      0,
+      "VIDEO"
+    ],
+    [
+      17,
+      50,
+      0,
+      51,
+      0,
+      "VIDEO"
+    ],
+    [
+      18,
+      60,
+      0,
+      63,
+      0,
+      "VIDEO"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "1 · Startbild + Format",
+      "bounding": [
+        -2220,
+        -30,
+        700,
+        470
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "1b · Endbild (optional – Ctrl+B zum Überspringen)",
+      "bounding": [
+        -2220,
+        430,
+        700,
+        470
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "2 · Probelauf (768P)",
+      "bounding": [
+        -1500,
+        -30,
+        1000,
+        520
+      ],
+      "color": "#8A8",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "3A · Upscale 2K via MiniMax (Ctrl+M zum Aktivieren)",
+      "bounding": [
+        -1500,
+        530,
+        1000,
+        520
+      ],
+      "color": "#b58b2a",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "3B · Lokaler Upscaler (Ctrl+M zum Aktivieren)",
+      "bounding": [
+        -1500,
+        1110,
+        1390,
+        480
+      ],
+      "color": "#a1309b",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "0 · Nur Text → Video (alternativ)",
+      "bounding": [
+        -20,
+        -490,
+        920,
+        420
+      ],
+      "color": "#444",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "R · Referenzbilder → Video (alternativ, Bilder an image_1/2 anschließen)",
+      "bounding": [
+        -380,
+        90,
+        1280,
+        860
+      ],
+      "color": "#444",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6,
+      "offset": [
+        2300,
+        550
+      ]
+    },
+    "frontendVersion": "1.47.11"
+  },
+  "version": 0.4
+}
