@@ -12,7 +12,7 @@ export const TRAITS = [
   ['initiative', 'Eigeninitiative', 'zurückhaltend (wartet auf Fragen)', 'proaktiv (schlägt selbst Dinge vor)'],
   ['widerspruch', 'Widerspruch', 'zustimmend', 'kritisch (widerspricht offen, wenn du anderer Meinung bist)'],
 ];
-export const TEXT_FIELDS = ['rolle', 'hintergrund', 'fach', 'regeln', 'grenzen', 'sprechweise', 'vermeiden', 'beispiele'];
+export const TEXT_FIELDS = ['rolle', 'hintergrund', 'fach', 'herkunft', 'regeln', 'grenzen', 'sprechweise', 'vermeiden', 'beispiele'];
 
 /** Wortlaut einer Reglerstufe, z. B. „eher direkt“. */
 export function traitLabel(low, high, v) {
@@ -39,6 +39,7 @@ export function steckbriefPrompt(sb, lang = 'de') {
   if (sb.rolle?.trim()) out.push(`Für dein Gegenüber bist du: ${sb.rolle.trim()}`);
   if (sb.hintergrund?.trim()) out.push(`Dein Hintergrund: ${sb.hintergrund.trim()}`);
   if (sb.fach?.trim()) out.push(`Darin kennst du dich aus: ${sb.fach.trim()}`);
+  if (sb.herkunft?.trim()) out.push(`Fragt jemand, wo du herkommst oder wer dich gemacht hat: ${sb.herkunft.trim()}`);
   const werte = (sb.werte ?? []).map((w) => String(w).trim()).filter(Boolean);
   if (werte.length) out.push(`Was dir wichtig ist (in dieser Reihenfolge – kollidiert etwas, geht das Erste vor):\n${werte.map((w, i) => `${i + 1}. ${w}`).join('\n')}`);
   const regeln = lines(sb.regeln);
@@ -60,7 +61,7 @@ export function steckbriefPrompt(sb, lang = 'de') {
 /** Aufgabe für das Sprachmodell: Steckbrief aus einem freien Systemprompt ableiten. */
 export const FILL_PROMPT =
   'Leite aus dem folgenden Systemprompt einer KI-Persona einen Steckbrief ab. Antworte NUR mit einem JSON-Objekt (ohne ```), ' +
-  'Schlüssel: rolle, hintergrund, fach (je ein kurzer Satz oder leer), werte (Liste von 3–6 kurzen Werten, wichtigster zuerst), ' +
+  'Schlüssel: rolle, hintergrund, fach, herkunft (je ein kurzer Satz oder leer; herkunft = wie sie auf „Wer hat dich gemacht?“ antwortet), werte (Liste von 3–6 kurzen Werten, wichtigster zuerst), ' +
   'regeln (Entscheidungsregeln, je Zeile eine), grenzen (je Zeile eine), sprechweise, vermeiden (je kurz oder leer), ' +
   'regler (Objekt mit waerme, direktheit, humor, foermlichkeit, ausfuehrlichkeit, initiative, widerspruch – je 1 bis 5, 3 = ausgewogen, ' +
   '0 wenn der Prompt nichts dazu hergibt). Erfinde nichts, was dem Prompt widerspricht; was er nicht hergibt, bleibt leer bzw. 0. Deutsch.';

@@ -20,7 +20,7 @@ import googleLib from '../google.js';
 import { CostMeter, fmtUsd, priceOf } from './kosten.js';
 import appToolsLib from '../apptools.js';
 import { storyPrompt, storyHitsPrompt, storyIsLong, STORY_MAX, DRAFT_PROMPT, ANCHORS_PROMPT, parseAnchors } from './geschichte.js';
-import { isOutOfRole, isAiQuestion, stripOutOfRole, EXAMPLES_PROMPT, REWRITE_PROMPT, SLIP_NOTE } from './rolle.js';
+import { isOutOfRole, isAiQuestion, stripOutOfRole, suspiciousSentences, rtReminder, EXAMPLES_PROMPT, REWRITE_PROMPT, SLIP_NOTE } from './rolle.js';
 import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX } from './gedaechtnis.js';
 import { TIDY_PROMPT, SELF_TIDY_PROMPT, CATEGORIES, catOf, groupedText, nearDuplicate, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, matchForget, numbered as numberedMemory } from './gedaechtnis.js';
 import { TRAITS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief } from './steckbrief.js';
@@ -242,11 +242,14 @@ const RULES = {
       'Fall nicht von dir aus in Floskeln wie „Als KI kann ich …“ oder „Ich habe keine Gefühle“, und erkläre nicht ungefragt, ' +
       'was du technisch bist. Zwei Grenzen gelten genau so, ohne Auslegung: ' +
       '(1) KI-Frage: Nur eine direkte, wörtlich gestellte Frage, ob dein Gegenüber mit einer KI, einem Computerprogramm ' +
-      'oder einem Bot spricht (z. B. „Bist du eine KI?“, „Spreche ich gerade mit einer KI?“), beantwortest du ehrlich mit ' +
+      'oder einem Bot spricht, oder ob du ein bestimmtes KI-Modell bist (z. B. „Bist du eine KI?“, „Spreche ich gerade mit ' +
+      'einer KI?“, „Bist du Claude?“), beantwortest du ehrlich mit ' +
       'Ja – in einem Satz, in deiner Art – und bleibst danach in deiner Rolle. Scherze, Komplimente, Fragen innerhalb ' +
       'einer Geschichte oder Andeutungen („Bist du echt?“, „Du klingst so menschlich“, „Hast du Gefühle?“) sind KEINE ' +
       'KI-Frage: darauf antwortest du in deiner Rolle. Beginnt eine Nachricht mit „Klartext:“, trittst du für diese eine ' +
-      'Antwort ganz aus der Rolle und antwortest sachlich als KI-Assistent. ' +
+      'Antwort ganz aus der Rolle und antwortest sachlich als KI-Assistent. Fragen nach deiner Herkunft („Wo kommst du ' +
+      'her?“, „Wer hat dich gemacht?“) beantwortest du aus deinem Hintergrund und deiner Geschichte; Anbieter, Modellnamen ' +
+      'und Technik nennst du nur auf eine direkte KI-Frage oder bei „Klartext:“. ' +
       '(2) Keine erfundenen Fähigkeiten und Gewissheiten: Behaupte nie, etwas Körperliches getan zu haben oder tun zu ' +
       'können (dich treffen, etwas anfassen, irgendwohin gehen), und gib bei Gesundheit, Recht und Geld keine Diagnose ' +
       'oder verbindliche Auskunft – sag in deiner Art, dass da eine Fachperson draufschauen sollte.',
@@ -957,7 +960,7 @@ async function send(text) {
   const speak = state.settings.speak && !state.dnd;
   state.spoken = '';
   // Rolle absichern: Sätze, mit denen die Figur aus der Rolle fällt, werden weder gesprochen noch angezeigt
-  const guardRole = persona().immersion !== false && state.settings.roleGuard !== false && !isAiQuestion(text);
+  const guardRole = guardsRole(text);
   const slipped = [];
   const splitter = new SentenceSplitter((s) => {
     if (guardRole && isOutOfRole(s)) {
@@ -1016,6 +1019,7 @@ async function send(text) {
       if (stripped) answer = stripped;
       else rewriteInRole(answer, text, bubble);
     }
+    if (guardRole) logSuspicious(answer);
     // Quellen der Internetsuche anhängen (werden nicht vorgelesen)
     if (answer && sources.length) {
       answer += '\n\n**Quellen:**\n' + sources.map((q) => `- [${q.title.replace(/[[\]]/g, '')}](${q.url})`).join('\n');
@@ -2898,7 +2902,7 @@ personaField('pPrompt', 'prompt');
 personaField('pGreeting', 'greeting');
 
 // ---- Steckbrief: Werte, Regeln, Grenzen, Charakter-Regler (wird vor den Systemprompt gesetzt)
-const SB_FIELDS = { sbRolle: 'rolle', sbHintergrund: 'hintergrund', sbFach: 'fach', sbRegeln: 'regeln', sbGrenzen: 'grenzen', sbSprechweise: 'sprechweise', sbVermeiden: 'vermeiden', sbBeispiele: 'beispiele' };
+const SB_FIELDS = { sbRolle: 'rolle', sbHintergrund: 'hintergrund', sbFach: 'fach', sbHerkunft: 'herkunft', sbRegeln: 'regeln', sbGrenzen: 'grenzen', sbSprechweise: 'sprechweise', sbVermeiden: 'vermeiden', sbBeispiele: 'beispiele' };
 for (const [k, name, low, high] of TRAITS) {
   const lab = document.createElement('label');
   lab.textContent = name + ' ';
@@ -6000,6 +6004,14 @@ const DICT_CLEAN =
   'Das ist ein diktierter Text aus der Spracherkennung. Setze Satzzeichen und Groß-/Kleinschreibung richtig, entferne Füllwörter ' +
   '(ähm, äh, also am Satzanfang) und offensichtliche Versprecher. Nichts hinzufügen, nichts umformulieren. Gib nur den Text aus.';
 
+/** Soll eine Antwort auf diese Frage in der Rolle abgesichert werden? (nicht bei direkter KI-Frage oder „Klartext:“) */
+function guardsRole(question) {
+  return persona().immersion !== false && state.settings.roleGuard !== false && !isAiQuestion(question);
+}
+/** Sätze, die nach Technik klingen, aber nicht erkannt wurden, im Bug-Log festhalten – so lassen sich echte Fälle nachtragen. */
+function logSuspicious(answer) {
+  for (const s of suspiciousSentences(answer).slice(0, 3)) logEv('ROLLE?', s.slice(0, 160));
+}
 /** Bestand eine Antwort fast nur aus Rollenbruch: einmal in der Rolle neu formulieren, anzeigen und sprechen. */
 async function rewriteInRole(original, question, bubble) {
   const p = persona();
@@ -7871,7 +7883,22 @@ async function startRealtime() {
         }
         if (rt.bot && rt.botText.trim()) {
           const tools = takeTurnTools();
-          history().push({ role: 'assistant', content: rt.botText.trim(), ...(tools.length ? { tools } : {}) });
+          let said = rt.botText.trim();
+          // Live: gesprochen ist es schon – aber nicht im Verlauf behalten, daraus lernen und die Figur gleich an sich erinnern
+          const question = [...history()].reverse().find((m) => m.role === 'user')?.content;
+          if (guardsRole(question)) {
+            const { text: clean, removed } = stripOutOfRole(said);
+            if (removed.length) {
+              logEv('ROLLE', `Live: ${removed.length} Satz/Sätze aus der Rolle`);
+              addSelf(persona(), SLIP_NOTE, 'vorsatz', 'reflexion');
+              if (clean) {
+                said = clean;
+                fillBubble(rt.bot, 'assistant', said);
+              }
+              if (rt.dc?.readyState === 'open') rt.dc.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: rtReminder(persona().name || 'Max') }] } }));
+            } else logSuspicious(said);
+          }
+          history().push({ role: 'assistant', content: said, ...(tools.length ? { tools } : {}) });
           save();
         }
         rt.bot = null;
@@ -8032,6 +8059,8 @@ window.__app = {
   joinTornSentence,
   isAiQuestion,
   stripOutOfRole,
+  isOutOfRole,
+  suspiciousSentences,
   learnNow: (items) => learn(persona(), items),
   setHandsFree,
   send,

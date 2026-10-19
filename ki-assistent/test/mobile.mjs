@@ -1400,6 +1400,18 @@ const roleRes = await page.evaluate(async () => {
 check(roleRes.histClean && roleRes.anchor, 'Rolle: Anker vor der Frage, Rollenbruch aus dem Verlauf genommen', JSON.stringify(roleRes));
 check(!/Als KI/.test(roleRes.guarded) && /prima/.test(roleRes.guarded) && roleRes.learned, 'Rolle: „Als KI …“ aus der Antwort entfernt, Vorsatz ins Selbstbild', JSON.stringify(roleRes));
 check(/Ja, ich bin eine KI/.test(roleRes.honest) && roleRes.honestKept && roleRes.q, 'Rolle: direkte KI-Frage wird ehrlich beantwortet und bleibt im Verlauf', JSON.stringify(roleRes));
+const role2 = await page.evaluate(() => {
+  const app = window.__app;
+  const p = app.persona();
+  const before = p.steckbrief;
+  p.steckbrief = { ...(p.steckbrief ?? {}), herkunft: 'Jens hat mich für ergoforyou ins Leben gerufen.' };
+  const sys = JSON.stringify(app.buildMessages());
+  p.steckbrief = before;
+  const caught = ['Ich existiere nur digital.', 'Ich wurde von Anthropic entwickelt.', 'Ich bin Claude.', 'Ich kann mich nicht an frühere Gespräche erinnern.', 'Meine Trainingsdaten reichen bis 2025.'].every(app.isOutOfRole);
+  const spared = !['Mein Training heute war hart.', 'Ich habe kein Gedächtnis für Namen.', 'Ich wurde in Hamburg geboren.'].some(app.isOutOfRole);
+  return { herkunft: /Fragt jemand, wo du herkommst[^"]*ergoforyou/.test(sys), caught, spared, claudeQ: app.isAiQuestion('Bist du Claude?') && !app.isAiQuestion('Wer hat dich gemacht?'), suspect: app.suspiciousSentences('Ich arbeite gern digital. Mir geht es gut.').length === 1 };
+});
+check(role2.herkunft && role2.caught && role2.spared && role2.claudeQ && role2.suspect, 'Rolle: mehr Umschreibungen erkannt, Herkunft aus dem Steckbrief, „Bist du Claude?“ ehrlich, Verdächtiges ins Log', JSON.stringify(role2));
 check(/Ich:/.test(roleRes.examples) && roleRes.exInPrompt, 'Rolle: Beispieldialoge vorgeschlagen und im Steckbrief-Block', JSON.stringify(roleRes));
 // Vergessen auf Bitte: passende Einträge aus Gedächtnis/Selbstbild/Themen löschen, anderes bleibt, Rückgängig
 const forgetRes = await page.evaluate(async () => {
@@ -1976,7 +1988,11 @@ const rtRes = await page.evaluate(async () => {
         send({ type: 'response.output_audio_transcript.delta', delta: 'Es ist ' });
         send({ type: 'response.output_audio_transcript.delta', delta: 'gleich drei.' });
         send({ type: 'response.output_audio_transcript.done' });
+        send({ type: 'conversation.item.input_audio_transcription.completed', transcript: 'Und wie geht es dir?' });
+        send({ type: 'response.output_audio_transcript.delta', delta: 'Ich bin nur ein Programm. Mir geht es gut.' });
+        send({ type: 'response.output_audio_transcript.done' });
       };
+      dc.onmessage = (m) => (window.__rtGot ??= []).push(JSON.parse(m.data));
     };
     await pc2.setRemoteDescription({ type: 'offer', sdp: offerSdp });
     await pc2.setLocalDescription(await pc2.createAnswer());
@@ -1994,15 +2010,18 @@ const rtRes = await page.evaluate(async () => {
     await new Promise((r) => setTimeout(r, 100));
     maxLevel = Math.max(maxLevel, app.avatarState.level);
   }
-  const msgs = [...document.querySelectorAll('.msg')].slice(-2).map((m) => m.textContent.trim());
+  const msgs = [...document.querySelectorAll('.msg')].slice(-4).map((m) => m.textContent.trim());
+  const rtLast = app.history().at(-1)?.content;
+  const rtReminded = (window.__rtGot ?? []).some((o) => o.item?.role === 'system' && /Bleib bei dir/.test(JSON.stringify(o.item.content)));
   const active = app.rtActive();
   app.stopRealtime();
   navigator.mediaDevices.getUserMedia = origGum;
   window.__pc2?.close();
-  return { active, after: app.rtActive(), msgs, maxLevel, noMood: !/Stimmungsmarke|\[freudig\]/.test(window.__rt?.instructions ?? ''), voice: window.__rt?.voice };
+  return { active, after: app.rtActive(), msgs, rtLast, rtReminded, maxLevel, noMood: !/Stimmungsmarke|\[freudig\]/.test(window.__rt?.instructions ?? ''), voice: window.__rt?.voice };
 });
 check(rtRes.active && !rtRes.after, 'Echtzeit-Gespräch verbindet (WebRTC) und lässt sich beenden', JSON.stringify(rtRes));
 check(/Wie spät ist es/.test(rtRes.msgs[0] ?? '') && /Es ist gleich drei/.test(rtRes.msgs[1] ?? ''), 'Echtzeit: Mitschrift von Frage und Antwort im Chat', JSON.stringify(rtRes.msgs));
+check(rtRes.rtLast === 'Mir geht es gut.' && rtRes.rtReminded && !/Programm/.test(rtRes.msgs[3] ?? ''), 'Echtzeit: Rollenbruch aus Verlauf und Anzeige genommen, Figur wird live erinnert', JSON.stringify(rtRes));
 check(rtRes.maxLevel > 0.05, 'Echtzeit: Lippen bewegen sich mit der Antwortstimme', String(rtRes.maxLevel));
 check(rtRes.noMood && rtRes.voice === 'marin', 'Echtzeit: Persona-Anweisungen ohne Stimmungsmarken, Stimme gewählt');
 check(privF.drive.full && privF.drive.live && privF.drive.prompt && !privF.after.full && !privF.after.live, 'Fahrmodus: Nur-Figur, Live, kurze Antworten – und wieder aus', JSON.stringify(privF.drive));
