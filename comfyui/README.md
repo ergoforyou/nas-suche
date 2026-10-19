@@ -1,30 +1,35 @@
-# MiniMax H3 – ComfyUI Video-Workflow
+# MiniMax H3 – ComfyUI Video-Workflows
 
-Datei: `minimax-h3-video-workflow.json` – per Drag & Drop in ComfyUI ziehen.
-
-**Voraussetzungen:** ComfyUI ≥ 0.34.2 (H3-Partner-Nodes), Comfy-Konto mit Credits (H3 läuft über die API, Abrechnung pro Sekunde).
-Für den optionalen lokalen Upscaler: ein Upscale-Modell, z. B. `RealESRGAN_x2.pth`, in `models/upscale_models/`.
-
-## Gruppen
-
-| Gruppe | Zweck | Standard |
+| Datei | Läuft | Inhalt |
 |---|---|---|
-| 1 · Startbild + Format | Startbild laden, mit `ImageScale` auf Wunschgröße bringen (Crop: center) | aktiv |
-| 1b · Endbild | optionales Endbild, gleiche Größe wie Start | aktiv (`Ctrl+B` zum Überspringen) |
-| 2 · Probelauf | H3 First-Last-Frame, 768P, Dauer 4–15 s | aktiv |
-| 3A · Upscale 2K | H3 Regenerate → 2K mit demselben Video und denselben Frames | stumm (`Ctrl+M`) |
-| 3B · Lokaler Upscaler | Video → Frames → Upscale-Modell → Video (kostenlos, viel RAM) | stumm |
-| 0 · Nur Text | Text-to-Video mit Seitenverhältnis (16:9, 9:16, 1:1, 4:3, 3:4, 21:9) | stumm |
-| R · Referenzen | Reference-to-Video, bis zu 9 Bilder (Figuren/Produkte) | stumm |
+| `minimax-h3-lokal-workflow.json` | **lokal** (Open Weights) | Start-/Endbild → Video mit Ton, Format + Dauer wählbar, Probelauf (Turbo-LoRA), lokaler Upscaler |
+| `minimax-h3-video-workflow.json` | über die Comfy-API (Credits) | dasselbe über die API-Nodes, inkl. „Regenerate to 2K“ |
 
-## Ablauf
+Datei per Drag & Drop in ComfyUI ziehen. Die lokale Version basiert auf der offiziellen Comfy-Vorlage
+`video_minimax_h3_i2v` (H3 steckt dort als Subgraph – Doppelklick öffnet die Innereien).
 
-1. Start- (und ggf. End-)bild laden, in **beiden** `ImageScale`-Nodes dieselbe Breite × Höhe setzen
-   (z. B. 1280×720 quer, 720×1280 hochkant, 1024×1024 quadratisch; Seitenverhältnis 0,4–2,5).
-2. Im H3-Node Prompt, Auflösung und Dauer einstellen, *Queue* → Probelauf ansehen.
-3. Passt das Ergebnis: Gruppe 3A aktivieren, denselben Prompt einfügen, erneut *Queue*.
-   Weil der Seed auf `fixed` steht, nimmt ComfyUI den Probelauf aus dem Cache – es wird nur der 2K-Upscale bezahlt.
-   Für eine neue Variante: Seed ändern.
+## Modelle für die lokale Version (Hugging Face: Comfy-Org/MiniMax-H3)
 
-Hinweise: 2K-Regenerate akzeptiert nur 24-fps-Videos aus H3 768P (4–15 s). Die Modelle „H3 Max“/„Max Turbo“
-(480P/768P, 5–15 s) lassen sich im `model`-Feld wählen – günstig für schnelle Tests.
+```
+ComfyUI/models/
+├── diffusion_models/  minimax_h3_fl2va_pruned_int8_convrot.safetensors        (19,5 GB)
+├── text_encoders/     qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors            (14,6 GB)
+├── vae/               minimax_h3_video_vae_int8_convrot.safetensors           (2,6 GB)
+│                      minimax_h3_audio_vae_fp32.safetensors                   (0,6 GB)
+├── loras/             minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors (1,8 GB, lightx2v/Minimax-h3-Turbo)
+└── upscale_models/    RealESRGAN_x2.pth  (nur für den Upscaler)
+```
+
+ComfyUI vorher aktualisieren (H3-Support seit August 2026).
+
+## Bedienung
+
+1. **Bilder:** Startbild + Endbild laden. Ohne Endbild: Node markieren, `Ctrl+B`. Ohne beide: reines Text-zu-Video.
+2. **Größe:** Node „Format“ – Seitenverhältnis (1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9) und Megapixel
+   (0.4 ≈ 864×480 … 0.98 ≈ 1344×768 = Maximum).
+3. **Dauer:** `duration` im H3-Node, bis ca. 15 s bei 24 fps.
+4. **Probelauf:** `turbo_mode` an (8 Schritte), 0.4 MP, kurze Dauer.
+   **Final:** `turbo_mode` aus (20 Schritte), 0.98 MP, gleicher Seed.
+5. **Upscaler:** Gruppe 3 markieren, `Ctrl+M`. Braucht viel System-RAM (15 s bei 1344×768 ×2 ≈ 18 GB).
+
+Das hostbasierte „Regenerate to 2K“ ist nicht Teil der Open Weights – lokal übernimmt das der Upscaler.
