@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('desktop', {
   nasHasPassword: () => ipcRenderer.invoke('nas:hasPassword'),
   onSyncRequest: (fn) => (syncHandler = fn),
   officePaste: (opts) => ipcRenderer.invoke('office:paste', opts),
+  claudeHandoff: (opts) => ipcRenderer.invoke('claude:handoff', opts),
   officeCopy: (text) => ipcRenderer.invoke('office:copy', text),
   officeForeground: () => ipcRenderer.invoke('office:foreground'),
   officeState: () => ipcRenderer.invoke('office:state'),

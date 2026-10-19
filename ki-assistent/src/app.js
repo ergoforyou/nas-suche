@@ -864,6 +864,9 @@ const NEW_CHAT_COMMAND = /^(neuer chat|neues gespräch|new chat)[.!]?$/i;
 async function send(text) {
   text = text.trim();
   if (NEW_CHAT_COMMAND.test(text) && !pendingAttachments.length) return newChat();
+  // „An Claude: …“ – ohne eigenes Sprachmodell direkt an die Claude-App übergeben
+  const toClaude = CLAUDE_HANDOFF && !pendingAttachments.length && text.match(CLAUDE_RE);
+  if (toClaude) return handoffClaude(toClaude[1], text);
   // Privat: „Merk dir …“ bzw. Notiz über 📝 – ohne Sprachmodell direkt notieren
   if (PRIV && text && !pendingAttachments.length && (state.noteMode || NOTE_RE.test(text))) {
     const note = state.noteMode ? text : text.match(NOTE_RE)[1];
@@ -2241,6 +2244,7 @@ function fillSettings() {
   desktop.setCloseMode?.(s.closeMode ?? 'beenden');
   $('btnClose').title = (s.closeMode ?? 'beenden') === 'weiter' ? 'Chat schließen (die freie Figur bleibt)' : 'KI-Assistent beenden';
   $('offDictClean').checked = s.dictClean !== false;
+  $('offClaudeSend').checked = s.claudeSend !== false;
   $('offDictPause').value = String(s.dictPause ?? 1800);
   $('offReminders').checked = !!s.reminders;
   $('offLead').value = String(s.reminderLead ?? 15);
@@ -5151,7 +5155,8 @@ function appKnowledge() {
   else
     lines.push(
       'PC: Strg+Alt+Leertaste = zuhören, Strg+Alt+L = Live-Gespräch an/aus, Strg+Alt+S = Sprachausgabe stoppen, Strg+Alt+K = markierten Text bearbeiten, ' +
-        'Strg+Alt+D = Diktat in jede App; die Figur kann frei auf dem Desktop stehen (🧍), 📄 öffnet das Ausgabefenster.',
+        'Strg+Alt+D = Diktat in jede App; die Figur kann frei auf dem Desktop stehen (🧍), 📄 öffnet das Ausgabefenster.' +
+        (CLAUDE_HANDOFF ? ' „An Claude: …“ (oder ✳ neben dem Eingabefeld) übergibt eine Aufgabe ohne dich an die Claude-App (Chat/Cowork), die sie dann erledigt.' : ''),
     );
   lines.push('Oben im Fenster zeigt 💲 die geschätzten API-Kosten (heute/Monat). Einstellungen über ⚙.');
   return lines.join('\n');
@@ -5570,6 +5575,7 @@ $('offQuickExamples').onclick = () => {
 for (const [id, key, num] of [
   ['offDictClean', 'dictClean'],
   ['offReminders', 'reminders'],
+  ['offClaudeSend', 'claudeSend'],
 ]) {
   $(id).onchange = (e) => {
     state.settings[key] = e.target.checked;
@@ -5594,6 +5600,42 @@ $('offBriefingNow').onclick = () => {
   $('drawer').hidden = true;
   send(BRIEFING_PROMPT);
 };
+
+// ---------------------------------------------------------------- An Claude übergeben (PC, Cloud-Ausgabe)
+// Die Spracherkennung schreibt „Claude“ gern als „Cloud“, „Klaut“ o. Ä. – das zählt mit.
+const CLAUDE_HANDOFF = !MOBILE && !LOCAL_ONLY && !!desktop.claudeHandoff;
+const CLAUDE_RE = /^\s*(?:an|schick(?:e)?\s+(?:das\s+|es\s+|folgendes\s+)?an)\s+(?:claude|claud|clode|klaud|klaude|klaut|clod|klod|cloud|clowd)(?![-\w])[\s,:.!]*(.*)$/is;
+async function handoffClaude(task, raw = task) {
+  task = String(task ?? '').trim();
+  if (raw) addBubble('user', raw);
+  const say = (msg, spoken, ev) => {
+    addBubble('assistant', msg);
+    if (ev) fireEvent(ev, 3000);
+    if (spoken && state.settings.speak && !state.dnd) tts.enqueue(spoken);
+  };
+  if (!task) return say('Was soll ich an Claude übergeben? Sag z. B. „An Claude: Fass die PDFs im Ordner Angebote zusammen.“', 'Was soll ich an Claude übergeben?');
+  const send = state.settings.claudeSend !== false;
+  logEv('CLAUDE', `Übergabe (${task.length} Zeichen, ${send ? 'abschicken' : 'nur einfügen'})`);
+  try {
+    const r = await desktop.claudeHandoff({ text: task, send });
+    if (r?.ok && r.via === 'app' && r.sent) say(`✳ An Claude übergeben und abgeschickt: „${task}“`, 'Ist an Claude übergeben.', 'success');
+    else if (r?.ok && r.via === 'app') say(`✳ In Claude eingefügt – mit Enter abschicken: „${task}“`, 'Steht bei Claude, du musst nur noch abschicken.', 'success');
+    else if (r?.ok) say('✳ Die Claude-App habe ich nicht gefunden – claude.ai ist im Browser geöffnet. Falls der Text dort fehlt: Strg+V (liegt in der Zwischenablage).', 'Ich habe Claude im Browser geöffnet.');
+    else if (r?.reason === 'fokus') say('✳ Windows hat das Claude-Fenster nicht nach vorne gelassen – nichts eingefügt. Der Text liegt in der Zwischenablage: Claude öffnen und Strg+V.', 'Das hat nicht geklappt, der Text liegt in der Zwischenablage.', 'error');
+    else say('✳ Nichts zu übergeben.');
+  } catch (e) {
+    say(`✳ Übergabe an Claude fehlgeschlagen: ${e.message}`, 'Die Übergabe hat nicht geklappt.', 'error');
+  }
+}
+if (CLAUDE_HANDOFF) {
+  $('btnClaude').hidden = false;
+  $('btnClaude').onclick = () => {
+    const text = $('input').value.trim();
+    $('input').value = '';
+    $('input').dispatchEvent(new Event('input'));
+    handoffClaude(text);
+  };
+} else $('claudeWrap').hidden = true;
 
 function startOffice() {
   renderQuickBar();
@@ -7246,6 +7288,7 @@ function startPhoneFeatures() {
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
   carryPersonas,
+  send,
   filesNeeded,
   history,
   reflect: (manual) => reflect(persona(), manual),
@@ -7271,6 +7314,8 @@ window.__app = {
   costs,
   priceOf,
   edition: EDITION,
+  claudeRe: CLAUDE_RE,
+  claudeHandoff: CLAUDE_HANDOFF,
   avatar,
   avatarState,
   setMood,

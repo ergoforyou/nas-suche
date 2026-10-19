@@ -57,6 +57,7 @@
     <button id="btnLive" class="round" title="Live-Gespräch an/aus – einfach losreden, dazwischenreden erlaubt (überall: Strg+Alt+L)">📞</button>
     <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste)">🎤</button>
     <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
+    <button id="btnClaude" class="round" title="An Claude übergeben – fügt den Text in die Claude-App ein (Chat oder Cowork) und schickt ihn ab. Per Sprache: „An Claude: …“" hidden>✳</button>
     <button id="btnSend" class="round primary" title="Senden">➤</button>
     <button id="btnStop" class="round" title="Stopp – Antwort und Sprachausgabe anhalten (Esc, überall: Strg+Alt+S)" hidden>■</button>
   </footer>
@@ -729,6 +730,14 @@
             <option value="2500">2,5 Sekunden (mit Denkpausen)</option>
           </select>
         </label>
+        <div id="claudeWrap">
+          <h3>✳ An Claude übergeben</h3>
+          <p class="hint">Sag „<b>An Claude:</b> …“ (oder „Schick an Claude: …“) bzw. tippe den Text und drücke ✳: Der Assistent
+            holt die Claude-App nach vorne, fügt die Aufgabe ins Eingabefeld ein – die Arbeit macht dann Claude im gerade offenen
+            Chat oder in Cowork. Ohne Claude-App öffnet sich claude.ai im Browser. Der Text liegt außerdem in der Zwischenablage.
+            Achtung: Der Text geht an Claude (Anthropic) – Kundendaten nur nach Klärung mit dem Datenschutzbeauftragten.</p>
+          <label class="check"><input id="offClaudeSend" type="checkbox" /> Direkt abschicken (sonst nur einfügen – du drückst selbst Enter)</label>
+        </div>
         <h3>Erinnerungen und Tagesbriefing</h3>
         <label class="check"><input id="offReminders" type="checkbox" /> Termine und Aufgaben aus Google als Windows-Benachrichtigung – die Figur sagt sie an</label>
         <label>Vorlauf bei Terminen

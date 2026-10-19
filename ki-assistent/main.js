@@ -130,6 +130,8 @@ public static class KIHelfer {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int s);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   public static void Loslassen() { foreach (byte b in new byte[] { 0x10, 0x11, 0x12, 0x5B, 0x5C }) keybd_event(b, 0, 2, UIntPtr.Zero); }
   public static void Strg(byte k) { keybd_event(0x11, 0, 0, UIntPtr.Zero); keybd_event(k, 0, 0, UIntPtr.Zero); keybd_event(k, 0, 2, UIntPtr.Zero); keybd_event(0x11, 0, 2, UIntPtr.Zero); }
@@ -143,6 +145,9 @@ while ($true) {
     'SETFG' { [KIHelfer]::SetForegroundWindow([IntPtr][Int64]$p[1]) | Out-Null; [Console]::Out.WriteLine('OK') }
     'COPY' { [KIHelfer]::Loslassen(); Start-Sleep -Milliseconds 80; [KIHelfer]::Strg(0x43); [Console]::Out.WriteLine('OK') }
     'PASTE' { [KIHelfer]::Loslassen(); Start-Sleep -Milliseconds 40; [KIHelfer]::Strg(0x56); [Console]::Out.WriteLine('OK') }
+    'CLAUDE' { $h = 0; foreach ($pr in (Get-Process -Name 'claude' -ErrorAction SilentlyContinue)) { if ($pr.MainWindowHandle -ne 0 -and $pr.MainWindowTitle) { $h = $pr.MainWindowHandle.ToInt64(); break } }; [Console]::Out.WriteLine('OK ' + $h) }
+    'FOCUS' { $h = [IntPtr][Int64]$p[1]; if ([KIHelfer]::IsIconic($h)) { [KIHelfer]::ShowWindow($h, 9) | Out-Null }; [KIHelfer]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [KIHelfer]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero); [KIHelfer]::SetForegroundWindow($h) | Out-Null; Start-Sleep -Milliseconds 300; [Console]::Out.WriteLine('OK ' + [KIHelfer]::GetForegroundWindow().ToInt64()) }
+    'ENTER' { [KIHelfer]::Loslassen(); Start-Sleep -Milliseconds 40; [KIHelfer]::keybd_event(0x0D, 0, 0, [UIntPtr]::Zero); [KIHelfer]::keybd_event(0x0D, 0, 2, [UIntPtr]::Zero); [Console]::Out.WriteLine('OK') }
     'STATE' { $s = 0; [KIHelfer]::SHQueryUserNotificationState([ref]$s) | Out-Null; [Console]::Out.WriteLine('OK ' + $s) }
     default { [Console]::Out.WriteLine('OK') }
   }
@@ -222,6 +227,53 @@ async function pasteInto({ text, hwnd, restore = true }) {
   return { pasted: true };
 }
 ipcMain.handle('office:paste', (_e, opts) => pasteInto(opts));
+
+// ---------------------------------------------------------------- An Claude übergeben
+// Diktierte Aufgabe in die Claude-App auf dem Rechner (Chat oder Cowork) einfügen und auf Wunsch abschicken – die Arbeit
+// macht dann Claude. Eingefügt wird nur, wenn das Claude-Fenster wirklich vorne ist (sonst landet nichts in einer
+// fremden App); der Text bleibt zusätzlich in der Zwischenablage. Ohne Claude-App: claude.ai im Browser.
+function claudeExe() {
+  const base = process.env.LOCALAPPDATA || '';
+  return [path.join(base, 'AnthropicClaude', 'claude.exe'), path.join(base, 'Programs', 'Claude', 'Claude.exe')].find((p) => base && fs.existsSync(p));
+}
+async function claudeWindow() {
+  return Number(await helperCmd('CLAUDE')) || 0;
+}
+ipcMain.handle('claude:handoff', async (_e, { text, send } = {}) => {
+  if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
+  text = String(text ?? '').trim();
+  if (!text) return { ok: false, reason: 'leer' };
+  clipboard.writeText(text);
+  const browser = () => {
+    shell.openExternal('https://claude.ai/new?q=' + encodeURIComponent(text.slice(0, 6000)));
+    return { ok: true, via: 'browser' };
+  };
+  if (process.platform !== 'win32') return browser();
+  let hwnd = await claudeWindow();
+  if (!hwnd) {
+    // läuft nicht oder nur im Infobereich: starten bzw. Fenster öffnen lassen
+    const exe = claudeExe();
+    if (!exe) return browser();
+    require('node:child_process').spawn(exe, [], { detached: true, stdio: 'ignore' }).unref();
+    for (let i = 0; i < 40 && !hwnd; i++) {
+      await wait(500);
+      hwnd = await claudeWindow();
+    }
+    if (!hwnd) return browser();
+    await wait(2500); // Oberfläche fertig laden lassen
+  }
+  const fg = Number(await helperCmd(`FOCUS ${hwnd}`));
+  if (fg !== hwnd) return { ok: false, reason: 'fokus' };
+  await wait(150);
+  await helperCmd('PASTE');
+  if (send) {
+    await wait(400);
+    // nur abschicken, wenn Claude noch vorne ist
+    if (Number(await helperCmd('FG')) !== hwnd) return { ok: true, via: 'app', sent: false };
+    await helperCmd('ENTER');
+  }
+  return { ok: true, via: 'app', sent: !!send };
+});
 ipcMain.handle('office:copy', (_e, text) => clipboard.writeText(String(text ?? '')));
 ipcMain.handle('office:foreground', () => helperCmd('FG'));
 // Windows-Zustand: 1 normal, 2 Vollbild-App, 3 Vollbild-Spiel/Video, 4 Präsentationsmodus, 5 Stille Stunden
@@ -887,7 +939,25 @@ function runSmokeTest() {
         const fg = await helperCmd('FG');
         console.log('Windows-Helfer: Zustand', st, '| Vordergrundfenster', fg);
         if (!(st >= 1) || !fg) return fail('Windows-Helfer antwortet nicht');
+        const cl = await helperCmd('CLAUDE');
+        console.log('Claude-Fenster gesucht:', cl);
+        if (cl === null) return fail('Windows-Helfer: Claude-Suche');
       }
+      // An Claude übergeben: Knopf nur in der Cloud-Ausgabe, Sprachbefehl erkannt (auch falsch geschrieben), sonst normal
+      const handoff = await js(`(() => {
+        const re = window.__app.claudeRe;
+        return {
+          on: window.__app.claudeHandoff,
+          btn: !document.getElementById('btnClaude').hidden,
+          a: ('An Claude: Fass die PDFs zusammen'.match(re) || [])[1],
+          b: ('Schick das an Cloud, mach mir eine Tabelle'.match(re) || [])[1],
+          no: !!'Was kostet ein Cloud-Speicher?'.match(re) || !!'Wer ist Claude Monet?'.match(re),
+        };
+      })()`);
+      console.log('An Claude übergeben:', JSON.stringify(handoff));
+      const wantOn = EDITION !== 'lokal';
+      if (handoff.on !== wantOn || handoff.btn !== wantOn) return fail('An Claude übergeben: Knopf/Ausgabe');
+      if (handoff.a !== 'Fass die PDFs zusammen' || handoff.b !== 'mach mir eine Tabelle' || handoff.no) return fail('An Claude übergeben: Sprachbefehl');
       // Firmenwissen in der echten App: PDF über pdf.js lesen (Datei liegt im Programm)
       const kbPdf = await js(`(async () => {
         const base = new URL('wasm/pdf/', location.href).href;

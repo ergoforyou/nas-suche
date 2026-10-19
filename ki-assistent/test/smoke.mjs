@@ -49,10 +49,32 @@ await page.addInitScript(() => {
     setAlwaysOnTop() {}, chat() {}, abortChat() {}, minimize() {}, close() {}, show() {}, quit() {},
     onCommand() {}, setOffline() {}, modelInfo: async () => ({ dir: '', bytes: 0 }), openModelDir() {},
     avatarIgnoreMouse() {}, avatarDragStart() {}, avatarDragEnd() {}, avatarResize() {}, avatarMenu() {},
+    claudeHandoff: async (o) => ((window.__handoffs ??= []).push(o), { ok: true, via: 'app', sent: !!o.send }),
   };
 });
 await page.goto('http://localhost:8799/index.html');
 await page.waitForFunction(() => window.__app);
+// An Claude übergeben: Sprachbefehl und ✳-Knopf gehen an die Claude-App, nicht ans eigene Sprachmodell
+{
+  const h = await page.evaluate(async () => {
+    const a = window.__app;
+    a.state.settings.speak = false;
+    const before = a.history().length;
+    await a.send('An Claude: Fass mir die Angebote zusammen');
+    a.state.settings.claudeSend = false;
+    document.querySelector('#input').value = 'Erstelle eine Tabelle';
+    document.querySelector('#btnClaude').click();
+    await new Promise((r) => setTimeout(r, 200));
+    a.state.settings.claudeSend = true;
+    const bubbles = [...document.querySelectorAll('#chat .msg, #chat > *')].map((b) => b.textContent).filter((t) => t.includes('✳'));
+    return { calls: window.__handoffs ?? [], historyGrew: a.history().length !== before, btn: !document.querySelector('#btnClaude').hidden, input: document.querySelector('#input').value, bubbles };
+  });
+  const hOk =
+    h.btn && h.calls.length === 2 && h.calls[0].text === 'Fass mir die Angebote zusammen' && h.calls[0].send === true &&
+    h.calls[1].text === 'Erstelle eine Tabelle' && h.calls[1].send === false && !h.historyGrew && !h.input && h.bubbles.length >= 2;
+  console.log(hOk ? '✔' : '✘', 'An Claude übergeben (Sprachbefehl und ✳-Knopf)', JSON.stringify(h));
+  if (!hOk) process.exit(1);
+}
 console.log('crossOriginIsolated:', await page.evaluate(() => self.crossOriginIsolated), 'Kerne:', await page.evaluate(() => navigator.hardwareConcurrency));
 
 console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.debugVoice('de_DE-thorsten-high', 'ich'))));
