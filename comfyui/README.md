@@ -25,8 +25,9 @@ ComfyUI vorher aktualisieren (H3-Support seit August 2026).
 ## Bedienung
 
 1. **Bilder:** Startbild + Endbild laden. Ohne Endbild: Node markieren, `Ctrl+B`. Ohne beide: reines Text-zu-Video.
-2. **Größe:** Node „Format“ – Seitenverhältnis (1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9) und Megapixel
-   (0.4 ≈ 864×480 … 0.98 ≈ 1344×768 = Maximum).
+2. **Größe:** Gruppe 2a „Exakte Maße“ – Breite × Höhe in Pixel, automatisch auf Vielfache von 32 gerundet.
+   Schalter aus → Node „Format“ (Seitenverhältnis + Megapixel, 0.4 ≈ 864×480 … 0.98 ≈ 1344×768).
+   Exakte Endgröße (z. B. 1920×1080) im Upscaler-Node „Endgröße“.
 3. **Dauer:** `duration` im H3-Node, bis ca. 15 s bei 24 fps.
 4. **Probelauf:** `turbo_mode` an (8 Schritte), 0.4 MP, kurze Dauer.
    **Final:** `turbo_mode` aus (20 Schritte), 0.98 MP, gleicher Seed.
