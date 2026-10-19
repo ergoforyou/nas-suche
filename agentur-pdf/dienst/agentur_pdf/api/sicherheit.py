@@ -20,6 +20,19 @@ from fastapi.responses import JSONResponse
 ERLAUBTE_HOSTS = {"127.0.0.1", "localhost", "testserver"}
 
 
+# Chrome-Seitenleiste: feste Kennung aus dem Schlüssel in chrome/manifest.json.
+# Weitere Kennungen (z. B. nach Veröffentlichung im Chrome Web Store) über die
+# Einstellung „chrome_erweiterungen“.
+CHROME_ERWEITERUNG = "lghbgpogeocemchimfnflmjgekhnofca"
+
+
+def chrome_erlaubt(herkunft: str, weitere: list[str] | None = None) -> bool:
+    """Nur die eigene Chrome-Erweiterung bekommt das Token. Webseiten können
+    den Origin-Kopf nicht fälschen."""
+    kennungen = {CHROME_ERWEITERUNG, *(weitere or [])}
+    return herkunft in {f"chrome-extension://{k}" for k in kennungen if k}
+
+
 def neues_token() -> str:
     return secrets.token_urlsafe(24)
 

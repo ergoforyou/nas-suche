@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agentur-PDF</title>
+    <link rel="stylesheet" href="seitenleiste.css" />
+  </head>
+  <body>
+    <header class="kopf">
+      <img src="symbole/symbol32.png" alt="" width="20" height="20" />
+      <strong>Agentur-PDF</strong>
+      <span id="status" class="status" title="Verbindung zum Programm">verbinde …</span>
+    </header>
+
+    <section id="getrennt" class="karte hinweis" hidden>
+      <p><strong>Agentur-PDF läuft nicht.</strong><br />Die Leiste arbeitet mit dem Programm auf diesem PC zusammen.</p>
+      <button id="starten" class="primaer">Agentur-PDF starten</button>
+      <p class="leise klein" id="startHinweis" hidden>Chrome fragt einmal nach – „Öffnen“ bzw. „Immer erlauben“ wählen.</p>
+    </section>
+
+    <main id="haupt" hidden>
+      <label id="ablage" class="ablage" tabindex="0">
+        <input id="dateiwahl" type="file" multiple hidden />
+        <span class="ablage-gross">Dateien hierher ziehen</span>
+        <span class="leise">PDF, Bilder, E-Mails (EML/MSG), Word/Excel – oder klicken</span>
+      </label>
+      <button id="ausTab" class="schmal">Geöffnete PDF aus diesem Tab übernehmen</button>
+
+      <section id="dateienBereich" hidden>
+        <h2>Dateien <span id="anzahl" class="leise"></span></h2>
+        <ol id="dateien" class="dateien"></ol>
+        <div class="knoepfe">
+          <button id="erstellen" class="primaer">Zu einer PDF zusammenführen</button>
+          <button id="programm" title="Alle Dateien einzeln im Programm öffnen">Im Programm öffnen</button>
+        </div>
+        <button id="leeren" class="schmal leise">Liste leeren</button>
+      </section>
+
+      <section id="fortschritt" class="karte" hidden>
+        <div class="balken"><div id="balken"></div></div>
+        <span id="schritt" class="leise klein"></span>
+      </section>
+
+      <section id="ergebnis" hidden>
+        <h2>Ergebnis <span id="seitenzahl" class="leise"></span></h2>
+        <label class="feld">Dateiname <input id="name" value="Dokument.pdf" /></label>
+        <div class="knoepfe">
+          <button id="speichern" class="primaer">Speichern …</button>
+          <button id="drucken">Drucken</button>
+          <button id="weiter" title="Im großen Programmfenster weiterbearbeiten">Im Programm</button>
+        </div>
+        <div class="knoepfe klein">
+          <button id="zurueck" class="schmal" disabled>↶ Rückgängig</button>
+          <button id="neu" class="schmal">Neu beginnen</button>
+        </div>
+        <div id="seiten" class="seiten"></div>
+      </section>
+    </main>
+
+    <div id="gross" class="gross" hidden><img alt="Seitenvorschau" /></div>
+    <div id="meldung" class="meldung" role="status" hidden></div>
+    <script src="verbindung.js"></script>
+    <script src="seitenleiste.js"></script>
+  </body>
+</html>

@@ -109,6 +109,8 @@ export const api = {
     anfrage<{ anzahl: number; dateien: { pfad: string; name: string; ordner: string; groesse: number }[] }>("POST", "/api/stapel/vorschau", { pfade, unterordner }),
   stapelStarten: (pfade: string[], unterordner: boolean, optionen: StapelOptionen) =>
     anfrage<Auftrag>("POST", "/api/stapel", { pfade, unterordner, optionen }),
+  chromeStatus: () => anfrage<ChromeStatus>("GET", "/api/system/chrome"),
+  chromeEinrichten: () => anfrage<ChromeStatus>("POST", "/api/system/chrome"),
   druckerStatus: () => anfrage<{ windows: boolean; eingerichtet: boolean; ordner: string; name: string }>("GET", "/api/system/drucker"),
   druckerEinrichten: (einrichten: boolean) =>
     anfrage<{ windows: boolean; eingerichtet: boolean; ordner: string; name: string }>("POST", "/api/system/drucker", { einrichten }),
@@ -253,6 +255,13 @@ export interface BildParameter {
   ausblenden?: string;
   /** gerade bearbeitete Anmerkungen ausblenden (IDs, kommagetrennt) */
   ohne?: string;
+}
+
+export interface ChromeStatus {
+  windows: boolean;
+  ordner: string;
+  vorhanden: boolean;
+  chrome: string | null;
 }
 
 export function bildUrl(p: BildParameter): string {

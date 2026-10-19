@@ -4027,3 +4027,12 @@ body {
   cursor: pointer;
   color: var(--text-2);
 }
+
+.anleitung {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+  font-size: 12px;
+}
+.anleitung li + li {
+  margin-top: 2px;
+}

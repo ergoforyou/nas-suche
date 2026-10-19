@@ -55,12 +55,13 @@ STANDARD_EINSTELLUNGEN: dict[str, Any] = {
     "gemeinsamer_ordner": "",
     # Hausfarben (Design): erscheinen zuerst in allen Farbauswahlen
     "hausfarben": [],
+    "chrome_erweiterungen": [],
     # Druckordner des PDF-Druckers „Agentur-PDF“ (leer = Öffentlich\Agentur-PDF-Druck)
     "druck_ordner": "",
 }
 
 # Diese Einstellungen gelten – bei eingetragenem gemeinsamem Ordner – für alle
-GEMEINSAME_SCHLUESSEL = ("stempel", "ocr_sprachen", "hausfarben")
+GEMEINSAME_SCHLUESSEL = ("stempel", "ocr_sprachen", "hausfarben", "chrome_erweiterungen")
 GEMEINSAM_DATEI = "einstellungen.json"
 GEMEINSAM_NEU_LESEN_S = 20
 

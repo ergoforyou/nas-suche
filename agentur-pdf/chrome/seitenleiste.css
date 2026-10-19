@@ -1,0 +1,140 @@
+:root {
+  --akzent: #b5121b;
+  --hg: #f6f6f6;
+  --flaeche: #fff;
+  --text: #1b1b1b;
+  --text-2: #5c5c5c;
+  --linie: #e1e1e1;
+  --radius: 6px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hg: #202020;
+    --flaeche: #2b2b2b;
+    --text: #f0f0f0;
+    --text-2: #b8b8b8;
+    --linie: #3a3a3a;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  padding: 0 12px 16px;
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  background: var(--hg);
+  color: var(--text);
+}
+.kopf {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -12px 10px;
+  padding: 10px 12px;
+  background: var(--flaeche);
+  border-bottom: 1px solid var(--linie);
+}
+.status { margin-left: auto; font-size: 11px; color: var(--text-2); }
+.status.ok::before { content: "● "; color: #107c41; }
+.status.aus::before { content: "● "; color: var(--akzent); }
+h2 { font-size: 13px; margin: 14px 0 6px; }
+.leise { color: var(--text-2); }
+.klein { font-size: 11px; }
+button {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  background: var(--flaeche);
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--text-2); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primaer { background: var(--akzent); border-color: var(--akzent); color: #fff; }
+button.schmal { border: 0; background: none; padding: 4px 2px; }
+.karte { background: var(--flaeche); border: 1px solid var(--linie); border-radius: var(--radius); padding: 12px; }
+.hinweis p { margin-top: 0; }
+.ablage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 22px 10px;
+  border: 2px dashed var(--linie);
+  border-radius: 10px;
+  background: var(--flaeche);
+  text-align: center;
+  cursor: pointer;
+}
+.ablage.ueber { border-color: var(--akzent); background: color-mix(in srgb, var(--akzent) 8%, var(--flaeche)); }
+.ablage-gross { font-weight: 600; font-size: 14px; }
+.dateien { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.datei {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--flaeche);
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+}
+.datei .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.datei .typ { font-size: 10px; font-weight: 700; color: #fff; background: var(--text-2); border-radius: 3px; padding: 1px 4px; }
+.datei .typ.pdf { background: var(--akzent); }
+.datei .typ.bild { background: #107c41; }
+.datei .typ.mail { background: #1f5baa; }
+.datei button { border: 0; background: none; padding: 2px 4px; color: var(--text-2); }
+.knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.knoepfe .primaer { flex: 1; }
+.balken { height: 6px; border-radius: 3px; background: var(--linie); overflow: hidden; margin-bottom: 6px; }
+.balken > div { height: 100%; width: 0; background: var(--akzent); transition: width 0.2s; }
+.feld { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-2); }
+.feld input { font: inherit; padding: 6px 8px; border: 1px solid var(--linie); border-radius: var(--radius); background: var(--flaeche); color: var(--text); }
+.seiten { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin-top: 12px; }
+.seite { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.seite img {
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  cursor: zoom-in;
+}
+.seite .werkzeuge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.seite:hover .werkzeuge, .seite:focus-within .werkzeuge { opacity: 1; }
+.werkzeuge button { padding: 2px 6px; font-size: 12px; background: rgba(255, 255, 255, 0.95); color: #1b1b1b; }
+.gross {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.7);
+  cursor: zoom-out;
+}
+.gross img { max-width: 100%; max-height: 100%; background: #fff; }
+.meldung {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 6;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: #1b1b1b;
+  color: #fff;
+  font-size: 12px;
+}
+.meldung.fehler { background: var(--akzent); }

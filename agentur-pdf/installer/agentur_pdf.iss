@@ -50,6 +50,7 @@ Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 [Tasks]
 Name: "desktop"; Description: "Verknüpfung auf dem Desktop anlegen"
 Name: "explorer"; Description: "Explorer-Rechtsklick („Mit Agentur-PDF öffnen“, „Zu einer PDF zusammenführen“) und „Öffnen mit“ einrichten"
+Name: "chrome"; Description: "Google Chrome: Agentur-PDF-Seitenleiste einrichten (öffnet danach Chrome mit kurzer Anleitung)"
 Name: "drucker"; Description: "PDF-Drucker „Agentur-PDF“ einrichten (fragt nach Administratorrechten)"; Flags: unchecked
 
 [InstallDelete]
@@ -59,6 +60,13 @@ Type: filesandordirs; Name: "{app}\_internal"
 [Files]
 Source: "dist\Agentur-PDF\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Registry]
+; Link „agentur-pdf://start“ – damit die Chrome-Seitenleiste das Programm starten kann
+Root: HKCU; Subkey: "Software\Classes\agentur-pdf"; ValueType: string; ValueName: ""; ValueData: "URL:Agentur-PDF"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\agentur-pdf"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\agentur-pdf\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\Agentur-PDF.exe,0"
+Root: HKCU; Subkey: "Software\Classes\agentur-pdf\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Agentur-PDF.exe"" ""%1"""
+
 [Icons]
 Name: "{autoprograms}\Agentur-PDF"; Filename: "{app}\Agentur-PDF.exe"
 Name: "{autodesktop}\Agentur-PDF"; Filename: "{app}\Agentur-PDF.exe"; Tasks: desktop
@@ -66,6 +74,7 @@ Name: "{autodesktop}\Agentur-PDF"; Filename: "{app}\Agentur-PDF.exe"; Tasks: des
 [Run]
 Filename: "{app}\Agentur-PDF.exe"; Parameters: "--explorer-einrichten"; StatusMsg: "Explorer-Einträge werden eingerichtet …"; Flags: runhidden waituntilterminated; Tasks: explorer
 Filename: "{app}\Agentur-PDF.exe"; Parameters: "--drucker-einrichten"; StatusMsg: "PDF-Drucker wird eingerichtet …"; Verb: "runas"; Flags: shellexec runhidden waituntilterminated; Tasks: drucker; Check: not NachUpdateStarten
+Filename: "{app}\Agentur-PDF.exe"; Parameters: "--chrome-einrichten"; Flags: nowait; Tasks: chrome; Check: not NachUpdateStarten
 Filename: "{app}\Agentur-PDF.exe"; Description: "Agentur-PDF jetzt starten"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\Agentur-PDF.exe"; Parameters: "--nach-update"; Flags: nowait; Check: NachUpdateStarten
 

@@ -82,6 +82,21 @@ DESIGN (NEUES REGISTER)
   • Hausfarben: bis zu 6 Firmenfarben, erscheinen in allen Farbauswahlen.
   • KI-Bild/KI-Text sind vorbereitet und folgen in einer späteren Version.
 
+GOOGLE CHROME: AGENTUR-PDF-SEITENLEISTE
+  Eine Leiste rechts in Chrome – neben Kundenportal, Webmailer & Co.:
+  Dateien, Bilder und E-Mails (EML/MSG) hineinziehen → zu einer PDF
+  zusammenführen bzw. umwandeln → Vorschau, Seiten drehen/löschen →
+  speichern, drucken oder „Im Programm“ weiterbearbeiten. Rechtsklick auf
+  einen Link oder ein Bild: „Mit Agentur-PDF öffnen“ bzw. „In Agentur-PDF-
+  Leiste übernehmen“. Läuft das Programm nicht, startet die Leiste es.
+  Einrichten (einmalig je PC, das Setup öffnet Chrome dafür automatisch):
+  1. Chrome zeigt „Erweiterungen“; oben rechts „Entwicklermodus“ ein.
+  2. „Entpackte Erweiterung laden“ → Ordner „Chrome-Erweiterung“ im
+     Programmordner wählen (der Pfad liegt schon in der Zwischenablage:
+     in die Adresszeile des Ordnerfensters klicken, Strg+V, Enter).
+  3. Puzzle-Symbol → Agentur-PDF anheften. Öffnen: Symbol oder Alt+Umschalt+P.
+  Später nochmal: Agentur-PDF → Einstellungen → „Chrome einrichten …“.
+
 ERSTE SCHRITTE
   Oben links auf „Testversion“ klicken → „Ihr Kürzel“ eintragen (z. B. JK).
   Es erscheint in Stempeln, Kommentaren und Screenshot-Dateinamen.

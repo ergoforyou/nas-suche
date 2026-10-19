@@ -25,7 +25,7 @@ from ..kern.sperren import Sperren
 from ..kern.ueberwachung import Ueberwachung
 from ..kern.woerterbuch import woerterbuch
 from ..kern.zusammenfuehren import Eintrag, Uploads, umwandeln, zusammenfuehren
-from .sicherheit import pruefe_anfrage
+from .sicherheit import chrome_erlaubt, pruefe_anfrage
 
 OEFFENBARE_ENDUNGEN = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".xps", ".epub"}
 
@@ -515,12 +515,15 @@ def erstelle_app(
             raise DokumentFehler("Leere Datei.")
         return {"id": uploads.speichern(name, daten), "name": os.path.basename(name)}
 
-    def zusammenfuehren_starten(eintraege: list[Eintrag], lesezeichen: bool, anhaenge: bool) -> Auftrag:
+    def zusammenfuehren_starten(eintraege: list[Eintrag], lesezeichen: bool, anhaenge: bool, still: bool = False) -> Auftrag:
+        """``still``: Ergebnis nicht im Programmfenster öffnen (Chrome-Seitenleiste)."""
         titel = f"{len(eintraege)} Dateien zusammenführen" if len(eintraege) > 1 else f"„{eintraege[0].name}“ umwandeln"
-        return auftraege.starten(
-            titel,
-            lambda a: zusammenfuehren(eintraege, dokumente, a, im_mupdf_thread_sync, lesezeichen, anhaenge),
-        )
+
+        def arbeit(a: Auftrag) -> dict:
+            ergebnis = zusammenfuehren(eintraege, dokumente, a, im_mupdf_thread_sync, lesezeichen, anhaenge)
+            return {**ergebnis, "oeffnen": False} if still else ergebnis
+
+        return auftraege.starten(titel, arbeit)
 
     def umwandeln_starten(eintraege: list[Eintrag], speichern: bool) -> Auftrag:
         titel = f"{len(eintraege)} Dateien in PDF umwandeln" if len(eintraege) > 1 else f"„{eintraege[0].name}“ in PDF umwandeln"
@@ -528,9 +531,48 @@ def erstelle_app(
 
     @app.post("/api/zusammenfuehren")
     async def zusammenfuehren_api(
-        eintraege: list[dict] = Body(...), lesezeichen: bool = Body(True), anhaenge: bool = Body(True)
+        eintraege: list[dict] = Body(...), lesezeichen: bool = Body(True), anhaenge: bool = Body(True), still: bool = Body(False)
     ):
-        return zusammenfuehren_starten(eintraege_aufloesen(eintraege), lesezeichen, anhaenge).als_dict()
+        return zusammenfuehren_starten(eintraege_aufloesen(eintraege), lesezeichen, anhaenge, still).als_dict()
+
+    @app.get("/api/auftraege/{auftrag_id}")
+    async def auftrag_status(auftrag_id: str):
+        return auftraege.get(auftrag_id).als_dict()
+
+    # ------------------------------------------------ Chrome-Seitenleiste
+    @app.post("/chrome/verbinden", include_in_schema=False)
+    async def chrome_verbinden(request: Request):
+        """Kopplung: die Erweiterung holt sich das Token (nur ihr Origin)."""
+        if not chrome_erlaubt(request.headers.get("origin") or "", benutzer.einstellungen().get("chrome_erweiterungen") or []):
+            return JSONResponse({"fehler": "Nicht erlaubt."}, status_code=403)
+        return {"token": token, "version": __version__}
+
+    @app.post("/api/chrome/oeffnen")
+    async def chrome_oeffnen(request: Request, name: str = Query(...)):
+        """Datei aus Chrome (Download, Link, Bild) im Programmfenster öffnen."""
+        daten = await request.body()
+        if not daten:
+            raise DokumentFehler("Leere Datei.")
+        if not unterstuetzt(name):
+            raise DokumentFehler(f"„{os.path.basename(name)}“: Dateityp wird nicht unterstützt.")
+        if braucht_umwandlung(name):
+            uid = uploads.speichern(name, daten)
+            umwandeln_starten([uploads.get(uid)], speichern=False)
+        else:
+            dok = await im_mupdf_thread(dokumente.oeffnen_bytes, daten, os.path.basename(name))
+            ereignisse.hinzufuegen({"art": "oeffnen", "dokumente": [dok.id]})
+        if app.state.fenster_vorholen:
+            app.state.fenster_vorholen()
+        return {"ok": True}
+
+    @app.post("/api/chrome/zeigen")
+    async def chrome_zeigen(dok_id: str = Body(..., embed=True)):
+        """Ein in der Seitenleiste erstelltes Dokument im Programmfenster zeigen."""
+        await im_mupdf_thread(dokumente.info, dok_id)  # prüft, ob es existiert
+        ereignisse.hinzufuegen({"art": "oeffnen", "dokumente": [dok_id]})
+        if app.state.fenster_vorholen:
+            app.state.fenster_vorholen()
+        return {"ok": True}
 
     @app.post("/api/umwandeln")
     async def umwandeln_api(eintraege: list[dict] = Body(...), speichern: bool = Body(False)):
@@ -658,6 +700,22 @@ def erstelle_app(
             return {"ok": True, "anzahl": explorer.einrichten()}
         explorer.entfernen()
         return {"ok": True, "anzahl": 0}
+
+    @app.get("/api/system/chrome")
+    async def chrome_status():
+        from ..windows import chrome
+
+        return chrome.status()
+
+    @app.post("/api/system/chrome")
+    async def chrome_einrichten():
+        """Chrome-Seitenleiste: Ordner zeigen, Pfad kopieren, Erweiterungsseite öffnen."""
+        from ..windows import chrome
+
+        try:
+            return chrome.einrichten()
+        except FileNotFoundError as fehler:
+            raise DokumentFehler(str(fehler)) from None
 
     # -------------------------------------------------------------- Benutzer
     @app.get("/api/einstellungen")

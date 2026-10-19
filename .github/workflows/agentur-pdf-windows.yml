@@ -97,13 +97,18 @@ jobs:
           $ziel = "$env:RUNNER_TEMP\AgenturPDF-Probe"
           Start-Process -Wait -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$ziel", "/TASKS=explorer"
           if (-not (Test-Path "$ziel\Agentur-PDF.exe")) { Write-Error "Agentur-PDF.exe wurde nicht installiert"; exit 1 }
+          if (-not (Test-Path "$ziel\Chrome-Erweiterung\manifest.json")) { Write-Error "Chrome-Erweiterung fehlt"; exit 1 }
+          $link = (Get-ItemProperty "HKCU:\Software\Classes\agentur-pdf\shell\open\command").'(default)'
+          "Start-Link: $link"
+          if ($link -notlike "*$ziel*") { Write-Error "Link agentur-pdf:// fehlt"; exit 1 }
           $befehl = (Get-ItemProperty "HKCU:\Software\Classes\AgenturPDF.Dokument\shell\open\command").'(default)'
           "Öffnen-Befehl: $befehl"
           if ($befehl -notlike "*$ziel*") { Write-Error "Dateizuordnung fehlt"; exit 1 }
           Start-Process -Wait -FilePath "$ziel\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES"
           # das Deinstallationsprogramm läuft als Kopie im Temp-Ordner weiter → warten
-          for ($i = 0; $i -lt 60 -and ((Test-Path "HKCU:\Software\Classes\AgenturPDF.Dokument") -or (Test-Path "$ziel\Agentur-PDF.exe")); $i++) { Start-Sleep -Seconds 1 }
+          for ($i = 0; $i -lt 60 -and ((Test-Path "HKCU:\Software\Classes\AgenturPDF.Dokument") -or (Test-Path "HKCU:\Software\Classes\agentur-pdf") -or (Test-Path "$ziel\Agentur-PDF.exe")); $i++) { Start-Sleep -Seconds 1 }
           if (Test-Path "HKCU:\Software\Classes\AgenturPDF.Dokument") { Write-Error "Zuordnung nach Deinstallation noch vorhanden"; exit 1 }
+          if (Test-Path "HKCU:\Software\Classes\agentur-pdf") { Write-Error "Link agentur-pdf:// nach Deinstallation noch vorhanden"; exit 1 }
           if (Test-Path "$ziel\Agentur-PDF.exe") { Write-Error "Programm nach Deinstallation noch vorhanden"; exit 1 }
           "Installation und Deinstallation in Ordnung."
 

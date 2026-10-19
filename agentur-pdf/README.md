@@ -15,8 +15,9 @@ Architektur und Plan: [docs/ARCHITEKTUR_UND_PLAN.md](docs/ARCHITEKTUR_UND_PLAN.m
 | M5 | Bilder & Unterschriften mit Freistellung (Beleuchtungsausgleich, weiche Kanten) und Bibliothek, Foto aufbereiten (Kanten erkennen, entzerren, Schatten entfernen, S/W), Screenshot-Werkzeug mit globalem Tastenkürzel, Bereichsauswahl, Ablage + OCR-PDF, Zwischenablage | ✅ |
 | M6 | Anmerkungen als echte PDF-Anmerkungen: Hervorheben/Unterstreichen/Durchstreichen/Wellenlinie über Textauswahl (mit Schwebeleiste), Notiz, Textfeld, Schreibmaschine mit Rechtschreibprüfung (Hunspell + Fachwörter, Vorschläge per Rechtsklick), Formen, Pfeil, Freihand, Stempel mit Datum/Kürzel, Abdecken, Auswählen/Verschieben/Größe ändern, Kommentarliste, Formulare ausfüllen | ✅ |
 | M7 | Schwärzen (Bereich, Textauswahl, Suchmuster IBAN/E-Mail/Telefon/Datum, auch OCR-Text), Kennwort AES-256 mit Rechten, Metadaten, Ebenen-Panel, Drucken mit Vorschau und Export ohne Kommentare/Ebenen, Komprimieren, Seiten als Bilder, Text-Export | ✅ |
-| M8 | Setup.exe (pro Benutzer), Updates über NAS-Ordner, Standard-PDF-Programm, Explorer-Rechtsklick, PDF-Drucker, Sperrhinweis/automatische Sicherung, gemeinsame Einstellungen | ✅ (Windows-11-Kontextmenü direkt im neuen Menü, Chrome-Kachel offen) |
+| M8 | Setup.exe (pro Benutzer), Updates über NAS-Ordner, Standard-PDF-Programm, Explorer-Rechtsklick, PDF-Drucker, Sperrhinweis/automatische Sicherung, gemeinsame Einstellungen | ✅ (Windows-11-Kontextmenü direkt im neuen Menü offen) |
 | M9 | Text bearbeiten, Formularfelder gestalten, Dokumente vergleichen, Stapelverarbeitung | ✅ |
+| M11 | Chrome-Seitenleiste (Erweiterung in `chrome/`): Ablage, Zusammenführen/Umwandeln, Vorschau, Drehen/Löschen, Speichern/Drucken, Rechtsklick „Mit Agentur-PDF öffnen“; Start per `agentur-pdf://`, Kopplung über festen Port 47811 + Origin-Prüfung | ✅ (Web-Store-Veröffentlichung offen) |
 | M10 | Register „Design“: Objekte freistellen (Motiv/Logo), Anordnen/Ausrichten, Textbausteine, Deckblatt, Inhaltsverzeichnis, Briefpapier, Hausfarben; KI vorbereitet | ✅ (KI folgt) |
 
 ## Starten (Entwicklung)

@@ -51,10 +51,19 @@ def oberflaeche_ordner() -> Path | None:
     return None
 
 
+# Fester Port, damit die Chrome-Seitenleiste den Dienst findet (sonst zufällig)
+BEVORZUGTER_PORT = 47811
+
+
 def freier_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    for wunsch in (BEVORZUGTER_PORT, 0):
+        with socket.socket() as s:
+            try:
+                s.bind(("127.0.0.1", wunsch))
+            except OSError:
+                continue
+            return s.getsockname()[1]
+    raise OSError("Kein freier Port")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -74,7 +83,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--nach-update", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--drucker-einrichten", action="store_true", help="PDF-Drucker „Agentur-PDF“ einrichten (Adminrechte)")
     parser.add_argument("--drucker-entfernen", action="store_true", help="PDF-Drucker entfernen (Adminrechte)")
+    parser.add_argument("--chrome-einrichten", action="store_true", help="Chrome-Seitenleiste einrichten (Anleitung + Chrome öffnen)")
     args = parser.parse_args(argv)
+    # Start über den Link „agentur-pdf://start“ (Chrome-Seitenleiste): nur starten
+    args.dateien = [d for d in args.dateien if not d.lower().startswith("agentur-pdf:")]
 
     if args.explorer_einrichten or args.explorer_entfernen or args.explorer_reg:
         from .windows import explorer
@@ -87,6 +99,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             explorer.entfernen()
             print("Rechtsklick-Einträge entfernt.")
+        return 0
+    if args.chrome_einrichten:
+        from .windows import chrome
+
+        try:
+            chrome.einrichten()
+        except FileNotFoundError as fehler:
+            print(fehler)
+            return 1
         return 0
     if args.drucker_einrichten or args.drucker_entfernen:
         from .kern.druckordner import standard_ordner

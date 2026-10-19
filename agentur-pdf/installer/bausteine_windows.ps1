@@ -28,4 +28,6 @@ Remove-Item "$Ziel\libreoffice\share\template" -Recurse -Force -ErrorAction Sile
 Remove-Item "$Ziel\libreoffice\share\gallery" -Recurse -Force -ErrorAction SilentlyContinue
 
 Copy-Item "LIESMICH.txt" "$Ziel\LIESMICH.txt" -Force
+# Chrome-Seitenleiste (entpackte Erweiterung – wird in Chrome aus diesem Ordner geladen)
+Copy-Item "..\chrome" "$Ziel\Chrome-Erweiterung" -Recurse -Force
 Write-Host "Fertig: $Ziel"

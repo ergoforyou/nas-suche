@@ -59,4 +59,4 @@ from test_vergleich import vertrag  # noqa: E402
 vertrag(ordner / "vertrag_alt.pdf")
 vertrag(ordner / "vertrag_neu.pdf", praemie="1.250,00 €", entfernt=True)
 print(f"Testdaten: {ordner}", flush=True)
-raise SystemExit(main(["--nur-dienst", "--port", "8766", "--token", "e2e", str(gross)]))
+raise SystemExit(main(["--nur-dienst", "--port", "47811", "--token", "e2e", str(gross)]))
