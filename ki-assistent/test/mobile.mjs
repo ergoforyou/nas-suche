@@ -980,7 +980,7 @@ const selfRes = await page.evaluate(async () => {
     aendern: [{ nr: 1, text: 'Ich sieze jetzt.' }],
     streichen: [2],
   });
-  return { ok: r.notiert, dup: dup.notiert, inSys: /Dein Selbstbild/.test(sys) && /Quelle/.test(sys) && /selbst_notieren/.test(sys), ui, texts: p.selbst.map((e) => e.text), added: res.added.length, removed: res.removed, last: p.reflexion.at(-1)?.text };
+  return { ok: r.notiert, dup: dup.notiert, inSys: /Was du über dich selbst weißt/.test(sys) && /Quelle/.test(sys) && /selbst_notieren/.test(sys), ui, texts: p.selbst.map((e) => e.text), added: res.added.length, removed: res.removed, last: p.reflexion.at(-1)?.text };
 });
 check(selfRes.ok && !selfRes.dup && selfRes.inSys && selfRes.ui, 'Selbstbild: Figur notiert über sich (Werkzeug), keine Doppelten, geht im Systemtext mit', JSON.stringify(selfRes));
 check(
@@ -1212,8 +1212,8 @@ const sbRes = await page.evaluate(async () => {
 check(
   sbRes.filled?.werte?.[0] === 'Ehrlichkeit vor Höflichkeit' && sbRes.filled.regler.direktheit === 4 && sbRes.filled.regler.widerspruch === 0 &&
     sbRes.ui.werte.startsWith('Ehrlichkeit vor Höflichkeit\nDeine Zeit') && sbRes.ui.direkt === '4' && sbRes.grenzen === 'Keine Diagnosen stellen' &&
-    /Dein Steckbrief/.test(sbRes.sys) && /1\. Ehrlichkeit vor Höflichkeit/.test(sbRes.sys) && /eher direkt/.test(sbRes.sys) && /Keine Diagnosen stellen/.test(sbRes.sys) &&
-    sbRes.sys.indexOf('Dein Steckbrief') < sbRes.sys.indexOf('Du bist Max, ein ehrlicher'),
+    /Wer du bist/.test(sbRes.sys) && /1\. Ehrlichkeit vor Höflichkeit/.test(sbRes.sys) && /eher direkt/.test(sbRes.sys) && /Keine Diagnosen stellen/.test(sbRes.sys) &&
+    sbRes.sys.indexOf('Wer du bist') < sbRes.sys.indexOf('Du bist Max, ein ehrlicher'),
   'Steckbrief: aus Systemprompt ausgefüllt, von Hand geändert, steht als Block vor dem Systemprompt',
   JSON.stringify({ ...sbRes, sys: sbRes.sys.slice(0, 300) }),
 );
@@ -1337,7 +1337,7 @@ const storyRes = await page.evaluate(async () => {
   const sys = JSON.stringify(app.buildMessages());
   const state = document.getElementById('sgState').textContent;
   Object.assign(p, before);
-  return { drafted: drafted.slice(0, 60), anchors, inPrompt: sys.includes('Deine Lebensgeschichte') && sys.includes('Hafenstadt'), state };
+  return { drafted: drafted.slice(0, 60), anchors, inPrompt: sys.includes('Dein bisheriges Leben') && sys.includes('Hafenstadt'), state };
 });
 check(
   /Hafenstadt/.test(storyRes.drafted) && storyRes.anchors.length === 2 && storyRes.anchors.every((a) => a.art === 'geschichte' && a.q === 'nutzer') && storyRes.inPrompt && /2 prägende Erinnerungen/.test(storyRes.state),
@@ -1357,7 +1357,50 @@ const findStoryReq = () => claudeRequests.find((r) => JSON.stringify(r.messages 
 for (let i = 0; i < 100 && !findStoryReq(); i++) await new Promise((r) => setTimeout(r, 100));
 await page.evaluate(() => (window.__app.persona().geschichte = ''));
 const storyReq = JSON.stringify(findStoryReq() ?? '');
-check(/Passende Abschnitte aus deiner Lebensgeschichte/.test(storyReq) && /Hörnum/.test(storyReq), 'Lange Lebensgeschichte: passender Abschnitt kommt zur Frage dazu', storyReq.slice(0, 200));
+check(/Dazu erinnerst du dich/.test(storyReq) && /Hörnum/.test(storyReq), 'Lange Lebensgeschichte: passender Abschnitt kommt zur Frage dazu', storyReq.slice(0, 200));
+// Rolle halten: Anker vor der Frage, Rollenbruch aus Antwort und Verlauf, Lernen daraus; direkte KI-Frage bleibt ehrlich
+const sayText = (t) => sse([
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: t } },
+  { type: 'content_block_stop', index: 0 },
+], 'end_turn');
+claudeQueue.push(sayText('[freudig] Als KI habe ich keine Gefühle. Mir geht es prima, danke der Nachfrage!'));
+claudeQueue.push(sayText('[ruhig] Ja, ich bin eine KI. Aber ich bin gern für dich da.'));
+claudeQueue.push(sayText('Du: Wie war dein Tag?\nIch: Ruhig, ich habe Listen sortiert.\n\nDu: Bist du echt?\nIch: Echt genug, um dir zuzuhören.'));
+const roleRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const before = { selbst: p.selbst, immersion: p.immersion, steckbrief: p.steckbrief };
+  p.immersion = true;
+  p.selbst = [];
+  app.state.settings.speak = false;
+  const h = app.history();
+  const n0 = h.length;
+  h.push({ role: 'user', content: 'Magst du Musik?', t: Date.now() }, { role: 'assistant', content: 'Ich bin nur ein Programm. Aber Jazz klingt schön.', t: Date.now() });
+  const msgs = JSON.stringify(app.buildMessages());
+  const histClean = !msgs.includes('nur ein Programm') && msgs.includes('Jazz klingt schön');
+  const anchor = /Du bist [^.]+\. Antworte als du selbst\./.test(msgs);
+  await app.send('Wie geht es dir heute?');
+  for (let i = 0; i < 50 && !/prima/.test(h.at(-1)?.content ?? ''); i++) await new Promise((r) => setTimeout(r, 100));
+  const guarded = h.at(-1)?.content ?? '';
+  const learned = p.selbst.some((e) => /bleibe bei mir/.test(e.text));
+  await app.send('Bist du eine KI?');
+  for (let i = 0; i < 50 && !/Ja, ich bin/.test(h.at(-1)?.content ?? ''); i++) await new Promise((r) => setTimeout(r, 100));
+  const honest = h.at(-1)?.content ?? '';
+  const honestKept = JSON.stringify(app.buildMessages()).includes('Ja, ich bin eine KI');
+  p.steckbrief = { ...(p.steckbrief ?? {}), beispiele: '' };
+  document.getElementById('sbExamples').click();
+  for (let i = 0; i < 50 && !p.steckbrief.beispiele; i++) await new Promise((r) => setTimeout(r, 100));
+  const examples = p.steckbrief.beispiele;
+  const exInPrompt = /So klingst du/.test(JSON.stringify(app.buildMessages()));
+  h.splice(n0);
+  Object.assign(p, before);
+  return { histClean, anchor, guarded, learned, honest, honestKept, examples: examples.slice(0, 40), exInPrompt, q: app.isAiQuestion('Bist du eine KI?') && app.isAiQuestion('Klartext: wie läuft das?') && !app.isAiQuestion('Wie geht es dir?') };
+});
+check(roleRes.histClean && roleRes.anchor, 'Rolle: Anker vor der Frage, Rollenbruch aus dem Verlauf genommen', JSON.stringify(roleRes));
+check(!/Als KI/.test(roleRes.guarded) && /prima/.test(roleRes.guarded) && roleRes.learned, 'Rolle: „Als KI …“ aus der Antwort entfernt, Vorsatz ins Selbstbild', JSON.stringify(roleRes));
+check(/Ja, ich bin eine KI/.test(roleRes.honest) && roleRes.honestKept && roleRes.q, 'Rolle: direkte KI-Frage wird ehrlich beantwortet und bleibt im Verlauf', JSON.stringify(roleRes));
+check(/Ich:/.test(roleRes.examples) && roleRes.exInPrompt, 'Rolle: Beispieldialoge vorgeschlagen und im Steckbrief-Block', JSON.stringify(roleRes));
 // Vergessen auf Bitte: passende Einträge aus Gedächtnis/Selbstbild/Themen löschen, anderes bleibt, Rückgängig
 const forgetRes = await page.evaluate(async () => {
   const app = window.__app;

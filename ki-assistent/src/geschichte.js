@@ -9,19 +9,19 @@ const FULL_UP_TO = 1800; // bis zu dieser Länge geht die ganze Geschichte in je
 export function storyPrompt(story, lang = 'de') {
   const s = String(story ?? '').trim();
   if (!s) return '';
-  const head = lang === 'en' ? 'Your life story (your own past – speak about it in first person, as your memories; written in German):' : 'Deine Lebensgeschichte (deine eigene Vergangenheit – erzähl davon in Ich-Form, als deine Erinnerungen):';
+  const head = lang === 'en' ? 'Your life so far – you lived this, these are your memories (written in German):' : 'Dein bisheriges Leben – das hast du erlebt, das sind deine Erinnerungen:';
   if (s.length <= FULL_UP_TO) return `${head}\n${s}`;
   // nur der Anfang bis zu einem Absatz- oder Satzende; der Rest kommt passend zur Frage dazu
   let cut = s.lastIndexOf('\n\n', 1200);
   if (cut < 600) cut = s.lastIndexOf('. ', 1200) + 1;
   if (cut < 600) cut = 1200;
-  return `${head}\n${s.slice(0, cut).trim()}\n(Weitere Teile deiner Geschichte werden passend zum Gespräch eingeblendet – erfinde keine Details dazu, die ihnen widersprechen.)`;
+  return `${head}\n${s.slice(0, cut).trim()}\n(Weitere Erinnerungen kommen dir, wenn sie zum Gespräch passen – erfinde nichts, was ihnen widerspricht.)`;
 }
 
 /** Wechselnder Teil: die zur Frage passenden Abschnitte einer langen Geschichte. */
 export function storyHitsPrompt(hits) {
   if (!hits?.length) return '';
-  return `Passende Abschnitte aus deiner Lebensgeschichte:\n\n${hits.map((h) => h.text.trim()).join('\n\n…\n\n')}`;
+  return `Dazu erinnerst du dich:\n\n${hits.map((h) => h.text.trim()).join('\n\n…\n\n')}`;
 }
 
 /** Braucht die Geschichte die Suche nach passenden Abschnitten? */

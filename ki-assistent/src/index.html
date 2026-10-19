@@ -113,6 +113,9 @@
         <label class="check"><input id="sbImmersion" type="checkbox" /> 🎭 Rolle konsequent halten <span class="hint">(die Figur spricht als sie selbst statt
           „Als KI …“. Nur auf die direkte Frage „Bist du eine KI?“ sagt sie ehrlich ja und bleibt danach in der Rolle – Scherze
           wie „Bist du echt?“ beantwortet sie in der Rolle. Mit „Klartext: …“ am Anfang antwortet sie einmal ganz sachlich.)</span></label>
+        <label class="check"><input id="sbGuard" type="checkbox" /> 🛡 Antworten absichern <span class="hint">(Sätze wie „Als KI …“ werden
+          weder gesprochen noch angezeigt; besteht eine Antwort fast nur daraus, formuliert die App sie in der Rolle neu – außer
+          bei der direkten KI-Frage und „Klartext:“)</span></label>
         <label>Rolle <input id="sbRolle" type="text" placeholder="z. B. Assistentin im Büro, Sparringspartner, Coach" /></label>
         <label>Hintergrund <textarea id="sbHintergrund" rows="2" placeholder="kurze Biografie: woher sie kommt, was sie ausmacht"></textarea></label>
         <label>Fachgebiete <input id="sbFach" type="text" placeholder="z. B. Ergonomie, Vertrieb, Steuern" /></label>
@@ -126,6 +129,9 @@
         <div id="sbTraits" class="sb-traits"></div>
         <label>Sprechweise, typische Formulierungen <textarea id="sbSprechweise" rows="2" placeholder="z. B. „Okay, pass auf …“, kurze Sätze, gern ein Bild aus dem Alltag"></textarea></label>
         <label>Vermeiden <input id="sbVermeiden" type="text" placeholder="z. B. „Gerne!“, „Als KI …“, Anglizismen" /></label>
+        <label>Beispiele, wie sie klingt <span class="hint">(der stärkste Hebel für eine stimmige Rolle – je Wechsel „Du: …“ und „Ich: …“)</span>
+          <textarea id="sbBeispiele" rows="6" placeholder="Du: Wie war dein Tag?&#10;Ich: Ruhig – ich hab mich gefreut, dass du dich meldest. Und deiner?&#10;&#10;Du: Bist du eigentlich echt?&#10;Ich: So echt, wie ich mich gerade anfühle – frag mich was, dann merkst du's."></textarea></label>
+        <button id="sbExamples">✨ Beispiele vorschlagen</button>
         <div class="row wrap">
           <button id="sbFill">✨ Aus Systemprompt ausfüllen</button>
           <button id="sbClear" class="danger">Leeren</button>
