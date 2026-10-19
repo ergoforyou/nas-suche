@@ -1358,6 +1358,55 @@ for (let i = 0; i < 100 && !findStoryReq(); i++) await new Promise((r) => setTim
 await page.evaluate(() => (window.__app.persona().geschichte = ''));
 const storyReq = JSON.stringify(findStoryReq() ?? '');
 check(/Passende Abschnitte aus deiner Lebensgeschichte/.test(storyReq) && /Hörnum/.test(storyReq), 'Lange Lebensgeschichte: passender Abschnitt kommt zur Frage dazu', storyReq.slice(0, 200));
+// Vergessen auf Bitte: passende Einträge aus Gedächtnis/Selbstbild/Themen löschen, anderes bleibt, Rückgängig
+const forgetRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  p.memory = [
+    { id: 'f1', text: 'Jens trinkt Kaffee schwarz.', created: 1 },
+    { id: 'f2', text: 'Jens wohnt in Hannover.', created: 2 },
+    { id: 'f3', text: 'Jens hat einen Hund namens Bello.', created: 3, quelle: 'nutzer' },
+  ];
+  p.themen = [{ id: 'ft1', text: 'Jens hat am Freitag einen Termin beim Tierarzt mit Bello.', created: Date.now() }];
+  p.selbst = [{ id: 'fs1', text: 'Ich fasse mich kurz.', art: 'vorsatz', quelle: 'gespraech', created: 1 }];
+  const r = await app.runAppTool('gedaechtnis_loeschen', { eintraege: ['Jens hat einen Hund namens Bello', 'Termin beim Tierarzt mit Bello'] });
+  const after = { mem: p.memory.map((m) => m.text), themen: p.themen.length, selbst: p.selbst.length };
+  const none = await app.runAppTool('gedaechtnis_loeschen', { eintraege: ['Jens fährt Motorrad'] });
+  const undoShown = !document.getElementById('mTidyUndo').hidden;
+  const c = window.confirm;
+  window.confirm = () => true;
+  document.getElementById('mTidyUndo').click();
+  window.confirm = c;
+  const back = { mem: p.memory.length, themen: p.themen.length };
+  p.memory = [];
+  p.themen = [];
+  p.selbst = [];
+  return { r, after, none, undoShown, back };
+});
+check(
+  forgetRes.r.geloescht === 2 && JSON.stringify(forgetRes.after.mem) === JSON.stringify(['Jens trinkt Kaffee schwarz.', 'Jens wohnt in Hannover.']) &&
+    forgetRes.after.themen === 0 && forgetRes.after.selbst === 1 && forgetRes.none.geloescht === 0 && forgetRes.undoShown && forgetRes.back.mem === 3 && forgetRes.back.themen === 1,
+  'Vergessen auf Bitte: passende Einträge gelöscht, Rest bleibt, nichts Unpassendes gelöscht, Rückgängig',
+  JSON.stringify(forgetRes),
+);
+// Bild-im-Bild: Zustand gut sichtbar (Schild + Rahmen bei Live)
+const pipRes = await page.evaluate(async () => {
+  const app = window.__app;
+  window.__setPip?.(true);
+  document.documentElement.classList.add('pip');
+  app.setHandsFree(true);
+  await new Promise((r) => setTimeout(r, 300));
+  const dot = document.getElementById('pipDot');
+  const frame = getComputedStyle(document.getElementById('pipFrame')).display;
+  const out = { label: dot.textContent, cls: dot.className, frame };
+  app.setHandsFree(false);
+  await new Promise((r) => setTimeout(r, 200));
+  out.frameOff = getComputedStyle(document.getElementById('pipFrame')).display;
+  document.documentElement.classList.remove('pip');
+  window.__setPip?.(false);
+  return out;
+});
+check(/LIVE|hört zu/.test(pipRes.label) && pipRes.frame === 'block' && pipRes.frameOff === 'none', 'Bild-im-Bild: Live-Gespräch als Schild und blauer Rahmen sichtbar', JSON.stringify(pipRes));
 // Beenden-Knopf am Handy: sichtbar, fragt einmal nach und beendet dann die App
 const quitRes = await page.evaluate(async () => {
   const btn = document.getElementById('btnQuit');

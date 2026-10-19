@@ -122,6 +122,30 @@ export function applyPlan(memory, themen, plan, { now = Date.now(), newId }) {
   return { memory: finalMem, themen: finalThemen, report };
 }
 
+/**
+ * Einträge finden, die ein Löschwunsch meint: gleicher Wortlaut oder (fast) alle Wörter des Wunsches stecken im Eintrag.
+ * Liefert die Treffer – lieber ein Eintrag zu wenig als einer zu viel.
+ */
+export function matchForget(list, wanted) {
+  const words = (t) => norm(t).split(' ').filter((w) => w.length > 2);
+  const hits = new Set();
+  for (const w of wanted ?? []) {
+    const ww = words(w);
+    if (!ww.length) continue;
+    for (const e of list ?? []) {
+      if (norm(e.text) === norm(w)) {
+        hits.add(e);
+        continue;
+      }
+      const ew = new Set(words(e.text));
+      const found = ww.filter((x) => ew.has(x)).length;
+      // die meisten Wörter des Wunsches im Eintrag, und der Eintrag besteht nicht nur aus anderem
+      if (found >= Math.max(2, Math.ceil(ww.length * 0.75)) && found / ew.size >= 0.4) hits.add(e);
+    }
+  }
+  return [...hits];
+}
+
 /** Kurzer Bericht für Chat/Status. */
 export function reportText(r) {
   const parts = [];

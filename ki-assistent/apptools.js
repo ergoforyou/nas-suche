@@ -43,6 +43,23 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'gedaechtnis_loeschen',
+    description:
+      'Löscht Einträge aus deinem Gedächtnis (Fakten über dein Gegenüber), deinem Selbstbild oder den offenen Themen. ' +
+      'NUR, wenn dein Gegenüber ausdrücklich darum bittet („vergiss …“, „lösch das aus deinem Gedächtnis“, „das stimmt ' +
+      'nicht mehr, streich das“) – nie von dir aus. Gib die betroffenen Einträge möglichst wörtlich so an, wie sie in ' +
+      'deinem Gedächtnis/Selbstbild stehen; bei „alles über X“ alle passenden. Sag danach kurz, was gelöscht wurde ' +
+      '(rückgängig machen geht unter ⚙ → Gedächtnis).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        eintraege: { type: 'array', items: { type: 'string' }, description: 'Die zu löschenden Einträge (Wortlaut aus dem Gedächtnis)' },
+        bereich: { type: 'string', enum: ['gedaechtnis', 'selbstbild', 'themen', 'alle'], description: 'Wo gesucht wird (Standard: alle)' },
+      },
+      required: ['eintraege'],
+    },
+  },
+  {
     name: 'an_claude_uebergeben',
     desktopOnly: true, // nur am PC (Claude-App unter Windows)
     description:
@@ -62,6 +79,7 @@ const APP_TOOLS = [
 const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wissen_suchen: '🔎 Schaue im gespeicherten Wissen nach …',
   selbst_notieren: '🪞 Notiere etwas über mich …',
   an_claude_uebergeben: '✳ Übergebe an Claude …',
+  gedaechtnis_loeschen: '🗑 Vergesse …',
 };
 
 module.exports = { APP_TOOLS, APP_TOOL_STATUS };

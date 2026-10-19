@@ -377,6 +377,8 @@ public class MainActivity extends BridgeActivity {
     }
 
     private android.widget.TextView floatLiveBtn;
+    private android.widget.TextView floatMicBtn;
+    private boolean floatListening;
 
     // ---- Headset für Sprache (siehe Device.voiceRoute)
     private volatile boolean voiceWanted;
@@ -469,6 +471,16 @@ public class MainActivity extends BridgeActivity {
     }
 
     /** Live-Knopf an der schwebenden Figur einfärben (blau = Live läuft). */
+    /** 🎤 der schwebenden Figur: grün, solange zugehört wird. */
+    void paintFloatMic() {
+        if (floatMicBtn == null) return;
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        bg.setColor(floatListening ? 0xF02E9B4F : 0xD0141820);
+        bg.setStroke(dp(floatListening ? 2 : 1), floatListening ? 0xFFFFFFFF : 0x55FFFFFF);
+        floatMicBtn.setBackground(bg);
+    }
+
     void paintFloatLive() {
         if (floatLiveBtn == null) return;
         android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
@@ -594,6 +606,8 @@ public class MainActivity extends BridgeActivity {
             final String what = b[1];
             tv.setOnClickListener((v) -> {
                 v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                // sichtbare Bestätigung: Knopf drückt sich kurz ein
+                v.animate().scaleX(0.82f).scaleY(0.82f).setDuration(70).withEndAction(() -> v.animate().scaleX(1f).scaleY(1f).setDuration(140).start()).start();
                 Log.i("KI-Assistent", "Schwebende Figur: Knopf " + what);
                 if (what.equals("app")) {
                     startActivity(new Intent(MainActivity.this, MainActivity.class)
@@ -601,6 +615,7 @@ public class MainActivity extends BridgeActivity {
                 } else pushAction(what);
             });
             if (what.equals("livetoggle")) floatLiveBtn = tv;
+            if (what.equals("talk")) floatMicBtn = tv;
             bar.addView(tv, lp);
         }
         FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, floatBarH());
@@ -608,6 +623,7 @@ public class MainActivity extends BridgeActivity {
         floatBox.addView(bar, bl);
         fitFloatBar(floatParams.width);
         paintFloatLive();
+        paintFloatMic();
         try {
             floatWm().addView(floatBox, floatParams);
         } catch (Exception e) {
@@ -679,6 +695,7 @@ public class MainActivity extends BridgeActivity {
         floatBox.removeView(wv);
         floatBox = null;
         floatLiveBtn = null;
+        floatMicBtn = null;
         if (webParent != null) webParent.addView(wv, Math.min(webIndex, webParent.getChildCount()), webLayout);
         wv.setBackgroundColor(Color.WHITE);
         if (floatStartedService) {
@@ -1589,6 +1606,16 @@ public class MainActivity extends BridgeActivity {
                     pipLive = on;
                     applyParams();
                     paintFloatLive();
+                });
+            }
+
+            /** Hört die App gerade zu? (🎤 der schwebenden Figur wird grün) */
+            @JavascriptInterface
+            public void setListening(boolean on) {
+                runOnUiThread(() -> {
+                    if (floatListening == on) return;
+                    floatListening = on;
+                    paintFloatMic();
                 });
             }
 

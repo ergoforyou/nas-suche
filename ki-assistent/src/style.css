@@ -391,12 +391,17 @@ body.floating .stage { display: none; }
 
 /* Bild-im-Bild: kleiner Zustandspunkt (zuhören grün, nachdenken gelb, spricht blau, Live bereit blau umrandet) */
 .pip-dot { display: none; }
-.pip .pip-dot { display: block; position: absolute; top: 8px; right: 8px; width: 14px; height: 14px; border-radius: 50%;
-                z-index: 4; border: 2px solid rgba(255,255,255,.85); background: transparent; opacity: 0; transition: opacity .2s; }
+.pip-frame { display: none; }
+/* Bild-im-Bild und schwebende Figur: Zustand gut sichtbar als Schild („● LIVE“, „hört zu“ …) */
+.pip .pip-dot { display: block; position: absolute; top: 6px; left: 6px; z-index: 4; padding: 2px 8px; border-radius: 10px;
+                font: 700 11px/16px system-ui, sans-serif; color: #fff; background: rgba(20, 24, 32, 0.75);
+                border: 1px solid rgba(255,255,255,.6); opacity: 0; transition: opacity .2s; white-space: nowrap; }
 .pip .pip-dot.hoert { background: #2e9b4f; opacity: 1; }
-.pip .pip-dot.denkt { background: #e0a030; opacity: 1; }
+.pip .pip-dot.denkt { background: #c98a1f; opacity: 1; }
 .pip .pip-dot.spricht { background: #3d7be0; opacity: 1; }
-.pip .pip-dot.live { border-color: #3d7be0; opacity: 1; }
+.pip .pip-dot.live { background: #3d7be0; opacity: 1; }
+/* Live-Gespräch im Bild-im-Bild: blauer Rahmen ums ganze Fenster */
+.pip.pip-live:not(.float-ov) .pip-frame { display: block; position: fixed; inset: 0; z-index: 4; border: 4px solid #3d7be0; pointer-events: none; }
 
 /* QR-Code scannen (Handy): Kamerabild mit Rahmen */
 .qr-scan { position: fixed; inset: 0; z-index: 9999; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }

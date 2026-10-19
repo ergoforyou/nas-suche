@@ -33,8 +33,9 @@ const RESOURCES = {
   'drawable/ic_ki_live_on.xml': `<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24" android:tint="#FFFFFF">
+    <!-- Auflegen-Hörer: im Bild-im-Bild deutlich anders als „Live starten“ (Android färbt die Symbole einheitlich weiß) -->
     <path android:fillColor="#FFFFFFFF"
-        android:pathData="M20,15.5c-1.25,0 -2.45,-0.2 -3.57,-0.57 -0.35,-0.11 -0.74,-0.03 -1.02,0.24l-2.2,2.2c-2.83,-1.44 -5.15,-3.75 -6.59,-6.59l2.2,-2.21c0.28,-0.26 0.36,-0.65 0.25,-1C8.7,6.45 8.5,5.25 8.5,4c0,-0.55 -0.45,-1 -1,-1H4c-0.55,0 -1,0.45 -1,1 0,9.39 7.61,17 17,17 0.55,0 1,-0.45 1,-1v-3.5c0,-0.55 -0.45,-1 -1,-1zM19,12h2c0,-4.97 -4.03,-9 -9,-9v2c3.87,0 7,3.13 7,7zM15,12h2c0,-2.76 -2.24,-5 -5,-5v2c1.66,0 3,1.34 3,3z" />
+        android:pathData="M12,9c-1.6,0 -3.15,0.25 -4.6,0.72v3.1c0,0.39 -0.23,0.74 -0.56,0.9 -0.98,0.49 -1.87,1.12 -2.66,1.85 -0.18,0.18 -0.43,0.28 -0.7,0.28 -0.28,0 -0.53,-0.11 -0.71,-0.29L0.29,13.08c-0.18,-0.17 -0.29,-0.42 -0.29,-0.7 0,-0.28 0.11,-0.53 0.29,-0.71C3.34,8.78 7.46,7 12,7s8.66,1.78 11.71,4.67c0.18,0.18 0.29,0.43 0.29,0.71 0,0.28 -0.11,0.53 -0.29,0.71l-2.48,2.48c-0.18,0.18 -0.43,0.29 -0.71,0.29 -0.27,0 -0.52,-0.11 -0.7,-0.28 -0.79,-0.74 -1.69,-1.36 -2.67,-1.85 -0.33,-0.16 -0.56,-0.5 -0.56,-0.9v-3.1C15.15,9.25 13.6,9 12,9z" />
 </vector>
 `,
   'drawable/ic_ki_app.xml': `<?xml version="1.0" encoding="utf-8"?>
