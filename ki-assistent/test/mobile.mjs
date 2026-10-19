@@ -40,7 +40,7 @@ await page.route('https://api.anthropic.com/**', (route) => {
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
   // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
   // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
-  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet/.test(JSON.stringify(request.body.system ?? ''));
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild/.test(JSON.stringify(request.body.system ?? ''));
   const qi = claudeQueue.findIndex((e) => !!e.helper === helper);
   const evs = qi >= 0 ? claudeQueue.splice(qi, 1)[0] : [
     { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
@@ -935,7 +935,7 @@ const kbNote = await page.evaluate(() => [...document.querySelectorAll('.msg.ass
 check(/Firmenwissen mitgegeben: Preisliste\.txt/.test(kbNote), 'Antwort zeigt, welches Dokument mitgegeben wurde', kbNote.slice(-80));
 // Gespeichertes Wissen: Claude bekommt die Werkzeuge und das App-Grundwissen; Speichern/Suchen über das Werkzeug
 const toolNames = (chatReq?.tools ?? []).map((t) => t.name);
-check(toolNames.includes('wissen_speichern') && toolNames.includes('wissen_suchen') && /Über dich und diese App/.test(sys) && /wissen_speichern/.test(sys), 'Claude kennt die App und kann Wissen speichern (Werkzeuge im Auftrag)', JSON.stringify(toolNames));
+check(toolNames.includes('wissen_speichern') && toolNames.includes('wissen_suchen') && /Technischer Rahmen/.test(sys) && /wissen_speichern/.test(sys), 'Claude kennt die App und kann Wissen speichern (Werkzeuge im Auftrag)', JSON.stringify(toolNames));
 // Kosten sparen: Zwischenspeicher-Merkpunkte, wechselnder Zusammenhang an der Frage, Suchgrenze, Datei-Werkzeuge nur bei Bedarf
 const lastUser = [...(chatReq?.messages ?? [])].reverse().find((m) => m.role === 'user');
 const sysArr = Array.isArray(chatReq?.system) ? chatReq.system : [];
@@ -1407,6 +1407,72 @@ const pipRes = await page.evaluate(async () => {
   return out;
 });
 check(/LIVE|hört zu/.test(pipRes.label) && pipRes.frame === 'block' && pipRes.frameOff === 'none', 'Bild-im-Bild: Live-Gespräch als Schild und blauer Rahmen sichtbar', JSON.stringify(pipRes));
+// Abendrunde: Gedächtnis (mit Kategorien) und Selbstbild komplett ordnen; Doppeltes gar nicht erst anlegen; Rolle halten
+claudeQueue.push(Object.assign([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"fakten":["Jens trinkt seinen Kaffee schwarz.","Jens fährt gern Rad."],"ersetzen":[],"themen":[]}' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 30 } },
+  { type: 'message_stop' },
+], { helper: true }));
+claudeQueue.push(Object.assign([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"zusammenfassen":[],"aendern":[],"streichen":[],"themen_streichen":[],"kategorien":[{"nr":1,"kat":"Arbeit"},{"nr":2,"kat":"Vorlieben"},{"nr":3,"kat":"Vorlieben"}]}' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 30 } },
+  { type: 'message_stop' },
+], { helper: true }));
+claudeQueue.push(Object.assign([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"zusammenfassen":[{"nr":[1,2],"text":"Ich halte meine Antworten kurz und knapp."}],"aendern":[],"streichen":[]}' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 30 } },
+  { type: 'message_stop' },
+], { helper: true }));
+const nightRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  p.memoryOn = true;
+  p.memory = [
+    { id: 'n1', text: 'Jens arbeitet bei ergoforyou.', created: 1 },
+    { id: 'n2', text: 'Jens trinkt Kaffee schwarz.', created: 2 },
+  ];
+  p.selbst = [
+    { id: 's1', text: 'Ich fasse mich kurz.', art: 'vorsatz', quelle: 'gespraech', created: 1 },
+    { id: 's2', text: 'Ich halte meine Antworten kurz.', art: 'vorsatz', quelle: 'gespraech', created: 2 },
+    { id: 's3', text: 'Ich nenne immer Quellen.', art: 'vorsatz', quelle: 'nutzer', created: 3 },
+  ];
+  // Lernen: fast gleicher Fakt wird nicht doppelt angelegt, ein neuer schon
+  await app.learnNow([{ q: 'Ich trinke meinen Kaffee schwarz, und ich fahre gern Rad.', a: 'Gut zu wissen!' }]);
+  const learned = p.memory.map((m) => m.text);
+  // Abendrunde (vor 20 Uhr nicht, danach einmal)
+  const early = await app.nightlyTidy(new Date('2026-10-19T10:00:00'));
+  const ran = await app.nightlyTidy(new Date('2026-10-19T21:30:00'));
+  const twice = await app.nightlyTidy(new Date('2026-10-19T22:30:00'));
+  const out = {
+    learned, early, ran, twice,
+    mem: p.memory.map((m) => `${m.kat}:${m.text}`),
+    selbst: p.selbst.map((e) => e.text),
+    sys: JSON.stringify(app.buildMessages()),
+    heads: [...document.querySelectorAll('#mList .mem-cat')].map((h) => h.textContent),
+  };
+  p.memory = [];
+  p.selbst = [];
+  return out;
+});
+check(
+  nightRes.learned.length === 3 && nightRes.learned.includes('Jens fährt gern Rad.') &&
+    !nightRes.early && nightRes.ran && !nightRes.twice &&
+    nightRes.mem.includes('Arbeit:Jens arbeitet bei ergoforyou.') && nightRes.mem.includes('Vorlieben:Jens trinkt Kaffee schwarz.') &&
+    JSON.stringify(nightRes.selbst) === JSON.stringify(['Ich halte meine Antworten kurz und knapp.', 'Ich nenne immer Quellen.']) &&
+    /Arbeit:\\n- Jens arbeitet/.test(nightRes.sys) && /nicht ein Assistent, der/.test(nightRes.sys) &&
+    nightRes.heads.includes('Arbeit'),
+  'Gedächtnis: Doppeltes nicht neu angelegt, Abendrunde ordnet nach Kategorien und das Selbstbild, Rolle wird gehalten',
+  JSON.stringify({ ...nightRes, sys: undefined }),
+);
 // Beenden-Knopf am Handy: sichtbar, fragt einmal nach und beendet dann die App
 const quitRes = await page.evaluate(async () => {
   const btn = document.getElementById('btnQuit');

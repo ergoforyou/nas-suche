@@ -110,6 +110,8 @@
         <summary>🧭 Steckbrief – Werte, Regeln, Charakter <span id="sbState" class="hint"></span></summary>
         <p class="hint">Wird als fester Block vor den Systemprompt gesetzt und hat Vorrang. Das Selbstbild der Figur ergänzt ihn,
           ändert ihn aber nicht – passt aus ihrer Sicht etwas nicht mehr, schlägt sie eine Änderung vor. Leere Felder zählen nicht.</p>
+        <label class="check"><input id="sbImmersion" type="checkbox" /> 🎭 Rolle konsequent halten <span class="hint">(die Figur spricht als sie selbst statt
+          „Als KI …“; fragst du ernsthaft, ob sie eine KI ist, sagt sie ehrlich ja und bleibt danach in ihrer Rolle)</span></label>
         <label>Rolle <input id="sbRolle" type="text" placeholder="z. B. Assistentin im Büro, Sparringspartner, Coach" /></label>
         <label>Hintergrund <textarea id="sbHintergrund" rows="2" placeholder="kurze Biografie: woher sie kommt, was sie ausmacht"></textarea></label>
         <label>Fachgebiete <input id="sbFach" type="text" placeholder="z. B. Ergonomie, Vertrieb, Steuern" /></label>
@@ -364,14 +366,15 @@
         <button id="mAdd">＋</button>
       </div>
       <div class="row wrap">
-        <button id="mTidy" title="Doppeltes zusammenfassen, Widersprüche auflösen (das Neuere gilt), Vorübergehendes streichen">🧹 Aufräumen</button>
+        <button id="mTidy" title="Gedächtnis und Selbstbild komplett ordnen: Doppeltes zusammenfassen, Widersprüche auflösen (das Neuere gilt), Vorübergehendes streichen, nach Themen einsortieren">🧹 Jetzt ordnen</button>
         <button id="mTidyUndo" hidden>↩ Rückgängig</button>
         <button id="mClear" class="danger">Alles vergessen</button>
       </div>
       <p id="mTidyInfo" class="hint"></p>
       <details id="mTidyDetailsBox" class="hint" hidden><summary>Was beim letzten Aufräumen geändert wurde</summary><pre id="mTidyDetails" class="tidy-details"></pre></details>
-      <p class="hint">Das Aufräumen läuft auch von selbst (nach etwa 15 neu gelernten Fakten, spätestens wöchentlich).
-        👤 Was du selbst eingetragen oder bearbeitet hast, bleibt dabei immer unverändert.</p>
+      <label class="check"><input id="mNight" type="checkbox" /> 🌙 Abends automatisch ordnen <span class="hint">(einmal am Tag ab 20 Uhr, wenn die App läuft: Gedächtnis und Selbstbild komplett)</span></label>
+      <p class="hint">Zusätzlich räumt die App nach etwa 15 neu gelernten Fakten kurz auf; fast gleiche Einträge werden gar nicht
+        erst doppelt angelegt. 👤 Was du selbst eingetragen oder bearbeitet hast, bleibt dabei immer unverändert.</p>
 
       <h3>💬 Gesprächsgefühl</h3>
       <label class="check"><input id="cGreet" type="checkbox" /> Persönliche Begrüßung beim Start <span class="hint">(nach mindestens
