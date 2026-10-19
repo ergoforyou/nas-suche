@@ -28,7 +28,18 @@ jobs:
           node-version: "20"
 
       - name: Tesseract und LibreOffice installieren
-        run: choco install -y --no-progress tesseract libreoffice-fresh
+        run: |
+          # Chocolatey meldet Download-Störungen nicht immer als Fehler → prüfen und bis zu 3× versuchen
+          $ziele = @{ tesseract = "C:\Program Files\Tesseract-OCR\tesseract.exe"; "libreoffice-fresh" = "C:\Program Files\LibreOffice\program\soffice.exe" }
+          foreach ($paket in $ziele.Keys) {
+            for ($i = 1; $i -le 3 -and -not (Test-Path $ziele[$paket]); $i++) {
+              "Installiere $paket (Versuch $i) …"
+              choco install -y --no-progress $paket
+              if (-not (Test-Path $ziele[$paket])) { Start-Sleep -Seconds (15 * $i) }
+            }
+            if (-not (Test-Path $ziele[$paket])) { Write-Error "$paket wurde nicht installiert ($($ziele[$paket]) fehlt)"; exit 1 }
+          }
+          & $ziele.tesseract --version
 
       - name: Beste Erkennungsmodelle laden (tessdata_best)
         run: |
