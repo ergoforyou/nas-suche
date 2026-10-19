@@ -92,14 +92,54 @@ export const TIDY_PROMPT = {
     '"themen_streichen":[1],"kategorien":[{"nr":3,"kat":"Vorlieben"}]}',
 };
 
-/** Selbstbild ordnen: gleiche Plan-Form, aber Ich-Form und ohne Themen/Kategorien. */
+/**
+ * Selbstbild ordnen: behutsam – es soll wachsen dürfen. Nur wirklich Gleiches zusammenfassen, Einträge eher
+ * weiterentwickeln als streichen; gestrichen wird nur, was eindeutig widerlegt ist.
+ */
 export const SELF_TIDY_PROMPT =
-  'Du ordnest dein eigenes Selbstbild – Notizen, die du über dich geschrieben hast (nummeriert, älteste zuerst). ' +
-  'Fasse Doppeltes und fast Gleiches zu EINER klaren Notiz zusammen, löse Widersprüche (die höhere Nummer ist neuer ' +
-  'und gilt), streiche Überholtes und Belangloses, damit ein stimmiges, knappes Bild von dir entsteht. Ich-Form, ' +
-  'kurze Sätze. Einträge mit „(vom Nutzer)“ NIE ändern, zusammenfassen oder streichen. Nichts erfinden. Wenn alles ' +
-  'in Ordnung ist, leere Listen. Antworte ausschließlich mit JSON: ' +
+  'Du ordnest dein eigenes Selbstbild – Notizen, die du über dich geschrieben hast (nummeriert, älteste zuerst; ' +
+  '„×bestätigt“ zeigt, wie oft sich etwas wiederholt hat). Es soll organisch wachsen dürfen, also behutsam: ' +
+  '1) Nur wirklich Gleiches oder fast Gleiches zu EINER Notiz zusammenfassen (die Bestätigungen zählen dann zusammen). ' +
+  '2) Hat sich etwas weiterentwickelt, den Eintrag mit „aendern“ fortschreiben statt ihn zu streichen. 3) Streichen nur, ' +
+  'was eindeutig widerlegt ist oder dir offensichtlich nicht mehr entspricht – im Zweifel behalten. Ich-Form, kurze ' +
+  'Sätze. Einträge mit „(vom Nutzer)“ NIE ändern, zusammenfassen oder streichen. Nichts erfinden. Wenn alles in Ordnung ' +
+  'ist, leere Listen. Antworte ausschließlich mit JSON: ' +
   '{"zusammenfassen":[{"nr":[1,4],"text":"…"}],"aendern":[{"nr":2,"text":"…"}],"streichen":[5]}';
+
+export const SELF_WEIGHT_MAX = 9;
+const FADE_DAYS = 45;
+
+/** Selbstbild fürs Sprachmodell: gefestigte Einträge zuerst (oft bestätigt), dann die neueren; höchstens 20. */
+export function selfPromptList(selbst, max = 20) {
+  const w = (e) => e.w ?? 1;
+  return [...(selbst ?? [])]
+    .sort((a, b) => w(b) - w(a) || (b.seen ?? b.created ?? 0) - (a.seen ?? a.created ?? 0))
+    .slice(0, max)
+    .map((e) => `- ${w(e) >= 3 ? '(gefestigt) ' : ''}${e.text}`)
+    .join('\n');
+}
+
+/** Selbstbild fürs Ordnen/Nachdenken: nummeriert, mit Bestätigungen. */
+export function numberedSelf(selbst, kinds = {}) {
+  return (selbst ?? [])
+    .map((m, i) => `${i + 1}. ${kinds[m.art] ? `[${kinds[m.art]}] ` : ''}${m.text}${(m.w ?? 1) > 1 ? ` (${m.w}×bestätigt)` : ''}${m.quelle === 'nutzer' ? ' (vom Nutzer)' : ''}`)
+    .join('\n');
+}
+
+/**
+ * Langsames Vergessen: Was die Figur nur einmal über sich notiert und seit FADE_DAYS Tagen nie wieder bestätigt hat,
+ * verblasst. Eigene Einträge des Nutzers und gefestigte bleiben.
+ */
+export function fadeSelf(selbst, now = Date.now()) {
+  const keep = [];
+  const faded = [];
+  for (const e of selbst ?? []) {
+    const old = now - (e.seen ?? e.created ?? now) > FADE_DAYS * 86400e3;
+    if (e.quelle !== 'nutzer' && (e.w ?? 1) <= 1 && old) faded.push(e.text);
+    else keep.push(e);
+  }
+  return { selbst: keep, faded };
+}
 
 /** Antwort des Modells lesen (robust gegen Text drumherum). */
 export function parsePlan(text) {
@@ -138,7 +178,9 @@ export function applyPlan(memory, themen, plan, { now = Date.now(), newId }) {
     // Felder (Art, Kategorie …) vom neuesten Teil übernehmen, Text und Kennung neu
     const newest = parts.reduce((a, b) => ((b.created ?? 0) > (a.created ?? 0) ? b : a));
     const { _gone, id: _id, quelle: _q, ...rest } = newest;
-    added.push({ after: Math.max(...parts.map((e) => mem.indexOf(e))), entry: { ...rest, id: newId(), text, created: Math.max(...parts.map((e) => e.created ?? 0)), changed: now, ...(kat(z?.kat) ? { kat: z.kat } : {}) } });
+    // Bestätigungen (Selbstbild) zählen beim Zusammenfassen zusammen
+    const weight = parts.some((e) => e.w) ? { w: Math.min(SELF_WEIGHT_MAX, parts.reduce((a, e) => a + (e.w ?? 1), 0)) } : {};
+    added.push({ after: Math.max(...parts.map((e) => mem.indexOf(e))), entry: { ...rest, id: newId(), text, created: Math.max(...parts.map((e) => e.created ?? 0)), changed: now, ...weight, ...(kat(z?.kat) ? { kat: z.kat } : {}) } });
     report.zusammengefasst.push({ aus: parts.map((e) => e.text), zu: text });
   }
   for (const a of plan.aendern) {

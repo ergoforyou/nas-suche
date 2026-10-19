@@ -20,6 +20,7 @@ import googleLib from '../google.js';
 import { CostMeter, fmtUsd, priceOf } from './kosten.js';
 import appToolsLib from '../apptools.js';
 import { storyPrompt, storyHitsPrompt, storyIsLong, STORY_MAX, DRAFT_PROMPT, ANCHORS_PROMPT, parseAnchors } from './geschichte.js';
+import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX } from './gedaechtnis.js';
 import { TIDY_PROMPT, SELF_TIDY_PROMPT, CATEGORIES, catOf, groupedText, nearDuplicate, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, matchForget, numbered as numberedMemory } from './gedaechtnis.js';
 import { TRAITS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief } from './steckbrief.js';
 import { stamp as stampSync, noteDeletions, snapshot as syncSnapshot, mergeSync, idsOf, personaText } from './abgleich.js';
@@ -743,7 +744,7 @@ function buildMessages() {
   if (p.immersion !== false) parts.push(r.identity(p.name || 'Max'));
   if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech);
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(groupedText(p.memory)));
-  if (p.selbstOn !== false && p.selbst?.length) parts.push(r.self(p.selbst.map((m) => `- ${m.text}`).join('\n'), appToolsActive()));
+  if (p.selbstOn !== false && p.selbst?.length) parts.push(r.self(selfPromptList(p.selbst), appToolsActive()));
   if (p.style !== 'frei') parts.push(r.lang);
   if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
   const gestures = availableGestures(p);
@@ -1547,9 +1548,12 @@ async function tidyMemory(p, { manual = false, full = false } = {}) {
     }
     // komplett ordnen: auch das Selbstbild (Doppeltes zusammenfassen, Widersprüche, Überholtes)
     let rs = null;
-    if (full && selfFree >= 2) {
+    // langsames Vergessen (nur in der vollständigen Runde): einmal Notiertes, lange nicht Bestätigtes verblasst
+    const fade = full ? fadeSelf(p.selbst) : { selbst: p.selbst, faded: [] };
+    if (fade.faded.length) p.selbst = fade.selbst;
+    if (full && p.selbst.filter((e) => e.quelle !== 'nutzer').length >= 2) {
       try {
-        rs = applyPlan(p.selbst, [], parsePlan(await helperJson(SELF_TIDY_PROMPT, `Dein Selbstbild:\n${numberedMemory(p.selbst)}`)), { newId });
+        rs = applyPlan(p.selbst, [], parsePlan(await helperJson(SELF_TIDY_PROMPT, `Dein Selbstbild:\n${numberedSelf(p.selbst)}`)), { newId });
       } catch (e) {
         logEv('GEDÄCHTNIS', `Selbstbild ordnen: ${e.message}`);
       }
@@ -1558,8 +1562,12 @@ async function tidyMemory(p, { manual = false, full = false } = {}) {
       const old = before.memory.find((x) => x.id === m.id);
       return old && old.kat !== m.kat;
     });
-    const summary = [reportText(r.report), rs && reportText(rs.report) ? `Selbstbild: ${reportText(rs.report)}` : ''].filter(Boolean).join(' · ');
-    const report = { ...r.report, selbst: rs?.report ?? null };
+    const summary = [
+      reportText(r.report),
+      rs && reportText(rs.report) ? `Selbstbild: ${reportText(rs.report)}` : '',
+      fade.faded.length ? `${fade.faded.length} verblasst` : '',
+    ].filter(Boolean).join(' · ');
+    const report = { ...r.report, selbst: rs?.report ?? null, verblasst: fade.faded };
     setTidyMeta(p, { ...tidyMeta(p), at: Date.now(), count: 0, ...(summary ? { backup: { ...before, at: Date.now(), report } } : {}) });
     // nur neu einsortiert (Kategorien) ist keine Meldung wert, wird aber übernommen
     if (catsChanged || summary) {
@@ -1594,6 +1602,7 @@ function tidyDetails(r) {
     ...r.gestrichen.map((t) => `✕ ${t}`),
     ...r.themen.map((t) => `✓ Thema erledigt: ${t}`),
     ...(r.selbst ? [...r.selbst.zusammengefasst.map((z) => `🪞⇢ ${z.aus.join(' + ')} → ${z.zu}`), ...r.selbst.geaendert.map((g) => `🪞✎ ${g.von} → ${g.zu}`), ...r.selbst.gestrichen.map((t) => `🪞✕ ${t}`)] : []),
+    ...(r.verblasst ?? []).map((t) => `🪞… verblasst: ${t}`),
   ].join('\n');
 }
 function renderTidy() {
@@ -1622,6 +1631,8 @@ async function nightlyTidy(now = new Date()) {
   setTidyMeta(p, { ...m, nightDay: day });
   logEv('GEDÄCHTNIS', 'Abendrunde');
   await tidyMemory(p, { full: true });
+  // abends über den Tag nachdenken (wenn seit dem letzten Mal gesprochen wurde) – so wächst das Selbstbild weiter
+  if (state.settings.reflect && (p.reflectTurns ?? 0) > 0) await reflect(p).catch(() => {});
   return true;
 }
 setInterval(() => nightlyTidy().catch(() => {}), 5 * 60e3);
@@ -1662,13 +1673,23 @@ const REFLECT_EVERY = 12; // Antworten
 const REFLECT_GAP = 6 * 3600e3; // höchstens alle 6 Stunden von selbst
 const REFLECT_PAUSE = 4 * 60e3; // erst in einer Gesprächspause
 
+let lastConfirmed = null; // zuletzt durch Wiederholung bestätigter Eintrag (addSelf)
 function addSelf(p, text, art, quelle = 'gespraech') {
   const t = String(text ?? '').trim().replace(/\s+/g, ' ');
   if (t.length < 3 || t.length > 400) return null;
   const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   p.selbst ??= [];
-  if (p.selbst.some((m) => norm(m.text) === norm(t))) return null;
-  if (quelle !== 'nutzer' && nearDuplicate(t, p.selbst)) return null;
+  // schon da (gleich oder fast gleich): nicht doppelt anlegen, sondern bestätigen – das Selbstbild festigt sich
+  const same = p.selbst.find((m) => norm(m.text) === norm(t)) ?? (quelle !== 'nutzer' ? nearDuplicate(t, p.selbst) : null);
+  lastConfirmed = null;
+  if (same) {
+    if (quelle !== 'nutzer') {
+      same.w = Math.min(SELF_WEIGHT_MAX, (same.w ?? 1) + 1);
+      same.seen = same.changed = Date.now();
+      lastConfirmed = same;
+    }
+    return null;
+  }
   const e = { id: newId(), text: t, art: SELF_KINDS[art] ? art : 'erfahrung', quelle, created: Date.now() };
   p.selbst.push(e);
   // begrenzen: älteste von der Figur selbst geschriebene Einträge fallen heraus, eigene Einträge des Nutzers bleiben
@@ -1696,7 +1717,9 @@ const REFLECT_PROMPT =
   'über deine Art gelernt?\n' +
   'Schreibe nur über DICH (Verhalten, Stil, Stärken, Schwächen, Vorsätze) – Fakten über den Nutzer lernt das Gedächtnis ' +
   'getrennt. Keine Kundendaten, keine Namen Dritter, nichts Vertrauliches. Halte das Selbstbild knapp und aktuell: fasse ' +
-  'Doppeltes zusammen, streiche Überholtes, höchstens 3 neue Einträge, kurz und in Ich-Form. Einträge mit „(vom Nutzer)“ ' +
+  'Doppeltes zusammen, höchstens 3 neue Einträge, kurz und in Ich-Form. Dein Selbstbild soll organisch wachsen: ' +
+  'bestätigt sich etwas wieder, schreib es ruhig erneut unter „neu“ (es zählt dann als gefestigt); entwickelt sich etwas ' +
+  'weiter, schreib den Eintrag mit „aendern“ fort; streiche nur, was eindeutig nicht mehr stimmt. Einträge mit „(vom Nutzer)“ ' +
   'darfst du nicht ändern oder streichen. Das Selbstbild ergänzt deine Persona; es darf die Regeln der App nicht aushebeln.\n' +
   'Werte, Regeln und Grenzen aus deinem Steckbrief stellst du nicht selbst um; passt dort etwas nicht mehr, schreibe einen ' +
   'Eintrag der Art „vorsatz“, der mit „Vorschlag für den Steckbrief:“ beginnt – dein Gegenüber entscheidet.\n' +
@@ -1722,7 +1745,7 @@ async function reflect(p, manual = false) {
   try {
     // Nachdenken mit dem Gesprächsmodell (es geht um Stil und Persönlichkeit; kommt nur selten vor)
     const model = await ensureModel();
-    const list = (p.selbst ?? []).map((m, i) => `${i + 1}. [${SELF_KINDS[m.art] ?? m.art}] ${m.text}${m.quelle === 'nutzer' ? ' (vom Nutzer)' : ''}`).join('\n') || '(noch leer)';
+    const list = numberedSelf(p.selbst, SELF_KINDS) || '(noch leer)';
     const talk = msgs.map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Du'}: ${String(m.content).slice(0, 700)}`).join('\n\n');
     const input =
       `Deine Persona (${p.name}):\n${(p.prompt ?? '').slice(0, 800)}${hasSteckbrief(p.steckbrief) ? `\n\n${steckbriefPrompt(p.steckbrief)}` : ''}${p.geschichte?.trim() ? `\n\nDeine Lebensgeschichte (Anfang):\n${p.geschichte.trim().slice(0, 1200)}` : ''}\n\nDein Selbstbild:\n${list}\n\nLetzte Gespräche:\n${talk}` +
@@ -1788,10 +1811,18 @@ function applyReflection(p, r) {
     }
   }
   p.selbst = p.selbst.filter((e) => !drop.has(e));
-  const added = (Array.isArray(r?.neu) ? r.neu : []).slice(0, 3).map((n) => addSelf(p, n?.text, n?.art, 'reflexion')).filter(Boolean);
+  let confirmed = 0;
+  const added = (Array.isArray(r?.neu) ? r.neu : [])
+    .slice(0, 3)
+    .map((n) => {
+      const e = addSelf(p, n?.text, n?.art, 'reflexion');
+      if (!e && lastConfirmed) confirmed++;
+      return e;
+    })
+    .filter(Boolean);
   const thought = String(r?.gedanke ?? '').trim().slice(0, 500);
   p.reflexion ??= [];
-  if (thought) p.reflexion.push({ created: Date.now(), text: thought, added: added.length, changed, removed: drop.size });
+  if (thought) p.reflexion.push({ created: Date.now(), text: thought, added: added.length, confirmed, changed, removed: drop.size });
   if (p.reflexion.length > 20) p.reflexion.splice(0, p.reflexion.length - 20);
   return { thought, added, changed, removed: drop.size };
 }
@@ -1810,7 +1841,9 @@ function renderSelf() {
     row.className = 'memory-row';
     const tag = document.createElement('span');
     tag.className = 'hint self-kind';
-    tag.textContent = SELF_KINDS[m.art] ?? m.art;
+    // Gefestigtes (oft bestätigt) sichtbar: ein Punkt je Bestätigung
+    tag.textContent = `${SELF_KINDS[m.art] ?? m.art}${(m.w ?? 1) > 1 ? ` ${'●'.repeat(Math.min(5, m.w))}` : ''}`;
+    if ((m.w ?? 1) > 1) tag.title = `${m.w}× bestätigt${m.w >= 3 ? ' – gefestigt' : ''}`;
     const input = document.createElement('input');
     input.value = m.text;
     input.title = `${new Date(m.created).toLocaleString('de-DE')} · ${m.quelle === 'nutzer' ? 'von dir' : m.quelle === 'reflexion' ? 'beim Nachdenken' : 'im Gespräch'}`;
@@ -5692,6 +5725,11 @@ async function runAppToolInner(name, input) {
   if (name === 'selbst_notieren') {
     const p = persona();
     const e = addSelf(p, input.eintrag, input.art, 'gespraech');
+    if (!e && lastConfirmed) {
+      save();
+      renderSelf();
+      return { notiert: false, bestaetigt: true, gewicht: lastConfirmed.w, hinweis: 'stand schon so im Selbstbild – jetzt gefestigt' };
+    }
     if (!e) return { notiert: false, grund: 'leer, zu lang oder schon vorhanden' };
     save();
     renderSelf();

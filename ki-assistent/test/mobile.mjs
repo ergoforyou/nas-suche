@@ -1441,9 +1441,9 @@ const nightRes = await page.evaluate(async () => {
     { id: 'n2', text: 'Jens trinkt Kaffee schwarz.', created: 2 },
   ];
   p.selbst = [
-    { id: 's1', text: 'Ich fasse mich kurz.', art: 'vorsatz', quelle: 'gespraech', created: 1 },
-    { id: 's2', text: 'Ich halte meine Antworten kurz.', art: 'vorsatz', quelle: 'gespraech', created: 2 },
-    { id: 's3', text: 'Ich nenne immer Quellen.', art: 'vorsatz', quelle: 'nutzer', created: 3 },
+    { id: 's1', text: 'Ich fasse mich kurz.', art: 'vorsatz', quelle: 'gespraech', created: Date.now() - 3000 },
+    { id: 's2', text: 'Ich halte meine Antworten kurz.', art: 'vorsatz', quelle: 'gespraech', created: Date.now() - 2000 },
+    { id: 's3', text: 'Ich nenne immer Quellen.', art: 'vorsatz', quelle: 'nutzer', created: Date.now() - 1000 },
   ];
   // Lernen: fast gleicher Fakt wird nicht doppelt angelegt, ein neuer schon
   await app.learnNow([{ q: 'Ich trinke meinen Kaffee schwarz, und ich fahre gern Rad.', a: 'Gut zu wissen!' }]);
@@ -1472,6 +1472,33 @@ check(
     nightRes.heads.includes('Arbeit'),
   'Gedächtnis: Doppeltes nicht neu angelegt, Abendrunde ordnet nach Kategorien und das Selbstbild, Rolle wird gehalten',
   JSON.stringify({ ...nightRes, sys: undefined }),
+);
+// Selbstbild wächst organisch: Wiederholtes festigt sich (statt doppelt), gefestigtes steht vorn, nie Bestätigtes verblasst
+const growRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const day = 86400e3;
+  p.selbst = [
+    { id: 'g1', text: 'Ich erkläre Dinge gern mit Beispielen.', art: 'vorliebe', quelle: 'gespraech', created: Date.now() - 2 * day },
+    { id: 'g2', text: 'Ich mochte früher lange Listen.', art: 'vorliebe', quelle: 'reflexion', created: Date.now() - 60 * day },
+    { id: 'g3', text: 'Ich duze immer.', art: 'vorsatz', quelle: 'nutzer', created: Date.now() - 90 * day },
+  ];
+  const a = await app.runAppTool('selbst_notieren', { eintrag: 'Ich erkläre Dinge gern mit Beispielen.' });
+  const b = await app.runAppTool('selbst_notieren', { eintrag: 'Ich erkläre Dinge sehr gern mit Beispielen.' });
+  const w = p.selbst.find((e) => e.id === 'g1').w;
+  const sys = JSON.stringify(app.buildMessages());
+  const strongFirst = sys.indexOf('(gefestigt) Ich erkläre Dinge gern') > -1 && sys.indexOf('(gefestigt) Ich erkläre') < sys.indexOf('Ich duze immer');
+  // Abendrunde: altes, nie bestätigtes verblasst; eigenes (Nutzer) und gefestigtes bleiben
+  await app.nightlyTidy(new Date('2026-10-20T21:00:00'));
+  const left = p.selbst.map((e) => e.text);
+  p.selbst = [];
+  return { a, b, w, strongFirst, left };
+});
+check(
+  growRes.a.bestaetigt && growRes.b.bestaetigt && growRes.w === 3 && growRes.strongFirst &&
+    growRes.left.includes('Ich erkläre Dinge gern mit Beispielen.') && growRes.left.includes('Ich duze immer.') && !growRes.left.includes('Ich mochte früher lange Listen.'),
+  'Selbstbild wächst organisch: Wiederholtes festigt sich, Gefestigtes steht vorn, nie Bestätigtes verblasst',
+  JSON.stringify(growRes),
 );
 // Beenden-Knopf am Handy: sichtbar, fragt einmal nach und beendet dann die App
 const quitRes = await page.evaluate(async () => {
