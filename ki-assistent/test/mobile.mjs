@@ -1468,7 +1468,7 @@ check(
     !nightRes.early && nightRes.ran && !nightRes.twice &&
     nightRes.mem.includes('Arbeit:Jens arbeitet bei ergoforyou.') && nightRes.mem.includes('Vorlieben:Jens trinkt Kaffee schwarz.') &&
     JSON.stringify(nightRes.selbst) === JSON.stringify(['Ich halte meine Antworten kurz und knapp.', 'Ich nenne immer Quellen.']) &&
-    /Arbeit:\\n- Jens arbeitet/.test(nightRes.sys) && /nicht ein Assistent, der/.test(nightRes.sys) &&
+    /Arbeit:\\n- Jens arbeitet/.test(nightRes.sys) && /nicht ein Assistent, der/.test(nightRes.sys) && /Klartext:/.test(nightRes.sys) && /KEINE/.test(nightRes.sys) &&
     nightRes.heads.includes('Arbeit'),
   'Gedächtnis: Doppeltes nicht neu angelegt, Abendrunde ordnet nach Kategorien und das Selbstbild, Rolle wird gehalten',
   JSON.stringify({ ...nightRes, sys: undefined }),
