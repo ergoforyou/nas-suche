@@ -1040,6 +1040,24 @@ public class MainActivity extends BridgeActivity {
             if (Build.VERSION.SDK_INT >= 33) runOnUiThread(() -> requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 4712));
         }
 
+        /** App ganz beenden (wie ✕ am PC): Hintergrund-Dienst, schwebende Figur und Aktivierungswort aus, Prozess beenden. */
+        @JavascriptInterface
+        public void quit() {
+            runOnUiThread(() -> {
+                try {
+                    floatEnabled = false;
+                    pipEnabled = false;
+                    hideFloat();
+                    MainActivity.this.setBackground(false);
+                    stopService(new Intent(MainActivity.this, KIConversationService.class));
+                } catch (Exception e) {
+                    Log.w("KI-Assistent", "Beenden", e);
+                }
+                finishAndRemoveTask();
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 400);
+            });
+        }
+
         @JavascriptInterface
         public void setBackground(boolean on) {
             runOnUiThread(() -> MainActivity.this.setBackground(on));

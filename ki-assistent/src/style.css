@@ -266,7 +266,7 @@ body.floating .stage { display: none; }
 
 /* ---------- Android-App ---------- */
 .mobile body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-.mobile #btnFloat, .mobile #btnOutput, .mobile #btnPin, .mobile #btnMin, .mobile #btnClose, .mobile #btnQuit,
+.mobile #btnFloat, .mobile #btnOutput, .mobile #btnPin, .mobile #btnMin, .mobile #btnClose,
 .mobile .desktop-only, .mobile #avFloatSize, .mobile label:has(> #avFloatSize) { display: none !important; }
 .mobile .titlebar { -webkit-app-region: none; height: 44px; }
 .mobile .round { width: 44px; height: 44px; }

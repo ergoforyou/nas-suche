@@ -206,6 +206,8 @@ const api = {
     await storeKeys(k);
     return true;
   },
+  // App ganz beenden (Hintergrund, Aktivierungswort, schwebende Figur aus)
+  quit: () => window.KIDevice?.quit?.(),
   nasHasPassword: async () => AREA === 'privat' && !!(await getKeys()).nas,
   nasReq: async ({ base, user, method = 'GET', path = '', body, headers = {} }) => {
     if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');

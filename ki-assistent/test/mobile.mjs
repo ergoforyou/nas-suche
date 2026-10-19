@@ -1131,6 +1131,37 @@ const micRes = await page.evaluate(async () => {
   return { open, aec, track, closed };
 });
 check(micRes.open && micRes.aec === false && micRes.track === false && micRes.closed, 'Mikrofon: Aktivierungswort ohne Echo-Unterdrückung, danach schließt es wieder', JSON.stringify(micRes));
+// Aktivierungswort: ähnlich geschriebene Namen zählen, kurze Aufnahmen werden mit Stille aufgefüllt
+const wakeFix = await page.evaluate(() => {
+  const app = window.__app;
+  return {
+    lena: !!app.matchWake('Hallo Lena, wie spät ist es', 'Lina'),
+    lina2: !!app.matchWake('Linah', 'Lina'),
+    other: !!app.matchWake('Hallo Tom', 'Lina'),
+    pad: app.padAudio(new Float32Array(1600)).length,
+  };
+});
+check(wakeFix.lena && wakeFix.lina2 && !wakeFix.other && wakeFix.pad === 1600 + 2 * 6400, 'Aktivierungswort: ähnliche Schreibweisen zählen, kurze Aufnahmen mit Stille aufgefüllt', JSON.stringify(wakeFix));
+// Beenden-Knopf am Handy: sichtbar, fragt einmal nach und beendet dann die App
+const quitRes = await page.evaluate(async () => {
+  const btn = document.getElementById('btnQuit');
+  const visible = getComputedStyle(btn).display !== 'none';
+  let quit = 0;
+  const q = window.desktop.quit;
+  const c = window.confirm;
+  window.desktop.quit = () => quit++;
+  window.confirm = () => false;
+  btn.click();
+  await new Promise((r) => setTimeout(r, 700));
+  const afterNo = quit;
+  window.confirm = () => true;
+  btn.click();
+  await new Promise((r) => setTimeout(r, 700));
+  window.desktop.quit = q;
+  window.confirm = c;
+  return { visible, afterNo, quit };
+});
+check(quitRes.visible && quitRes.afterNo === 0 && quitRes.quit === 1, 'Handy: Knopf „Beenden“ sichtbar, fragt nach und beendet die App ganz', JSON.stringify(quitRes));
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
 {
   const { default: qrcodeGen } = await import('qrcode-generator');

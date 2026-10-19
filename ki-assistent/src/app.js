@@ -2086,7 +2086,14 @@ $('avCloseMode').onchange = (e) => {
   $('btnClose').title = e.target.value === 'weiter' ? 'Chat schließen (die freie Figur bleibt)' : 'KI-Assistent beenden';
   save();
 };
-$('btnQuit').onclick = () => desktop.quit();
+$('btnQuit').onclick = () => {
+  // Handy: einmal nachfragen – danach hört nichts mehr zu (Aktivierungswort, Hintergrund, schwebende Figur)
+  if (MOBILE && !confirm('KI-Assistent ganz beenden?\n\nDanach hört nichts mehr zu (Aktivierungswort, Gespräch im Hintergrund, schwebende Figur), bis du die App wieder öffnest.')) return;
+  stopAll();
+  stt.closeMic();
+  save({ quiet: true });
+  setTimeout(() => desktop.quit(), MOBILE ? 500 : 0);
+};
 $('btnPin').onclick = () => {
   state.settings.alwaysOnTop = !state.settings.alwaysOnTop;
   desktop.setAlwaysOnTop(state.settings.alwaysOnTop);
@@ -6105,16 +6112,45 @@ function matchWake(text, phrase) {
   const key = String(phrase).toLowerCase().split(/\s+/).filter(Boolean).pop();
   if (!key || !words.length) return null;
   const kc = koelner(key);
+  // ein Buchstabe Unterschied zählt bei längeren Namen mit (die kleine Erkennung schreibt Namen gern etwas anders)
+  const near = (a, b) => {
+    if (Math.abs(a.length - b.length) > 1 || Math.min(a.length, b.length) < 4) return false;
+    let i = 0;
+    while (i < a.length && a[i] === b[i]) i++;
+    return a.slice(i + 1) === b.slice(i + 1) || a.slice(i) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i);
+  };
   for (let i = 0; i < Math.min(words.length, 6); i++) {
     const w = words[i];
-    if (w === key || (kc.length >= 2 && koelner(w) === kc)) return { rest: words.slice(i + 1).join(' ') };
+    if (w === key || near(w, key) || (kc.length >= 2 && koelner(w) === kc)) return { rest: words.slice(i + 1).join(' ') };
   }
   return null;
+}
+/** Kurze Aufnahme für die Erkennung vorbereiten: etwas Stille davor und danach (Whisper erkennt sehr kurze Wörter sonst schlecht). */
+function padAudio(audio, sec = 0.4) {
+  const pad = Math.round(16000 * sec);
+  const out = new Float32Array(audio.length + 2 * pad);
+  out.set(audio, pad);
+  return out;
+}
+/** Zuletzt Gehörtes fürs Aktivierungswort (nur in der Anzeige, nicht im Fehlerprotokoll). */
+function showWakeHeard(text, hit) {
+  state.wakeLast = { text, hit, at: Date.now() };
+  const el = document.getElementById('privWakeInfo');
+  if (el) el.textContent = text ? `Zuletzt verstanden: „${text.slice(0, 80)}“ – ${hit ? 'erkannt ✔' : `kein „${wakeWord()}“ darin`}` : '';
 }
 let wakeRunning = false;
 async function wakeLoop() {
   if (wakeRunning) return;
   wakeRunning = true;
+  try {
+    await wakeLoopInner();
+  } catch (e) {
+    logEv('WACHWORT', `Fehler: ${e.message}`);
+  } finally {
+    wakeRunning = false;
+  }
+}
+async function wakeLoopInner() {
   logEv('WACHWORT', `an („${wakeWord()}“)`);
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
   while (MOBILE && state.settings.wakeOn) {
@@ -6142,14 +6178,18 @@ async function wakeLoop() {
     try {
       // erkannt wird auf dem Gerät: bei Cloud-Erkennung mit dem kleinen Modell, sonst mit dem ohnehin geladenen
       const model = (await cloudSttReady()) ? WAKE_MODEL : stt.model;
-      text = await stt.transcribe(audio, progressStatus('Aktivierungswort'), model);
+      text = await stt.transcribe(padAudio(audio), progressStatus('Aktivierungswort'), model);
     } catch (e) {
       logEv('WACHWORT', `Erkennung: ${e.message}`);
       await pause(2000);
       continue;
     }
     const hit = matchWake(text, wakeWord());
-    if (!hit) continue;
+    showWakeHeard(text, !!hit);
+    if (!hit) {
+      logEv('WACHWORT', `gehört, kein Treffer (${text.trim().split(/\s+/).filter(Boolean).length} Wörter)`);
+      continue;
+    }
     logEv('WACHWORT', 'erkannt');
     fireEvent('ack', 1500);
     $('drawer').hidden = true;
@@ -6157,7 +6197,6 @@ async function wakeLoop() {
     if (hit.rest.split(' ').filter(Boolean).length >= 2) await send(hit.rest);
     else await listenOnce();
   }
-  wakeRunning = false;
 }
 function setWake(on) {
   state.settings.wakeOn = !!on;
@@ -7071,6 +7110,27 @@ $('privWakeWord').onchange = (e) => {
   save();
   logEv('WACHWORT', `Wort geändert („${wakeWord()}“)`);
 };
+// Mit dem Mikrofon testen: einmal sprechen, anzeigen, was die Erkennung fürs Aktivierungswort verstanden hat
+$('privWakeMic').onclick = async () => {
+  if (state.micActive && !state.wakeListening) return status('Gerade läuft schon eine Aufnahme.');
+  if (state.wakeListening) stt.cancel();
+  await new Promise((r) => setTimeout(r, 200));
+  state.micActive = true;
+  $('privWakeInfo').textContent = `🎤 Sag jetzt „${wakeWord()}“ …`;
+  try {
+    const audio = await stt.listen({ waitForSpeech: true, threshold: () => state.settings.sensitivity * 1.2, silenceMs: 700, maxMs: 6000, startMs: () => 150, aec: false });
+    state.micActive = false;
+    if (!audio) return ($('privWakeInfo').textContent = 'Nichts gehört – lauter sprechen oder Empfindlichkeit unter ⚙ → Sprache erhöhen.');
+    $('privWakeInfo').textContent = 'Erkenne …';
+    const model = (await cloudSttReady()) ? WAKE_MODEL : stt.model;
+    const text = await stt.transcribe(padAudio(audio), progressStatus('Aktivierungswort'), model);
+    showWakeHeard(text || '(nichts verstanden)', !!matchWake(text, wakeWord()));
+  } catch (e) {
+    $('privWakeInfo').textContent = `Test fehlgeschlagen: ${e.message}`;
+  } finally {
+    state.micActive = false;
+  }
+};
 $('privWakeTest').onclick = () => {
   const t = prompt(`Probe: Was hätte die Spracherkennung verstanden? (z. B. „Hey ${wakeWord()}, wie spät ist es“)`, `Hey ${wakeWord()}, wie spät ist es`);
   if (t == null) return;
@@ -7123,6 +7183,7 @@ window.__app = {
   personalGreeting: () => personalGreeting(),
   addTopic,
   dueTopics,
+  padAudio,
   // QR-Code aus einem Bild lesen (ohne Barcode-Erkennung der WebView, also mit jsQR)
   readQrImage: async (url) => {
     const bmp = await createImageBitmap(await (await fetch(url)).blob());
