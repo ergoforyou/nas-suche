@@ -6,6 +6,8 @@ Start: selbsttest.bat  bzw.  python -m diktierflow --selbsttest
 from __future__ import annotations
 
 import importlib
+import io
+import os
 import sys
 import time
 
@@ -24,7 +26,12 @@ class Report:
         print(f"[{status:^6}] {title}" + (f"\n          {detail}" if detail else ""))
 
 
+NONINTERACTIVE = False
+
+
 def _ask(prompt: str) -> bool:
+    if NONINTERACTIVE:
+        return False
     try:
         return input(f"\n{prompt} [J/n] ").strip().lower() in ("", "j", "ja", "y")
     except EOFError:
@@ -145,7 +152,7 @@ def check_hotkey(r: Report, cfg: Config) -> None:
                 lambda: None)
     hk.start()
     print(f"   Drücke jetzt {cfg.hotkey_dictate} (20 Sekunden Zeit) …")
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + (2 if NONINTERACTIVE else 20)
     while not pressed and time.monotonic() < deadline:
         time.sleep(0.05)
     hk.stop()
@@ -173,7 +180,28 @@ def check_paste(r: Report) -> None:
            "Einfügen per Zwischenablage")
 
 
+def _setup_console() -> None:
+    """Die EXE hat kein Konsolenfenster – für den Selbsttest eines öffnen.
+
+    Mit DIKTIERFLOW_SELFTEST_OUT=<Datei> läuft der Test ohne Rückfragen und
+    schreibt in die Datei (für den automatischen Build-Test).
+    """
+    global NONINTERACTIVE
+    out = os.environ.get("DIKTIERFLOW_SELFTEST_OUT")
+    if out:
+        NONINTERACTIVE = True
+        sys.stdout = open(out, "w", encoding="utf-8")  # noqa: SIM115
+        sys.stdin = io.StringIO("")
+        return
+    if sys.stdout is None and sys.platform == "win32":
+        import ctypes
+        ctypes.windll.kernel32.AllocConsole()
+        sys.stdout = open("CONOUT$", "w", encoding="utf-8")  # noqa: SIM115
+        sys.stdin = open("CONIN$", encoding="utf-8")  # noqa: SIM115
+
+
 def main() -> int:
+    _setup_console()
     print("DiktierFlow – Selbsttest\n" + "=" * 40)
     cfg = Config.load()
     print(f"Einstellungen: {Config.path()}")
@@ -196,7 +224,10 @@ def main() -> int:
     if r.failed:
         print(f"{r.failed} Punkt(e) fehlgeschlagen – siehe oben.")
     else:
-        print("Alles in Ordnung. Starte das Programm mit start.bat und diktiere los.")
+        print("Alles in Ordnung. Starte DiktierFlow und diktiere los.")
+    sys.stdout.flush()
+    if NONINTERACTIVE:
+        return 1 if r.failed else 0
     try:
         input("\nEnter zum Beenden …")
     except EOFError:
