@@ -904,6 +904,16 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
+        /** Hört die App gerade zu? (🎤 der schwebenden Figur wird grün) */
+        @JavascriptInterface
+        public void setListening(boolean on) {
+            runOnUiThread(() -> {
+                if (floatListening == on) return;
+                floatListening = on;
+                paintFloatMic();
+            });
+        }
+
         /** Beim Verlassen der App schweben (statt Bild-im-Bild). */
         @JavascriptInterface
         public void setEnabled(boolean on) {
@@ -1606,16 +1616,6 @@ public class MainActivity extends BridgeActivity {
                     pipLive = on;
                     applyParams();
                     paintFloatLive();
-                });
-            }
-
-            /** Hört die App gerade zu? (🎤 der schwebenden Figur wird grün) */
-            @JavascriptInterface
-            public void setListening(boolean on) {
-                runOnUiThread(() -> {
-                    if (floatListening == on) return;
-                    floatListening = on;
-                    paintFloatMic();
                 });
             }
 
