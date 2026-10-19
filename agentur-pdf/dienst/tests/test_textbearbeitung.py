@@ -12,13 +12,15 @@ from agentur_pdf.kern import textbearbeitung as tb
 from agentur_pdf.kern.dokumente import DokumentFehler
 
 
-def brief(drehung=0):
+def brief(drehung=0, zuschnitt=False):
     doc = pymupdf.open()
     s = doc.new_page()
     s.draw_rect(pymupdf.Rect(60, 80, 420, 145), fill=(0.9, 0.95, 1), color=None)  # farbiger Kasten
     s.insert_text((72, 100), "Die Jahresprämie beträgt 1.200,00 EUR.", fontsize=11, fontname="helv")
     s.insert_text((72, 130), "Zweite Zeile bleibt", fontsize=14, fontname="hebo", color=(0.8, 0, 0))
     s.insert_text((72, 300), "Senkrecht", fontsize=11, rotate=90)
+    if zuschnitt:  # wie bei Scanner-Apps: CropBox ≠ MediaBox
+        s.set_cropbox(pymupdf.Rect(30, 50, 560, 800))
     s.set_rotation(drehung)
     return doc
 
@@ -37,9 +39,9 @@ def test_zeilen_lesen():
     assert 0.1 < z["rechteck"][0] < 0.2
 
 
-@pytest.mark.parametrize("drehung", [0, 90])
-def test_betrag_aendern_mit_euro(drehung):
-    doc = brief(drehung)
+@pytest.mark.parametrize("drehung,zuschnitt", [(0, False), (90, False), (0, True), (90, True)])
+def test_betrag_aendern_mit_euro(drehung, zuschnitt):
+    doc = brief(drehung, zuschnitt)
     z = zeile_mit(doc, "Jahresprämie")
     neu = tb.text_ersetzen(doc, 0, z["bbox"], "Die Jahresprämie beträgt 1.250,00 €.")
     text = doc[0].get_text()

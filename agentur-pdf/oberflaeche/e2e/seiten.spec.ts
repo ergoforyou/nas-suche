@@ -263,3 +263,22 @@ test("Dokumente vergleichen: Unterschiede nebeneinander markiert und anspringbar
   await expect(page.locator(".vergleich")).toHaveCount(0);
   await expect(page.getByTestId("bereich")).toHaveCount(0); // wieder nur ein Dokument
 });
+
+test("Rechtsklick: Seite drucken – aus Seitenansicht und Miniaturen", async ({ page }) => {
+  await start(page);
+  // Seitenansicht: Rechtsklick auf die Seite → nur diese Seite im Druckdialog
+  const seite = page.locator('.seite-inhalt[data-seite="0"]');
+  const box = (await seite.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + Math.min(box.height, 400) / 2, { button: "right" });
+  await page.getByRole("menuitem", { name: "Seite 1 drucken …" }).click();
+  const dialog = page.getByRole("dialog", { name: "Drucken" });
+  await expect(dialog.getByRole("textbox", { name: "Seitenbereich" })).toHaveValue("1");
+  await dialog.getByRole("button", { name: "Abbrechen" }).click();
+  // Miniaturen: zwei Seiten markieren → „2 Seiten drucken …“
+  const mini = page.locator(".miniaturen").first();
+  await mini.locator('.miniatur[data-seite="0"]').click();
+  await mini.locator('.miniatur[data-seite="1"]').click({ modifiers: ["Shift"] });
+  await mini.locator('.miniatur[data-seite="1"]').click({ button: "right" });
+  await page.getByRole("menuitem", { name: "2 Seiten drucken …" }).click();
+  await expect(dialog.getByRole("radio", { name: /Markierte Seiten \(2\)/ })).toBeChecked();
+});

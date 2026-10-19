@@ -122,11 +122,13 @@ export function seitenErmitteln(dokId: string, bereich: Bereich, eigene: string)
 }
 
 // ================================================================== Drucken
-export function DruckDialog({ dokId, alsExport }: { dokId: string; alsExport: boolean }) {
+export function DruckDialog(p: { dokId: string; alsExport: boolean; startBereich?: Bereich; startSeite?: number }) {
+  const { dokId, alsExport } = p;
   const dok = useZustand((z) => z.dokumente.find((d) => d.id === dokId));
   const ausblenden = useZustand((z) => z.ausblenden);
-  const [bereich, setBereich] = useState<Bereich>("alle");
-  const [eigene, setEigene] = useState("");
+  // Rechtsklick auf eine Seite: genau diese Seite vorbelegen
+  const [bereich, setBereich] = useState<Bereich>(p.startSeite !== undefined ? "eigene" : (p.startBereich ?? "alle"));
+  const [eigene, setEigene] = useState(p.startSeite !== undefined ? String(p.startSeite + 1) : "");
   const [mit, setMit] = useState({ kommentar: !ausblenden.includes("kommentar"), eintragung: true, stempel: true });
   const [ebenen, setEbenen] = useState<Ebene[]>([]);
   const [ebenenEntfernen, setEbenenEntfernen] = useState(false);

@@ -8,6 +8,7 @@ import {
   FileOutput,
   FilePlus2,
   FileUp,
+  Printer,
   RotateCcw,
   RotateCw,
   Trash2,
@@ -29,7 +30,7 @@ import {
   seitenUebertragen,
   seitenVerschieben,
 } from "../zustand/seitenaktionen";
-import { auswahlSetzen, holen, springen } from "../zustand/store";
+import { auswahlSetzen, holen, setzen, springen } from "../zustand/store";
 import type { Dokument } from "../typen";
 import { Kontextmenue, type MenuePunkt } from "./Kontextmenue";
 import { istSeitenDrag, laufenderSeitenDrag, seitenDragDaten, seitenDragStarten } from "../zustand/seitenDrag";
@@ -237,6 +238,13 @@ export function Miniaturen({ dok, groesse }: { dok: Dokument; groesse: number })
     "trenner",
     { titel: anzahl > 1 ? `${anzahl} Seiten duplizieren` : "Duplizieren", icon: Copy, aktion: () => void seitenDuplizieren(d()) },
     { titel: "Als neue PDF extrahieren", icon: FileOutput, aktion: () => void seitenExtrahieren(false, d()) },
+    "trenner",
+    {
+      titel: anzahl > 1 ? `${anzahl} Seiten drucken …` : "Seite drucken …",
+      icon: Printer,
+      kuerzel: "Strg+P",
+      aktion: () => setzen({ dialog: { art: "druck", dokId: dok.id, export: false, bereich: "markiert" } }),
+    },
     "trenner",
     {
       titel: anzahl > 1 ? `${anzahl} Seiten löschen` : "Seite löschen",

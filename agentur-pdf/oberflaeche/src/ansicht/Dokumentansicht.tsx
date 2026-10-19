@@ -17,13 +17,15 @@ import {
   zoomSeitenbreite,
   type SeitenBox,
 } from "../render/layout";
-import { ansichtAendern, holen, setzen, useZustand, werkzeugBenutzt, zoomBegrenzen } from "../zustand/store";
+import { ansichtAendern, auswahlSetzen, holen, setzen, useZustand, werkzeugBenutzt, zoomBegrenzen } from "../zustand/store";
 import { bereichstextErkennen } from "../zustand/ocr";
 import { Seite } from "./Seite";
 import { AnmerkungsEbene } from "./Anmerkungen";
 import { anmerkungenLaden } from "../zustand/anmerkungen";
 import { istSeitenDrag, laufenderSeitenDrag, seitenDragDaten, zeigerInnerhalb } from "../zustand/seitenDrag";
-import { seitenUebertragen, seitenVerschieben } from "../zustand/seitenaktionen";
+import { seitenDrehen, seitenExtrahieren, seitenUebertragen, seitenVerschieben } from "../zustand/seitenaktionen";
+import { Kontextmenue, type MenuePunkt } from "./Kontextmenue";
+import { FileOutput, Printer, RotateCcw, RotateCw } from "lucide-react";
 
 interface Anker {
   seite: number;
@@ -252,6 +254,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
   // -------------------------------------------- Maus: Hand, Lasso, Lupe
   const [lasso, setLasso] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [lupe, setLupe] = useState<{ mx: number; my: number; bild: string | null; versatzX: number; versatzY: number } | null>(null);
+  const [seitenMenue, setSeitenMenue] = useState<{ x: number; y: number; seite: number } | null>(null);
   const [seitenAblage, setSeitenAblage] = useState<{ index: number; linie: { x: number; y: number; b: number; h: number } } | null>(null);
   const ziehen = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
 
@@ -521,6 +524,35 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
 
   const aktiverTreffer = suche.treffer[suche.aktiv];
 
+  // Rechtsklick auf eine Seite: drucken, drehen, extrahieren
+  const kontext = (e: React.MouseEvent) => {
+    const ziel = e.target as HTMLElement;
+    if (ziel.closest(".anm-bild, .anm-auswahl, input, textarea, [contenteditable]")) return;
+    if ((window.getSelection()?.toString() ?? "").trim()) return; // Textauswahl: eigenes Menü/Kopieren
+    const el = ziel.closest<HTMLElement>("[data-seite]");
+    if (!el) return;
+    e.preventDefault();
+    const nr = Number(el.dataset.seite);
+    auswahlSetzen(dokId, [nr]);
+    setSeitenMenue({ x: e.clientX, y: e.clientY, seite: nr });
+  };
+  // Aktionen wirken immer auf die angeklickte Seite (auch wenn die Markierung inzwischen wechselt)
+  const nurSeite = () => ({ ...holen().dokumente.find((x) => x.id === dokId)!, auswahl: [seitenMenue!.seite] });
+  const seitenMenuePunkte: MenuePunkt[] = seitenMenue
+    ? [
+        {
+          titel: `Seite ${seitenMenue.seite + 1} drucken …`,
+          icon: Printer,
+          aktion: () => setzen({ dialog: { art: "druck", dokId, export: false, seite: seitenMenue.seite } }),
+        },
+        { titel: "Alle Seiten drucken …", icon: Printer, kuerzel: "Strg+P", aktion: () => setzen({ dialog: { art: "druck", dokId, export: false } }) },
+        "trenner",
+        { titel: "Links drehen", icon: RotateCcw, aktion: () => void seitenDrehen(-90, nurSeite()) },
+        { titel: "Rechts drehen", icon: RotateCw, aktion: () => void seitenDrehen(90, nurSeite()) },
+        { titel: "Als neue PDF extrahieren", icon: FileOutput, aktion: () => void seitenExtrahieren(false, nurSeite()) },
+      ]
+    : [];
+
   return (
     <div
       ref={scrollRef}
@@ -529,6 +561,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseLeave={() => setLupe(null)}
+      onContextMenu={kontext}
       onDragOver={seitenDragOver}
       onDragLeave={(e) => {
         if (!zeigerInnerhalb(e)) setSeitenAblage(null);
@@ -611,6 +644,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
           {lupe.bild && <img src={lupe.bild} alt="" style={{ left: lupe.versatzX, top: lupe.versatzY, width: LUPE, height: LUPE }} draggable={false} />}
         </div>
       )}
+      {seitenMenue && <Kontextmenue x={seitenMenue.x} y={seitenMenue.y} punkte={seitenMenuePunkte} schliessen={() => setSeitenMenue(null)} />}
     </div>
   );
 }

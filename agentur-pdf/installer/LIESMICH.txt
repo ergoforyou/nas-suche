@@ -132,7 +132,8 @@ WAS IN DIESER TESTVERSION GEHT
   • Schwärzen (Bereich oder Suche nach IBAN, E-Mail, Telefon, Datum):
     erst vormerken, dann „Schwärzungen anwenden“ = endgültig entfernt
   • Kennwort (AES-256) und Rechte, Metadaten entfernen
-  • Drucken (Strg+P) und Exportieren – wahlweise ohne Kommentare/Stempel
+  • Drucken (Strg+P) und Exportieren – wahlweise ohne Kommentare/Stempel;
+    Rechtsklick auf eine Seite oder markierte Miniaturen → „Seite drucken …“
   • Komprimieren (z. B. für E-Mail), Seiten als Bilder
   • Befehlssuche: Strg+K findet jede Funktion
 

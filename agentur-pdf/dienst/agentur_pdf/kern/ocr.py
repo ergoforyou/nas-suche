@@ -29,6 +29,7 @@ import numpy as np
 import pymupdf
 
 from .dokumente import DokumentFehler
+from .seitenbox import ohne_zuschnitt
 
 OCR_EBENE = "OCR-Text"
 UNSICHER_UNTER = 60  # Tesseract-Konfidenz (0–100), darunter gilt ein Wort als unsicher
@@ -518,19 +519,22 @@ def textebene_schreiben(seite: pymupdf.Page, ergebnis: SeitenErgebnis, oc: int) 
     skala = float(np.hypot(gesamt.a, gesamt.b))
     winkel = float(np.degrees(np.arctan2(gesamt.b, gesamt.a)))
     zurueck = pymupdf.Matrix(-winkel)  # ins waagerechte Hilfssystem
-    schreiber = pymupdf.TextWriter(seite.rect)
-    anzahl = 0
-    for w in ergebnis.woerter:
-        x, y, b, h = w.box
-        einheit = schrift.text_length(w.text, fontsize=1)
-        if einheit <= 0 or b <= 0:
-            continue
-        groesse = min(b * skala / einheit, h * skala * 1.6)
-        grundlinie = pymupdf.Point(x, y + h * 0.8) * gesamt * zurueck
-        schreiber.append(grundlinie, w.text, font=schrift, fontsize=max(groesse, 1.0))
-        anzahl += 1
-    if anzahl:
-        # Achtung: morph dreht im PDF-Koordinatensystem (y nach oben) – daher -winkel
-        morph = (pymupdf.Point(0, 0), pymupdf.Matrix(-winkel)) if abs(winkel) > 0.01 else None
-        schreiber.write_text(seite, render_mode=3, oc=oc, morph=morph, overlay=True)
+    with ohne_zuschnitt(seite) as versatz:
+        # Zuschnitt-Versatz vor der Rückdrehung ins Hilfssystem anbringen
+        gesamt = gesamt * pymupdf.Matrix(1, 0, 0, 1, versatz.x, versatz.y)
+        schreiber = pymupdf.TextWriter(seite.rect)
+        anzahl = 0
+        for w in ergebnis.woerter:
+            x, y, b, h = w.box
+            einheit = schrift.text_length(w.text, fontsize=1)
+            if einheit <= 0 or b <= 0:
+                continue
+            groesse = min(b * skala / einheit, h * skala * 1.6)
+            grundlinie = pymupdf.Point(x, y + h * 0.8) * gesamt * zurueck
+            schreiber.append(grundlinie, w.text, font=schrift, fontsize=max(groesse, 1.0))
+            anzahl += 1
+        if anzahl:
+            # Achtung: morph dreht im PDF-Koordinatensystem (y nach oben) – daher -winkel
+            morph = (pymupdf.Point(0, 0), pymupdf.Matrix(-winkel)) if abs(winkel) > 0.01 else None
+            schreiber.write_text(seite, render_mode=3, oc=oc, morph=morph, overlay=True)
     return anzahl

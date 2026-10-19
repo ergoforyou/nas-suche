@@ -64,6 +64,24 @@ def test_text_liegt_genau_ueber_dem_wort(speicher, brief_scan):
     assert abs(ist.x0 - soll.x0) < 3 and abs(ist.y0 - soll.y0) < 3 and abs(ist.x1 - soll.x1) < 4
 
 
+@pytest.mark.parametrize("drehung", [0, 90])
+def test_text_liegt_auch_auf_zugeschnittener_seite_ueber_dem_wort(speicher, brief_scan, tmp_path, drehung):
+    """Scanner-Apps/zugeschnittene Seiten (CropBox ≠ MediaBox): früher saß die
+    Textebene um den Zuschnitt versetzt."""
+    pfad, quelle = brief_scan()
+    doc = pymupdf.open(pfad)
+    doc[0].set_cropbox(pymupdf.Rect(40, 60, 560, 800))
+    doc[0].set_rotation(drehung)
+    zugeschnitten = tmp_path / "zugeschnitten.pdf"
+    doc.save(zugeschnitten)
+    dok, _ = erkennen(speicher, zugeschnitten)
+    seite = dok.doc[0]
+    assert seite.cropbox == pymupdf.Rect(40, 60, 560, 800)  # Zuschnitt bleibt
+    soll = quelle[0].search_for("Prämie")[0] - (40, 60, 40, 60)  # Suche liefert ungedrehte Lage im Zuschnitt
+    (ist,) = seite.search_for("Prämie")
+    assert abs(ist.x0 - soll.x0) < 3 and abs(ist.y0 - soll.y0) < 3, (ist, soll)
+
+
 @pytest.mark.parametrize("winkel", [2.5, -4.0])
 def test_schraege_scans(speicher, brief_scan, winkel):
     pfad, quelle = brief_scan(schraeg=winkel)

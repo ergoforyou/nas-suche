@@ -39,7 +39,7 @@ export function Dialoge() {
   if (dialog.art === "ueberwachung") return <UeberwachungDialog />;
   if (dialog.art === "info") return <InfoDialog />;
   if (dialog.art === "bereichstext") return <BereichstextDialog text={dialog.text} sicherheit={dialog.sicherheit} />;
-  if (dialog.art === "druck") return <DruckDialog dokId={dialog.dokId} alsExport={dialog.export} />;
+  if (dialog.art === "druck") return <DruckDialog dokId={dialog.dokId} alsExport={dialog.export} startBereich={dialog.bereich} startSeite={dialog.seite} />;
   if (dialog.art === "kennwort") return <KennwortDialog dokId={dialog.dokId} />;
   if (dialog.art === "schwaerzen") return <SchwaerzenDialog dokId={dialog.dokId} />;
   if (dialog.art === "komprimieren") return <KomprimierenDialog dokId={dialog.dokId} />;

@@ -23,6 +23,7 @@ import pymupdf
 
 from .anmerkungen import hex_zu_rgb, norm_rechteck
 from .dokumente import DokumentFehler
+from .seitenbox import ohne_zuschnitt
 
 FETT, KURSIV, SERIF, MONO = 16, 2, 4, 8
 
@@ -194,6 +195,17 @@ def text_ersetzen(
     if not neu.strip():
         return {}
     ursprung = pymupdf.Point(erster["origin"])
+    with ohne_zuschnitt(seite) as versatz:
+        _schreiben(seite, neu, ursprung + versatz, font, groesse, rgb)
+
+    for z in zeilen(doc, seite_nr):
+        b = z["bbox"]
+        if abs(b[0] - ursprung.x) < 2 and b[1] - 2 <= ursprung.y <= b[3] + 2:
+            return {**z, "verwendete_schrift": schriftname}
+    return {"verwendete_schrift": schriftname}
+
+
+def _schreiben(seite: pymupdf.Page, neu: str, ursprung: pymupdf.Point, font: pymupdf.Font, groesse: float, rgb) -> None:
     schreiber = pymupdf.TextWriter(seite.rect)
     # Wort für Wort setzen, Leerzeichen nur als Abstand: Manche Schriften
     # (z. B. Arial) führen „ “ und das geschützte Leerzeichen als dieselbe
@@ -209,9 +221,3 @@ def text_ersetzen(
         _, ende = schreiber.append(pymupdf.Point(x, ursprung.y), teil, font=font, fontsize=groesse)
         x = ende.x
     schreiber.write_text(seite, color=rgb)
-
-    for z in zeilen(doc, seite_nr):
-        b = z["bbox"]
-        if abs(b[0] - ursprung.x) < 2 and b[1] - 2 <= ursprung.y <= b[3] + 2:
-            return {**z, "verwendete_schrift": schriftname}
-    return {"verwendete_schrift": schriftname}

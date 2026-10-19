@@ -81,7 +81,7 @@ export interface Platzierung {
 
 export type Dialog =
   | { art: "teilen"; dokId: string }
-  | { art: "druck"; dokId: string; export: boolean }
+  | { art: "druck"; dokId: string; export: boolean; bereich?: "alle" | "aktuell" | "markiert"; seite?: number }
   | { art: "kennwort"; dokId: string }
   | { art: "schwaerzen"; dokId: string }
   | { art: "komprimieren"; dokId: string }
