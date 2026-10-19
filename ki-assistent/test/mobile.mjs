@@ -1171,6 +1171,43 @@ const wakeFix = await page.evaluate(() => {
   };
 });
 check(wakeFix.lena && wakeFix.lina2 && !wakeFix.other && wakeFix.pad === 1600 + 2 * 6400, 'Aktivierungswort: ähnliche Schreibweisen zählen, kurze Aufnahmen mit Stille aufgefüllt', JSON.stringify(wakeFix));
+// Steckbrief: aus dem Systemprompt ausfüllen lassen, von Hand ändern, landet als Block vor dem Systemprompt
+claudeQueue.push([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hier der Steckbrief: {"rolle":"Büroassistent","hintergrund":"","fach":"Ergonomie","werte":["Ehrlichkeit vor Höflichkeit","Deine Zeit ist wertvoll"],"regeln":["Bei Geldfragen erst nachfragen"],"grenzen":[],"sprechweise":"kurze Sätze","vermeiden":"","regler":{"waerme":4,"direktheit":4,"humor":0,"foermlichkeit":2,"ausfuehrlichkeit":2,"initiative":3,"widerspruch":9}}' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 60 } },
+  { type: 'message_stop' },
+]);
+const sbRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const promptBefore = p.prompt;
+  p.prompt = 'Du bist Max, ein ehrlicher, direkter Büroassistent für Ergonomie.';
+  delete p.steckbrief;
+  document.getElementById('sbFill').click();
+  for (let i = 0; i < 50 && !p.steckbrief; i++) await new Promise((r) => setTimeout(r, 100));
+  const filled = structuredClone(p.steckbrief ?? null);
+  const ui = { werte: document.getElementById('sbWerte').value, direkt: document.querySelector('#sbTraits select[data-trait=direktheit]').value };
+  const g = document.getElementById('sbGrenzen');
+  g.value = 'Keine Diagnosen stellen';
+  g.dispatchEvent(new Event('input'));
+  await new Promise((r) => setTimeout(r, 700));
+  const sys = app.buildMessages().filter((m) => m.role === 'system').map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content))).join('\n');
+  const out = { filled, ui, grenzen: p.steckbrief?.grenzen, sys: sys.slice(0, 900), info: document.getElementById('sbInfo').textContent };
+  delete p.steckbrief;
+  p.prompt = promptBefore;
+  return out;
+});
+check(
+  sbRes.filled?.werte?.[0] === 'Ehrlichkeit vor Höflichkeit' && sbRes.filled.regler.direktheit === 4 && sbRes.filled.regler.widerspruch === 0 &&
+    sbRes.ui.werte.startsWith('Ehrlichkeit vor Höflichkeit\nDeine Zeit') && sbRes.ui.direkt === '4' && sbRes.grenzen === 'Keine Diagnosen stellen' &&
+    /Dein Steckbrief/.test(sbRes.sys) && /1\. Ehrlichkeit vor Höflichkeit/.test(sbRes.sys) && /eher direkt/.test(sbRes.sys) && /Keine Diagnosen stellen/.test(sbRes.sys) &&
+    sbRes.sys.indexOf('Dein Steckbrief') < sbRes.sys.indexOf('Du bist Max, ein ehrlicher'),
+  'Steckbrief: aus Systemprompt ausgefüllt, von Hand geändert, steht als Block vor dem Systemprompt',
+  JSON.stringify({ ...sbRes, sys: sbRes.sys.slice(0, 300) }),
+);
 // Beenden-Knopf am Handy: sichtbar, fragt einmal nach und beendet dann die App
 const quitRes = await page.evaluate(async () => {
   const btn = document.getElementById('btnQuit');

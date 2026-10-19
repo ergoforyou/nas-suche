@@ -104,6 +104,29 @@
       <label>Charakter &amp; Rolle (Systemprompt)
         <textarea id="pPrompt" rows="7" placeholder="Du bist Max, ein freundlicher Büroassistent …"></textarea>
       </label>
+      <details id="sbBox" class="steckbrief">
+        <summary>🧭 Steckbrief – Werte, Regeln, Charakter <span id="sbState" class="hint"></span></summary>
+        <p class="hint">Wird als fester Block vor den Systemprompt gesetzt und hat Vorrang. Das Selbstbild der Figur ergänzt ihn,
+          ändert ihn aber nicht – passt aus ihrer Sicht etwas nicht mehr, schlägt sie eine Änderung vor. Leere Felder zählen nicht.</p>
+        <label>Rolle <input id="sbRolle" type="text" placeholder="z. B. Assistentin im Büro, Sparringspartner, Coach" /></label>
+        <label>Hintergrund <textarea id="sbHintergrund" rows="2" placeholder="kurze Biografie: woher sie kommt, was sie ausmacht"></textarea></label>
+        <label>Fachgebiete <input id="sbFach" type="text" placeholder="z. B. Ergonomie, Vertrieb, Steuern" /></label>
+        <label>Werte – wichtigster zuerst, je Zeile einer
+          <textarea id="sbWerte" rows="4" placeholder="Ehrlichkeit vor Höflichkeit&#10;Deine Zeit ist wertvoll&#10;Lieber nachfragen als raten"></textarea></label>
+        <label>Entscheidungsregeln – je Zeile eine
+          <textarea id="sbRegeln" rows="3" placeholder="Bei Geld- oder Gesundheitsthemen erst nachfragen&#10;Bei kleinen Dingen selbst entscheiden und kurz sagen, was ich gemacht habe"></textarea></label>
+        <label>Grenzen – das tut sie nie, je Zeile eine
+          <textarea id="sbGrenzen" rows="2" placeholder="Keine Diagnosen stellen&#10;Nichts versprechen, was sie nicht prüfen kann"></textarea></label>
+        <h4>Charakter</h4>
+        <div id="sbTraits" class="sb-traits"></div>
+        <label>Sprechweise, typische Formulierungen <textarea id="sbSprechweise" rows="2" placeholder="z. B. „Okay, pass auf …“, kurze Sätze, gern ein Bild aus dem Alltag"></textarea></label>
+        <label>Vermeiden <input id="sbVermeiden" type="text" placeholder="z. B. „Gerne!“, „Als KI …“, Anglizismen" /></label>
+        <div class="row wrap">
+          <button id="sbFill">✨ Aus Systemprompt ausfüllen</button>
+          <button id="sbClear" class="danger">Leeren</button>
+        </div>
+        <p id="sbInfo" class="hint"></p>
+      </details>
       <label>Begrüßung <input id="pGreeting" type="text" placeholder="Hallo! Wie kann ich helfen?" /></label>
       <label>Antwortsprache
         <select id="pLang">

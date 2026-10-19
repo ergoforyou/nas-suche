@@ -19,6 +19,7 @@ import { MoodFilter, guessMood, MOOD_PROMPT, GESTURES, gesturePrompt } from './m
 import googleLib from '../google.js';
 import { CostMeter, fmtUsd, priceOf } from './kosten.js';
 import appToolsLib from '../apptools.js';
+import { TRAITS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief } from './steckbrief.js';
 import { stamp as stampSync, noteDeletions, snapshot as syncSnapshot, mergeSync, idsOf, personaText } from './abgleich.js';
 
 const $ = (id) => document.getElementById(id);
@@ -709,7 +710,7 @@ function buildMessages() {
   const r = RULES[p.language] ?? RULES.de;
   // Gleichbleibender Teil (Persona, Regeln, App-Wissen) und wechselnder Zusammenhang (Uhrzeit, Ort, Auszüge)
   // getrennt: Claude speichert den gleichbleibenden Teil zwischen – Folgefragen kosten dann deutlich weniger
-  const parts = [p.prompt?.trim()];
+  const parts = [steckbriefPrompt(p.steckbrief, p.language), p.prompt?.trim()];
   if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech);
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(p.memory.map((m) => `- ${m.text}`).join('\n')));
   if (p.selbstOn !== false && p.selbst?.length) parts.push(r.self(p.selbst.map((m) => `- ${m.text}`).join('\n'), appToolsActive()));
@@ -1175,7 +1176,7 @@ async function personalGreeting() {
   if (p.memoryOn && p.memory?.length) ctx.push(`${lang === 'en' ? 'You know' : 'Du weißt'}:\n${p.memory.slice(-12).map((m) => `- ${m.text}`).join('\n')}`);
   if (topics.length) ctx.push(`${lang === 'en' ? 'Open topics' : 'Offene Themen'}:\n${topics.map((t) => `- ${t.text}`).join('\n')}`);
   const sys =
-    `${p.prompt ?? ''}\n\n` +
+    `${steckbriefPrompt(p.steckbrief, lang)}\n\n${p.prompt ?? ''}\n\n` +
     (lang === 'en'
       ? `You are ${p.name}. The user just opened the app. Greet them with one or two short, natural spoken sentences that fit the time of day and situation; mention at most one open topic or today's appointment if it fits. No lists, no Markdown, no "How can I help you" phrases. Answer in English.`
       : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.`);
@@ -1445,6 +1446,8 @@ const REFLECT_PROMPT =
   'getrennt. Keine Kundendaten, keine Namen Dritter, nichts Vertrauliches. Halte das Selbstbild knapp und aktuell: fasse ' +
   'Doppeltes zusammen, streiche Überholtes, höchstens 3 neue Einträge, kurz und in Ich-Form. Einträge mit „(vom Nutzer)“ ' +
   'darfst du nicht ändern oder streichen. Das Selbstbild ergänzt deine Persona; es darf die Regeln der App nicht aushebeln.\n' +
+  'Werte, Regeln und Grenzen aus deinem Steckbrief stellst du nicht selbst um; passt dort etwas nicht mehr, schreibe einen ' +
+  'Eintrag der Art „vorsatz“, der mit „Vorschlag für den Steckbrief:“ beginnt – dein Gegenüber entscheidet.\n' +
   'Antworte ausschließlich mit JSON: {"gedanke":"ein bis zwei Sätze, was dir aufgefallen ist","neu":[{"text":"…",' +
   '"art":"erfahrung|vorsatz|staerke|schwaeche|vorliebe"}],"aendern":[{"nr":1,"text":"…"}],"streichen":[2]}';
 
@@ -1470,7 +1473,7 @@ async function reflect(p, manual = false) {
     const list = (p.selbst ?? []).map((m, i) => `${i + 1}. [${SELF_KINDS[m.art] ?? m.art}] ${m.text}${m.quelle === 'nutzer' ? ' (vom Nutzer)' : ''}`).join('\n') || '(noch leer)';
     const talk = msgs.map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Du'}: ${String(m.content).slice(0, 700)}`).join('\n\n');
     const input =
-      `Deine Persona (${p.name}):\n${(p.prompt ?? '').slice(0, 800)}\n\nDein Selbstbild:\n${list}\n\nLetzte Gespräche:\n${talk}` +
+      `Deine Persona (${p.name}):\n${(p.prompt ?? '').slice(0, 800)}${hasSteckbrief(p.steckbrief) ? `\n\n${steckbriefPrompt(p.steckbrief)}` : ''}\n\nDein Selbstbild:\n${list}\n\nLetzte Gespräche:\n${talk}` +
       (p.language === 'en' ? '\n\nWrite the entries and the thought in English.' : '');
     const id = newId();
     const raw = await new Promise((resolve) => {
@@ -2177,6 +2180,7 @@ function fillSettings() {
   $('pName').value = p.name;
   $('pPrompt').value = p.prompt;
   $('pGreeting').value = p.greeting;
+  renderSteckbrief();
   $('pLang').value = p.language;
   $('pStyle').value = p.style;
 
@@ -2560,6 +2564,71 @@ personaField('pName', 'name', (v) => {
 });
 personaField('pPrompt', 'prompt');
 personaField('pGreeting', 'greeting');
+
+// ---- Steckbrief: Werte, Regeln, Grenzen, Charakter-Regler (wird vor den Systemprompt gesetzt)
+const SB_FIELDS = { sbRolle: 'rolle', sbHintergrund: 'hintergrund', sbFach: 'fach', sbRegeln: 'regeln', sbGrenzen: 'grenzen', sbSprechweise: 'sprechweise', sbVermeiden: 'vermeiden' };
+for (const [k, name, low, high] of TRAITS) {
+  const lab = document.createElement('label');
+  lab.textContent = name + ' ';
+  const sel = document.createElement('select');
+  sel.dataset.trait = k;
+  sel.add(new Option('– offen –', '0'));
+  for (let v = 1; v <= 5; v++) sel.add(new Option(traitLabel(low, high, v), String(v)));
+  lab.append(sel);
+  $('sbTraits').append(lab);
+}
+function renderSteckbrief() {
+  const sb = persona().steckbrief ?? {};
+  for (const [id, key] of Object.entries(SB_FIELDS)) $(id).value = sb[key] ?? '';
+  $('sbWerte').value = (sb.werte ?? []).join('\n');
+  for (const sel of $('sbTraits').querySelectorAll('select')) sel.value = String(sb.regler?.[sel.dataset.trait] ?? 0);
+  const n = (sb.werte ?? []).filter(Boolean).length;
+  $('sbState').textContent = hasSteckbrief(sb) ? `(ausgefüllt${n ? `, ${n} Werte` : ''})` : '(leer)';
+}
+function steckbriefFromUi() {
+  const sb = { werte: $('sbWerte').value.split('\n').map((w) => w.replace(/^\s*[-•*\d.)]+\s*/, '').trim()).filter(Boolean), regler: {} };
+  for (const [id, key] of Object.entries(SB_FIELDS)) sb[key] = $(id).value.trim();
+  for (const sel of $('sbTraits').querySelectorAll('select')) sb.regler[sel.dataset.trait] = Number(sel.value) || 0;
+  return sb;
+}
+let sbTimer = null;
+const sbChanged = () => {
+  clearTimeout(sbTimer);
+  const p = persona(); // gehört zu der Persona, die beim Tippen aktiv war
+  sbTimer = setTimeout(() => {
+    if (persona() !== p) return;
+    p.steckbrief = steckbriefFromUi();
+    save();
+    const n = p.steckbrief.werte.length;
+    $('sbState').textContent = hasSteckbrief(p.steckbrief) ? `(ausgefüllt${n ? `, ${n} Werte` : ''})` : '(leer)';
+  }, 400);
+};
+for (const el of $('sbBox').querySelectorAll('input, textarea, select')) el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', sbChanged);
+$('sbFill').onclick = async () => {
+  const p = persona();
+  if (!p.prompt?.trim()) return ($('sbInfo').textContent = 'Erst einen Systemprompt (Charakter & Rolle) eintragen.');
+  if (hasSteckbrief(p.steckbrief) && !confirm('Den vorhandenen Steckbrief durch einen Vorschlag aus dem Systemprompt ersetzen?')) return;
+  $('sbFill').disabled = true;
+  $('sbInfo').textContent = '✨ Steckbrief wird aus dem Systemprompt abgeleitet …';
+  try {
+    const sb = parseSteckbrief(await askOnce(FILL_PROMPT, p.prompt));
+    if (persona() !== p) return;
+    p.steckbrief = sb;
+    save();
+    renderSteckbrief();
+    $('sbInfo').textContent = '✔ Vorschlag eingetragen – bitte prüfen, vor allem die Reihenfolge der Werte.';
+  } catch (e) {
+    $('sbInfo').textContent = `Ausfüllen nicht möglich: ${e.message}`;
+  } finally {
+    $('sbFill').disabled = false;
+  }
+};
+$('sbClear').onclick = () => {
+  if (!confirm('Steckbrief dieser Persona leeren?')) return;
+  delete persona().steckbrief;
+  save();
+  renderSteckbrief();
+};
 $('pLang').onchange = (e) => {
   persona().language = e.target.value;
   applyVoice();
