@@ -28,18 +28,39 @@ jobs:
           node-version: "20"
 
       - name: Tesseract und LibreOffice installieren
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Chocolatey meldet Download-Störungen nicht immer als Fehler → prüfen und bis zu 3× versuchen
-          $ziele = @{ tesseract = "C:\Program Files\Tesseract-OCR\tesseract.exe"; "libreoffice-fresh" = "C:\Program Files\LibreOffice\program\soffice.exe" }
-          foreach ($paket in $ziele.Keys) {
-            for ($i = 1; $i -le 3 -and -not (Test-Path $ziele[$paket]); $i++) {
-              "Installiere $paket (Versuch $i) …"
+          # 1. Chocolatey (bis zu 2 Versuche). 2. Fällt dessen Paketserver aus
+          #    (schon vorgekommen: 503), direkt von den offiziellen Quellen laden.
+          $tess = "C:\Program Files\Tesseract-OCR\tesseract.exe"
+          $soffice = "C:\Program Files\LibreOffice\program\soffice.exe"
+          function Choco($paket, $ziel) {
+            for ($i = 1; $i -le 2 -and -not (Test-Path $ziel); $i++) {
+              "Chocolatey: $paket (Versuch $i) …"
               choco install -y --no-progress $paket
-              if (-not (Test-Path $ziele[$paket])) { Start-Sleep -Seconds (15 * $i) }
+              if (-not (Test-Path $ziel)) { Start-Sleep -Seconds 20 }
             }
-            if (-not (Test-Path $ziele[$paket])) { Write-Error "$paket wurde nicht installiert ($($ziele[$paket]) fehlt)"; exit 1 }
           }
-          & $ziele.tesseract --version
+          Choco tesseract $tess
+          if (-not (Test-Path $tess)) {
+            "Tesseract direkt von UB Mannheim (GitHub) …"
+            $rel = Invoke-RestMethod "https://api.github.com/repos/UB-Mannheim/tesseract/releases/latest" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" }
+            $asset = $rel.assets | Where-Object { $_.name -like "tesseract-ocr-w64-setup-*.exe" } | Select-Object -First 1
+            Invoke-WebRequest $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\tesseract-setup.exe"
+            Start-Process -Wait -FilePath "$env:RUNNER_TEMP\tesseract-setup.exe" -ArgumentList "/S"
+          }
+          Choco libreoffice-fresh $soffice
+          if (-not (Test-Path $soffice)) {
+            "LibreOffice direkt von documentfoundation.org …"
+            $liste = (Invoke-WebRequest "https://download.documentfoundation.org/libreoffice/stable/").Content
+            $version = ([regex]::Matches($liste, 'href="(\d+\.\d+\.\d+)/"') | ForEach-Object { [version]$_.Groups[1].Value } | Sort-Object -Descending | Select-Object -First 1).ToString()
+            $msi = "https://download.documentfoundation.org/libreoffice/stable/$version/win/x86_64/LibreOffice_${version}_Win_x86-64.msi"
+            Invoke-WebRequest $msi -OutFile "$env:RUNNER_TEMP\libreoffice.msi"
+            Start-Process -Wait msiexec -ArgumentList "/i", "$env:RUNNER_TEMP\libreoffice.msi", "/qn", "/norestart"
+          }
+          foreach ($ziel in $tess, $soffice) { if (-not (Test-Path $ziel)) { Write-Error "$ziel fehlt – Installation fehlgeschlagen"; exit 1 } }
+          & $tess --version
 
       - name: Beste Erkennungsmodelle laden (tessdata_best)
         run: |
