@@ -813,6 +813,20 @@
       <p class="hint">Sparsam: Figur mit 15 statt bis zu 60 Bildern pro Sekunde; unter 10 % Akku fast still.</p>
       <div id="phPowerInfo" class="hint"></div>
       <p id="privHint" class="hint" hidden>Weitere Funktionen – Notizen („Merk dir …“), Fahrmodus, Fehlerprotokoll – gibt es vorerst im Bereich 🏠 Privat.</p>
+      <div id="phLockWrap" class="mobile-only">
+        <h3>🔒 App-Sperre</h3>
+        <label class="check"><input id="phLock" type="checkbox" /> Beim Öffnen mit Fingerabdruck, Gesicht oder Handy-PIN entsperren</label>
+        <label>Sperren nach <select id="phLockDelay">
+          <option value="0">sofort beim Verlassen</option>
+          <option value="1">1 Minute</option>
+          <option value="5">5 Minuten</option>
+          <option value="15">15 Minuten</option>
+        </select></label>
+        <p class="hint">Ohne Entsperren sieht niemand Chats, Gedächtnis oder Einstellungen; im App-Wechsler wird der Inhalt verborgen
+          (dafür sind Bildschirmfotos der App gesperrt, solange die Sperre an ist). Aktivierungswort und Erinnerungen funktionieren
+          weiter – so kann die App auch außerhalb des sicheren Ordners laufen. Gilt für beide Bereiche.</p>
+        <p id="phLockInfo" class="hint"></p>
+      </div>
       <div id="phShared" class="mobile-only">
         <h3>Aktivierungswort <span class="beta-badge">Beta</span></h3>
         <label class="check"><input id="privWakeOn" type="checkbox" /> Auf das Aktivierungswort hören – dann ohne Knopf sprechen</label>
@@ -929,6 +943,14 @@
         <div id="phFloatInfo" class="hint"></div>
       </div>
     </div>
+  </div>
+
+  <!-- App-Sperre (Handy): verdeckt alles, bis mit Fingerabdruck/Gesicht/PIN entsperrt ist -->
+  <div id="lockScreen" class="lock-screen" hidden>
+    <div class="lock-icon">🔒</div>
+    <h2>KI-Assistent ist gesperrt</h2>
+    <button id="lockBtn">Entsperren</button>
+    <p id="lockMsg" class="hint"></p>
   </div>
 
   <script type="module" src="app.js"></script>

@@ -404,3 +404,9 @@ body.floating .stage { display: none; }
 .qr-scan .qr-frame { position: absolute; top: 50%; left: 50%; width: 60vmin; height: 60vmin; transform: translate(-50%, -60%); border: 3px solid #3d7be0; border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); pointer-events: none; }
 .qr-scan p { color: #fff; margin: 0; z-index: 1; }
 .qr-scan button { z-index: 1; }
+
+/* App-Sperre (Handy) */
+.lock-screen { position: fixed; inset: 0; z-index: 10000; background: var(--bg, #111); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; }
+.lock-screen[hidden] { display: none; }
+.lock-screen .lock-icon { font-size: 56px; }
+.lock-screen button { font-size: 17px; padding: 10px 28px; }

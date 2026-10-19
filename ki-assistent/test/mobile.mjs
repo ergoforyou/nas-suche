@@ -1162,6 +1162,55 @@ const quitRes = await page.evaluate(async () => {
   return { visible, afterNo, quit };
 });
 check(quitRes.visible && quitRes.afterNo === 0 && quitRes.quit === 1, 'Handy: Knopf „Beenden“ sichtbar, fragt nach und beendet die App ganz', JSON.stringify(quitRes));
+// App-Sperre: nach dem Verlassen gesperrt, Fingerabdruck/PIN entsperrt, Fehlschlag bleibt gesperrt
+const lockRes = await page.evaluate(async () => {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let asks = 0;
+  let secure = null;
+  let answer = false;
+  window.KIDevice = {
+    lockAvailable: () => true,
+    unlock: () => { asks++; setTimeout(() => window.__kiUnlocked(answer, answer ? '' : 'abgebrochen'), 50); },
+    setSecure: (on) => { secure = on; },
+  };
+  const box = document.getElementById('phLock');
+  box.disabled = false;
+  box.checked = true;
+  box.dispatchEvent(new Event('change'));
+  const cfg = JSON.parse(localStorage.getItem('ki-sperre') || '{}');
+  const ls = document.getElementById('lockScreen');
+  const openBefore = !ls.hidden;
+  window.__kiPause(Date.now());
+  window.__kiResume();
+  window.__kiResume(); // das Fingerabdruck-Fenster pausiert die App kurz: keine zweite Abfrage
+  await wait(150);
+  window.__kiResume(); // gerade abgebrochen: nicht sofort wieder fragen
+  const lockedAfterResume = !ls.hidden;
+  const failMsg = document.getElementById('lockMsg').textContent;
+  answer = true;
+  document.getElementById('lockBtn').click();
+  await wait(150);
+  const unlocked = ls.hidden;
+  // mit Verzögerung: kurz weg = nicht sperren
+  localStorage.setItem('ki-sperre', JSON.stringify({ on: true, delay: 5 }));
+  window.__kiPause();
+  window.__kiResume();
+  await wait(50);
+  const shortAway = ls.hidden;
+  // wieder aus
+  box.checked = false;
+  box.dispatchEvent(new Event('change'));
+  const off = JSON.parse(localStorage.getItem('ki-sperre')).on;
+  window.__kiPause();
+  window.__kiResume();
+  delete window.KIDevice;
+  return { on: cfg.on, secureOn: secure === false, openBefore, lockedAfterResume, failMsg, unlocked, asks, shortAway, off, stillOpen: ls.hidden };
+});
+check(
+  lockRes.on && !lockRes.openBefore && lockRes.lockedAfterResume && /Nicht entsperrt/.test(lockRes.failMsg) && lockRes.unlocked && lockRes.asks === 2 && lockRes.shortAway && lockRes.off === false && lockRes.secureOn && lockRes.stillOpen,
+  'App-Sperre: nach Rückkehr gesperrt, Fingerabdruck/PIN entsperrt, Fehlschlag bleibt gesperrt, Verzögerung wirkt',
+  JSON.stringify(lockRes),
+);
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
 {
   const { default: qrcodeGen } = await import('qrcode-generator');

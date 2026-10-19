@@ -108,6 +108,48 @@ public class MainActivity extends BridgeActivity {
     // ---- „Speichern unter …“: Android fragt nach Ordner und Dateiname (Downloads, Drive, …)
     private ActivityResultLauncher<String> createDoc;
     private ActivityResultLauncher<Intent> screenAsk;
+    private ActivityResultLauncher<Intent> unlockAsk;
+
+    // ---- App-Sperre: Fingerabdruck, Gesicht oder Handy-PIN über das Sicherheitsfenster von Android
+    void unlockDone(boolean ok, String msg) {
+        runJs("window.__kiUnlocked && window.__kiUnlocked(" + ok + "," + JSONObject.quote(msg == null ? "" : msg) + ")");
+    }
+
+    void startUnlock(String title) {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                android.hardware.biometrics.BiometricPrompt.Builder b = new android.hardware.biometrics.BiometricPrompt.Builder(this)
+                    .setTitle(title)
+                    .setSubtitle("Fingerabdruck, Gesicht oder Handy-PIN");
+                if (Build.VERSION.SDK_INT >= 30) {
+                    b.setAllowedAuthenticators(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK
+                        | android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL);
+                } else {
+                    b.setDeviceCredentialAllowed(true);
+                }
+                b.build().authenticate(new android.os.CancellationSignal(), getMainExecutor(), new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationSucceeded(android.hardware.biometrics.BiometricPrompt.AuthenticationResult r) {
+                        unlockDone(true, "");
+                    }
+
+                    @Override
+                    public void onAuthenticationError(int code, CharSequence msg) {
+                        unlockDone(false, String.valueOf(msg));
+                    }
+                });
+                return;
+            }
+            // Android 7–9: Bildschirmsperre des Systems abfragen
+            android.app.KeyguardManager km = (android.app.KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            Intent i = km == null ? null : km.createConfirmDeviceCredentialIntent(title, "Handy-PIN, Muster oder Passwort");
+            if (i == null) unlockDone(true, "");
+            else unlockAsk.launch(i);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "App-Sperre", e);
+            unlockDone(false, String.valueOf(e.getMessage()));
+        }
+    }
     private byte[] pendingBytes;
     private String pendingId;
 
@@ -1040,6 +1082,27 @@ public class MainActivity extends BridgeActivity {
             if (Build.VERSION.SDK_INT >= 33) runOnUiThread(() -> requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 4712));
         }
 
+        /** Ist auf dem Handy eine Bildschirmsperre eingerichtet (Voraussetzung für die App-Sperre)? */
+        @JavascriptInterface
+        public boolean lockAvailable() {
+            android.app.KeyguardManager km = (android.app.KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            return km != null && km.isDeviceSecure();
+        }
+
+        @JavascriptInterface
+        public void unlock(String title) {
+            runOnUiThread(() -> startUnlock(title == null || title.isEmpty() ? "KI-Assistent entsperren" : title));
+        }
+
+        /** Inhalt im App-Wechsler verbergen und Bildschirmfotos der App verhindern (solange die App-Sperre an ist). */
+        @JavascriptInterface
+        public void setSecure(boolean on) {
+            runOnUiThread(() -> {
+                if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            });
+        }
+
         /** App ganz beenden (wie ✕ am PC): Hintergrund-Dienst, schwebende Figur und Aktivierungswort aus, Prozess beenden. */
         @JavascriptInterface
         public void quit() {
@@ -1448,6 +1511,8 @@ public class MainActivity extends BridgeActivity {
         // muss vor dem Start der Activity registriert werden
         createDoc = registerForActivityResult(new ActivityResultContracts.CreateDocument("application/octet-stream"), this::writePending);
         // „Bildschirm fragen“: Freigabe holen, dann nimmt der Vordergrund-Dienst genau ein Bild auf
+        unlockAsk = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), (res) ->
+            unlockDone(res.getResultCode() == android.app.Activity.RESULT_OK, res.getResultCode() == android.app.Activity.RESULT_OK ? "" : "abgebrochen"));
         screenAsk = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), (res) -> {
             if (res.getResultCode() != android.app.Activity.RESULT_OK || res.getData() == null) {
                 pushAction("screen-failed");
@@ -1526,7 +1591,9 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         resumed = true;
+        userLeft = false;
         hideFloat();
+        runJs("window.__kiResume && window.__kiResume()");
         applyParams();
         current = new WeakReference<>(this);
     }
@@ -1535,6 +1602,18 @@ public class MainActivity extends BridgeActivity {
     public void onPause() {
         super.onPause();
         resumed = false;
+    }
+
+    // App-Sperre: nur beim echten Verlassen (Home, App-Wechsel, Bildschirm aus) mitzählen – nicht, wenn die App selbst
+    // ein Fenster öffnet (Datei-/Kameraauswahl, Speichern unter, Fingerabdruck-Abfrage)
+    private boolean userLeft;
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        boolean screenOff = pm != null && !pm.isInteractive();
+        if (userLeft || screenOff) runJs("window.__kiPause && window.__kiPause(" + System.currentTimeMillis() + ")");
     }
 
     @Override
@@ -1567,6 +1646,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onUserLeaveHint() {
         super.onUserLeaveHint();
+        userLeft = true;
         if (floatEnabled && canFloat()) {
             showFloat();
             return;

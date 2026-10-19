@@ -100,6 +100,7 @@ const PERMS = [
   'android.permission.RECORD_AUDIO',
   'android.permission.MODIFY_AUDIO_SETTINGS',
   'android.permission.CAMERA', // QR-Code des PCs scannen (Kopplung für den Abgleich)
+  'android.permission.USE_BIOMETRIC', // App-Sperre mit Fingerabdruck/Gesicht
   // ungefährer Ort für Wetter/Verkehr (nur wenn eingeschaltet; Android fragt beim ersten Mal)
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_FINE_LOCATION',

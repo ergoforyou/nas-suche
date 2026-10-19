@@ -292,6 +292,18 @@ const state = {
   currentChatId: null,
 };
 
+// ---- App-Sperre (Handy): Einstellung gilt fürs ganze Gerät (beide Bereiche), deshalb im Speicher des Geräts
+const LOCK_KEY = 'ki-sperre';
+const lockCfg = () => {
+  try {
+    return JSON.parse(localStorage.getItem(LOCK_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+// gleich beim Laden verdecken – sonst blitzen die Chats kurz auf
+if (MOBILE && lockCfg().on) document.getElementById('lockScreen').hidden = false;
+
 const persona = () => state.personas.find((p) => p.id === state.activeId) ?? state.personas[0];
 const history = () => (state.history[persona().id] ??= []);
 
@@ -6869,6 +6881,68 @@ $('nasPass').onchange = async (e) => {
 };
 $('nasNow').onclick = () => nasSync({ manual: true });
 
+function lockNow() {
+  if (!MOBILE || !lockCfg().on) return;
+  state.locked = true;
+  $('lockScreen').hidden = false;
+  $('lockMsg').textContent = '';
+  $('drawer').hidden = true;
+  if (!document.hidden) askUnlock({ auto: true });
+}
+// läuft gerade eine Abfrage, nicht noch eine starten (das Android-Fenster pausiert die App kurz)
+let unlockAsking = false;
+let unlockEndedAt = 0;
+function askUnlock({ auto = false } = {}) {
+  if (!state.locked || unlockAsking) return;
+  // gerade abgebrochen: nach der Rückkehr nicht sofort wieder fragen (sonst Schleife) – Knopf „Entsperren“ geht immer
+  if (auto && Date.now() - unlockEndedAt < 2000) return;
+  const d = dev();
+  if (!d?.unlock || !d.lockAvailable?.()) return window.__kiUnlocked(true, ''); // keine Bildschirmsperre am Handy
+  unlockAsking = true;
+  d.unlock('KI-Assistent entsperren');
+}
+window.__kiUnlocked = (ok, msg) => {
+  unlockAsking = false;
+  unlockEndedAt = Date.now();
+  if (ok) {
+    state.locked = false;
+    $('lockScreen').hidden = true;
+    logEv('SPERRE', 'entsperrt');
+  } else $('lockMsg').textContent = msg ? `Nicht entsperrt (${msg}).` : 'Nicht entsperrt.';
+};
+let lockHiddenAt = 0;
+// Handy meldet das echte Verlassen (Home, App-Wechsel, Bildschirm aus) samt Zeitpunkt
+window.__kiPause = (t) => {
+  if (!state.locked) lockHiddenAt = Number(t) || Date.now();
+};
+window.__kiResume = () => {
+  const c = lockCfg();
+  if (!c.on) return;
+  if (state.locked) return askUnlock({ auto: true });
+  if (lockHiddenAt && Date.now() - lockHiddenAt >= (Number(c.delay) || 0) * 60e3) lockNow();
+  lockHiddenAt = 0;
+};
+$('lockBtn').onclick = () => askUnlock();
+function renderLock() {
+  if (!MOBILE) return;
+  const c = lockCfg();
+  const avail = !!dev()?.lockAvailable?.();
+  $('phLock').checked = !!c.on;
+  $('phLock').disabled = !avail && !c.on;
+  $('phLockDelay').value = String(c.delay ?? 0);
+  $('phLockInfo').textContent = avail ? '' : 'Dafür zuerst in den Android-Einstellungen eine Bildschirmsperre (PIN, Muster, Fingerabdruck) einrichten.';
+}
+$('phLock').onchange = (e) => {
+  const c = { ...lockCfg(), on: e.target.checked };
+  localStorage.setItem(LOCK_KEY, JSON.stringify(c));
+  dev()?.setSecure?.(c.on);
+  logEv('SPERRE', c.on ? 'an' : 'aus');
+  renderLock();
+};
+$('phLockDelay').onchange = (e) => {
+  localStorage.setItem(LOCK_KEY, JSON.stringify({ ...lockCfg(), delay: Number(e.target.value) || 0 }));
+};
+
 function startAutoSync() {
   // NAS: beim Start, beim Zurückkehren/Verlassen und alle 10 Minuten (PC und Handy)
   renderNasState();
@@ -7250,6 +7324,14 @@ init().then(() => {
   startAutoSync();
   // Handy: Speicher der App als dauerhaft anfordern (Sprachmodelle sollen nicht vom System weggeräumt werden)
   if (MOBILE) navigator.storage?.persist?.().catch(() => {});
+  // App-Sperre: beim Start entsperren lassen, Inhalt im App-Wechsler verbergen
+  if (MOBILE) {
+    renderLock();
+    if (lockCfg().on) {
+      dev()?.setSecure?.(true);
+      lockNow();
+    }
+  }
   desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);
