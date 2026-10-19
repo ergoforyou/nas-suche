@@ -31,6 +31,9 @@ ComfyUI vorher aktualisieren (H3-Support seit August 2026).
 3. **Dauer:** `duration` im H3-Node, bis ca. 15 s bei 24 fps.
 4. **Probelauf:** `turbo_mode` an (8 Schritte), 0.4 MP, kurze Dauer.
    **Final:** `turbo_mode` aus (20 Schritte), 0.98 MP, gleicher Seed.
-5. **Upscaler:** Gruppe 3 markieren, `Ctrl+M`. Braucht viel System-RAM (15 s bei 1344×768 ×2 ≈ 18 GB).
+5. **Bild abschalten:** Bild-Node anklicken, `Ctrl+B` (Bypass). Nochmal `Ctrl+B` = wieder an.
+6. **Zwischenbild:** Gruppe 4 mit `Ctrl+M` aktivieren, H3-Node + Speichern in Gruppe 2 stummschalten.
+   Erzeugt Start → Zwischenbild und Zwischenbild → Ende und setzt beides (Bild + Ton) zusammen.
+7. **Upscaler:** Gruppe 3 markieren, `Ctrl+M`. Braucht viel System-RAM (15 s bei 1344×768 ×2 ≈ 18 GB).
 
 Das hostbasierte „Regenerate to 2K“ ist nicht Teil der Open Weights – lokal übernimmt das der Upscaler.

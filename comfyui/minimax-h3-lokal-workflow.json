@@ -1,8 +1,8 @@
 {
-  "id": "d1487305-3104-4202-849e-3068aa96d181",
+  "id": "35338f06-0c25-434c-bb30-3c576c056494",
   "revision": 0,
-  "last_node_id": 141,
-  "last_link_id": 263,
+  "last_node_id": 151,
+  "last_link_id": 281,
   "nodes": [
     {
       "id": 92,
@@ -68,7 +68,8 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            218
+            218,
+            268
           ]
         },
         {
@@ -469,7 +470,8 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            246
+            246,
+            271
           ]
         },
         {
@@ -736,7 +738,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "# MiniMax H3 lokal – Video-Workflow\n\n## 1. Bilder\n- **Startbild** und **Endbild** laden. H3 erzeugt die Bewegung dazwischen.\n- Nur Startbild: Endbild-Node markieren → `Ctrl+B` (Bypass).\n- Gar kein Bild: beide Bilder bypassen → reines Text-zu-Video.\n- Im Prompt: *image 1* = Startbild, *image 2* = Endbild.\n\n## 2. Größe\n**Exakte Maße** (Gruppe 2a): Schalter an → `Breite` und `Höhe` in Pixel eintragen.\nWerte werden automatisch auf ein Vielfaches von 32 gerundet (z. B. 720 → 704, 1080 → 1088).\nMax. sinnvoll: ca. 1 Megapixel, z. B. 1344×768, 768×1344, 1024×1024.\n**Schalter aus** → Größe kommt aus dem `Format`-Node (Seitenverhältnis + Megapixel):\n`0.4` → 864×480 · `0.7` → 1152×640 · `0.98` → 1344×768.\n**Exakte Endgröße** (z. B. 1920×1080): im Upscaler-Node `Endgröße` eintragen.\nBilder werden auf die Größe gestreckt – gleiches Seitenverhältnis verwenden.\n\n## 3. Dauer\nIm H3-Node `duration` in Sekunden (bis ca. 15 s, 24 fps). Wird automatisch auf gültige Frame-Zahlen gerundet.\n\n## 4. Probelauf\n- `turbo_mode` **an** (Lightning-LoRA, 8 Schritte), Megapixel `0.4`, kurze Dauer → schnell prüfen.\n- Passt Bewegung/Bildaufbau: `turbo_mode` **aus** (20 Schritte), Megapixel `0.98`, gewünschte Dauer, **gleicher Seed** → finaler Lauf.\n- Hinweis: Andere Auflösung/Schritte verändern das Ergebnis etwas – der Probelauf zeigt die Richtung, keine 1:1-Kopie.\n\n## 5. Upscaler\nGruppe **Upscaler** markieren → `Ctrl+M` (aktivieren). Zerlegt das Video in Bilder, skaliert mit dem Upscale-Modell (Ton bleibt erhalten).\nModell nach `models/upscale_models/` legen, z. B. `RealESRGAN_x2.pth`.\n⚠ Braucht viel RAM: 15 s × 1344×768 ×2 ≈ 18 GB. Bei Problemen kürzer oder 2x statt 4x.\n\n## VRAM\nint8-Modell ≈ 19,5 GB + Text-Encoder (nvfp4) ≈ 14,6 GB. ComfyUI lagert aus; mit 16–24 GB VRAM und viel System-RAM lauffähig, 1344×768 ist dann langsam.\n"
+        "# MiniMax H3 lokal – Video-Workflow\n\n## 1. Bilder\n- **Startbild** und **Endbild** laden. H3 erzeugt die Bewegung dazwischen.\n- Nur Startbild: Endbild-Node markieren → `Ctrl+B` (Bypass).\n- Gar kein Bild: beide Bilder bypassen → reines Text-zu-Video.\n- Im Prompt: *image 1* = Startbild, *image 2* = Endbild.\n\n## 2. Größe\n**Exakte Maße** (Gruppe 2a): Schalter an → `Breite` und `Höhe` in Pixel eintragen.\nWerte werden automatisch auf ein Vielfaches von 32 gerundet (z. B. 720 → 704, 1080 → 1088).\nMax. sinnvoll: ca. 1 Megapixel, z. B. 1344×768, 768×1344, 1024×1024.\n**Schalter aus** → Größe kommt aus dem `Format`-Node (Seitenverhältnis + Megapixel):\n`0.4` → 864×480 · `0.7` → 1152×640 · `0.98` → 1344×768.\n**Exakte Endgröße** (z. B. 1920×1080): im Upscaler-Node `Endgröße` eintragen.\nBilder werden auf die Größe gestreckt – gleiches Seitenverhältnis verwenden.\n\n## Bild abschalten\nBild-Node anklicken → `Ctrl+B` (**Bypass**, Node wird lila). Nochmal `Ctrl+B` = wieder an.\n- Kein Endbild → Video endet frei.\n- Kein Startbild → Video beginnt frei und endet auf dem Endbild.\n- Keins → reines Text-zu-Video.\nBypass statt Löschen: Die Verbindungen bleiben erhalten.\n\n## Zwischenbild (Gruppe 4)\nH3 kennt nur Start + Ende. Mit Zwischenbild wird in **zwei Teilen** generiert:\nTeil 1 = Start → Zwischenbild, Teil 2 = Zwischenbild → Ende, danach automatisch zusammengesetzt (Bild + Ton).\n1. Gruppe 4 markieren → `Ctrl+M` (an).\n2. In Gruppe 2 den H3-Node und „Ergebnis speichern\" mit `Ctrl+M` stummschalten (sonst rechnet er zusätzlich).\n3. Pro Teil eigenen Prompt + Dauer setzen. Größe kommt aus Gruppe 2a.\nUpscalen: Verbindung von „Video zusammensetzen\" in den Upscaler (`GetVideoComponents`) ziehen.\nWeitere Zwischenbilder: Teil 2 + Zerlegen kopieren und genauso anhängen.\n\n## 3. Dauer\nIm H3-Node `duration` in Sekunden (bis ca. 15 s, 24 fps). Wird automatisch auf gültige Frame-Zahlen gerundet.\n\n## 4. Probelauf\n- `turbo_mode` **an** (Lightning-LoRA, 8 Schritte), Megapixel `0.4`, kurze Dauer → schnell prüfen.\n- Passt Bewegung/Bildaufbau: `turbo_mode` **aus** (20 Schritte), Megapixel `0.98`, gewünschte Dauer, **gleicher Seed** → finaler Lauf.\n- Hinweis: Andere Auflösung/Schritte verändern das Ergebnis etwas – der Probelauf zeigt die Richtung, keine 1:1-Kopie.\n\n## 5. Upscaler\nGruppe **Upscaler** markieren → `Ctrl+M` (aktivieren). Zerlegt das Video in Bilder, skaliert mit dem Upscale-Modell (Ton bleibt erhalten).\nModell nach `models/upscale_models/` legen, z. B. `RealESRGAN_x2.pth`.\n⚠ Braucht viel RAM: 15 s × 1344×768 ×2 ≈ 18 GB. Bei Problemen kürzer oder 2x statt 4x.\n\n## VRAM\nint8-Modell ≈ 19,5 GB + Text-Encoder (nvfp4) ≈ 14,6 GB. ComfyUI lagert aus; mit 16–24 GB VRAM und viel System-RAM lauffähig, 1344×768 ist dann langsam.\n"
       ],
       "title": "Anleitung (deutsch)"
     },
@@ -903,7 +905,9 @@
           "name": "output",
           "type": "INT",
           "links": [
-            258
+            258,
+            264,
+            266
           ]
         }
       ],
@@ -1043,7 +1047,9 @@
           "name": "output",
           "type": "INT",
           "links": [
-            263
+            263,
+            265,
+            267
           ]
         }
       ],
@@ -1054,6 +1060,606 @@
         true
       ],
       "title": "Schalter Höhe"
+    },
+    {
+      "id": 142,
+      "type": "LoadImage",
+      "pos": [
+        -1610,
+        6830
+      ],
+      "size": [
+        450,
+        630
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            269,
+            270
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "zwischenbild.png",
+        "image"
+      ],
+      "title": "Zwischenbild"
+    },
+    {
+      "id": 143,
+      "type": "4c314f31-ecda-4b08-ae98-faaba1bf613f",
+      "pos": [
+        -1100,
+        6830
+      ],
+      "size": [
+        480,
+        630
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "first_frame",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 268
+        },
+        {
+          "name": "last_frame",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 269
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 264
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 265
+        },
+        {
+          "label": "duration",
+          "name": "value_1",
+          "type": "FLOAT",
+          "widget": {
+            "name": "value_1"
+          },
+          "link": null
+        },
+        {
+          "label": "audio_vae",
+          "name": "vae_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "turbo_mode",
+          "name": "value",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        },
+        {
+          "label": "turbo_model_strength",
+          "name": "strength_model_1",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_model_1"
+          },
+          "link": null
+        },
+        {
+          "label": "turbo_steps",
+          "name": "value_2",
+          "type": "INT",
+          "widget": {
+            "name": "value_2"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            272
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        "Part 1. One continuous shot, no cuts. Opens exactly on image 1 and ends exactly on image 2.\nDescribe action, camera and mood.\nAudio: ...",
+        1344,
+        768,
+        3,
+        42,
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax_h3_video_vae_int8_convrot.safetensors",
+        "minimax_h3_audio_vae_fp32.safetensors",
+        true,
+        "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        1,
+        8
+      ],
+      "widgets_values_named": {
+        "prompt": "Part 1. One continuous shot, no cuts. Opens exactly on image 1 and ends exactly on image 2.\nDescribe action, camera and mood.\nAudio: ...",
+        "width": 1344,
+        "height": 768,
+        "value_1": 3,
+        "noise_seed": 42,
+        "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors",
+        "vae_name_1": "minimax_h3_audio_vae_fp32.safetensors",
+        "value": true,
+        "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        "strength_model_1": 1,
+        "value_2": 8
+      },
+      "title": "Teil 1: Start → Zwischenbild"
+    },
+    {
+      "id": 144,
+      "type": "4c314f31-ecda-4b08-ae98-faaba1bf613f",
+      "pos": [
+        -580,
+        6830
+      ],
+      "size": [
+        480,
+        630
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "first_frame",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 270
+        },
+        {
+          "name": "last_frame",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 271
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 266
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 267
+        },
+        {
+          "label": "duration",
+          "name": "value_1",
+          "type": "FLOAT",
+          "widget": {
+            "name": "value_1"
+          },
+          "link": null
+        },
+        {
+          "label": "audio_vae",
+          "name": "vae_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "turbo_mode",
+          "name": "value",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        },
+        {
+          "label": "turbo_model_strength",
+          "name": "strength_model_1",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_model_1"
+          },
+          "link": null
+        },
+        {
+          "label": "turbo_steps",
+          "name": "value_2",
+          "type": "INT",
+          "widget": {
+            "name": "value_2"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            273
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        "Part 2. One continuous shot, no cuts. Opens exactly on image 1 and ends exactly on image 2.\nSame style and lighting as part 1. Describe action, camera and mood.\nAudio: ...",
+        1344,
+        768,
+        3,
+        42,
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax_h3_video_vae_int8_convrot.safetensors",
+        "minimax_h3_audio_vae_fp32.safetensors",
+        true,
+        "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        1,
+        8
+      ],
+      "widgets_values_named": {
+        "prompt": "Part 2. One continuous shot, no cuts. Opens exactly on image 1 and ends exactly on image 2.\nSame style and lighting as part 1. Describe action, camera and mood.\nAudio: ...",
+        "width": 1344,
+        "height": 768,
+        "value_1": 3,
+        "noise_seed": 42,
+        "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors",
+        "vae_name_1": "minimax_h3_audio_vae_fp32.safetensors",
+        "value": true,
+        "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        "strength_model_1": 1,
+        "value_2": 8
+      },
+      "title": "Teil 2: Zwischenbild → Ende"
+    },
+    {
+      "id": 145,
+      "type": "GetVideoComponents",
+      "pos": [
+        -60,
+        6830
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 272
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            275
+          ]
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            277
+          ]
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetVideoComponents"
+      },
+      "title": "Teil 1 zerlegen"
+    },
+    {
+      "id": 146,
+      "type": "GetVideoComponents",
+      "pos": [
+        -60,
+        6990
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 273
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            274
+          ]
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            278
+          ]
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetVideoComponents"
+      },
+      "title": "Teil 2 zerlegen"
+    },
+    {
+      "id": 147,
+      "type": "ImageFromBatch",
+      "pos": [
+        280,
+        6990
+      ],
+      "size": [
+        270,
+        100
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 274
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            276
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        1,
+        4096
+      ],
+      "title": "Doppeltes Zwischenbild entfernen"
+    },
+    {
+      "id": 148,
+      "type": "ImageBatch",
+      "pos": [
+        280,
+        6830
+      ],
+      "size": [
+        240,
+        70
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 275
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 276
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            279
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      },
+      "title": "Bilder aneinanderhängen"
+    },
+    {
+      "id": 149,
+      "type": "AudioConcat",
+      "pos": [
+        280,
+        7150
+      ],
+      "size": [
+        270,
+        100
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "audio1",
+          "type": "AUDIO",
+          "link": 277
+        },
+        {
+          "name": "audio2",
+          "type": "AUDIO",
+          "link": 278
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            280
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AudioConcat"
+      },
+      "widgets_values": [
+        "after"
+      ],
+      "title": "Ton aneinanderhängen"
+    },
+    {
+      "id": 150,
+      "type": "CreateVideo",
+      "pos": [
+        600,
+        6830
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 279
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 280,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            281
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Video zusammensetzen"
+    },
+    {
+      "id": 151,
+      "type": "SaveVideo",
+      "pos": [
+        920,
+        6830
+      ],
+      "size": [
+        480,
+        420
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 281
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_zwischenbild",
+        "auto",
+        "auto"
+      ],
+      "title": "Gesamtvideo (mit Zwischenbild)"
     }
   ],
   "links": [
@@ -1224,6 +1830,150 @@
       105,
       3,
       "INT"
+    ],
+    [
+      264,
+      138,
+      0,
+      143,
+      2,
+      "INT"
+    ],
+    [
+      265,
+      141,
+      0,
+      143,
+      3,
+      "INT"
+    ],
+    [
+      266,
+      138,
+      0,
+      144,
+      2,
+      "INT"
+    ],
+    [
+      267,
+      141,
+      0,
+      144,
+      3,
+      "INT"
+    ],
+    [
+      268,
+      114,
+      0,
+      143,
+      0,
+      "IMAGE"
+    ],
+    [
+      269,
+      142,
+      0,
+      143,
+      1,
+      "IMAGE"
+    ],
+    [
+      270,
+      142,
+      0,
+      144,
+      0,
+      "IMAGE"
+    ],
+    [
+      271,
+      127,
+      0,
+      144,
+      1,
+      "IMAGE"
+    ],
+    [
+      272,
+      143,
+      0,
+      145,
+      0,
+      "VIDEO"
+    ],
+    [
+      273,
+      144,
+      0,
+      146,
+      0,
+      "VIDEO"
+    ],
+    [
+      274,
+      146,
+      0,
+      147,
+      0,
+      "IMAGE"
+    ],
+    [
+      275,
+      145,
+      0,
+      148,
+      0,
+      "IMAGE"
+    ],
+    [
+      276,
+      147,
+      0,
+      148,
+      1,
+      "IMAGE"
+    ],
+    [
+      277,
+      145,
+      1,
+      149,
+      0,
+      "AUDIO"
+    ],
+    [
+      278,
+      146,
+      1,
+      149,
+      1,
+      "AUDIO"
+    ],
+    [
+      279,
+      148,
+      0,
+      150,
+      0,
+      "IMAGE"
+    ],
+    [
+      280,
+      149,
+      0,
+      150,
+      1,
+      "AUDIO"
+    ],
+    [
+      281,
+      150,
+      0,
+      151,
+      0,
+      "VIDEO"
     ]
   ],
   "groups": [
@@ -1244,10 +1994,10 @@
       "id": 2,
       "title": "2 · Format, Dauer, Prompt → Probelauf / Final",
       "bounding": [
-        -1150,
+        -1138,
         4770,
-        2030,
-        1110
+        2018,
+        1095
       ],
       "color": "#8A8",
       "font_size": 24,
@@ -1270,12 +2020,25 @@
       "id": 5,
       "title": "2a · Exakte Maße (Breite × Höhe in Pixel)",
       "bounding": [
-        -1150,
+        -1138,
         4150,
-        920,
+        908,
         580
       ],
       "color": "#b58b2a",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "4 · Zwischenbild-Modus (Ctrl+M zum Aktivieren, dann Gruppe 2 H3 + Speichern stummschalten)",
+      "bounding": [
+        -1630,
+        6750,
+        3050,
+        760
+      ],
+      "color": "#2a7f62",
       "font_size": 24,
       "flags": {}
     },
