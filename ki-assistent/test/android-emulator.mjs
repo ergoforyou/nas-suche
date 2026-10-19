@@ -272,7 +272,7 @@ if (BETA) {
   };
   const before = await tapLive();
   let lv = {};
-  for (let i = 0; i < 12 && !(lv.on && lv.shown); i++) {
+  for (let i = 0; i < 12 && !(lv.on && lv.shown && !lv.wake); i++) {
     await sleep(500);
     lv = await run(`return { on: !!window.__app.state.settings.handsFree, intent: window.__app.lastIntent, shown: JSON.parse(KIFloat.place())?.live, wake: window.__app.state.wakeListening }`);
   }

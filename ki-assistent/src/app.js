@@ -2036,6 +2036,8 @@ function setHandsFree(on) {
     warmupLocalStt(progressStatus('Spracherkennung')).then(() => status(''), (e) => status(`Spracherkennung: ${e.message}`));
   }
   save();
+  // wartet das Aktivierungswort gerade aufs Mikrofon: sofort freigeben, damit Live gleich zuhören kann
+  if (on && state.wakeListening) stt.cancel();
   if (on) maybeListenHandsFree();
   else stt.cancel();
   updateBadge();
