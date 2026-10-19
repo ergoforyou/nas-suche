@@ -1283,6 +1283,27 @@ check(
   'Gedächtnis aufräumen: Doppeltes zusammengefasst, Veraltetes gestrichen, eigener Eintrag geschützt, Rückgängig',
   JSON.stringify(tidyRes),
 );
+// Abgerissener Satz im Live-Gespräch: erster Teil + abgebrochene Antwort werden mit dem Rest zu EINER Frage
+const tornRes = await page.evaluate(() => {
+  const app = window.__app;
+  const h = app.history();
+  const n0 = h.length;
+  h.push({ id: 'u-t1', role: 'user', content: 'Wie wird das Wetter', t: Date.now() }, { id: 'a-t1', role: 'assistant', content: 'Morgen wird es', cut: true, t: Date.now() });
+  const sysCut = JSON.stringify(app.buildMessages()).includes('hier hat dein Gegenüber dich unterbrochen');
+  const joined = app.joinTornSentence('morgen in Hannover?');
+  const gone = !h.some((m) => m.id === 'u-t1' || m.id === 'a-t1') && h.length === n0;
+  // nicht zusammenführen, wenn die Antwort vollständig war
+  h.push({ id: 'u-t2', role: 'user', content: 'Wie spät ist es?', t: Date.now() }, { id: 'a-t2', role: 'assistant', content: 'Es ist drei Uhr.', t: Date.now() });
+  const kept = app.joinTornSentence('Und morgen?');
+  const stays = h.some((m) => m.id === 'u-t2');
+  h.splice(n0);
+  return { sysCut, joined, gone, kept, stays };
+});
+check(
+  tornRes.sysCut && tornRes.joined === 'Wie wird das Wetter morgen in Hannover?' && tornRes.gone && tornRes.kept === 'Und morgen?' && tornRes.stays,
+  'Live-Gespräch: abgerissener Satz wird zusammengeführt, abgebrochene Antworten sind als unterbrochen markiert',
+  JSON.stringify(tornRes),
+);
 // Beenden-Knopf am Handy: sichtbar, fragt einmal nach und beendet dann die App
 const quitRes = await page.evaluate(async () => {
   const btn = document.getElementById('btnQuit');

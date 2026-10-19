@@ -76,6 +76,32 @@ await page.waitForFunction(() => window.__app);
   console.log(hOk ? '✔' : '✘', 'An Claude übergeben (Sprachbefehl und ✳-Knopf)', JSON.stringify(h));
   if (!hOk) process.exit(1);
 }
+// 🎙 im Chatfenster: zeigt das aufnehmende Mikrofon, Wechsel direkt dort
+{
+  const m = await page.evaluate(async () => {
+    const a = window.__app;
+    navigator.mediaDevices.enumerateDevices = async () => [
+      { kind: 'audioinput', deviceId: 'dev-headset', label: 'Mikrofon (Jabra Headset) (0b0e:2470)' },
+      { kind: 'audioinput', deviceId: 'dev-cam', label: 'Mikrofon (Logitech Webcam)' },
+    ];
+    a.stt.onMicActive('Mikrofon (Logitech Webcam)', false);
+    await new Promise((r) => setTimeout(r, 100));
+    const chip = document.getElementById('micQuick');
+    const shown = !chip.hidden && getComputedStyle(chip).display !== 'none';
+    const first = chip.options[0].text;
+    const opts = [...chip.options].map((o) => o.text);
+    chip.value = 'dev-headset';
+    chip.dispatchEvent(new Event('change'));
+    await new Promise((r) => setTimeout(r, 100));
+    const chosen = { setting: a.state.settings.micId, stt: a.stt.deviceId, settingsSel: document.getElementById('sMic').value };
+    chip.value = '';
+    chip.dispatchEvent(new Event('change'));
+    return { shown, first, opts, chosen };
+  });
+  const mOk = m.shown && /jetzt: Logitech Webcam/.test(m.first) && m.opts.some((o) => /Jabra Headset$/.test(o)) && m.chosen.setting === 'dev-headset' && m.chosen.stt === 'dev-headset' && m.chosen.settingsSel === 'dev-headset';
+  console.log(mOk ? '✔' : '✘', 'Mikrofon-Auswahl im Chatfenster (zeigt aktives Mikrofon, Wechsel direkt)', JSON.stringify(m));
+  if (!mOk) process.exit(1);
+}
 console.log('crossOriginIsolated:', await page.evaluate(() => self.crossOriginIsolated), 'Kerne:', await page.evaluate(() => navigator.hardwareConcurrency));
 
 console.log('Stimme:', JSON.stringify(await page.evaluate(() => window.__app.debugVoice('de_DE-thorsten-high', 'ich'))));

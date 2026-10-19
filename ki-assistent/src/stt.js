@@ -119,7 +119,14 @@ export class SpeechInput {
       // gewähltes Mikrofon nicht angeschlossen: Standard des Systems nehmen
       if (!this.deviceId || !/NotFound|Overconstrained/i.test(e?.name ?? '')) throw e;
       this.stream = await navigator.mediaDevices.getUserMedia({ audio });
+      this.usedFallback = true;
     }
+    // welches Mikrofon nimmt wirklich auf? (bei „Standard“ entscheidet Windows – das kann wechseln)
+    const track = this.stream.getAudioTracks()[0];
+    this.activeLabel = track?.label || '';
+    this.activeId = track?.getSettings?.().deviceId || '';
+    this.onMicActive?.(this.activeLabel, !!this.usedFallback);
+    this.usedFallback = false;
     this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
     const src = this.ctx.createMediaStreamSource(this.stream);
     this.processor = this.ctx.createScriptProcessor(2048, 1, 1);

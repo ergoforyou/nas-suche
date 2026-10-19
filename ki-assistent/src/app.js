@@ -669,6 +669,7 @@ function renderPending() {
 }
 
 function updateBadge() {
+  $('micQuick')?.classList.toggle('rec', !!stt.listening); // 🎙 im Chatfenster leuchtet, solange aufgenommen wird
   const b = $('stateBadge');
   let text = '';
   b.className = 'state-badge';
@@ -739,6 +740,8 @@ function buildMessages() {
   const h = all.slice(start).map((m) => {
     if (m.tools?.length && state.settings.provider === 'anthropic') return { role: m.role, content: m.content, tools: m.tools };
     let content = m.content;
+    // abgebrochene Antwort als solche kennzeichnen – sonst hält das Modell den halben Satz für vollständig
+    if (m.cut) content += ' …[hier hat dein Gegenüber dich unterbrochen]';
     if (m.files?.length) content += `\n\n(Erstellte Dateien: ${m.files.map((f) => f.name).join(', ')})`;
     if (!m.attachments?.length) return { role: m.role, content };
     if (!withFiles) return { role: m.role, content: `${content}\n\n(Anhang: ${m.attachments.map((a) => a.name).join(', ')})`.trim() };
@@ -888,7 +891,7 @@ async function send(text) {
   const attachments = pendingAttachments;
   pendingAttachments = [];
   renderPending();
-  const entry = { role: 'user', content: text, ...(attachments.length ? { attachments } : {}) };
+  const entry = { role: 'user', content: text, t: Date.now(), ...(attachments.length ? { attachments } : {}) };
   history().push(entry);
   state.turnTools = [];
   // erste Frage nach einer längeren Pause: offene Themen mitgeben (die KI darf bei Gelegenheit nachfragen)
@@ -970,7 +973,9 @@ async function send(text) {
     if (answer && kbDocs.length) answer += `\n\n📚 *Aus dem Firmenwissen mitgegeben: ${kbDocs.join(', ')}*`;
     if (answer || created.length) {
       const tools = takeTurnTools();
-      const entry = { role: 'assistant', content: answer, ...(created.length ? { files: created } : {}), ...(tools.length ? { tools } : {}) };
+      const cut = !!state.cutId && state.cutId === state.currentChatId;
+      state.cutId = null;
+      const entry = { role: 'assistant', content: answer, t: Date.now(), ...(cut ? { cut: true } : {}), ...(created.length ? { files: created } : {}), ...(tools.length ? { tools } : {}) };
       fillBubble(bubble, 'assistant', answer);
       decorateBubble(bubble, entry);
       history().push(entry);
@@ -1823,6 +1828,26 @@ function fragmentReason(text, conf) {
   if (conf != null && (conf < 0.35 || (conf < 0.55 && words.length <= 3))) return 'unsicher erkannt';
   return null;
 }
+/**
+ * Abgerissener Satz im Live-Gespräch: kurze Pause → der erste Teil ging schon los, den Rest hat man in die beginnende
+ * Antwort hineingesprochen. Dann den ersten Teil und die abgebrochene Antwort aus dem Verlauf nehmen und beides als
+ * EINE Frage schicken – statt halber Sätze und abgebrochener Antworten, die das Sprachmodell verwirren.
+ */
+const TORN_MS = 12000;
+function joinTornSentence(text) {
+  const h = history();
+  const a = h.at(-1);
+  const u = a?.role === 'assistant' ? h.at(-2) : a;
+  // nur, wenn die eigene letzte Frage frisch ist und die Antwort darauf abgebrochen wurde (oder noch gar keine kam)
+  if (u?.role !== 'user' || u.attachments?.length || Date.now() - (u.t ?? 0) > TORN_MS) return text;
+  if (a?.role === 'assistant' && !a.cut) return text;
+  h.splice(h.indexOf(u), a?.role === 'assistant' ? 2 : 1);
+  save();
+  renderChat();
+  logEv('STT', 'abgerissenen Satz zusammengeführt');
+  return `${u.content.replace(/[.…]+\s*$/, '')} ${text}`.trim();
+}
+
 /** Hinweis auf eine Eingabe, die bewusst nicht verschickt wurde. */
 function overheard(text, why) {
   status(text ? `Überhört (${why}): „${text.slice(0, 60)}“` : `Überhört (${why})`);
@@ -1834,6 +1859,8 @@ const liveBargeIn = () => state.settings.handsFree && state.settings.bargeIn;
 
 /** Avatar verstummt und die laufende Antwort wird abgebrochen, weil ich zu sprechen beginne. */
 function interrupt() {
+  // die laufende Antwort als „unterbrochen“ merken (für den Verlauf und zum Zusammenführen abgerissener Sätze)
+  state.cutId = state.currentChatId;
   if (state.currentChatId) desktop.abortChat(state.currentChatId);
   tts.stop();
   status('Unterbrochen – ich höre zu …');
@@ -1985,7 +2012,7 @@ async function listenOnce({ handsFree = false } = {}) {
     if (handsFree && duringSpeech && isEcho(text)) return;
     fireEvent('ack', 1500);
     if (interrupted) await waitIdle(2500);
-    await send(text);
+    await send(interrupted ? joinTornSentence(text) : text);
   } catch (e) {
     state.transcribing = false;
     updateBadge();
@@ -4739,29 +4766,60 @@ $('sLivePause').onchange = (e) => {
   save();
 };
 // ---- Mikrofon wählen (z. B. Headset statt Tischmikrofon, wenn mehrere angeschlossen sind)
+// Auch direkt im Chatfenster (🎙 neben dem Mikrofon-Knopf): zeigt, welches Mikrofon gerade wirklich aufnimmt
+let micDevs = [];
+let micActiveLabel = '';
+let micFallback = false;
+const shortMic = (l) => String(l || '').replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').replace(/^(Mikrofon|Microphone)\s*\((.+)\)$/i, '$2').trim();
 async function fillMics() {
-  const sel = $('sMic');
-  if (!sel || !navigator.mediaDevices?.enumerateDevices) return;
-  let devs = [];
+  if (!navigator.mediaDevices?.enumerateDevices) return;
   try {
-    devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
+    micDevs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
   } catch {}
   const cur = state.settings.micId || '';
-  sel.innerHTML = '';
-  sel.add(new Option('Standard des Systems', ''));
-  devs.forEach((d, i) => sel.add(new Option(d.label || `Mikrofon ${i + 1}`, d.deviceId)));
-  if (cur && !devs.some((d) => d.deviceId === cur)) sel.add(new Option('(gewähltes Mikrofon nicht angeschlossen – nutze Standard)', cur));
-  sel.value = cur;
+  const missing = cur && micDevs.length && !micDevs.some((d) => d.deviceId === cur);
+  for (const [id, short] of [['sMic', false], ['micQuick', true]]) {
+    const sel = $(id);
+    if (!sel) continue;
+    sel.innerHTML = '';
+    const std = micActiveLabel && !cur ? `Standard (jetzt: ${shortMic(micActiveLabel)})` : 'Standard des Systems';
+    sel.add(new Option(short ? `🎙 ${std}` : std, ''));
+    micDevs.forEach((d, i) => sel.add(new Option(`${short ? '🎙 ' : ''}${short ? shortMic(d.label) : d.label}` || `Mikrofon ${i + 1}`, d.deviceId)));
+    if (missing) sel.add(new Option(`${short ? '⚠ ' : ''}(gewähltes Mikrofon nicht angeschlossen – nutze Standard)`, cur));
+    sel.value = cur;
+  }
+  const chip = $('micQuick');
+  if (chip) {
+    chip.hidden = MOBILE || micDevs.length < 1;
+    chip.classList.toggle('warn', !!(missing || micFallback));
+    chip.title = `Mikrofon${micActiveLabel ? ` – nimmt gerade auf über: ${micActiveLabel}` : ''}${!cur ? ' (Windows-Standard, kann wechseln – hier fest wählen)' : ''}`;
+  }
   $('sMicHint').textContent =
-    devs.length > 1 && !cur ? `${devs.length} Mikrofone gefunden – am besten das Headset wählen (Tischmikrofone hören den ganzen Raum mit).` : '';
+    micDevs.length > 1 && !cur ? `${micDevs.length} Mikrofone gefunden – am besten das Headset fest wählen (sonst entscheidet Windows und kann zwischendurch wechseln).` : '';
 }
-$('sMic').onchange = (e) => {
-  state.settings.micId = e.target.value;
-  stt.setDevice(e.target.value);
+function setMic(id) {
+  state.settings.micId = id;
+  stt.setDevice(id);
   save();
   fillMics();
-  status('Mikrofon gewechselt – gilt ab dem nächsten Zuhören.');
+  const d = micDevs.find((x) => x.deviceId === id);
+  status(`🎙 Mikrofon: ${id ? shortMic(d?.label) || 'gewählt' : 'Standard des Systems'} – gilt ab sofort.`);
+  logEv('MIKROFON', id ? 'fest gewählt' : 'Standard');
   if (state.settings.handsFree) maybeListenHandsFree();
+}
+$('sMic').onchange = (e) => setMic(e.target.value);
+$('micQuick').onchange = (e) => setMic(e.target.value);
+// Rückmeldung von der Spracherkennung: welches Gerät wurde geöffnet? Bei „Standard“ einen Wechsel melden.
+stt.onMicActive = (label, fallback) => {
+  const changed = micActiveLabel && label && label !== micActiveLabel;
+  micActiveLabel = label;
+  micFallback = fallback;
+  if (fallback) status(`⚠ Gewähltes Mikrofon nicht gefunden – nehme gerade „${shortMic(label)}“.`);
+  else if (changed && !state.settings.micId) {
+    status(`🎙 Windows hat das Mikrofon gewechselt: jetzt „${shortMic(label)}“ – unten bei 🎙 fest wählen, dann bleibt es.`);
+    logEv('MIKROFON', 'Standard hat gewechselt');
+  }
+  fillMics();
 };
 navigator.mediaDevices?.addEventListener?.('devicechange', () => fillMics());
 $('sSens').oninput = (e) => {
@@ -7640,6 +7698,7 @@ function startPhoneFeatures() {
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
   carryPersonas,
+  joinTornSentence,
   learnNow: (items) => learn(persona(), items),
   setHandsFree,
   send,
@@ -7718,6 +7777,7 @@ init().then(() => {
   refreshGoogle();
   startPhoneFeatures();
   startOffice();
+  if (!MOBILE) fillMics(); // 🎙-Auswahl im Chatfenster
   loadKb();
   refreshSyncUi();
   startAutoSync();
