@@ -1685,6 +1685,19 @@ const waitIdle = async (ms) => {
   for (const end = Date.now() + ms; state.busy && Date.now() < end; ) await new Promise((r) => setTimeout(r, 50));
 };
 
+/** Läuft die Erkennung über die Cloud (OpenAI-Schlüssel da)? Dann muss das große Modell auf dem Gerät nicht geladen werden. */
+async function cloudSttReady() {
+  if (state.settings.sttEngine !== 'cloud' || !desktop.transcribeCloud || state.settings.offline) return false;
+  return !!(await desktop.keyStatus().catch(() => ({}))).openai;
+}
+/** Lokales Modell vorab laden – nur, wenn es auch gebraucht wird. */
+async function warmupLocalStt(onProgress) {
+  if (await cloudSttReady()) return;
+  return stt.warmup(onProgress);
+}
+// fürs Aktivierungswort reicht ein kleines Modell auf dem Gerät (~40 MB) – die Sprache geht dafür nie in die Cloud
+const WAKE_MODEL = 'onnx-community/whisper-tiny';
+
 /** Spracherkennung; scheitert der Download des gewählten Modells, mit einem kleineren weiterversuchen. */
 const STT_FALLBACKS = ['onnx-community/whisper-base', 'onnx-community/whisper-tiny'];
 async function transcribeWithFallback(audio, { withConfidence = false } = {}) {
@@ -1847,7 +1860,7 @@ function setHandsFree(on) {
     : 'Live-Gespräch starten – einfach losreden, dazwischenreden erlaubt (überall: Strg+Alt+L)';
   if (on) {
     status('Live-Gespräch läuft – sprich einfach. Zum Beenden 📞 erneut drücken.');
-    stt.warmup(progressStatus('Spracherkennung')).then(() => status(''), (e) => status(`Spracherkennung: ${e.message}`));
+    warmupLocalStt(progressStatus('Spracherkennung')).then(() => status(''), (e) => status(`Spracherkennung: ${e.message}`));
   }
   save();
   if (on) maybeListenHandsFree();
@@ -6113,7 +6126,8 @@ async function wakeLoop() {
     state.micActive = true;
     state.wakeListening = true;
     try {
-      audio = await stt.listen({ waitForSpeech: true, threshold: () => state.settings.sensitivity * 1.2, silenceMs: 700, maxMs: 6000, startMs: () => 200 });
+      // ohne Echo-Unterdrückung: sonst hielte Android dauerhaft den Telefonie-Modus und andere Töne würden leiser
+      audio = await stt.listen({ waitForSpeech: true, threshold: () => state.settings.sensitivity * 1.2, silenceMs: 700, maxMs: 6000, startMs: () => 200, aec: false });
     } catch (e) {
       logEv('WACHWORT', e.message);
     } finally {
@@ -6126,7 +6140,9 @@ async function wakeLoop() {
     }
     let text = '';
     try {
-      text = await stt.transcribe(audio, null, stt.model);
+      // erkannt wird auf dem Gerät: bei Cloud-Erkennung mit dem kleinen Modell, sonst mit dem ohnehin geladenen
+      const model = (await cloudSttReady()) ? WAKE_MODEL : stt.model;
+      text = await stt.transcribe(audio, progressStatus('Aktivierungswort'), model);
     } catch (e) {
       logEv('WACHWORT', `Erkennung: ${e.message}`);
       await pause(2000);
@@ -7171,6 +7187,8 @@ init().then(() => {
   loadKb();
   refreshSyncUi();
   startAutoSync();
+  // Handy: Speicher der App als dauerhaft anfordern (Sprachmodelle sollen nicht vom System weggeräumt werden)
+  if (MOBILE) navigator.storage?.persist?.().catch(() => {});
   desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);
@@ -7178,5 +7196,5 @@ init().then(() => {
   setTimeout(() => personalGreeting().catch(() => {}), 2500);
   ensureFaceRig();
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
-  if (!state.settings.offline && state.settings.handsFree) setTimeout(() => stt.warmup().catch(() => {}), 3000);
+  if (!state.settings.offline && state.settings.handsFree) setTimeout(() => warmupLocalStt().catch(() => {}), 3000);
 });

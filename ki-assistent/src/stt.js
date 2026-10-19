@@ -101,10 +101,18 @@ export class SpeechInput {
     return res.text;
   }
 
-  async ensureMic() {
-    if (this.stream) return;
+  /**
+   * Mikrofon öffnen. aec = Echo-Unterdrückung (für Gespräche nötig, damit die Figur sich nicht selbst hört). Auf dem
+   * Handy schaltet sie Android in den Telefonie-Modus – andere Töne (Musik, Videos) werden dann leiser. Fürs reine
+   * Warten aufs Aktivierungswort reicht das Mikrofon ohne.
+   */
+  async ensureMic(aec = true) {
+    clearTimeout(this.idleTimer);
+    if (this.stream && this.micAec === aec) return;
+    if (this.stream) this.closeMic();
+    this.micAec = aec;
     this.onMicOpen?.(); // Handy: Headset als Sprechgerät wählen, bevor das Mikrofon aufgeht
-    const audio = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    const audio = { channelCount: 1, echoCancellation: aec, noiseSuppression: aec, autoGainControl: true };
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: this.deviceId ? { ...audio, deviceId: { exact: this.deviceId } } : audio });
     } catch (e) {
@@ -127,8 +135,8 @@ export class SpeechInput {
    */
   // threshold und startMs dürfen Funktionen sein (Live-Gespräch: strenger, solange der Avatar spricht).
   // startMs: so lange muss es laut sein, bis es als Sprechen gilt. onSpeechStart: Beginn des Sprechens.
-  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000, startMs = 0, adaptive = true, minThreshold = 0.003, onSpeechStart } = {}) {
-    await this.ensureMic();
+  async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000, startMs = 0, adaptive = true, minThreshold = 0.003, onSpeechStart, aec = true } = {}) {
+    await this.ensureMic(aec);
     if (this.ctx.state === 'suspended') await this.ctx.resume();
     return new Promise((resolve) => {
       this.rec = {
@@ -146,7 +154,13 @@ export class SpeechInput {
         minThreshold,
         loudFor: 0,
         onSpeechStart,
-        resolve,
+        // nach dem Zuhören das Mikrofon bald wieder schließen (nicht dauerhaft offen lassen – auf dem Handy hält es
+        // sonst den Telefonie-Modus und macht andere Töne leiser); folgt gleich das nächste Zuhören, bleibt es offen
+        resolve: (v) => {
+          clearTimeout(this.idleTimer);
+          this.idleTimer = setTimeout(() => !this.rec && this.closeMic(), this.idleCloseMs ?? 4000);
+          resolve(v);
+        },
       };
     });
   }

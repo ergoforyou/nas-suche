@@ -23,7 +23,25 @@ export function voicePath(id) {
   return `${locale.split('_')[0]}/${locale}/${name}/${quality}/${id}.onnx`;
 }
 
+// Android-App: Stimmen kommen direkt von Hugging Face – im Browser-Speicher der App aufheben, sonst würden sie bei
+// jedem Start neu geladen. (Am PC speichert der Hauptprozess sie selbst.)
+const CACHE_VOICES = typeof __HF_BASE__ !== 'undefined' && typeof caches !== 'undefined';
 async function fetchWithProgress(url, onProgress) {
+  if (CACHE_VOICES) {
+    try {
+      const hit = await (await caches.open('ki-stimmen')).match(url);
+      if (hit) return new Uint8Array(await hit.arrayBuffer());
+    } catch {}
+  }
+  const out = await download(url, onProgress);
+  if (CACHE_VOICES) {
+    try {
+      await (await caches.open('ki-stimmen')).put(url, new Response(out, { headers: { 'content-type': 'application/octet-stream' } }));
+    } catch {}
+  }
+  return out;
+}
+async function download(url, onProgress) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download fehlgeschlagen (${res.status})`);
   const total = Number(res.headers.get('content-length')) || 0;

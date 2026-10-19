@@ -1098,6 +1098,35 @@ const restBtnRes = await page.evaluate(() => {
   return out;
 });
 check(restBtnRes.trigger === "rest" && /Ruhe-Video/.test(restBtnRes.name), 'Knopf „Ruhe-Video statt Standbild“ legt eine Ruhe-Pose an', JSON.stringify(restBtnRes));
+// Mikrofon bleibt nicht dauerhaft offen (am Handy hielte es sonst den Telefonie-Modus – Musik würde leiser);
+// Warten aufs Aktivierungswort ohne Echo-Unterdrückung
+const micRes = await page.evaluate(async () => {
+  const stt = window.__app.stt;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const keep = stt.idleCloseMs;
+  stt.idleCloseMs = 200;
+  // künstliches Mikrofon (der Testbrowser hat keins); merkt sich die angeforderten Einstellungen
+  const asked = [];
+  const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  navigator.mediaDevices.getUserMedia = async (c) => {
+    asked.push(c);
+    const ctx = new AudioContext();
+    return ctx.createMediaStreamDestination().stream;
+  };
+  const p = stt.listen({ waitForSpeech: true, aec: false, threshold: 10 });
+  await wait(300);
+  const open = !!stt.stream;
+  const aec = stt.micAec;
+  const track = asked.at(-1)?.audio?.echoCancellation;
+  stt.cancel();
+  await p;
+  await wait(500);
+  const closed = !stt.stream;
+  stt.idleCloseMs = keep;
+  navigator.mediaDevices.getUserMedia = orig;
+  return { open, aec, track, closed };
+});
+check(micRes.open && micRes.aec === false && micRes.track === false && micRes.closed, 'Mikrofon: Aktivierungswort ohne Echo-Unterdrückung, danach schließt es wieder', JSON.stringify(micRes));
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
 {
   const { default: qrcodeGen } = await import('qrcode-generator');
