@@ -1304,6 +1304,60 @@ check(
   'Live-Gespräch: abgerissener Satz wird zusammengeführt, abgebrochene Antworten sind als unterbrochen markiert',
   JSON.stringify(tornRes),
 );
+// Lebensgeschichte: entwerfen lassen, prägende Erinnerungen ins Selbstbild, im Systemprompt; lange Geschichte: passende Abschnitte
+claudeQueue.push([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Ich bin in einer kleinen Hafenstadt aufgewachsen. ' + 'Mein Vater reparierte Uhren, und von ihm lernte ich Geduld und Ordnung. '.repeat(3) } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 30 } },
+  { type: 'message_stop' },
+]);
+claudeQueue.push([
+  { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"erinnerungen":["Seit ich meinem Vater beim Uhrenreparieren zusah, arbeite ich lieber genau als schnell.","Die Hafenstadt hat mich gelehrt, ruhig zu bleiben, wenn es stürmt."]}' } },
+  { type: 'content_block_stop', index: 0 },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 30 } },
+  { type: 'message_stop' },
+]);
+const storyRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const before = { prompt: p.prompt, selbst: p.selbst };
+  p.prompt = 'Du bist Max, ein ruhiger Büroassistent.';
+  p.geschichte = '';
+  p.selbst = [];
+  document.getElementById('sgDraft').click();
+  for (let i = 0; i < 50 && !p.geschichte; i++) await new Promise((r) => setTimeout(r, 100));
+  const drafted = p.geschichte;
+  document.getElementById('sgAnchors').click();
+  for (let i = 0; i < 50 && !p.selbst.length; i++) await new Promise((r) => setTimeout(r, 100));
+  const anchors = p.selbst.map((e) => ({ t: e.text, art: e.art, q: e.quelle }));
+  const sys = JSON.stringify(app.buildMessages());
+  const state = document.getElementById('sgState').textContent;
+  Object.assign(p, before);
+  return { drafted: drafted.slice(0, 60), anchors, inPrompt: sys.includes('Deine Lebensgeschichte') && sys.includes('Hafenstadt'), state };
+});
+check(
+  /Hafenstadt/.test(storyRes.drafted) && storyRes.anchors.length === 2 && storyRes.anchors.every((a) => a.art === 'geschichte' && a.q === 'nutzer') && storyRes.inPrompt && /2 prägende Erinnerungen/.test(storyRes.state),
+  'Lebensgeschichte: entworfen, prägende Erinnerungen geschützt im Selbstbild, im Systemprompt',
+  JSON.stringify(storyRes),
+);
+claudeRequests.length = 0;
+await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const filler = Array.from({ length: 12 }, (_, i) => `Absatz ${i}: Ich habe in diesem Jahr viel über Ordnung, Listen und Termine gelernt und mochte die Arbeit im Büro sehr.`).join('\n\n');
+  p.geschichte = `${filler}\n\nAls Kind bin ich jeden Sommer auf den alten Leuchtturm von Hörnum gestiegen und habe dort Möwen gezählt.\n\n${filler}`;
+  app.state.settings.speak = false;
+  await app.send('Erzähl mir vom Leuchtturm aus deiner Kindheit');
+});
+const findStoryReq = () => claudeRequests.find((r) => JSON.stringify(r.messages ?? '').includes('Leuchtturm aus deiner Kindheit'));
+for (let i = 0; i < 100 && !findStoryReq(); i++) await new Promise((r) => setTimeout(r, 100));
+await page.evaluate(() => (window.__app.persona().geschichte = ''));
+const storyReq = JSON.stringify(findStoryReq() ?? '');
+check(/Passende Abschnitte aus deiner Lebensgeschichte/.test(storyReq) && /Hörnum/.test(storyReq), 'Lange Lebensgeschichte: passender Abschnitt kommt zur Frage dazu', storyReq.slice(0, 200));
 // Beenden-Knopf am Handy: sichtbar, fragt einmal nach und beendet dann die App
 const quitRes = await page.evaluate(async () => {
   const btn = document.getElementById('btnQuit');

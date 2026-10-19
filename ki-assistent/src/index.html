@@ -128,6 +128,20 @@
         </div>
         <p id="sbInfo" class="hint"></p>
       </details>
+      <details id="sgBox" class="steckbrief">
+        <summary>📖 Lebensgeschichte <span id="sgState" class="hint"></span></summary>
+        <p class="hint">Die Vergangenheit der Figur in ihren eigenen Worten (Ich-Form): Herkunft, prägende Erlebnisse,
+          Wendepunkte. Sie erzählt daraus wie aus eigenen Erinnerungen. Kurze Geschichten gehen ganz mit, bei langen der
+          Anfang und die zur Frage passenden Abschnitte. „Prägende Erinnerungen“ übernimmt die Kernpunkte ins Selbstbild.</p>
+        <textarea id="sgText" rows="8" placeholder="Ich bin in einem kleinen Ort an der Küste aufgewachsen …"></textarea>
+        <div class="row wrap">
+          <button id="sgDraft">✨ Aus Steckbrief entwerfen</button>
+          <button id="sgFile">📄 Aus Datei laden</button>
+          <input id="sgFileIn" type="file" accept=".txt,.md,text/plain,text/markdown" hidden />
+          <button id="sgAnchors">🧩 Prägende Erinnerungen ins Selbstbild</button>
+        </div>
+        <p id="sgInfo" class="hint"></p>
+      </details>
       <label>Begrüßung <input id="pGreeting" type="text" placeholder="Hallo! Wie kann ich helfen?" /></label>
       <label>Antwortsprache
         <select id="pLang">

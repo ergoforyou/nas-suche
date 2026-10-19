@@ -19,6 +19,7 @@ import { MoodFilter, guessMood, MOOD_PROMPT, GESTURES, gesturePrompt } from './m
 import googleLib from '../google.js';
 import { CostMeter, fmtUsd, priceOf } from './kosten.js';
 import appToolsLib from '../apptools.js';
+import { storyPrompt, storyHitsPrompt, storyIsLong, STORY_MAX, DRAFT_PROMPT, ANCHORS_PROMPT, parseAnchors } from './geschichte.js';
 import { TIDY_PROMPT, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, numbered as numberedMemory } from './gedaechtnis.js';
 import { TRAITS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief } from './steckbrief.js';
 import { stamp as stampSync, noteDeletions, snapshot as syncSnapshot, mergeSync, idsOf, personaText } from './abgleich.js';
@@ -712,7 +713,7 @@ function buildMessages() {
   const r = RULES[p.language] ?? RULES.de;
   // Gleichbleibender Teil (Persona, Regeln, App-Wissen) und wechselnder Zusammenhang (Uhrzeit, Ort, Auszüge)
   // getrennt: Claude speichert den gleichbleibenden Teil zwischen – Folgefragen kosten dann deutlich weniger
-  const parts = [steckbriefPrompt(p.steckbrief, p.language), p.prompt?.trim()];
+  const parts = [steckbriefPrompt(p.steckbrief, p.language), storyPrompt(p.geschichte, p.language), p.prompt?.trim()];
   if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech);
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(p.memory.map((m) => `- ${m.text}`).join('\n')));
   if (p.selbstOn !== false && p.selbst?.length) parts.push(r.self(p.selbst.map((m) => `- ${m.text}`).join('\n'), appToolsActive()));
@@ -729,6 +730,7 @@ function buildMessages() {
   if (state.place) ctx.push(r.place(state.place));
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
   if (state.savedHits?.length) ctx.push(savedPrompt(state.savedHits));
+  if (state.storyHits?.length) ctx.push(storyHitsPrompt(state.storyHits));
   if (state.topicsNow?.length) ctx.push(topicsPrompt(state.topicsNow, p.language === 'en' ? 'en' : 'de'));
   const sys = parts.filter(Boolean).join('\n\n');
   const ctxText = ctx.filter(Boolean).join('\n\n');
@@ -1009,6 +1011,7 @@ async function send(text) {
 
   state.place = await currentPlace();
   state.kbHits = kbActive() ? searchIndex(kbIndex, text || attachments.map((a) => a.name).join(' '), 5) : [];
+  state.storyHits = storyIsLong(persona().geschichte) ? searchIndex(storyIndex(persona()), text, 2) : [];
   state.savedHits = savedIndex?.n ? searchIndex(savedIndex, text, 3) : [];
   const id = newId();
   state.currentChatId = id;
@@ -1565,7 +1568,7 @@ $('mClear').onclick = () => {
 // Gespräche nach: Was lief gut, wo wurde sie korrigiert, was will sie anders machen? Daraus pflegt sie ihr Selbstbild,
 // das in jedem Gespräch mitgeht. Liegt wie das Gedächtnis nur in der Datendatei dieses Geräts, je Bereich getrennt.
 const SELF_MAX = 40;
-const SELF_KINDS = { erfahrung: 'Erfahrung', vorsatz: 'Vorsatz', staerke: 'Stärke', schwaeche: 'Schwäche', vorliebe: 'Vorliebe' };
+const SELF_KINDS = { erfahrung: 'Erfahrung', vorsatz: 'Vorsatz', staerke: 'Stärke', schwaeche: 'Schwäche', vorliebe: 'Vorliebe', geschichte: 'Geschichte' };
 const REFLECT_EVERY = 12; // Antworten
 const REFLECT_GAP = 6 * 3600e3; // höchstens alle 6 Stunden von selbst
 const REFLECT_PAUSE = 4 * 60e3; // erst in einer Gesprächspause
@@ -1632,7 +1635,7 @@ async function reflect(p, manual = false) {
     const list = (p.selbst ?? []).map((m, i) => `${i + 1}. [${SELF_KINDS[m.art] ?? m.art}] ${m.text}${m.quelle === 'nutzer' ? ' (vom Nutzer)' : ''}`).join('\n') || '(noch leer)';
     const talk = msgs.map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Du'}: ${String(m.content).slice(0, 700)}`).join('\n\n');
     const input =
-      `Deine Persona (${p.name}):\n${(p.prompt ?? '').slice(0, 800)}${hasSteckbrief(p.steckbrief) ? `\n\n${steckbriefPrompt(p.steckbrief)}` : ''}\n\nDein Selbstbild:\n${list}\n\nLetzte Gespräche:\n${talk}` +
+      `Deine Persona (${p.name}):\n${(p.prompt ?? '').slice(0, 800)}${hasSteckbrief(p.steckbrief) ? `\n\n${steckbriefPrompt(p.steckbrief)}` : ''}${p.geschichte?.trim() ? `\n\nDeine Lebensgeschichte (Anfang):\n${p.geschichte.trim().slice(0, 1200)}` : ''}\n\nDein Selbstbild:\n${list}\n\nLetzte Gespräche:\n${talk}` +
       (p.language === 'en' ? '\n\nWrite the entries and the thought in English.' : '');
     const id = newId();
     const raw = await new Promise((resolve) => {
@@ -2364,6 +2367,7 @@ function fillSettings() {
   $('pPrompt').value = p.prompt;
   $('pGreeting').value = p.greeting;
   renderSteckbrief();
+  renderStory();
   $('pLang').value = p.language;
   $('pStyle').value = p.style;
 
@@ -2804,6 +2808,91 @@ $('sbFill').onclick = async () => {
     $('sbInfo').textContent = `Ausfüllen nicht möglich: ${e.message}`;
   } finally {
     $('sbFill').disabled = false;
+  }
+};
+// ---- Lebensgeschichte
+const storyIdx = new Map(); // je Persona: Suchindex der Abschnitte (neu gebaut, wenn sich der Text ändert)
+function storyIndex(p) {
+  const s = p.geschichte ?? '';
+  const c = storyIdx.get(p.id);
+  if (c?.s === s) return c.idx;
+  const idx = buildIndex({ docs: [{ name: 'Geschichte', chunks: chunkText(s, 700) }] });
+  storyIdx.set(p.id, { s, idx });
+  return idx;
+}
+function renderStory() {
+  const p = persona();
+  const s = p.geschichte ?? '';
+  if (document.activeElement !== $('sgText')) $('sgText').value = s;
+  const anchors = (p.selbst ?? []).filter((e) => e.art === 'geschichte').length;
+  $('sgState').textContent = s.trim() ? `(${s.trim().split(/\s+/).length} Wörter${anchors ? `, ${anchors} prägende Erinnerungen` : ''})` : '(leer)';
+}
+let sgTimer = null;
+$('sgText').addEventListener('input', () => {
+  clearTimeout(sgTimer);
+  const p = persona();
+  sgTimer = setTimeout(() => {
+    if (persona() !== p) return;
+    p.geschichte = $('sgText').value.slice(0, STORY_MAX);
+    save();
+    renderStory();
+  }, 500);
+});
+function setStory(p, text, info) {
+  p.geschichte = String(text ?? '').trim().slice(0, STORY_MAX);
+  save();
+  renderStory();
+  $('sgText').value = p.geschichte;
+  $('sgInfo').textContent = info;
+}
+$('sgDraft').onclick = async () => {
+  const p = persona();
+  if (p.geschichte?.trim() && !confirm('Die vorhandene Geschichte durch einen neuen Entwurf ersetzen?')) return;
+  if (!p.prompt?.trim() && !hasSteckbrief(p.steckbrief)) return ($('sgInfo').textContent = 'Erst Systemprompt oder Steckbrief ausfüllen – daraus entsteht der Entwurf.');
+  $('sgDraft').disabled = true;
+  $('sgInfo').textContent = '✨ Geschichte wird entworfen …';
+  try {
+    const input = `Name: ${p.name}\n\nSystemprompt:\n${(p.prompt ?? '').slice(0, 3000)}\n\n${steckbriefPrompt(p.steckbrief) || '(kein Steckbrief)'}`;
+    const text = await askOnce(DRAFT_PROMPT, input);
+    if (persona() !== p) return;
+    if (!text || text.length < 100) throw new Error('kein brauchbarer Entwurf');
+    setStory(p, text, '✔ Entwurf eingetragen – lies ihn durch und passe an, was nicht passt. Dann „Prägende Erinnerungen“.');
+  } catch (e) {
+    $('sgInfo').textContent = `Entwurf nicht möglich: ${e.message}`;
+  } finally {
+    $('sgDraft').disabled = false;
+  }
+};
+$('sgFile').onclick = () => $('sgFileIn').click();
+$('sgFileIn').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const p = persona();
+  if (p.geschichte?.trim() && !confirm(`Die vorhandene Geschichte durch „${f.name}“ ersetzen?`)) return;
+  const text = await f.text();
+  setStory(p, text, `✔ „${f.name}“ geladen${text.length > STORY_MAX ? ` (auf ${STORY_MAX} Zeichen gekürzt)` : ''}.`);
+};
+$('sgAnchors').onclick = async () => {
+  const p = persona();
+  if (!p.geschichte?.trim()) return ($('sgInfo').textContent = 'Erst eine Geschichte eintragen.');
+  $('sgAnchors').disabled = true;
+  $('sgInfo').textContent = '🧩 Prägende Erinnerungen werden abgeleitet …';
+  try {
+    const list = parseAnchors(await askOnce(ANCHORS_PROMPT, p.geschichte.slice(0, 16000)));
+    if (persona() !== p) return;
+    if (!list.length) throw new Error('nichts gefunden');
+    // die bisherigen aus der Geschichte ersetzen; als „vom Nutzer“ geschützt (Nachdenken ändert sie nicht)
+    p.selbst = (p.selbst ?? []).filter((e) => e.art !== 'geschichte');
+    const added = list.map((t) => addSelf(p, t, 'geschichte', 'nutzer')).filter(Boolean);
+    save();
+    renderSelf();
+    renderStory();
+    $('sgInfo').textContent = `✔ ${added.length} prägende Erinnerungen im Selbstbild (⚙ → Gedächtnis → Selbstbild).`;
+  } catch (e) {
+    $('sgInfo').textContent = `Nicht möglich: ${e.message}`;
+  } finally {
+    $('sgAnchors').disabled = false;
   }
 };
 $('sbClear').onclick = () => {
