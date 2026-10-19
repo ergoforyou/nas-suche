@@ -61,6 +61,7 @@ await page.waitForFunction(() => window.__app);
     a.state.settings.speak = false;
     const before = a.history().length;
     await a.send('An Claude: Fass mir die Angebote zusammen');
+    await a.send('Max, gib das an Claude Cowork weiter: Baue eine Liste');
     a.state.settings.claudeSend = false;
     document.querySelector('#input').value = 'Erstelle eine Tabelle';
     document.querySelector('#btnClaude').click();
@@ -70,8 +71,8 @@ await page.waitForFunction(() => window.__app);
     return { calls: window.__handoffs ?? [], historyGrew: a.history().length !== before, btn: !document.querySelector('#btnClaude').hidden, input: document.querySelector('#input').value, bubbles };
   });
   const hOk =
-    h.btn && h.calls.length === 2 && h.calls[0].text === 'Fass mir die Angebote zusammen' && h.calls[0].send === true &&
-    h.calls[1].text === 'Erstelle eine Tabelle' && h.calls[1].send === false && !h.historyGrew && !h.input && h.bubbles.length >= 2;
+    h.btn && h.calls.length === 3 && h.calls[0].text === 'Fass mir die Angebote zusammen' && h.calls[0].send === true &&
+    h.calls[1].text === 'Baue eine Liste' && h.calls[2].text === 'Erstelle eine Tabelle' && h.calls[2].send === false && !h.historyGrew && !h.input && h.bubbles.length >= 3;
   console.log(hOk ? '✔' : '✘', 'An Claude übergeben (Sprachbefehl und ✳-Knopf)', JSON.stringify(h));
   if (!hOk) process.exit(1);
 }

@@ -449,8 +449,10 @@ async function transcribeOpenAI(client, toFile, audio, { language, model, prompt
 
 const { APP_TOOLS, APP_TOOL_STATUS } = require('./apptools.js');
 /** App-Werkzeuge; run führt den Aufruf in der Oberfläche aus. */
-function appTools(run) {
-  return { defs: APP_TOOLS, status: APP_TOOL_STATUS, run };
+function appTools(run, { desktop = false } = {}) {
+  // „desktopOnly“ ist nur ein Merker der App – die API bekommt die reine Beschreibung
+  const defs = APP_TOOLS.filter((d) => desktop || !d.desktopOnly).map(({ desktopOnly: _d, ...d }) => d);
+  return { defs, status: APP_TOOL_STATUS, run };
 }
 /** Mehrere Werkzeug-Sätze (z. B. Google + App) zu einem zusammenfassen. */
 function mergeTools(...sets) {

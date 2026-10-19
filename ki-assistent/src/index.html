@@ -124,7 +124,8 @@
         <input id="personaImportFile" type="file" accept=".kiavatar,.zip,.json" hidden />
       </div>
       <p class="hint">Eine Datei (.kiavatar) mit Avatar, Posen, Videos, 3D-Figur, Stimme und Texten – zum Übertragen zwischen PC und Handy.
-        API-Schlüssel, Google-Verbindung und Gesprächsverlauf bleiben auf dem Gerät.</p>
+        Auf Wunsch mit Gedächtnis, Selbstbild, gespeichertem Wissen und Chatverlauf (Komplett-Umzug); API-Schlüssel und
+        Google-Verbindung bleiben immer auf dem Gerät.</p>
       <button id="clearHistory" class="danger">Gesprächsverlauf löschen</button>
     </div>
 
@@ -832,8 +833,10 @@
           <option value="15">15 Minuten</option>
         </select></label>
         <p class="hint">Ohne Entsperren sieht niemand Chats, Gedächtnis oder Einstellungen; im App-Wechsler wird der Inhalt verborgen
-          (dafür sind Bildschirmfotos der App gesperrt, solange die Sperre an ist). Aktivierungswort und Erinnerungen funktionieren
-          weiter – so kann die App auch außerhalb des sicheren Ordners laufen. Gilt für beide Bereiche.</p>
+          (dafür sind Bildschirmfotos der App gesperrt, solange die Sperre an ist). <b>Bildschirm aus = sofort gesperrt</b>, egal
+          welche Wartezeit eingestellt ist. Solange gesperrt ist, hört die App nicht zu (kein Aktivierungswort, kein Live-Gespräch),
+          liest keine Nachrichten vor und die schwebende Figur ist weg – nach dem Entsperren läuft alles wieder wie vorher.
+          Gilt für beide Bereiche.</p>
         <p id="phLockInfo" class="hint"></p>
       </div>
       <div id="phShared" class="mobile-only">
@@ -955,6 +958,21 @@
   </div>
 
   <!-- App-Sperre (Handy): verdeckt alles, bis mit Fingerabdruck/Gesicht/PIN entsperrt ist -->
+  <dialog id="exportDlg" class="ki-dialog">
+    <h3>📤 Persona exportieren</h3>
+    <p class="hint">Immer dabei: Figur (Bilder, Videos, Posen, 3D-Figur), Stimme, Texte und Schnellbefehle.
+      Nie dabei: API-Schlüssel, Google-Anmeldung, Firmenwissen.</p>
+    <label class="check"><input id="expMem" type="checkbox" checked /> Gedächtnis, Selbstbild und offene Themen <span id="expMemN" class="hint"></span></label>
+    <label class="check"><input id="expWissen" type="checkbox" checked /> Gespeichertes Wissen <span id="expWissenN" class="hint"></span></label>
+    <label class="check"><input id="expHist" type="checkbox" checked /> Chatverlauf dieser Persona <span id="expHistN" class="hint"></span></label>
+    <p class="hint">Zum Umziehen auf dein eigenes Gerät alles anhaken – beim Import wird mit einer gleichnamigen Persona
+      zusammengeführt (nichts geht verloren). Gibst du die Datei an andere weiter: Haken raus.</p>
+    <div class="row">
+      <button id="expGo" class="primary">Exportieren</button>
+      <button id="expCancel">Abbrechen</button>
+    </div>
+  </dialog>
+
   <div id="lockScreen" class="lock-screen" hidden>
     <div class="lock-icon">🔒</div>
     <h2>KI-Assistent ist gesperrt</h2>

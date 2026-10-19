@@ -866,7 +866,8 @@ async function send(text) {
   if (NEW_CHAT_COMMAND.test(text) && !pendingAttachments.length) return newChat();
   // „An Claude: …“ – ohne eigenes Sprachmodell direkt an die Claude-App übergeben
   const toClaude = CLAUDE_HANDOFF && !pendingAttachments.length && text.match(CLAUDE_RE);
-  if (toClaude) return handoffClaude(toClaude[1], text);
+  // „Schick das an Claude“ ohne eigenen Text: das Sprachmodell stellt die Aufgabe aus dem Gespräch zusammen (Werkzeug)
+  if (toClaude && (toClaude[1].trim() || !appToolsActive())) return handoffClaude(toClaude[1], text);
   // Privat: „Merk dir …“ bzw. Notiz über 📝 – ohne Sprachmodell direkt notieren
   if (PRIV && text && !pendingAttachments.length && (state.noteMode || NOTE_RE.test(text))) {
     const note = state.noteMode ? text : text.match(NOTE_RE)[1];
@@ -2663,18 +2664,47 @@ $('personaDelete').onclick = () => {
   fillSettings();
 };
 // Persona als eine Datei (.kiavatar) mit allen Bildern, Videos, Masken und der 3D-Figur – für PC und Handy
+/** Auswahl, was mitgeht (Gedächtnis, Wissen, Verlauf). Liefert null bei Abbruch. */
+function askExportParts(p) {
+  const memN = (p.memory?.length ?? 0) + (p.selbst?.length ?? 0) + (p.themen?.length ?? 0);
+  const histN = (state.history[p.id] ?? []).length;
+  $('expMemN').textContent = `(${memN} Einträge)`;
+  $('expWissenN').textContent = `(${state.saved?.length ?? 0} Einträge, Bereich ${AREA === 'privat' ? 'Privat' : 'Dienstlich'})`;
+  $('expHistN').textContent = `(${histN} Nachrichten)`;
+  const dlg = $('exportDlg');
+  return new Promise((resolve) => {
+    const done = (v) => {
+      dlg.close();
+      resolve(v);
+    };
+    $('expGo').onclick = () => done({ mem: $('expMem').checked, wissen: $('expWissen').checked, hist: $('expHist').checked });
+    $('expCancel').onclick = () => done(null);
+    dlg.oncancel = (e) => {
+      e.preventDefault();
+      done(null);
+    };
+    dlg.showModal();
+  });
+}
 $('personaExport').onclick = async () => {
   const p = persona();
-  const withMemory =
-    !!(p.memory?.length || p.selbst?.length) &&
-    confirm('Auch Gedächtnis (gelernte Fakten über dich) und Selbstbild der Figur mit exportieren?\n\nOK = ja, Abbrechen = nein (empfohlen, wenn du die Datei weitergibst)');
+  const parts = await askExportParts(p);
+  if (!parts) return;
   const name = (p.name || 'Persona').replace(/[^\p{L}\p{N} _-]+/gu, '_');
   try {
     status('Persona wird gepackt …');
-    const bytes = await packPersona(p, { withMemory, version: APP_VERSION, onProgress: status });
+    const bytes = await packPersona(p, {
+      withMemory: parts.mem,
+      version: APP_VERSION,
+      onProgress: status,
+      bereich: AREA,
+      wissen: parts.wissen ? state.saved : null,
+      verlauf: parts.hist ? state.history[p.id] : null,
+    });
     if (desktop.saveFileAs) await desktop.saveFileAs(`${name}.kiavatar`, bytes);
     else await desktop.exportSave(name, 'kiavatar', 'KI-Avatar (Persona)', bytes);
-    status(`Persona „${p.name}“ exportiert (${(bytes.length / 1e6).toFixed(1)} MB) – auf dem anderen Gerät unter ⚙ → Persona → „Persona importieren“ laden.`);
+    const what = [parts.mem && 'Gedächtnis', parts.wissen && 'Wissen', parts.hist && 'Verlauf'].filter(Boolean);
+    status(`Persona „${p.name}“ exportiert${what.length ? ` mit ${what.join(', ')}` : ''} (${(bytes.length / 1e6).toFixed(1)} MB) – auf dem anderen Gerät unter ⚙ → Persona → „Persona importieren“ laden.`);
   } catch (err) {
     status(`Export fehlgeschlagen: ${err.message}`);
   }
@@ -2685,21 +2715,60 @@ $('personaImportFile').onchange = async (e) => {
   e.target.value = '';
   if (!file) return;
   try {
-    await importPersonaBytes(new Uint8Array(await file.arrayBuffer()));
+    await importPersonaBytes(new Uint8Array(await file.arrayBuffer()), { fromFile: true });
   } catch (err) {
     status(`Import fehlgeschlagen: ${err.message}`);
     alert(`Import fehlgeschlagen: ${err.message}`);
   }
 };
 /** Persona aus einem .kiavatar-Paket übernehmen (Datei oder Abgleich im WLAN). */
-async function importPersonaBytes(bytes) {
+async function importPersonaBytes(bytes, { fromFile = false } = {}) {
   status('Persona wird übernommen …');
-  const data = await unpackPersona(bytes, (b, ext) => desktop.saveMedia(b, ext), { onProgress: status });
+  const { persona: data, wissen, verlauf, bereich } = await unpackPersona(bytes, (b, ext) => desktop.saveMedia(b, ext), { onProgress: status, full: true });
+  const got = [];
+  // gespeichertes Wissen gehört zum Bereich, nicht zur Persona
+  if (wissen?.length && (!bereich || bereich === AREA || confirm(`Das Wissen in der Datei stammt aus dem Bereich „${bereich === 'privat' ? 'Privat' : 'Dienstlich'}“. Trotzdem hier übernehmen?`))) {
+    const r = mergeSaved(wissen);
+    got.push(`Wissen: ${r.neu} neu, ${r.aktualisiert} aktualisiert`);
+  }
+  const local = state.personas.find((x) => x.name.trim().toLowerCase() === String(data.name ?? '').trim().toLowerCase());
+  if (
+    fromFile &&
+    local &&
+    confirm(`„${local.name}“ gibt es hier schon.\n\nOK = zusammenführen: Gedächtnis, Selbstbild, offene Themen und Verlauf werden ergänzt, nichts geht verloren; Texte und Figur vom neueren Stand.\nAbbrechen = als eigene Persona anlegen.`)
+  ) {
+    const imported = migratePersona({ ...defaultPersona(), ...data, id: local.id });
+    const m = mergeSync(
+      { personas: [local], history: { [local.id]: state.history[local.id] ?? [] }, saved: [], deleted: {} },
+      { personas: [imported], history: { [local.id]: verlauf ?? [] }, saved: [], deleted: {} },
+    );
+    const merged = m.personas[0];
+    // Figur: die neuere (ohne Stand in der Datei: die aus der Datei – dafür wurde sie ja importiert)
+    const fileFig = (imported.avatarStamp ?? Infinity) >= (local.avatarStamp ?? 0);
+    const fig = fileFig ? imported : local;
+    state.personas[state.personas.indexOf(local)] = { ...merged, avatar: fig.avatar, avatarStamp: fig.avatarStamp };
+    state.history[local.id] = m.history[local.id] ?? [];
+    state.activeId = local.id;
+    save();
+    applyPersona();
+    fillSettings();
+    renderChat();
+    output.setHistory(history());
+    renderMemory();
+    status(`„${local.name}“ zusammengeführt – Gedächtnis ${merged.memory.length}, Selbstbild ${merged.selbst.length}, Verlauf ${state.history[local.id].length} Nachrichten${got.length ? `; ${got.join('; ')}` : ''}.`);
+    return local.name;
+  }
   const p = migratePersona({ ...defaultPersona(), ...data, id: newId() });
   if (state.personas.some((x) => x.name === p.name)) p.name += ' (importiert)';
   p.memory ??= [];
+  if (verlauf?.length) state.history[p.id] = verlauf;
   switchTo(p);
-  status(`Persona „${p.name}“ übernommen – mit Avatar, Posen und Videos.`);
+  if (verlauf?.length) {
+    renderChat();
+    output.setHistory(history());
+  }
+  const with_ = [p.memory.length && 'Gedächtnis', verlauf?.length && 'Verlauf'].filter(Boolean);
+  status(`Persona „${p.name}“ übernommen – mit Avatar, Posen und Videos${with_.length ? `, ${with_.join(', ')}` : ''}${got.length ? `; ${got.join('; ')}` : ''}.`);
   return p.name;
 }
 $('clearHistory').onclick = () => {
@@ -5127,6 +5196,18 @@ async function runAppToolInner(name, input) {
     status(`🪞 Selbstbild: „${e.text}“`);
     return { notiert: true, eintraege: p.selbst.length };
   }
+  if (name === 'an_claude_uebergeben') {
+    if (!CLAUDE_HANDOFF) throw new Error('Übergabe an Claude geht nur am PC in der Cloud-Ausgabe');
+    const task = String(input?.aufgabe ?? '').trim();
+    if (!task) throw new Error('aufgabe fehlt – bitte vollständig erneut aufrufen');
+    const send = state.settings.claudeSend !== false;
+    logEv('CLAUDE', `Übergabe per Werkzeug (${task.length} Zeichen)`);
+    const r = await desktop.claudeHandoff({ text: task, send });
+    if (r?.reason === 'fokus') throw new Error('Windows hat das Claude-Fenster nicht nach vorne gelassen – der Text liegt in der Zwischenablage');
+    status(r?.via === 'browser' ? '✳ Claude im Browser geöffnet (Text in der Zwischenablage)' : `✳ An Claude übergeben${r?.sent ? ' und abgeschickt' : ' (nur eingefügt)'}`);
+    fireEvent('success', 2500);
+    return { uebergeben: true, wo: r?.via === 'browser' ? 'claude.ai im Browser' : 'Claude-App', abgeschickt: !!r?.sent };
+  }
   throw new Error(`Unbekanntes Werkzeug ${name}`);
 }
 /** Kurzes Grundwissen über diese App – damit die Figur Fragen zur Bedienung beantworten und ihre Möglichkeiten nutzen kann. */
@@ -5156,7 +5237,7 @@ function appKnowledge() {
     lines.push(
       'PC: Strg+Alt+Leertaste = zuhören, Strg+Alt+L = Live-Gespräch an/aus, Strg+Alt+S = Sprachausgabe stoppen, Strg+Alt+K = markierten Text bearbeiten, ' +
         'Strg+Alt+D = Diktat in jede App; die Figur kann frei auf dem Desktop stehen (🧍), 📄 öffnet das Ausgabefenster.' +
-        (CLAUDE_HANDOFF ? ' „An Claude: …“ (oder ✳ neben dem Eingabefeld) übergibt eine Aufgabe ohne dich an die Claude-App (Chat/Cowork), die sie dann erledigt.' : ''),
+        (CLAUDE_HANDOFF ? ' „An Claude: …“ (oder ✳ neben dem Eingabefeld) übergibt eine Aufgabe ohne dich an die Claude-App (Chat/Cowork), die sie dann erledigt; bittet dich der Nutzer, etwas an Claude oder Cowork weiterzugeben, nutze das Werkzeug an_claude_uebergeben.' : ''),
     );
   lines.push('Oben im Fenster zeigt 💲 die geschätzten API-Kosten (heute/Monat). Einstellungen über ⚙.');
   return lines.join('\n');
@@ -5604,7 +5685,14 @@ $('offBriefingNow').onclick = () => {
 // ---------------------------------------------------------------- An Claude übergeben (PC, Cloud-Ausgabe)
 // Die Spracherkennung schreibt „Claude“ gern als „Cloud“, „Klaut“ o. Ä. – das zählt mit.
 const CLAUDE_HANDOFF = !MOBILE && !LOCAL_ONLY && !!desktop.claudeHandoff;
-const CLAUDE_RE = /^\s*(?:an|schick(?:e)?\s+(?:das\s+|es\s+|folgendes\s+)?an)\s+(?:claude|claud|clode|klaud|klaude|klaut|clod|klod|cloud|clowd)(?![-\w])[\s,:.!]*(.*)$/is;
+// erlaubt: „Max, bitte gib das an Claude Cowork weiter: …“, „Schick an Claude: …“, „An Claude: …“
+const CLAUDE_RE = new RegExp(
+  '^\\s*(?:hey\\s+)?(?:\\p{L}+,\\s*)?(?:bitte\\s+)?' +
+    '(?:an|(?:schick(?:e)?|send(?:e)?|gib|übergib|uebergib)\\s+(?:das\\s+|es\\s+|dies\\s+|folgendes\\s+)?(?:weiter\\s+)?an)\\s+' +
+    '(?:claude|claud|clode|klaud|klaude|klaut|clod|klod|cloud|clowd)' +
+    '(?:[\\s-]+(?:co-?work|kowork|cowork|kovac|kovak|kowak|code))?(?![-\\w])(?:\\s+weiter)?[\\s,:.!]*(.*)$',
+  'isu',
+);
 async function handoffClaude(task, raw = task) {
   task = String(task ?? '').trim();
   if (raw) addBubble('user', raw);
@@ -5706,7 +5794,7 @@ const dev = () => (MOBILE ? window.KIDevice : null);
 const fromB64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 let intentsReady = false;
 async function handleIntents() {
-  if (!intentsReady) return;
+  if (!intentsReady || state.locked) return; // bleiben liegen, bis entsperrt ist
   let list = [];
   try {
     list = JSON.parse(dev()?.takeIntents?.() || '[]');
@@ -6208,7 +6296,7 @@ async function wakeLoopInner() {
   logEv('WACHWORT', `an („${wakeWord()}“)`);
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
   while (MOBILE && state.settings.wakeOn) {
-    if (state.micActive || state.busy || tts.speaking || state.settings.handsFree || state.dnd || state.transcribing) {
+    if (state.locked || state.micActive || state.busy || tts.speaking || state.settings.handsFree || state.dnd || state.transcribing) {
       await pause(600);
       continue;
     }
@@ -6224,7 +6312,7 @@ async function wakeLoopInner() {
       state.micActive = false;
       state.wakeListening = false;
     }
-    if (!audio || audio.length < 4000 || !state.settings.wakeOn) {
+    if (!audio || audio.length < 4000 || !state.settings.wakeOn || state.locked) {
       await pause(audio ? 50 : 1500);
       continue;
     }
@@ -6280,7 +6368,7 @@ function syncNotify() {
   $('privNotifyInfo').textContent = state.settings.notifyOn && !ok ? 'Noch nicht freigegeben: „Erlauben …“ tippen und bei „KI-Assistent Beta“ den Zugriff einschalten.' : '';
 }
 function readNotification(ev) {
-  if (!PRIV || !state.settings.notifyOn || state.dnd) return;
+  if (!PRIV || !state.settings.notifyOn || state.dnd || state.locked) return;
   const app = NOTIFY_APPS.find(([p]) => p === ev.app)?.[1] ?? 'einer App';
   const text = String(ev.text ?? '').replace(/\s+/g, ' ').slice(0, 280);
   status(`💬 ${ev.title} (${app}): ${text}`);
@@ -6923,14 +7011,30 @@ $('nasPass').onchange = async (e) => {
 };
 $('nasNow').onclick = () => nasSync({ manual: true });
 
+// Gesperrt heißt: nichts sehen und nichts hören – Aktivierungswort, Live-Gespräch, Vorlesen und schwebende Figur
+// pausieren, bis mit Fingerabdruck/PIN entsperrt ist
+let liveBeforeLock = false;
 function lockNow() {
   if (!MOBILE || !lockCfg().on) return;
+  const was = state.locked;
   state.locked = true;
   $('lockScreen').hidden = false;
   $('lockMsg').textContent = '';
   $('drawer').hidden = true;
+  if (!was) {
+    liveBeforeLock = !!state.settings.handsFree;
+    if (liveBeforeLock) setHandsFree(false);
+    tts.stop();
+    stt.cancel();
+    dev()?.setLocked?.(true);
+    logEv('SPERRE', 'gesperrt');
+  }
   if (!document.hidden) askUnlock({ auto: true });
 }
+// Bildschirm aus: sofort sperren (unabhängig von der eingestellten Wartezeit)
+window.__kiScreenOff = () => {
+  if (lockCfg().on && !state.locked) lockNow();
+};
 // läuft gerade eine Abfrage, nicht noch eine starten (das Android-Fenster pausiert die App kurz)
 let unlockAsking = false;
 let unlockEndedAt = 0;
@@ -6947,9 +7051,14 @@ window.__kiUnlocked = (ok, msg) => {
   unlockAsking = false;
   unlockEndedAt = Date.now();
   if (ok) {
+    if (!state.locked) return;
     state.locked = false;
     $('lockScreen').hidden = true;
     logEv('SPERRE', 'entsperrt');
+    dev()?.setLocked?.(false);
+    if (liveBeforeLock) setHandsFree(true);
+    liveBeforeLock = false;
+    handleIntents(); // Schnellstart (Kachel, Widget …) erst nach dem Entsperren ausführen
   } else $('lockMsg').textContent = msg ? `Nicht entsperrt (${msg}).` : 'Nicht entsperrt.';
 };
 let lockHiddenAt = 0;
@@ -7068,7 +7177,7 @@ async function startRealtime() {
             type: 'session.update',
             session: {
               type: 'realtime',
-              tools: appToolsLib.APP_TOOLS.map((d) => ({ type: 'function', name: d.name, description: d.description, parameters: d.input_schema })),
+              tools: appToolsLib.APP_TOOLS.filter((d) => !(MOBILE && d.desktopOnly)).map((d) => ({ type: 'function', name: d.name, description: d.description, parameters: d.input_schema })),
               tool_choice: 'auto',
             },
           }),
@@ -7288,6 +7397,7 @@ function startPhoneFeatures() {
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
   carryPersonas,
+  setHandsFree,
   send,
   filesNeeded,
   history,

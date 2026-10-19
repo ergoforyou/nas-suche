@@ -76,6 +76,9 @@ import javax.crypto.spec.GCMParameterSpec;
  */
 public class MainActivity extends BridgeActivity {
     private boolean pipEnabled = true;
+    // App-Sperre aktiv: keine schwebende Figur, kein Bild-im-Bild, bis wieder entsperrt
+    private boolean appLocked = false;
+    private android.content.BroadcastReceiver screenReceiver;
     // Bild-im-Bild: eigene Knöpfe (Sprechen, Live an/aus, zurück zur App)
     private static final String PIP_ACTION = "de.ergoforyou.kiassistent.PIP";
     private boolean pipLive = false;
@@ -477,7 +480,7 @@ public class MainActivity extends BridgeActivity {
 
     @SuppressLint("ClickableViewAccessibility")
     void showFloat() {
-        if (floatBox != null || bridge == null || !floatEnabled || !canFloat()) return;
+        if (floatBox != null || bridge == null || !floatEnabled || appLocked || !canFloat()) return;
         WebView wv = bridge.getWebView();
         if (!(wv.getParent() instanceof ViewGroup)) return;
         DisplayMetrics dm = getResources().getDisplayMetrics();
@@ -1094,6 +1097,17 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(() -> startUnlock(title == null || title.isEmpty() ? "KI-Assistent entsperren" : title));
         }
 
+        /** App-Sperre an/aus: gesperrt verschwindet die schwebende Figur, Bild-im-Bild ist aus. */
+        @JavascriptInterface
+        public void setLocked(boolean on) {
+            runOnUiThread(() -> {
+                appLocked = on;
+                if (on) hideFloat();
+                else if (!resumed && floatEnabled) showFloat();
+                applyParams();
+            });
+        }
+
         /** Inhalt im App-Wechsler verbergen und Bildschirmfotos der App verhindern (solange die App-Sperre an ist). */
         @JavascriptInterface
         public void setSecure(boolean on) {
@@ -1491,7 +1505,7 @@ public class MainActivity extends BridgeActivity {
             Log.w("KI-Assistent", "Bild-im-Bild-Knöpfe", e);
         }
         if (Build.VERSION.SDK_INT >= 31) {
-            b.setAutoEnterEnabled(pipEnabled && !(floatEnabled && canFloat()));
+            b.setAutoEnterEnabled(pipEnabled && !appLocked && !(floatEnabled && canFloat()));
             b.setSeamlessResizeEnabled(true);
         }
         return b.build();
@@ -1532,6 +1546,19 @@ public class MainActivity extends BridgeActivity {
         });
         super.onCreate(savedInstanceState);
         registerPipReceiver();
+        // App-Sperre: Bildschirm aus = sofort sperren (zuverlässiger als die Lebenszyklus-Aufrufe der Activity)
+        screenReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                runJs("window.__kiScreenOff && window.__kiScreenOff()");
+            }
+        };
+        try {
+            registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Bildschirm-Empfänger", e);
+            screenReceiver = null;
+        }
         applyParams();
         bridge.getWebView().addJavascriptInterface(new Object() {
             @JavascriptInterface
@@ -1626,6 +1653,10 @@ public class MainActivity extends BridgeActivity {
             try { unregisterReceiver(pipReceiver); } catch (Exception ignored) {}
             pipReceiver = null;
         }
+        if (screenReceiver != null) {
+            try { unregisterReceiver(screenReceiver); } catch (Exception ignored) {}
+            screenReceiver = null;
+        }
         hideBubble();
         hideFloatMenu();
         if (floatBox != null) {
@@ -1651,7 +1682,7 @@ public class MainActivity extends BridgeActivity {
             showFloat();
             return;
         }
-        if (pipEnabled && Build.VERSION.SDK_INT >= 26 && Build.VERSION.SDK_INT < 31) enterPictureInPictureMode(pipParams());
+        if (pipEnabled && !appLocked && Build.VERSION.SDK_INT >= 26 && Build.VERSION.SDK_INT < 31) enterPictureInPictureMode(pipParams());
     }
 
     @Override

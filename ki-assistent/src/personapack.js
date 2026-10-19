@@ -1,7 +1,8 @@
 // Persona als eine Datei (.kiavatar) mitnehmen – zwischen PC und Handy hin und her.
 // Enthalten: Name, Texte, Stimme, Avatar mit allen Einstellungen (Markierungen, Gesichts-/Körper-Rig, Posen,
 // Bewegungsbilder) und alle Medien (Videos, Masken, 3D-Figur). Nicht enthalten: Schlüssel, Google-Verbindung,
-// Gesprächsverlauf; das Gedächtnis nur auf Wunsch. Format: ZIP mit profil.json und dem Ordner media/.
+// Gedächtnis/Selbstbild, gespeichertes Wissen und Chatverlauf nur auf Wunsch (Komplett-Umzug aufs eigene Gerät).
+// Format: ZIP mit profil.json und dem Ordner media/.
 import JSZip from 'jszip';
 
 // Adressen, die auf gespeicherte Medien des Geräts zeigen (PC: app://local/media, Android: Capacitor-Datei, Test: blob:)
@@ -18,7 +19,7 @@ async function walk(obj, fn) {
 }
 
 /** Persona packen. onProgress(text) für längere Videos. */
-export async function packPersona(persona, { withMemory = false, version = '', onProgress } = {}) {
+export async function packPersona(persona, { withMemory = false, version = '', onProgress, wissen, verlauf, bereich } = {}) {
   const p = structuredClone(persona);
   delete p.id;
   if (!withMemory) {
@@ -46,7 +47,8 @@ export async function packPersona(persona, { withMemory = false, version = '', o
     done.set(s, `kimedia:${path}`);
     return `kimedia:${path}`;
   });
-  zip.file('profil.json', JSON.stringify({ kiAssistentPersona: 2, app: 'KI-Assistent', version, persona: p }), { compression: 'DEFLATE' });
+  const extra = { ...(bereich ? { bereich } : {}), ...(wissen?.length ? { wissen } : {}), ...(verlauf?.length ? { verlauf } : {}) };
+  zip.file('profil.json', JSON.stringify({ kiAssistentPersona: 2, app: 'KI-Assistent', version, persona: p, ...extra }), { compression: 'DEFLATE' });
   return zip.generateAsync({ type: 'uint8array' });
 }
 
@@ -54,14 +56,14 @@ export async function packPersona(persona, { withMemory = false, version = '', o
  * Persona aus einer .kiavatar-Datei (oder der älteren .persona.json) lesen. Medien werden über saveMedia(bytes, ext)
  * auf diesem Gerät gespeichert. Liefert die Persona (ohne id).
  */
-export async function unpackPersona(bytes, saveMedia, { onProgress } = {}) {
+export async function unpackPersona(bytes, saveMedia, { onProgress, full = false } = {}) {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   if (b[0] !== 0x50 || b[1] !== 0x4b) {
     // ältere Variante: reine JSON-Datei ohne Medien
     const data = JSON.parse(new TextDecoder().decode(b));
     if (!data.kiAssistentPersona) throw new Error('Keine gültige Persona-Datei');
     delete data.kiAssistentPersona;
-    return data.persona ?? data;
+    return full ? { persona: data.persona ?? data } : (data.persona ?? data);
   }
   const zip = await JSZip.loadAsync(b);
   const json = zip.file('profil.json');
@@ -81,5 +83,6 @@ export async function unpackPersona(bytes, saveMedia, { onProgress } = {}) {
     saved.set(s, url);
     return url;
   });
-  return data.persona;
+  // full: dazu Wissen und Chatverlauf, falls mit exportiert
+  return full ? { persona: data.persona, wissen: data.wissen ?? null, verlauf: data.verlauf ?? null, bereich: data.bereich ?? null } : data.persona;
 }

@@ -770,16 +770,19 @@ const exp = await page.evaluate(async (webmB64) => {
   const bytes = Uint8Array.from(atob(webmB64), (c) => c.charCodeAt(0));
   const url = await window.desktop.saveMedia(bytes, 'webm');
   av.poses = [{ id: 'v1', name: 'Nicken', trigger: 'listen', video: url, cutMode: 'alpha', clip: { start: 0.5, end: 2 } }];
-  window.__app.persona().memory = [];
+  window.__app.persona().memory = [{ id: 'mk1', text: 'Jens trinkt Kaffee schwarz', created: 1 }];
   window.__savedBefore = window.__saved.length;
-  return { personas: window.__app.state.personas.length, name: window.__app.persona().name, image: av.image.slice(0, 40) };
+  return { personas: window.__app.state.personas.length, name: window.__app.persona().name, id: window.__app.persona().id, image: av.image.slice(0, 40), hist: window.__app.history().length };
 }, fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figur-alpha.webm')).toString('base64'));
 if (!(await page.isVisible('#tabs [data-tab=persona]'))) await page.click('#btnSettings');
 await page.click('#tabs [data-tab=persona]');
 await page.click('#personaExport');
+await page.waitForSelector('#exportDlg[open]');
+const dlgParts = await page.evaluate(() => ['expMem', 'expWissen', 'expHist'].map((id) => document.getElementById(id).checked));
+await page.click('#expGo');
 await page.waitForFunction(() => window.__saved.length > window.__savedBefore, null, { timeout: 15000 }).catch(() => {});
 const file = await page.evaluate(() => window.__saved.at(-1));
-check(/\.kiavatar$/.test(file?.name ?? '') && file.b64.length > 2000, 'Persona als .kiavatar exportiert (mit Video)', file?.name);
+check(/\.kiavatar$/.test(file?.name ?? '') && file.b64.length > 2000 && dlgParts.every(Boolean), 'Persona als .kiavatar exportiert (mit Video; Auswahl Gedächtnis/Wissen/Verlauf)', file?.name);
 const packPath = path.join(os.tmpdir(), 'ki-test.kiavatar');
 fs.writeFileSync(packPath, Buffer.from(file?.b64 ?? '', 'base64'));
 await page.click('#personaImport');
@@ -788,10 +791,36 @@ await page.setInputFiles('#pickSheet input[type=file]', packPath);
 await page.waitForFunction((n) => window.__app.state.personas.length > n, exp.personas, { timeout: 20000 }).catch(() => {});
 const imp = await page.evaluate(() => {
   const p = window.__app.persona();
-  return { personas: window.__app.state.personas.length, name: p.name, image: p.avatar.image?.slice(0, 40), pose: p.avatar.poses?.[0] };
+  return { personas: window.__app.state.personas.length, name: p.name, image: p.avatar.image?.slice(0, 40), pose: p.avatar.poses?.[0], mem: p.memory.map((m) => m.text), hist: window.__app.history().length };
 });
 check(imp.personas === exp.personas + 1 && imp.name.startsWith(exp.name) && imp.image === exp.image, 'Persona importiert (Name, Bild)', JSON.stringify({ name: imp.name }));
 check(imp.pose?.video && /^blob:|^http/.test(imp.pose.video) && imp.pose.clip?.start === 0.5 && imp.pose.trigger === 'listen', 'Video-Pose samt Abschnitt und Anlass übernommen', JSON.stringify(imp.pose));
+check(imp.mem.includes('Jens trinkt Kaffee schwarz') && imp.hist === exp.hist && exp.hist > 0, 'Komplett-Export: Gedächtnis und Chatverlauf kommen mit', JSON.stringify({ mem: imp.mem, hist: imp.hist, vorher: exp.hist }));
+// gleiche Persona noch einmal importieren und zusammenführen: lokal Neues bleibt, Fehlendes kommt zurück, nichts doppelt
+const mergeIn = await page.evaluate((id) => {
+  const app = window.__app;
+  const extra = app.state.personas.find((x) => x.name.endsWith('(importiert)'));
+  app.state.personas.splice(app.state.personas.indexOf(extra), 1);
+  app.state.activeId = id;
+  const p = app.persona();
+  p.memory = [{ id: 'mk2', text: 'Der Hund heißt Bello', created: 2 }];
+  app.history().push({ id: 'nur-hier', role: 'user', content: 'Nur auf diesem Gerät', t: Date.now() });
+  return { personas: app.state.personas.length, hist: app.history().length };
+}, exp.id);
+page.once('dialog', (d) => d.accept()); // „gibt es schon – zusammenführen?“ -> OK
+await page.click('#personaImport');
+await page.waitForSelector('#pickSheet');
+await page.setInputFiles('#pickSheet input[type=file]', packPath);
+await page.waitForFunction(() => window.__app.persona().memory.length >= 2, null, { timeout: 20000 }).catch(() => {});
+const merged = await page.evaluate(() => {
+  const p = window.__app.persona();
+  return { personas: window.__app.state.personas.length, mem: p.memory.map((m) => m.text).sort(), hist: window.__app.history().length, mine: window.__app.history().some((m) => m.id === 'nur-hier'), name: p.name };
+});
+check(
+  merged.personas === mergeIn.personas && merged.mem.join('|') === 'Der Hund heißt Bello|Jens trinkt Kaffee schwarz' && merged.mine && merged.hist === mergeIn.hist && merged.name === exp.name,
+  'Import in vorhandene Persona: zusammengeführt (Gedächtnis ergänzt, eigener Verlauf bleibt, nichts doppelt)',
+  JSON.stringify({ ...merged, vorher: mergeIn }),
+);
 // ---- Handy: Ort für Wetter/Verkehr, Teilen aus anderen Apps, Erinnerungen, Akku-Sparmodus
 await page.route('https://www.googleapis.com/calendar/**', (route) => {
   const t = new Date(Date.now() + 2 * 3600e3).toISOString();
@@ -1168,10 +1197,12 @@ const lockRes = await page.evaluate(async () => {
   let asks = 0;
   let secure = null;
   let answer = false;
+  const locks = [];
   window.KIDevice = {
     lockAvailable: () => true,
     unlock: () => { asks++; setTimeout(() => window.__kiUnlocked(answer, answer ? '' : 'abgebrochen'), 50); },
     setSecure: (on) => { secure = on; },
+    setLocked: (on) => locks.push(on),
   };
   const box = document.getElementById('phLock');
   box.disabled = false;
@@ -1197,6 +1228,24 @@ const lockRes = await page.evaluate(async () => {
   window.__kiResume();
   await wait(50);
   const shortAway = ls.hidden;
+  // Bildschirm aus: sofort gesperrt (trotz 5 Minuten Wartezeit), Live-Gespräch pausiert, keine Nachrichten vorlesen
+  const app = window.__app;
+  app.setHandsFree(true);
+  window.__kiScreenOff();
+  const screenLocked = !ls.hidden && app.state.locked && !app.state.settings.handsFree;
+  const said = [];
+  const enq = app.tts.enqueue;
+  app.tts.enqueue = (t) => said.push(t);
+  const notifyBefore = app.state.settings.notifyOn;
+  app.state.settings.notifyOn = true;
+  app.readNotification({ app: 'com.whatsapp', title: 'Anna', text: 'Geheim' });
+  app.state.settings.notifyOn = notifyBefore;
+  app.tts.enqueue = enq;
+  answer = true;
+  document.getElementById('lockBtn').click();
+  await wait(150);
+  const liveBack = app.state.settings.handsFree;
+  app.setHandsFree(false);
   // wieder aus
   box.checked = false;
   box.dispatchEvent(new Event('change'));
@@ -1204,11 +1253,12 @@ const lockRes = await page.evaluate(async () => {
   window.__kiPause();
   window.__kiResume();
   delete window.KIDevice;
-  return { on: cfg.on, secureOn: secure === false, openBefore, lockedAfterResume, failMsg, unlocked, asks, shortAway, off, stillOpen: ls.hidden };
+  return { on: cfg.on, secureOn: secure === false, openBefore, lockedAfterResume, failMsg, unlocked, asks, shortAway, off, stillOpen: ls.hidden, screenLocked, said, liveBack, locks };
 });
 check(
-  lockRes.on && !lockRes.openBefore && lockRes.lockedAfterResume && /Nicht entsperrt/.test(lockRes.failMsg) && lockRes.unlocked && lockRes.asks === 2 && lockRes.shortAway && lockRes.off === false && lockRes.secureOn && lockRes.stillOpen,
-  'App-Sperre: nach Rückkehr gesperrt, Fingerabdruck/PIN entsperrt, Fehlschlag bleibt gesperrt, Verzögerung wirkt',
+  lockRes.on && !lockRes.openBefore && lockRes.lockedAfterResume && /Nicht entsperrt/.test(lockRes.failMsg) && lockRes.unlocked && lockRes.asks === 3 && lockRes.shortAway && lockRes.off === false && lockRes.secureOn && lockRes.stillOpen &&
+    lockRes.screenLocked && !lockRes.said.length && lockRes.liveBack && lockRes.locks.join() === 'true,false,true,false',
+  'App-Sperre: nach Rückkehr gesperrt, Fingerabdruck/PIN entsperrt, Fehlschlag bleibt gesperrt, Verzögerung wirkt; Bildschirm aus sperrt sofort und pausiert Zuhören/Vorlesen',
   JSON.stringify(lockRes),
 );
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
