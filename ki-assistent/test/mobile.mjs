@@ -38,7 +38,11 @@ await page.route('https://api.anthropic.com/**', (route) => {
   request = { headers: route.request().headers(), body: JSON.parse(route.request().postData()) };
   claudeRequests.push(request.body);
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
-  const evs = claudeQueue.length ? claudeQueue.shift() : [
+  // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
+  // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet/.test(JSON.stringify(request.body.system ?? ''));
+  const qi = claudeQueue.findIndex((e) => !!e.helper === helper);
+  const evs = qi >= 0 ? claudeQueue.splice(qi, 1)[0] : [
     { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
     { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
     { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '[freudig] Hallo vom Handy!' } },
@@ -948,14 +952,14 @@ check(
   JSON.stringify(selfRes),
 );
 const reflBefore = claudeRequests.length;
-claudeQueue.push([
+claudeQueue.push(Object.assign([
   { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
   { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
   { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"gedanke":"Mir fällt auf, dass ich gern Tabellen nutze.","neu":[{"text":"Ich nutze Tabellen nur, wenn sie wirklich helfen.","art":"vorsatz"}],"aendern":[],"streichen":[]}' } },
   { type: 'content_block_stop', index: 0 },
   { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 30 } },
   { type: 'message_stop' },
-]);
+], { helper: true }));
 const reflRes = await page.evaluate(async () => {
   const app = window.__app;
   const h = app.history();
@@ -1064,14 +1068,14 @@ check(
   JSON.stringify(topicRes),
 );
 // Persönliche Begrüßung: nach längerer Pause, mit dem Hilfsmodell, steht danach im Verlauf
-claudeQueue.push([
+claudeQueue.push(Object.assign([
   { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
   { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
   { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Schön, dass du wieder da bist! Wie lief es beim Zahnarzt?' } },
   { type: 'content_block_stop', index: 0 },
   { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 12 } },
   { type: 'message_stop' },
-]);
+], { helper: true }));
 const greetBefore = claudeRequests.length;
 const greetRes = await page.evaluate(async () => {
   const app = window.__app;
