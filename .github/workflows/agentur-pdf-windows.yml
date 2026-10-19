@@ -35,14 +35,14 @@ jobs:
           #    (schon vorgekommen: 503), direkt von den offiziellen Quellen laden.
           $tess = "C:\Program Files\Tesseract-OCR\tesseract.exe"
           $soffice = "C:\Program Files\LibreOffice\program\soffice.exe"
-          function Choco($paket, $ziel) {
+          function Paket-Installieren($paket, $ziel) {
             for ($i = 1; $i -le 2 -and -not (Test-Path $ziel); $i++) {
               "Chocolatey: $paket (Versuch $i) …"
-              choco install -y --no-progress $paket
+              choco.exe install -y --no-progress $paket
               if (-not (Test-Path $ziel)) { Start-Sleep -Seconds 20 }
             }
           }
-          Choco tesseract $tess
+          Paket-Installieren tesseract $tess
           if (-not (Test-Path $tess)) {
             "Tesseract direkt von UB Mannheim (GitHub) …"
             $rel = Invoke-RestMethod "https://api.github.com/repos/UB-Mannheim/tesseract/releases/latest" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" }
@@ -50,7 +50,7 @@ jobs:
             Invoke-WebRequest $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\tesseract-setup.exe"
             Start-Process -Wait -FilePath "$env:RUNNER_TEMP\tesseract-setup.exe" -ArgumentList "/S"
           }
-          Choco libreoffice-fresh $soffice
+          Paket-Installieren libreoffice-fresh $soffice
           if (-not (Test-Path $soffice)) {
             "LibreOffice direkt von documentfoundation.org …"
             $liste = (Invoke-WebRequest "https://download.documentfoundation.org/libreoffice/stable/").Content
