@@ -100,6 +100,16 @@ GOOGLE CHROME: AGENTUR-PDF-SEITENLEISTE
   3. Puzzle-Symbol → Agentur-PDF anheften. Öffnen: Symbol oder Alt+Umschalt+P.
   Später nochmal: Agentur-PDF → Einstellungen → „Chrome einrichten …“.
 
+GOOGLE DRIVE
+  • Am besten mit „Google Drive für Desktop“: Drive erscheint im Explorer
+    als Laufwerk (z. B. G:). Doppelklick auf eine PDF öffnet sie in
+    Agentur-PDF (wenn Standard-PDF-Programm), „Speichern“ schreibt direkt
+    zurück nach Drive – auch Rechtsklick „Zusammenführen“ geht dort.
+  • Im Browser (drive.google.com): Datei markieren oder öffnen → unten links
+    „Agentur-PDF: öffnen“ (im Programm bearbeiten) oder „In Leiste“ (z. B.
+    mehrere zum Zusammenführen sammeln). Das Ergebnis dann auf G:\ speichern
+    oder über „Speichern …“ herunterladen und in Drive hochladen.
+
 ERSTE SCHRITTE
   Oben links auf „Testversion“ klicken → „Ihr Kürzel“ eintragen (z. B. JK).
   Es erscheint in Stempeln, Kommentaren und Screenshot-Dateinamen.

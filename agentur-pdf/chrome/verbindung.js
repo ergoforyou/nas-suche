@@ -79,8 +79,16 @@ const Agentur = (() => {
     return name;
   }
 
-  /** Inhalt einer Adresse holen – mit den Anmeldedaten des Browsers (z. B. Kundenportal) */
+  /** Google-Drive-Ansicht/-Link → direkte Download-Adresse (sonst unverändert) */
+  function driveAdresse(url) {
+    const id = /\/file\/d\/([\w-]{10,})/.exec(url)?.[1] || (/drive\.google\.com\/(?:open|uc)\?(?:.*&)?id=([\w-]{10,})/.exec(url) || [])[1];
+    return id && /(drive|docs)\.google\.com/.test(url) ? driveDownload(id) : url;
+  }
+  const driveDownload = (id) => `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`;
+
+  /** Inhalt einer Adresse holen – mit den Anmeldedaten des Browsers (z. B. Kundenportal, Google Drive) */
   async function holen(url) {
+    url = driveAdresse(url);
     if (url.startsWith("data:")) {
       const b = await (await fetch(url)).blob();
       return { blob: b, name: dateiname("bild", null, b.type) };
@@ -88,8 +96,12 @@ const Agentur = (() => {
     const r = await fetch(url, { credentials: "include" });
     if (!r.ok) throw new Error(`Datei konnte nicht geladen werden (${r.status}).`);
     const blob = await r.blob();
+    if (blob.type.startsWith("text/html")) {
+      // z. B. Google-Anmeldeseite oder „Keine Berechtigung“ statt der Datei
+      throw new Error("Statt der Datei kam eine Webseite zurück – bitte im Browser bei Google angemeldet sein bzw. Zugriff prüfen.");
+    }
     return { blob, name: dateiname(url, r, blob.type) };
   }
 
-  return { BASIS, verbinden, anfrage, json, hochladen, abwarten, bildUrl, holen, dateiname, token: () => token };
+  return { BASIS, verbinden, anfrage, json, hochladen, abwarten, bildUrl, holen, dateiname, driveAdresse, driveDownload, token: () => token };
 })();

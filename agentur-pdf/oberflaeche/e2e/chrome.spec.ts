@@ -1,7 +1,7 @@
 // Chrome-Seitenleiste (Erweiterung aus ../chrome) gegen den laufenden Dienst.
 
 import { chromium, expect, test, type BrowserContext } from "@playwright/test";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DATEN } from "./hilfen";
@@ -55,6 +55,39 @@ test("Seitenleiste: Dateien zusammenführen, Seite drehen/löschen, speichern", 
   // Im Programmfenster weiterbearbeiten → Dokument geht an das Programm über
   await leiste.getByRole("button", { name: "Im Programm" }).click();
   await expect(leiste.locator("#ergebnis")).toBeHidden();
+});
+
+test("Google Drive: markierte Datei per Knopf im Programm öffnen", async () => {
+  // Nachgebaute Drive-Seite + Download-Adresse (echte Google-Anmeldung gibt es im Test nicht)
+  const pdf = readFileSync(join(DATEN, "b.pdf"));
+  await kontext.route("https://drive.google.com/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/uc?export=download")) {
+      expect(url).toContain("id=1AbCdEfGhIjKlMnOp");
+      await route.fulfill({ body: pdf, contentType: "application/pdf", headers: { "Content-Disposition": 'attachment; filename="Police Muster.pdf"' } });
+    } else {
+      await route.fulfill({
+        contentType: "text/html",
+        body: '<html><body><div role="row" data-id="1AbCdEfGhIjKlMnOp" aria-selected="true">Police Muster.pdf</div></body></html>',
+      });
+    }
+  });
+  const drive = await kontext.newPage();
+  await drive.goto("https://drive.google.com/drive/my-drive");
+  const knopf = drive.getByRole("button", { name: "Agentur-PDF: öffnen" });
+  await expect(knopf).toBeVisible({ timeout: 10_000 });
+  // alte Ereignisse verwerfen, dann öffnen
+  await drive.request.get("http://127.0.0.1:47811/api/ereignisse", { headers: { "X-Agentur-Token": "e2e" } });
+  await knopf.click();
+  await expect
+    .poll(async () => {
+      const e = (await (await drive.request.get("http://127.0.0.1:47811/api/ereignisse", { headers: { "X-Agentur-Token": "e2e" } })).json()) as {
+        ereignisse: { art: string; dokumente?: string[] }[];
+      };
+      return e.ereignisse.find((x) => x.art === "oeffnen")?.dokumente?.length ?? 0;
+    }, { timeout: 15_000 })
+    .toBe(1);
+  await kontext.unroute("https://drive.google.com/**");
 });
 
 test("Fremde Webseite bekommt kein Token", async () => {

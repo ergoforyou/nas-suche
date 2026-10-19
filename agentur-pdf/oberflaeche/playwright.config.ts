@@ -1,4 +1,6 @@
 import { defineConfig } from "@playwright/test";
+// Service-Worker-Anfragen der Erweiterung abfangen können (Drive-Test)
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
 import { existsSync } from "node:fs";
 
 // In der Cloud-Umgebung liegt Chromium unter /opt/pw-browsers.

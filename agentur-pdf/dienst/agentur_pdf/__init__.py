@@ -1,3 +1,3 @@
 """Agentur-PDF – lokaler Dienst."""
 
-__version__ = "0.10.1-test"
+__version__ = "0.10.2-test"
