@@ -3,6 +3,8 @@
 | Datei | Läuft | Inhalt |
 |---|---|---|
 | `minimax-h3-lokal-workflow.json` | **lokal** (Open Weights) | Start-/Endbild → Video mit Ton, Format + Dauer wählbar, Probelauf (Turbo-LoRA), lokaler Upscaler |
+| `minimax-h3-lokal-lang-4teile.json` | **lokal** | langes Video aus bis zu 4 Teilen (5 Schlüsselbilder), Ton abschaltbar, ohne Subgraph |
+| `minimax-h3-lokal-schnell-768p.json` | **lokal** | einfach & schnell: 768p, Turbo-LoRA 4 Schritte, Ton abschaltbar |
 | `minimax-h3-video-workflow.json` | über die Comfy-API (Credits) | dasselbe über die API-Nodes, inkl. „Regenerate to 2K“ |
 
 Datei per Drag & Drop in ComfyUI ziehen. Die lokale Version basiert auf der offiziellen Comfy-Vorlage
@@ -17,6 +19,7 @@ ComfyUI/models/
 ├── vae/               minimax_h3_video_vae_int8_convrot.safetensors           (2,6 GB)
 │                      minimax_h3_audio_vae_fp32.safetensors                   (0,6 GB)
 ├── loras/             minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors (1,8 GB, lightx2v/Minimax-h3-Turbo)
+├── loras/             minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors (1,8 GB, nur „schnell-768p“)
 └── upscale_models/    RealESRGAN_x2.pth  (nur für den Upscaler)
 ```
 
