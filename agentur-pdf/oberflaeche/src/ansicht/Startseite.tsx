@@ -50,7 +50,7 @@ export function Startseite() {
   return (
     <div className="startseite">
       <section className="start-kopf">
-        <h1>Agentur-PDF</h1>
+        <h1>Ergo4You PDF</h1>
         <p>Datei öffnen oder hierher ziehen – PDF, Scans, Bilder, Word, Excel und E-Mails.</p>
         <div className="start-knoepfe">
           <button className="primaer gross" onClick={() => void oeffnenDialog()}>

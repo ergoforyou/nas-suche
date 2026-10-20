@@ -21,6 +21,7 @@ from pathlib import Path
 
 import uvicorn
 
+from . import PRODUKT, STAND
 from .api.app import erstelle_app
 from .api.sicherheit import neues_token
 from .benutzer.speicher import BenutzerSpeicher
@@ -67,7 +68,7 @@ def freier_port() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="agentur-pdf", description="Agentur-PDF starten")
+    parser = argparse.ArgumentParser(prog="agentur-pdf", description="Ergo4You PDF starten")
     parser.add_argument("dateien", nargs="*", help="Dateien, die sofort geöffnet werden")
     aktionen = parser.add_mutually_exclusive_group()
     aktionen.add_argument("--zusammenfuehren", action="store_true", help="Dateien zu einer PDF zusammenführen (Dialog)")
@@ -81,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--explorer-entfernen", action="store_true", help="Rechtsklick-Einträge entfernen")
     parser.add_argument("--explorer-reg", metavar="DATEI", help="Rechtsklick-Einträge als .reg-Datei exportieren")
     parser.add_argument("--nach-update", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--drucker-einrichten", action="store_true", help="PDF-Drucker „Agentur-PDF“ einrichten (Adminrechte)")
+    parser.add_argument("--drucker-einrichten", action="store_true", help="PDF-Drucker „Ergo4You PDF“ einrichten (Adminrechte)")
     parser.add_argument("--drucker-entfernen", action="store_true", help="PDF-Drucker entfernen (Adminrechte)")
     parser.add_argument("--chrome-einrichten", action="store_true", help="Chrome-Seitenleiste einrichten (Anleitung + Chrome öffnen)")
     args = parser.parse_args(argv)
@@ -213,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.nach_update:
         app.state.ereignisse.hinzufuegen(
-            {"art": "info", "text": f"Agentur-PDF wurde auf Version {__import__('agentur_pdf').__version__} aktualisiert."}
+            {"art": "info", "text": f"Ergo4You PDF wurde auf Version {__import__('agentur_pdf').__version__} aktualisiert."}
         )
     app.state.programm_beenden = lambda: os.kill(os.getpid(), signal.SIGTERM)
     try:
@@ -226,14 +227,14 @@ def main(argv: list[str] | None = None) -> int:
             thread.join()
         elif webview is not None:
             fenster_ref["fenster"] = webview.create_window(
-                "Agentur-PDF", url, width=1400, height=900, min_size=(900, 600), text_select=True
+                f"{PRODUKT} – {STAND}", url, width=1400, height=900, min_size=(900, 600), text_select=True
             )
             app.state.fenster_minimieren = lambda: fenster_ref["fenster"].minimize()
             app.state.programm_beenden = lambda: fenster_ref["fenster"].destroy()
             _screenshot_starten(app)
             webview.start()
         else:
-            print(f"Agentur-PDF läuft: {url}", flush=True)
+            print(f"Ergo4You PDF läuft: {url}", flush=True)
             _screenshot_starten(app)
             webbrowser.open(url)
             thread.join()
@@ -302,7 +303,7 @@ def _fehlerfenster(text: str) -> None:
         try:
             import ctypes
 
-            ctypes.windll.user32.MessageBoxW(None, text, "Agentur-PDF – Fehler", 0x10)
+            ctypes.windll.user32.MessageBoxW(None, text, "Ergo4You PDF – Fehler", 0x10)
             return
         except Exception:  # noqa: BLE001
             pass
@@ -323,7 +324,7 @@ def start() -> int:
     except Exception:  # noqa: BLE001
         logging.exception("Absturz beim Start")
         _fehlerfenster(
-            "Agentur-PDF konnte nicht gestartet werden.\n\n"
+            "Ergo4You PDF konnte nicht gestartet werden.\n\n"
             f"{traceback.format_exc(limit=3)}\n"
             f"Details stehen im Protokoll:\n{protokoll}"
         )

@@ -1,4 +1,4 @@
-// Verbindung zum Agentur-PDF-Dienst auf diesem PC (Seitenleiste und Hintergrund).
+// Verbindung zum Ergo4You-PDF-Dienst auf diesem PC (Seitenleiste und Hintergrund).
 // Der Dienst lauscht nur auf 127.0.0.1. Das Zugangs-Token gibt er nur an diese
 // Erweiterung heraus (Prüfung des Origin-Kopfs).
 
@@ -9,7 +9,7 @@ const Agentur = (() => {
 
   async function verbinden() {
     const r = await fetch(`${BASIS}/chrome/verbinden`, { method: "POST" });
-    if (!r.ok) throw new Error(r.status === 403 ? "Diese Erweiterung ist für Agentur-PDF nicht freigegeben." : "Agentur-PDF antwortet nicht.");
+    if (!r.ok) throw new Error(r.status === 403 ? "Diese Erweiterung ist für Ergo4You PDF nicht freigegeben." : "Ergo4You PDF antwortet nicht.");
     const daten = await r.json();
     token = daten.token;
     return daten;
@@ -31,7 +31,7 @@ const Agentur = (() => {
       } catch {
         /* keine JSON-Antwort */
       }
-      throw new Error(text || `Agentur-PDF meldet Fehler ${r.status}.`);
+      throw new Error(text || `Ergo4You PDF meldet Fehler ${r.status}.`);
     }
     return r;
   }

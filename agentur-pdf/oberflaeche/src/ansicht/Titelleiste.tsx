@@ -1,6 +1,7 @@
 // Titelleiste: Programmsymbol, Schnellzugriff (Öffnen, Speichern, Drucken,
 // Rückgängig, Wiederholen), Dokumenttitel, Funktionssuche.
 
+import { PRODUKT, STAND } from "../marke";
 import { Download, FileText, FolderOpen, Printer, Redo2, Save, Search, Undo2 } from "lucide-react";
 import { updateInstallieren } from "../zustand/aktionen";
 import { ausfuehren } from "../befehle/register";
@@ -44,10 +45,10 @@ export function Titelleiste() {
           <>
             <strong>{dok.titel}</strong>
             {dok.geaendert && <span className="titel-geaendert"> ●</span>}
-            <span className="leise"> – Agentur-PDF</span>
+            <span className="leise"> – {PRODUKT}</span>
           </>
         ) : (
-          <strong>Agentur-PDF</strong>
+          <strong>{PRODUKT}</strong>
         )}
       </div>
       <button className="titel-suche" onClick={() => setzen({ befehlssucheOffen: true })} title="Alle Funktionen durchsuchen">
@@ -61,7 +62,7 @@ export function Titelleiste() {
         </button>
       )}
       <button className="testversion" title="Einstellungen, Einrichtung und Version" onClick={() => setzen({ dialog: { art: "info" } })}>
-        Testversion
+        {STAND}
       </button>
     </header>
   );

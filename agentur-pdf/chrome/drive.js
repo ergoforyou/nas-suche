@@ -1,4 +1,4 @@
-// Google Drive (drive.google.com): schwebender Knopf „Agentur-PDF“ für die
+// Google Drive (drive.google.com): schwebender Knopf „Ergo4You PDF“ für die
 // geöffnete bzw. markierten Dateien – öffnen im Programm oder in der Leiste
 // sammeln (zum Zusammenführen). Drive ist eine Einzelseiten-Anwendung, daher
 // wird die Auswahl regelmäßig neu gelesen.
@@ -18,8 +18,8 @@
       #agentur-pdf-drive button.zweit { background: #fff; color: #b5121b; }
       #agentur-pdf-drive button:disabled { opacity: .6; cursor: progress; }
     </style>
-    <button type="button" data-ziel="tab" title="Im Agentur-PDF-Editor (neuer Tab) öffnen und bearbeiten">Agentur-PDF: öffnen</button>
-    <button type="button" class="zweit" data-ziel="leiste" title="In die Agentur-PDF-Leiste übernehmen (z. B. zum Zusammenführen)">In Leiste</button>`;
+    <button type="button" data-ziel="tab" title="Im Ergo4You-PDF-Editor (neuer Tab) öffnen und bearbeiten">Ergo4You PDF: öffnen</button>
+    <button type="button" class="zweit" data-ziel="leiste" title="In die Ergo4You-PDF-Leiste übernehmen (z. B. zum Zusammenführen)">In Leiste</button>`;
   document.documentElement.append(knopf);
 
   function ausgewaehlt() {
@@ -39,7 +39,7 @@
     ids = ausgewaehlt();
     knopf.style.display = ids.length ? "flex" : "none";
     const haupt = knopf.querySelector('[data-ziel="tab"]');
-    haupt.textContent = ids.length > 1 ? `Agentur-PDF: ${ids.length} öffnen` : "Agentur-PDF: öffnen";
+    haupt.textContent = ids.length > 1 ? `Ergo4You PDF: ${ids.length} öffnen` : "Ergo4You PDF: öffnen";
   }, 700);
 
   knopf.addEventListener("click", async (e) => {
@@ -49,7 +49,7 @@
     alle.forEach((x) => (x.disabled = true));
     try {
       const antwort = await chrome.runtime.sendMessage({ art: "drive", ids, ziel: b.dataset.ziel });
-      if (antwort?.fehler) alert(`Agentur-PDF: ${antwort.fehler}`);
+      if (antwort?.fehler) alert(`Ergo4You PDF: ${antwort.fehler}`);
     } finally {
       alle.forEach((x) => (x.disabled = false));
     }

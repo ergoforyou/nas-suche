@@ -394,7 +394,7 @@ registrieren(
   },
   {
     id: "hilfe.info",
-    titel: "Über Agentur-PDF & Einrichtung",
+    titel: "Über Ergo4You PDF & Einrichtung",
     register: "ansicht",
     gruppe: "Oberfläche",
     icon: Info,

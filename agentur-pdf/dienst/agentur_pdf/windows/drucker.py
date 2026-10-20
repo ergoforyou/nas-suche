@@ -1,9 +1,9 @@
-"""Drucker „Agentur-PDF“ einrichten (einmalig, mit Administratorrechten).
+"""Drucker „Ergo4You PDF“ einrichten (einmalig, mit Administratorrechten).
 
 Nutzt den in Windows 10/11 eingebauten Treiber „Microsoft Print To PDF“,
 aber mit einem Datei-Anschluss statt „Speichern unter“-Dialog: Jeder
 Ausdruck landet ohne Rückfrage als ``Ausdruck.pdf`` im Druckordner, von wo
-Agentur-PDF ihn sofort als neues Dokument öffnet (``kern/druckordner.py``).
+das Programm ihn sofort als neues Dokument öffnet (``kern/druckordner.py``).
 """
 
 from __future__ import annotations
@@ -13,13 +13,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-DRUCKER = "Agentur-PDF"
+DRUCKER = "Ergo4You PDF"
+ALT = "Agentur-PDF"  # früherer Name – wird beim Einrichten/Entfernen mit entfernt
 TREIBER = "Microsoft Print To PDF"
 
 SKRIPT = r"""
-param([string]$Ordner, [string]$Name = "Agentur-PDF", [switch]$Entfernen)
+param([string]$Ordner, [string]$Name = "Ergo4You PDF", [string]$Alt = "", [switch]$Entfernen)
 $ErrorActionPreference = "Stop"
 $port = Join-Path $Ordner "Ausdruck.pdf"
+if ($Alt -and (Get-Printer -Name $Alt -ErrorAction SilentlyContinue)) { Remove-Printer -Name $Alt }
 if ($Entfernen) {
   if (Get-Printer -Name $Name -ErrorAction SilentlyContinue) { Remove-Printer -Name $Name }
   if (Get-PrinterPort -Name $port -ErrorAction SilentlyContinue) { Remove-PrinterPort -Name $port }
@@ -59,11 +61,11 @@ def _ausfuehren(argumente: list[str], erhoeht: bool) -> int:
 
 
 def einrichten(ordner: Path, erhoeht: bool = True) -> bool:
-    return _ausfuehren(["-Ordner", str(ordner), "-Name", DRUCKER], erhoeht) == 0
+    return _ausfuehren(["-Ordner", str(ordner), "-Name", DRUCKER, "-Alt", ALT], erhoeht) == 0
 
 
 def entfernen(ordner: Path, erhoeht: bool = True) -> bool:
-    return _ausfuehren(["-Ordner", str(ordner), "-Name", DRUCKER, "-Entfernen"], erhoeht) == 0
+    return _ausfuehren(["-Ordner", str(ordner), "-Name", DRUCKER, "-Alt", ALT, "-Entfernen"], erhoeht) == 0
 
 
 def eingerichtet() -> bool:

@@ -210,7 +210,7 @@ export function UeberwachungDialog() {
         </h2>
         <p>
           Neue PDFs in diesen Ordnern (z. B. ScanSnap-Ausgang) werden automatisch durchsuchbar gemacht. Seiten, die schon Text haben, bleiben
-          unverändert. Agentur-PDF muss dafür laufen.
+          unverändert. Ergo4You PDF muss dafür laufen.
         </p>
         {regeln.map((r, i) => (
           <fieldset className="gruppe regel" key={i}>

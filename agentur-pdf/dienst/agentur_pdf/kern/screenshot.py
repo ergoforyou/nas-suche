@@ -71,7 +71,7 @@ def verarbeiten(
 
         def fertig() -> tuple[bytes, str]:
             ergebnisse_schreiben(doc, ergebnisse, optionen)
-            doc.set_metadata({"title": pfad_png.stem, "producer": "Agentur-PDF Screenshot"})
+            doc.set_metadata({"title": pfad_png.stem, "producer": "Ergo4You PDF Screenshot"})
             return doc.tobytes(garbage=3, deflate=True), doc[0].get_text("text").strip()
 
         pdf, text = mupdf(fertig)

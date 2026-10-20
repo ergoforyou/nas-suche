@@ -1,4 +1,4 @@
-// PDF-Drucker „Agentur-PDF“: aus jedem Programm drucken → öffnet sich hier
+// PDF-Drucker „Ergo4You PDF“: aus jedem Programm drucken → öffnet sich hier
 // als neues Dokument (Einrichtung einmalig mit Administratorrechten).
 
 import { Globe, Printer } from "lucide-react";
@@ -32,7 +32,7 @@ export function DruckerBereich() {
         <Printer size={13} /> PDF-Drucker
       </legend>
       <p className="leise">
-        In Word, Outlook, im Browser oder in der Fachsoftware „Drucken“ wählen und als Drucker <strong>Agentur-PDF</strong> nehmen – der
+        In Word, Outlook, im Browser oder in der Fachsoftware „Drucken“ wählen und als Drucker <strong>Ergo4You PDF</strong> nehmen – der
         Ausdruck öffnet sich hier sofort als neues Dokument (zum Prüfen, Ergänzen, Zusammenführen oder Speichern).
       </p>
       {s && !s.windows && <p className="leise">Den Drucker gibt es nur im Windows-Programm.</p>}
@@ -63,7 +63,7 @@ export function DruckerDialog() {
     <div className="dialog-hintergrund" onMouseDown={zu}>
       <div className="dialog breit" role="dialog" aria-label="PDF-Drucker" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === "Escape" && zu()}>
         <h2>
-          <Printer size={18} /> PDF-Drucker „Agentur-PDF“
+          <Printer size={18} /> PDF-Drucker „Ergo4You PDF“
         </h2>
         <DruckerBereich />
         <div className="dialog-knoepfe">
@@ -88,15 +88,15 @@ export function ChromeBereich() {
         <Globe size={13} /> Google Chrome
       </legend>
       <p className="leise">
-        Die <strong>Agentur-PDF-Seitenleiste</strong> in Chrome: Dateien und Bilder hineinziehen, zusammenführen, umwandeln (auch E-Mails), Seiten drehen
-        oder löschen, Vorschau, speichern und drucken – direkt neben dem Kundenportal oder Webmailer. Rechtsklick auf Links/Bilder: „Mit Agentur-PDF
+        Die <strong>Ergo4You-PDF-Seitenleiste</strong> in Chrome: Dateien und Bilder hineinziehen, zusammenführen, umwandeln (auch E-Mails), Seiten drehen
+        oder löschen, Vorschau, speichern und drucken – direkt neben dem Kundenportal oder Webmailer. Rechtsklick auf Links/Bilder: „Mit Ergo4You PDF
         öffnen“.
       </p>
       <ol className="leise anleitung">
         <li>Unten auf „Chrome einrichten …“ klicken – Chrome öffnet die Erweiterungsseite, der Ordnerpfad liegt in der Zwischenablage.</li>
         <li>Oben rechts „Entwicklermodus“ einschalten, dann „Entpackte Erweiterung laden“.</li>
         <li>Im Ordnerfenster oben in die Adresszeile klicken, Strg+V, Enter, „Ordner auswählen“.</li>
-        <li>Puzzle-Symbol → Agentur-PDF anheften. Klick auf das Symbol (oder Alt+Umschalt+P) öffnet die Leiste.</li>
+        <li>Puzzle-Symbol → Ergo4You PDF anheften. Klick auf das Symbol (oder Alt+Umschalt+P) öffnet die Leiste.</li>
       </ol>
       {s && !s.vorhanden && <p className="warnung">Erweiterung nicht gefunden: {s.ordner}</p>}
       {s?.windows && s.vorhanden && (

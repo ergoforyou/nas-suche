@@ -5,7 +5,7 @@ import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift,
 import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
 /** Chrome-Modus: der Editor läuft als Tab in Google Chrome (über die
- * Agentur-PDF-Erweiterung) statt im Programmfenster – mit eigenem Dokument,
+ * Ergo4You-PDF-Erweiterung) statt im Programmfenster – mit eigenem Dokument,
  * ohne Sitzung und ohne die Ereignisse des Programmfensters. */
 function chromeModusErmitteln(): { aktiv: boolean; dok: string | null } {
   const anker = new URLSearchParams(window.location.hash.slice(1));

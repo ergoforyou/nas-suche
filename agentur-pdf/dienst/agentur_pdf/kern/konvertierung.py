@@ -338,7 +338,7 @@ def office_zu_pdf(name: str, daten: bytes | None, pfad: str | None) -> bytes:
     if not programm:
         raise DokumentFehler(
             f"„{Path(name).name}“: Für Word-/Excel-Dateien wird das mitgelieferte LibreOffice benötigt – "
-            "es wurde nicht gefunden. Bitte Agentur-PDF neu installieren."
+            "es wurde nicht gefunden. Bitte Ergo4You PDF neu installieren."
         )
     with tempfile.TemporaryDirectory(prefix="agentur-pdf-office-") as arbeit:
         arbeit_pfad = Path(arbeit)

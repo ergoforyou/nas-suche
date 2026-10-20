@@ -1,4 +1,4 @@
-name: Agentur-PDF Windows-Testversion
+name: Ergo4You PDF Windows-Beta
 
 on:
   push:
@@ -154,8 +154,8 @@ jobs:
           $ordner = "$env:PUBLIC\Agentur-PDF-Druck"
           $p = Start-Process -Wait -PassThru -FilePath $exe -ArgumentList "--drucker-einrichten"
           "Einrichten: Exitcode $($p.ExitCode)"
-          Get-Printer -Name "Agentur-PDF" | Format-List Name, DriverName, PortName
-          "Probedruck von Agentur-PDF" | Out-Printer -Name "Agentur-PDF"
+          Get-Printer -Name "Ergo4You PDF" | Format-List Name, DriverName, PortName
+          "Probedruck von Ergo4You PDF" | Out-Printer -Name "Ergo4You PDF"
           $datei = Join-Path $ordner "Ausdruck.pdf"
           for ($i = 0; $i -lt 30 -and -not (Test-Path $datei); $i++) { Start-Sleep -Seconds 1 }
           if (-not (Test-Path $datei)) { Write-Error "Kein Ausdruck im Druckordner angekommen"; exit 1 }
@@ -163,7 +163,7 @@ jobs:
           "Ausdruck: $((Get-Item $datei).Length) Bytes, beginnt mit $kopf"
           Remove-Item $datei
           Start-Process -Wait -FilePath $exe -ArgumentList "--drucker-entfernen"
-          if (Get-Printer -Name "Agentur-PDF" -ErrorAction SilentlyContinue) { Write-Error "Drucker nicht entfernt"; exit 1 }
+          if (Get-Printer -Name "Ergo4You PDF" -ErrorAction SilentlyContinue) { Write-Error "Drucker nicht entfernt"; exit 1 }
           if ($kopf -ne "%PDF") { Write-Error "Ausdruck ist keine PDF"; exit 1 }
 
       - name: ZIP erstellen
@@ -175,7 +175,7 @@ jobs:
       - name: Zusammenfassung
         if: always()
         run: |
-          "## Agentur-PDF Windows-Testversion" >> $env:GITHUB_STEP_SUMMARY
+          "## Ergo4You PDF – Windows-Beta MK I" >> $env:GITHUB_STEP_SUMMARY
           "Tests unter Windows: **${{ steps.tests.outcome }}**" >> $env:GITHUB_STEP_SUMMARY
           "PDF-Drucker-Probe: **${{ steps.drucker.outcome }}**" >> $env:GITHUB_STEP_SUMMARY
           if (Test-Path testergebnis.txt) { '```' >> $env:GITHUB_STEP_SUMMARY; Get-Content testergebnis.txt -Tail 25 >> $env:GITHUB_STEP_SUMMARY; '```' >> $env:GITHUB_STEP_SUMMARY }
@@ -201,15 +201,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: agentur-pdf-test-${{ github.run_number }}
-          name: Agentur-PDF Testversion ${{ github.run_number }}
+          name: Ergo4You PDF Beta MK I (Build ${{ github.run_number }})
           prerelease: true
           target_commitish: ${{ github.sha }}
           files: |
             Agentur-PDF-Testversion.zip
             agentur-pdf/installer/dist/Agentur-PDF-Setup-*.exe
           body: |
-            Windows-Testversion von Agentur-PDF (Stand ${{ github.sha }}).
+            Ergo4You PDF – Beta MK I für Windows (Stand ${{ github.sha }}).
             Empfohlen: `Agentur-PDF-Setup-….exe` ausführen (keine Administratorrechte nötig).
             Für Updates an allen PCs die Setup-Datei in den Ordner „Updates“ im gemeinsamen NAS-Ordner legen.
-            Alternativ ZIP entpacken und `Agentur-PDF.exe` starten – Details in `LIESMICH.txt`.
+            Alternativ ZIP entpacken und `Agentur-PDF.exe` (Programmdatei von Ergo4You PDF) starten – Details in `LIESMICH.txt`.
             Tests unter Windows: ${{ steps.tests.outcome }} · PDF-Drucker-Probe: ${{ steps.drucker.outcome }}

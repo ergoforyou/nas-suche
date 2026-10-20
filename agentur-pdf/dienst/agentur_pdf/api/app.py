@@ -12,7 +12,7 @@ from typing import Callable
 from fastapi import Body, FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from .. import __version__
+from .. import PRODUKT, STAND, __version__
 from ..benutzer.speicher import BenutzerSpeicher
 from ..kern.bearbeitung import Bearbeitung, quelle_oeffnen
 from ..kern.auftraege import LEISE, Auftrag, AuftragsVerwaltung
@@ -56,7 +56,7 @@ def erstelle_app(
             _app.state.aufraeumen()
 
     app = FastAPI(
-        title="Agentur-PDF", version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lebensdauer
+        title=PRODUKT, version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lebensdauer
     )
     dokumente = dokumente or DokumentSpeicher()
     benutzer = benutzer or BenutzerSpeicher()
@@ -102,6 +102,8 @@ def erstelle_app(
     async def status():
         return {
             "version": __version__,
+            "produkt": PRODUKT,
+            "stand": STAND,
             "desktop": app.state.datei_dialog is not None,
             "cache_bytes": dokumente.cache.groesse,
         }

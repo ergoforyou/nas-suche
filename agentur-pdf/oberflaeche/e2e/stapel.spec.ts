@@ -42,7 +42,7 @@ test("PDF-Drucker: Ausdruck im Druckordner öffnet sich als neues Dokument", asy
   await page.locator(".mb-reiter").getByRole("tab", { name: "Konvertieren" }).click();
   await page.locator('[data-befehl="konvertieren.drucker"]').click();
   const dialog = page.getByRole("dialog", { name: "PDF-Drucker" });
-  await expect(dialog).toContainText("Agentur-PDF");
+  await expect(dialog).toContainText("Ergo4You PDF");
   await dialog.getByRole("button", { name: "Schließen" }).click();
   // so legt der Drucker einen Ausdruck ab
   copyFileSync(join(DATEN, "brief.pdf"), join(druck, "Ausdruck.pdf"));

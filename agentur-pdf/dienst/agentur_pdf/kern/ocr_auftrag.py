@@ -53,7 +53,7 @@ def seiten_erkennen(
 ) -> tuple[list[ocr.SeitenErgebnis], int]:
     """Erkennt die Seiten parallel. Liefert (Ergebnisse, Anzahl übersprungener Seiten)."""
     if not ocr.tesseract_finden():
-        raise DokumentFehler("Die Texterkennung (Tesseract) wurde nicht gefunden. Bitte Agentur-PDF neu installieren.")
+        raise DokumentFehler("Die Texterkennung (Tesseract) wurde nicht gefunden. Bitte Ergo4You PDF neu installieren.")
     ergebnisse: list[ocr.SeitenErgebnis] = []
     uebersprungen = 0
     melden(0.01, f"Bereite {len(seiten)} Seite(n) vor …")

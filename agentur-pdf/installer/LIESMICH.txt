@@ -1,5 +1,5 @@
-Agentur-PDF – Testversion
-=========================
+Ergo4You PDF – Beta MK I
+========================
 
 INSTALLIEREN (EMPFOHLEN)
   „Agentur-PDF-Setup-….exe“ ausführen. Keine Administratorrechte nötig –
@@ -17,15 +17,15 @@ INSTALLIEREN (EMPFOHLEN)
   starten.
 
 STANDARD-PDF-PROGRAMM
-  „Testversion“ (oben rechts) → „Windows & Updates“ → „Als Standard-PDF-
+  „Beta MK I“ (oben rechts) → „Windows & Updates“ → „Als Standard-PDF-
   Programm festlegen …“. Windows öffnet „Standard-Apps“: dort bei „.pdf“
-  Agentur-PDF auswählen (Windows erlaubt das nur von Hand).
+  Ergo4You PDF auswählen (Windows erlaubt das nur von Hand).
 
 RECHTSKLICK IM EXPLORER
-  Richtet das Setup ein (sonst: „Testversion“ → „Rechtsklick-Einträge
+  Richtet das Setup ein (sonst: „Beta MK I“ → „Rechtsklick-Einträge
   einrichten“). Beim Rechtsklick auf PDFs, Bilder, Word-, Excel- und
   Maildateien:
-    • Mit Agentur-PDF öffnen
+    • Mit Ergo4You PDF öffnen
     • Zu einer PDF zusammenführen   (auch mehrere Dateien markiert)
     • In PDF umwandeln
   Rechtsklick auf einen Ordner: „Inhalt zu einer PDF zusammenführen“
@@ -34,8 +34,8 @@ RECHTSKLICK IM EXPLORER
   Unter Windows 11 unter „Weitere Optionen anzeigen“.
 
 ALLE ARBEITSPLÄTZE: GEMEINSAMER ORDNER AUF DEM NAS
-  Einmal an jedem PC: „Testversion“ → „Alle Arbeitsplätze (NAS)“ →
-  denselben Ordner eintragen, z. B. \\NAS\Agentur\Agentur-PDF.
+  Einmal an jedem PC: „Beta MK I“ → „Alle Arbeitsplätze (NAS)“ →
+  denselben Ordner eintragen, z. B. \\NAS\Ergo4You\PDF.
   Dort liegen dann für alle gleich: Stempel, Texterkennungssprachen,
   Favoriten-Ordner und das eigene Wörterbuch der Rechtschreibprüfung.
   Kürzel, Unterschriften und Ansicht bleiben persönlich.
@@ -43,15 +43,15 @@ ALLE ARBEITSPLÄTZE: GEMEINSAMER ORDNER AUF DEM NAS
 UPDATES FÜR ALLE PCs
   Neue Setup-Datei (Agentur-PDF-Setup-x.y.z.exe) in den Unterordner
   „Updates“ des gemeinsamen Ordners legen. Jeder PC zeigt oben rechts
-  „Update x.y.z“ – ein Klick, Agentur-PDF schließt sich, aktualisiert
+  „Update x.y.z“ – ein Klick, Ergo4You PDF schließt sich, aktualisiert
   und startet neu. Ungespeicherte Änderungen werden vorher gesichert.
 
-PDF-DRUCKER „AGENTUR-PDF“
+PDF-DRUCKER „ERGO4YOU PDF“
   Einmal je PC einrichten: im Setup ankreuzen oder „Konvertieren“ →
   „PDF-Drucker“ → „Drucker einrichten …“ (Windows fragt nach
   Administratorrechten). Danach in Word, Outlook, Browser oder Fach-
-  software „Drucken“ → Drucker „Agentur-PDF“: Der Ausdruck öffnet sich
-  sofort in Agentur-PDF als neues Dokument.
+  software „Drucken“ → Drucker „Ergo4You PDF“: Der Ausdruck öffnet sich
+  sofort in Ergo4You PDF als neues Dokument.
 
 STAPELVERARBEITUNG
   „Konvertieren“ → „Stapelverarbeitung“: Dateien oder ganze Ordner auf
@@ -63,7 +63,7 @@ GEMEINSAM GENUTZTE DATEIEN, ABSTURZ
   • Hat ein Kollege eine Datei geöffnet, erscheint ein gelber Hinweis
     („Bei martina (PC-02) geöffnet“) und ein Schloss im Tab. Speichern
     fragt dann nach – am besten „Unter anderem Namen speichern“. Wird die
-    Datei frei, meldet Agentur-PDF das von selbst.
+    Datei frei, meldet Ergo4You PDF das von selbst.
   • Die Sperre ist eine versteckte Datei „~$Name.pdf.sperre“ neben der PDF;
     sie verschwindet beim Schließen.
   • Ungespeicherte Änderungen werden jede Minute gesichert. Nach einem
@@ -85,44 +85,44 @@ DESIGN (NEUES REGISTER)
   • Hausfarben: bis zu 6 Firmenfarben, erscheinen in allen Farbauswahlen.
   • KI-Bild/KI-Text sind vorbereitet und folgen in einer späteren Version.
 
-GOOGLE CHROME: PDFs DIREKT IN AGENTUR-PDF
+GOOGLE CHROME: PDFs DIREKT IN ERGO4YOU PDF
   Mit der Chrome-Erweiterung (Einrichtung siehe unten) öffnet sich jede PDF,
   die Sie in Chrome anklicken – Kundenportal, Webmail, Google Drive, lokale
-  Datei –, im vollständigen Agentur-PDF-Editor als Chrome-Tab statt in
+  Datei –, im vollständigen Ergo4You-PDF-Editor als Chrome-Tab statt in
   Chromes eigener Anzeige: alle Register (Kommentieren, Bearbeiten, Design,
   Seiten, Schützen …). Strg+S speichert über Chromes Speichern-Dialog.
-  Abschalten: Seitenleiste (Agentur-PDF-Symbol) → Häkchen „PDFs in Chrome
-  automatisch mit Agentur-PDF öffnen“. Agentur-PDF muss dafür laufen (sonst
+  Abschalten: Seitenleiste (Ergo4You PDF-Symbol) → Häkchen „PDFs in Chrome
+  automatisch mit Ergo4You PDF öffnen“. Ergo4You PDF muss dafür laufen (sonst
   bleibt Chromes Anzeige). Lokale PDFs (file://): auf der Erweiterungsseite
-  bei Agentur-PDF „Details“ → „Zugriff auf Datei-URLs zulassen“ einschalten.
+  bei Ergo4You PDF „Details“ → „Zugriff auf Datei-URLs zulassen“ einschalten.
 
-GOOGLE CHROME: AGENTUR-PDF-SEITENLEISTE
+GOOGLE CHROME: ERGO4YOU-PDF-SEITENLEISTE
   Eine Leiste rechts in Chrome – neben Kundenportal, Webmailer & Co.:
   Dateien, Bilder und E-Mails (EML/MSG) hineinziehen → zu einer PDF
   zusammenführen bzw. umwandeln → Vorschau, Seiten drehen/löschen →
   speichern, drucken oder „Im Programm“ weiterbearbeiten. Rechtsklick auf
-  einen Link oder ein Bild: „Mit Agentur-PDF öffnen“ bzw. „In Agentur-PDF-
+  einen Link oder ein Bild: „Mit Ergo4You PDF öffnen“ bzw. „In Ergo4You PDF-
   Leiste übernehmen“. Läuft das Programm nicht, startet die Leiste es.
   Einrichten (einmalig je PC, das Setup öffnet Chrome dafür automatisch):
   1. Chrome zeigt „Erweiterungen“; oben rechts „Entwicklermodus“ ein.
   2. „Entpackte Erweiterung laden“ → Ordner „Chrome-Erweiterung“ im
      Programmordner wählen (der Pfad liegt schon in der Zwischenablage:
      in die Adresszeile des Ordnerfensters klicken, Strg+V, Enter).
-  3. Puzzle-Symbol → Agentur-PDF anheften. Öffnen: Symbol oder Alt+Umschalt+P.
-  Später nochmal: Agentur-PDF → Einstellungen → „Chrome einrichten …“.
+  3. Puzzle-Symbol → Ergo4You PDF anheften. Öffnen: Symbol oder Alt+Umschalt+P.
+  Später nochmal: Ergo4You PDF → Einstellungen → „Chrome einrichten …“.
 
 GOOGLE DRIVE
   • Am besten mit „Google Drive für Desktop“: Drive erscheint im Explorer
     als Laufwerk (z. B. G:). Doppelklick auf eine PDF öffnet sie in
-    Agentur-PDF (wenn Standard-PDF-Programm), „Speichern“ schreibt direkt
+    Ergo4You PDF (wenn Standard-PDF-Programm), „Speichern“ schreibt direkt
     zurück nach Drive – auch Rechtsklick „Zusammenführen“ geht dort.
   • Im Browser (drive.google.com): Datei markieren oder öffnen → unten links
-    „Agentur-PDF: öffnen“ (Editor im neuen Tab) oder „In Leiste“ (z. B.
+    „Ergo4You PDF: öffnen“ (Editor im neuen Tab) oder „In Leiste“ (z. B.
     mehrere zum Zusammenführen sammeln). Das Ergebnis dann auf G:\ speichern
     oder über „Speichern …“ herunterladen und in Drive hochladen.
 
 ERSTE SCHRITTE
-  Oben links auf „Testversion“ klicken → „Ihr Kürzel“ eintragen (z. B. JK).
+  Oben links auf „Beta MK I“ klicken → „Ihr Kürzel“ eintragen (z. B. JK).
   Es erscheint in Stempeln, Kommentaren und Screenshot-Dateinamen.
 
 WAS IN DIESER TESTVERSION GEHT
@@ -142,7 +142,7 @@ WAS IN DIESER TESTVERSION GEHT
   • Texterkennung (OCR), „Text aus Bereich“ (Taste T), Überwachungsordner
   • Screenshot: überall Strg+Umschalt+Druck → Bereich aufziehen. Bild + PDF
     mit Texterkennung landen in Bilder\Screenshots\Agentur-PDF (Ordner und
-    Tastenkürzel unter „Testversion“ änderbar, z. B. auf das NAS).
+    Tastenkürzel unter „Beta MK I“ änderbar, z. B. auf das NAS).
     In der Karte danach: „Zuschneiden & einfügen …“.
   • Zuschneiden & aufhellen (Start, Seiten oder Rechtsklick auf eine Seite):
     Rahmen ist als DIN A4 vorbelegt und liegt schon auf dem Beleg;
@@ -181,7 +181,7 @@ WAS IN DIESER TESTVERSION GEHT
 
 BEI PROBLEMEN
   Das Fehlerprotokoll liegt unter  %APPDATA%\AgenturPDF\protokoll.log
-  (im Programm: „Testversion“ anklicken → Pfad wird angezeigt).
+  (im Programm: „Beta MK I“ anklicken → Pfad wird angezeigt).
   Bitte zusammen mit einer kurzen Beschreibung schicken.
 
   Bitte zum Testen KEINE Originale verwenden, sondern Kopien.

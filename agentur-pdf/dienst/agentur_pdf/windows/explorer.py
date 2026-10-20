@@ -47,7 +47,7 @@ def eintraege(aufruf: str, symbol: str | None = None) -> list[Schluessel]:
     symbol = symbol or aufruf.split('" ')[0].strip('"')
     liste: list[Schluessel] = []
     verben = [
-        ("AgenturPDF.1Oeffnen", "Mit Agentur-PDF öffnen", "", ALLE),
+        ("AgenturPDF.1Oeffnen", "Mit Ergo4You PDF öffnen", "", ALLE),
         ("AgenturPDF.2Zusammenfuehren", "Zu einer PDF zusammenführen", "--zusammenfuehren ", ALLE),
         ("AgenturPDF.3Umwandeln", "In PDF umwandeln", "--umwandeln ", ALLE - PDF),
     ]
@@ -67,13 +67,13 @@ def eintraege(aufruf: str, symbol: str | None = None) -> list[Schluessel]:
     # „Öffnen mit“ + Kandidat für das Standard-PDF-Programm (Auswahl trifft der
     # Benutzer in den Windows-Einstellungen – Windows erlaubt das nicht per Programm)
     liste += [
-        Schluessel(rf"{BASIS}\{PROGID}", (("", "PDF-Dokument (Agentur-PDF)"),)),
+        Schluessel(rf"{BASIS}\{PROGID}", (("", "PDF-Dokument (Ergo4You PDF)"),)),
         Schluessel(rf"{BASIS}\{PROGID}\DefaultIcon", (("", f"{symbol},0"),)),
         Schluessel(rf"{BASIS}\{PROGID}\shell\open\command", (("", f'{aufruf} "%1"'),)),
         Schluessel(rf"{BASIS}\.pdf\OpenWithProgids", ((PROGID, ""),)),
         Schluessel(
             r"Software\AgenturPDF\Capabilities",
-            (("ApplicationName", "Agentur-PDF"), ("ApplicationDescription", "PDF-Programm der Agentur")),
+            (("ApplicationName", "Ergo4You PDF"), ("ApplicationDescription", "PDF-Programm von Ergo4You")),
         ),
         Schluessel(r"Software\AgenturPDF\Capabilities\FileAssociations", ((".pdf", PROGID),)),
         Schluessel(r"Software\RegisteredApplications", (("Agentur-PDF", r"Software\AgenturPDF\Capabilities"),)),

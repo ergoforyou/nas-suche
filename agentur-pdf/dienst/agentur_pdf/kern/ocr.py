@@ -275,7 +275,7 @@ def _tesseract(bild_png: bytes, argumente: list[str], ausgabe: str) -> str:
 
     programm = tesseract_finden()
     if not programm:
-        raise DokumentFehler("Die Texterkennung (Tesseract) wurde nicht gefunden. Bitte Agentur-PDF neu installieren.")
+        raise DokumentFehler("Die Texterkennung (Tesseract) wurde nicht gefunden. Bitte Ergo4You PDF neu installieren.")
     with tempfile.TemporaryDirectory(prefix="agentur-pdf-ocr-") as arbeit:
         bild = Path(arbeit) / "seite.png"
         bild.write_bytes(bild_png)

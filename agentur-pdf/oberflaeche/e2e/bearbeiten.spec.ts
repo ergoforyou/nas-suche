@@ -293,7 +293,7 @@ test("Screenshot: Karte erscheint, Bild als Seite einfügen", async ({ page }) =
 test("Einstellungen: Kürzel und Screenshot-Ordner speichern", async ({ page }) => {
   await start(page);
   await page.locator(".testversion").click();
-  const dialog = page.getByRole("dialog", { name: "Über Agentur-PDF" });
+  const dialog = page.getByRole("dialog", { name: "Über Ergo4You PDF" });
   await dialog.getByLabel(/Ihr Kürzel/).fill("JK");
   await dialog.getByRole("button", { name: "Einstellungen speichern" }).click();
   await expect(page.locator(".meldung")).toContainText("Einstellungen gespeichert");
