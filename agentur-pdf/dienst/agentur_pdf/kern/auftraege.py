@@ -3,6 +3,7 @@ Fortschrittsanzeige und Abbrechen."""
 
 from __future__ import annotations
 
+import contextvars
 import threading
 import time
 import traceback
@@ -18,10 +19,16 @@ class Abgebrochen(Exception):
     pass
 
 
+# Gesetzt für Anfragen aus einem Chrome-Tab (Kopf „X-Agentur-Client: chrome“)
+LEISE: contextvars.ContextVar[bool] = contextvars.ContextVar("agentur_leise", default=False)
+
+
 @dataclass
 class Auftrag:
     id: str
     titel: str
+    # aus einem Chrome-Tab gestartet: Ergebnis nicht ins Programmfenster melden
+    leise: bool = False
     status: str = "wartet"  # wartet | laeuft | fertig | fehler | abgebrochen
     fortschritt: float = 0.0  # 0..1
     schritt: str = ""
@@ -62,7 +69,7 @@ class AuftragsVerwaltung:
         self.bei_ende: Callable[[Auftrag], None] | None = None
 
     def starten(self, titel: str, arbeit: Callable[[Auftrag], dict | None]) -> Auftrag:
-        auftrag = Auftrag(id=uuid.uuid4().hex[:10], titel=titel)
+        auftrag = Auftrag(id=uuid.uuid4().hex[:10], titel=titel, leise=LEISE.get())
         with self._lock:
             self._aufraeumen()
             self._auftraege[auftrag.id] = auftrag

@@ -4,6 +4,24 @@
 import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort, GemeinsamStatus, UpdateInfo, WindowsStatus, StapelOptionen, VergleichErgebnis, Textzeile } from "./typen";
 import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
+/** Chrome-Modus: der Editor läuft als Tab in Google Chrome (über die
+ * Agentur-PDF-Erweiterung) statt im Programmfenster – mit eigenem Dokument,
+ * ohne Sitzung und ohne die Ereignisse des Programmfensters. */
+function chromeModusErmitteln(): { aktiv: boolean; dok: string | null } {
+  const anker = new URLSearchParams(window.location.hash.slice(1));
+  try {
+    if (anker.get("chrome") === "1") {
+      sessionStorage.setItem("agentur-pdf-chrome", anker.get("dok") ?? "");
+    }
+    const dok = sessionStorage.getItem("agentur-pdf-chrome");
+    return { aktiv: dok !== null, dok: dok || null };
+  } catch {
+    return { aktiv: anker.get("chrome") === "1", dok: anker.get("dok") };
+  }
+}
+
+export const CHROME_MODUS = chromeModusErmitteln();
+
 function tokenErmitteln(): string {
   const anker = new URLSearchParams(window.location.hash.slice(1));
   const ausAnker = anker.get("t");
@@ -29,6 +47,7 @@ export class ApiFehler extends Error {}
 
 async function anfrage<T>(methode: string, pfad: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { "X-Agentur-Token": token };
+  if (CHROME_MODUS.aktiv) headers["X-Agentur-Client"] = "chrome";
   let daten: BodyInit | undefined;
   if (body instanceof Blob || body instanceof ArrayBuffer) {
     daten = body;
@@ -152,6 +171,8 @@ export const api = {
   umwandeln: (eintraege: { pfad?: string; upload?: string }[], speichern: boolean) =>
     anfrage<Auftrag>("POST", "/api/umwandeln", { eintraege, speichern }),
   auftragAbbrechen: (id: string) => anfrage("DELETE", `/api/auftraege/${id}`),
+  heruntergeladen: (id: string) => anfrage<Aenderungsantwort>("POST", `/api/dokumente/${id}/heruntergeladen`),
+  auftrag: (id: string) => anfrage<Auftrag>("GET", `/api/auftraege/${id}`),
   ereignisse: () => anfrage<{ ereignisse: Ereignis[]; auftraege: Auftrag[] }>("GET", "/api/ereignisse"),
   // Texterkennung
   ocrStatus: () => anfrage<OcrStatus>("GET", "/api/ocr/status"),

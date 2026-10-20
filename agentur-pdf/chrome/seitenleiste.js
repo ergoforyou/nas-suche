@@ -318,15 +318,14 @@ $("drucken").addEventListener("click", async () => {
 });
 
 $("weiter").addEventListener("click", async () => {
-  try {
-    await Agentur.json("/api/chrome/zeigen", { dok_id: zustand.dok.id });
-    zustand.dok = null; // gehört jetzt dem Programmfenster
-    ergebnisZeigen();
-    melden("Im Programmfenster geöffnet.");
-  } catch (e) {
-    fehlerMelden(e);
-  }
+  // vollständiger Editor im neuen Chrome-Tab – das Dokument gehört dann dem Tab
+  await chrome.tabs.create({ url: Agentur.editorUrl(zustand.dok.id) });
+  zustand.dok = null;
+  ergebnisZeigen();
 });
+
+chrome.storage.sync.get("pdfsUebernehmen").then(({ pdfsUebernehmen = true }) => ($("automatisch").checked = pdfsUebernehmen));
+$("automatisch").addEventListener("change", (e) => chrome.storage.sync.set({ pdfsUebernehmen: e.target.checked }));
 
 async function ergebnisSchliessen() {
   if (!zustand.dok) return;

@@ -85,6 +85,17 @@ DESIGN (NEUES REGISTER)
   • Hausfarben: bis zu 6 Firmenfarben, erscheinen in allen Farbauswahlen.
   • KI-Bild/KI-Text sind vorbereitet und folgen in einer späteren Version.
 
+GOOGLE CHROME: PDFs DIREKT IN AGENTUR-PDF
+  Mit der Chrome-Erweiterung (Einrichtung siehe unten) öffnet sich jede PDF,
+  die Sie in Chrome anklicken – Kundenportal, Webmail, Google Drive, lokale
+  Datei –, im vollständigen Agentur-PDF-Editor als Chrome-Tab statt in
+  Chromes eigener Anzeige: alle Register (Kommentieren, Bearbeiten, Design,
+  Seiten, Schützen …). Strg+S speichert über Chromes Speichern-Dialog.
+  Abschalten: Seitenleiste (Agentur-PDF-Symbol) → Häkchen „PDFs in Chrome
+  automatisch mit Agentur-PDF öffnen“. Agentur-PDF muss dafür laufen (sonst
+  bleibt Chromes Anzeige). Lokale PDFs (file://): auf der Erweiterungsseite
+  bei Agentur-PDF „Details“ → „Zugriff auf Datei-URLs zulassen“ einschalten.
+
 GOOGLE CHROME: AGENTUR-PDF-SEITENLEISTE
   Eine Leiste rechts in Chrome – neben Kundenportal, Webmailer & Co.:
   Dateien, Bilder und E-Mails (EML/MSG) hineinziehen → zu einer PDF
@@ -106,7 +117,7 @@ GOOGLE DRIVE
     Agentur-PDF (wenn Standard-PDF-Programm), „Speichern“ schreibt direkt
     zurück nach Drive – auch Rechtsklick „Zusammenführen“ geht dort.
   • Im Browser (drive.google.com): Datei markieren oder öffnen → unten links
-    „Agentur-PDF: öffnen“ (im Programm bearbeiten) oder „In Leiste“ (z. B.
+    „Agentur-PDF: öffnen“ (Editor im neuen Tab) oder „In Leiste“ (z. B.
     mehrere zum Zusammenführen sammeln). Das Ergebnis dann auf G:\ speichern
     oder über „Speichern …“ herunterladen und in Drive hochladen.
 

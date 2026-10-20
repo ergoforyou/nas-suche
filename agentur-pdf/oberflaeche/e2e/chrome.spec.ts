@@ -3,6 +3,7 @@
 import { chromium, expect, test, type BrowserContext } from "@playwright/test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { DATEN } from "./hilfen";
 
@@ -52,9 +53,13 @@ test("Seitenleiste: Dateien zusammenführen, Seite drehen/löschen, speichern", 
   await expect(leiste.locator("#seitenzahl")).toHaveText("(9 Seiten)");
   await leiste.screenshot({ path: join(process.env.E2E_BILDER ?? tmpdir(), "chrome-seitenleiste.png") });
 
-  // Im Programmfenster weiterbearbeiten → Dokument geht an das Programm über
-  await leiste.getByRole("button", { name: "Im Programm" }).click();
+  // „Bearbeiten“ → vollständiger Editor im neuen Tab
+  const neuerTab = kontext.waitForEvent("page");
+  await leiste.getByRole("button", { name: "Bearbeiten" }).click();
+  const editor = await neuerTab;
+  await expect(editor.locator(".seite-bild").first()).toBeVisible({ timeout: 15_000 });
   await expect(leiste.locator("#ergebnis")).toBeHidden();
+  await editor.close();
 });
 
 test("Google Drive: markierte Datei per Knopf im Programm öffnen", async () => {
@@ -76,18 +81,51 @@ test("Google Drive: markierte Datei per Knopf im Programm öffnen", async () => 
   await drive.goto("https://drive.google.com/drive/my-drive");
   const knopf = drive.getByRole("button", { name: "Agentur-PDF: öffnen" });
   await expect(knopf).toBeVisible({ timeout: 10_000 });
-  // alte Ereignisse verwerfen, dann öffnen
-  await drive.request.get("http://127.0.0.1:47811/api/ereignisse", { headers: { "X-Agentur-Token": "e2e" } });
+  const editorTab = kontext.waitForEvent("page");
   await knopf.click();
-  await expect
-    .poll(async () => {
-      const e = (await (await drive.request.get("http://127.0.0.1:47811/api/ereignisse", { headers: { "X-Agentur-Token": "e2e" } })).json()) as {
-        ereignisse: { art: string; dokumente?: string[] }[];
-      };
-      return e.ereignisse.find((x) => x.art === "oeffnen")?.dokumente?.length ?? 0;
-    }, { timeout: 15_000 })
-    .toBe(1);
+  const editor = await editorTab;
+  await expect(editor).toHaveTitle(/Police Muster.*Agentur-PDF/, { timeout: 15_000 });
+  await expect(editor.locator(".seite-bild").first()).toBeVisible();
+  await editor.close();
   await kontext.unroute("https://drive.google.com/**");
+});
+
+test("PDF-Link in Chrome öffnet sich im vollständigen Editor (statt Chromes Ansicht)", async () => {
+  // eigener kleiner Webserver liefert eine PDF mit „Content-Type: application/pdf“
+  const server = spawn("python3", ["-m", "http.server", "47899", "--bind", "127.0.0.1", "--directory", DATEN], { stdio: "ignore" });
+  try {
+    const seite = await kontext.newPage();
+    await expect.poll(async () => (await seite.request.get("http://127.0.0.1:47899/b.pdf").catch(() => null))?.status(), { timeout: 10_000 }).toBe(200);
+    await seite.goto("http://127.0.0.1:47899/b.pdf").catch(() => undefined); // Navigation wird umgeleitet
+    await expect(seite).toHaveURL(/127\.0\.0\.1:47811\//, { timeout: 15_000 });
+    await expect(seite).toHaveTitle(/b.*Agentur-PDF/);
+    await expect(seite.locator(".seite-bild").first()).toBeVisible();
+    // es ist der echte Editor: Menüband und Bearbeiten-Werkzeuge sind da
+    await expect(seite.locator(".mb-reiter").getByRole("tab", { name: "Bearbeiten" })).toBeVisible();
+    await expect(seite.locator(".tab")).toHaveCount(1);
+    // bearbeiten (Seite drehen) und mit Strg+S als Download speichern
+    const box = (await seite.locator('.seite-inhalt[data-seite="0"]').boundingBox())!;
+    await seite.mouse.click(box.x + box.width / 2, box.y + 60, { button: "right" });
+    await seite.getByRole("menuitem", { name: "Rechts drehen" }).click();
+    await expect(seite).toHaveTitle(/^● /);
+    await seite.screenshot({ path: join(process.env.E2E_BILDER ?? tmpdir(), "chrome-editor.png") });
+    const download = seite.waitForEvent("download");
+    await seite.keyboard.press("Control+s");
+    expect((await download).suggestedFilename()).toMatch(/\.pdf$/);
+    await expect(seite).not.toHaveTitle(/^● /);
+    // Schalter „automatisch“ aus → Chrome-Ansicht bleibt
+    const leiste = await kontext.newPage();
+    await leiste.goto(`chrome-extension://${KENNUNG}/seitenleiste.html`);
+    await leiste.getByRole("checkbox", { name: /automatisch mit Agentur-PDF/ }).uncheck();
+    const zweite = await kontext.newPage();
+    await zweite.goto("http://127.0.0.1:47899/a.pdf").catch(() => undefined);
+    await zweite.waitForTimeout(2500);
+    expect(zweite.url()).toContain("47899/a.pdf");
+    await leiste.getByRole("checkbox", { name: /automatisch mit Agentur-PDF/ }).check();
+    await Promise.all([seite.close(), leiste.close(), zweite.close()]);
+  } finally {
+    server.kill();
+  }
 });
 
 test("Fremde Webseite bekommt kein Token", async () => {

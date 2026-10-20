@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -14,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from .. import __version__
 from ..benutzer.speicher import BenutzerSpeicher
 from ..kern.bearbeitung import Bearbeitung, quelle_oeffnen
-from ..kern.auftraege import Auftrag, AuftragsVerwaltung
+from ..kern.auftraege import LEISE, Auftrag, AuftragsVerwaltung
 from ..kern.dokumente import DokumentFehler, DokumentSpeicher
 from ..kern.konvertierung import braucht_umwandlung, unterstuetzt
 from ..kern.mupdf_thread import im_mupdf_thread, im_mupdf_thread_sync
@@ -78,14 +79,19 @@ def erstelle_app(
     app.state.ereignisse = ereignisse
     app.state.fenster_vorholen = fenster_vorholen
     # Fertige Aufträge melden sich bei der Oberfläche (die sie dann öffnet)
-    auftraege.bei_ende = lambda a: ereignisse.hinzufuegen({"art": "auftrag", "auftrag": a.als_dict()})
+    # (außer bei Aufträgen aus einem Chrome-Tab – der verfolgt sie selbst)
+    auftraege.bei_ende = lambda a: None if a.leise else ereignisse.hinzufuegen({"art": "auftrag", "auftrag": a.als_dict()})
 
     @app.middleware("http")
     async def sicherheit(request: Request, call_next):
         abgelehnt = pruefe_anfrage(request, token)
         if abgelehnt is not None:
             return abgelehnt
-        return await call_next(request)
+        marke = LEISE.set(request.headers.get("x-agentur-client") == "chrome")
+        try:
+            return await call_next(request)
+        finally:
+            LEISE.reset(marke)
 
     @app.exception_handler(DokumentFehler)
     async def dokument_fehler(_request: Request, fehler: DokumentFehler):
@@ -138,6 +144,11 @@ def erstelle_app(
         """Einmal „Hausmeister“: geänderte Dokumente sichern, eigene Sperren
         auffrischen, frei gewordene Dateien übernehmen."""
         await im_mupdf_thread(lambda: [sicherung.sichern(d) for d in dokumente.alle()])
+        # Chrome-Tabs schließen ohne Rückmeldung: unveränderte, länger ruhende Dokumente freigeben
+        jetzt = time.time()
+        for d in dokumente.alle():
+            if d.chrome and not d.geaendert and jetzt - d.benutzt > CHROME_RUHE_S:
+                await im_mupdf_thread(dokumente.schliessen, d.id)
         sperren = dokumente.sperren
         if sperren is None:
             return
@@ -395,6 +406,17 @@ def erstelle_app(
         benutzer.zuletzt_hinzufuegen(gespeichert, info["titel"], info["seitenanzahl"])
         return await antwort([dok_id], pfad=gespeichert)
 
+    @app.post("/api/dokumente/{dok_id}/heruntergeladen")
+    async def heruntergeladen(dok_id: str):
+        """Im Browser/Chrome-Tab als Download gespeichert → gilt als gesichert."""
+
+        def markieren():
+            dokumente.get(dok_id).geaendert = False
+
+        await im_mupdf_thread(markieren)
+        sicherung.entfernen(dok_id)
+        return await antwort([dok_id])
+
     @app.get("/api/dokumente/{dok_id}/datei")
     async def datei(dok_id: str):
         daten = await im_mupdf_thread(bearbeitung.datei_bytes, dok_id)
@@ -564,6 +586,26 @@ def erstelle_app(
         if app.state.fenster_vorholen:
             app.state.fenster_vorholen()
         return {"ok": True}
+
+    @app.post("/api/chrome/tab")
+    async def chrome_tab(request: Request, name: str = Query(...)):
+        """PDF (oder Bild, Mail, Office) aus Chrome für den Editor im Chrome-Tab öffnen."""
+        daten = await request.body()
+        if not daten:
+            raise DokumentFehler("Leere Datei.")
+        name = os.path.basename(name) or "Dokument.pdf"
+        if not unterstuetzt(name):
+            raise DokumentFehler(f"„{name}“: Dateityp wird nicht unterstützt.")
+        if name.lower().endswith(".pdf"):
+            dok = await im_mupdf_thread(dokumente.oeffnen_bytes, daten, name)
+        else:
+            uid = uploads.speichern(name, daten)
+            ergebnis = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: zusammenfuehren([uploads.get(uid)], dokumente, Auftrag("chrome", name), im_mupdf_thread_sync, False, True)
+            )
+            dok = dokumente.get(ergebnis["dokumente"][0])
+        dok.chrome = True
+        return await im_mupdf_thread(dokumente.info, dok.id)
 
     @app.post("/api/chrome/zeigen")
     async def chrome_zeigen(dok_id: str = Body(..., embed=True)):
@@ -888,6 +930,7 @@ def erstelle_app(
 
 
 WARTUNG_S = 60
+CHROME_RUHE_S = 30 * 60
 
 
 async def _wartungsschleife(app: FastAPI) -> None:

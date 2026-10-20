@@ -14,6 +14,8 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import time
+
 import pymupdf
 
 from .render_cache import RenderCache
@@ -92,6 +94,10 @@ class OffenesDokument:
     schutz_gespeichert: dict | None = None
     # Datei ist bei jemand anderem geöffnet (Sperrdatei auf dem NAS)
     gesperrt_von: dict | None = None
+    # In einem Chrome-Tab geöffnet (Chrome-Modus): wird nach längerer Ruhe ohne
+    # Änderungen automatisch geschlossen
+    chrome: bool = False
+    benutzt: float = field(default_factory=time.time)
     # Änderungszeit/Größe der Datei beim Öffnen bzw. letzten Speichern –
     # erkennt, wenn ein anderer sie inzwischen überschrieben hat
     datei_stand: tuple[int, int] | None = None
@@ -178,7 +184,9 @@ class DokumentSpeicher:
 
     def get(self, dok_id: str) -> OffenesDokument:
         try:
-            return self._dokumente[dok_id]
+            dok = self._dokumente[dok_id]
+            dok.benutzt = time.time()
+            return dok
         except KeyError:
             raise DokumentFehler("Dokument ist nicht (mehr) geöffnet.") from None
 

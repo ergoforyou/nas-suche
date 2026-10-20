@@ -103,5 +103,8 @@ const Agentur = (() => {
     return { blob, name: dateiname(url, r, blob.type) };
   }
 
-  return { BASIS, verbinden, anfrage, json, hochladen, abwarten, bildUrl, holen, dateiname, driveAdresse, driveDownload, token: () => token };
+  /** Adresse des vollständigen Editors im Chrome-Tab für ein geöffnetes Dokument */
+  const editorUrl = (dokId) => `${BASIS}/#t=${encodeURIComponent(token || "")}&chrome=1&dok=${encodeURIComponent(dokId)}`;
+
+  return { BASIS, editorUrl, verbinden, anfrage, json, hochladen, abwarten, bildUrl, holen, dateiname, driveAdresse, driveDownload, token: () => token };
 })();

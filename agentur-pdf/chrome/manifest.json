@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Agentur-PDF",
   "short_name": "Agentur-PDF",
-  "version": "0.10.2",
-  "description": "PDFs, Bilder und Google-Drive-Dateien direkt in Chrome zusammenführen, umwandeln, drehen und ansehen – mit dem Agentur-PDF auf diesem PC.",
+  "version": "0.11.0",
+  "description": "PDFs in Chrome direkt mit Agentur-PDF öffnen und bearbeiten – statt Chromes PDF-Anzeige. Dazu Seitenleiste zum Zusammenführen und Google-Drive-Knopf.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0mk9zdw6AUylXt+LLjM5gyAnta7q/yoQFH2QCqIgZO2QVw1TiWtMlb869QD73OjSA8WSdHHHMEc682KTRnL/tdFaOHDr9Yt4KMJeEfa5ALxeASRVOS5Ytvj3YVGXWtkYoxOgaDOxvifiOyiTCGsZX9/G/QZRB9oejH6JmgX/6TT6x+L1qkt1TJCRcYYGAIhxCk4c+8wDks56TtR9Hw3vZ5vHX86a2tCVCbCWtbHpa8qA/me0ApAcVY63aW7RrgIug8XZGRykUV7YLj1MfHW2gGvP1IBv1ftDrDr3dz21/uRMEqrNS3r5bQx/C5UDGy8xjB+fJgSdKibG0f0a1VfpRwIDAQAB",
   "icons": {
     "16": "symbole/symbol16.png",
@@ -28,7 +28,8 @@
     "sidePanel",
     "contextMenus",
     "storage",
-    "downloads"
+    "downloads",
+    "webRequest"
   ],
   "host_permissions": [
     "http://127.0.0.1/*",

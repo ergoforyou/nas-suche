@@ -1,7 +1,7 @@
 // Zusammenführen, Umwandeln, Hintergrundaufträge und Ereignisse vom Dienst
 // (z. B. Explorer-Rechtsklick, während das Programm läuft).
 
-import { api } from "../api";
+import { api, CHROME_MODUS } from "../api";
 import type { Auftrag, Ereignis, ZfEintrag } from "../typen";
 import { dokumentAktualisieren, dokumentHinzufuegen, holen, melden, setzen } from "./store";
 
@@ -251,6 +251,20 @@ let laeuft = false;
 async function abfragen(): Promise<void> {
   if (laeuft) return;
   laeuft = true;
+  if (CHROME_MODUS.aktiv) {
+    // Chrome-Tab: die Ereignisse gehören dem Programmfenster – nur eigene Aufträge verfolgen
+    try {
+      for (const a of holen().auftraege.filter((x) => x.status === "laeuft" || x.status === "wartet")) {
+        const neu = await api.auftrag(a.id).catch(() => null);
+        if (!neu) continue;
+        if (neu.status === "laeuft" || neu.status === "wartet") setzen((z) => ({ auftraege: z.auftraege.map((x) => (x.id === neu.id ? neu : x)) }));
+        else await ereignisVerarbeiten({ art: "auftrag", auftrag: neu });
+      }
+    } finally {
+      laeuft = false;
+    }
+    return;
+  }
   try {
     const { ereignisse, auftraege } = await api.ereignisse();
     if (auftraege.length) {

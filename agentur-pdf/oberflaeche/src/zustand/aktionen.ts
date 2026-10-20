@@ -1,9 +1,9 @@
 // Aktionen mit Dienst-Anbindung (Öffnen, Schließen, Suchen, Sitzung).
 
-import { api, ApiFehler } from "../api";
+import { api, ApiFehler, CHROME_MODUS } from "../api";
 import type { Ansicht, DokumentInfo, Sitzung, UpdateInfo } from "../typen";
 import { brauchtUmwandlung, DATEIAUSWAHL, ereignisschleifeStarten, umwandelnStarten, umwandelnUndOeffnen } from "./konvertieren";
-import { aktivesDokument, dokumentEntfernen, dokumentHinzufuegen, fragen, holen, melden, setzen, springen } from "./store";
+import { abonnieren, aktivesDokument, dokumentEntfernen, dokumentHinzufuegen, fragen, holen, melden, setzen, springen } from "./store";
 
 function fehlerText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -141,6 +141,7 @@ export function naechsterTreffer(richtung: 1 | -1 = 1): void {
 let sitzungTimer: number | undefined;
 
 export function sitzungMerken(): void {
+  if (CHROME_MODUS.aktiv) return; // Chrome-Tab hat keine eigene Sitzung
   window.clearTimeout(sitzungTimer);
   sitzungTimer = window.setTimeout(() => {
     const z = holen();
@@ -163,12 +164,17 @@ export async function starten(): Promise<void> {
   try {
     const [status, einstellungen] = await Promise.all([api.status(), api.einstellungen()]);
     setzen((z) => ({
-      desktop: status.desktop,
+      // im Chrome-Tab wie im Browser: Datei-Auswahl und Speichern über Chrome
+      desktop: status.desktop && !CHROME_MODUS.aktiv,
       einstellungen,
       seitenleiste: { ...z.seitenleiste, breite: einstellungen.seitenleiste_breite, miniGroesse: einstellungen.miniatur_groesse },
     }));
   } catch (e) {
     melden(`Verbindung zum Agentur-PDF-Dienst fehlgeschlagen: ${fehlerText(e)}`, "fehler");
+    return;
+  }
+  if (CHROME_MODUS.aktiv) {
+    await chromeStarten();
     return;
   }
   // Bereits geöffnete Dokumente (z. B. per Doppelklick/Explorer übergeben)
@@ -240,4 +246,29 @@ export async function updateInstallieren(): Promise<void> {
   } catch (e) {
     melden(fehlerText(e), "fehler");
   }
+}
+
+/** Chrome-Tab: nur das übergebene Dokument zeigen, Titel des Tabs mitführen,
+ * vor dem Schließen mit ungespeicherten Änderungen warnen. */
+async function chromeStarten(): Promise<void> {
+  if (CHROME_MODUS.dok) {
+    try {
+      dokumentHinzufuegen(await api.info(CHROME_MODUS.dok));
+    } catch {
+      melden("Das Dokument ist nicht mehr geöffnet – bitte die PDF in Chrome erneut öffnen.", "fehler");
+    }
+  }
+  ereignisschleifeStarten();
+  const titel = () => {
+    const d = aktivesDokument();
+    document.title = d ? `${d.geaendert ? "● " : ""}${d.titel} – Agentur-PDF` : "Agentur-PDF";
+  };
+  titel();
+  abonnieren(titel);
+  window.addEventListener("beforeunload", (e) => {
+    if (holen().dokumente.some((d) => d.geaendert)) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
 }

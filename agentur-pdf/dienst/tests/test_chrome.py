@@ -90,3 +90,42 @@ def test_erweiterung_vorhanden_und_kennung_passt_zum_schluessel():
     from agentur_pdf import __version__
 
     assert manifest["version"] == __version__.split("-")[0]
+
+
+def test_chrome_tab_oeffnen_still_und_aufraeumen(tmp_path, monkeypatch):
+    """Editor im Chrome-Tab: Dokument öffnen, Aufträge melden sich nicht beim
+    Programmfenster, unbenutzte Tab-Dokumente werden geschlossen."""
+    import asyncio
+
+    from agentur_pdf.api import app as app_modul
+
+    c = client()
+    testdaten.beschriftet(tmp_path / "a.pdf", "A", 2)
+    info = c.post("/api/chrome/tab?name=Police.pdf", headers=H, content=(tmp_path / "a.pdf").read_bytes()).json()
+    assert info["seitenanzahl"] == 2 and info["titel"].startswith("Police")
+    # Bild wird zu PDF umgewandelt
+    from PIL import Image
+    import io
+
+    puffer = io.BytesIO()
+    Image.new("RGB", (200, 280), "white").save(puffer, "PNG")
+    bild = c.post("/api/chrome/tab?name=Scan.png", headers=H, content=puffer.getvalue()).json()
+    assert bild["seitenanzahl"] == 1
+    # Auftrag aus dem Chrome-Tab → kein Ereignis fürs Programmfenster
+    c.get("/api/ereignisse", headers=H)
+    up = c.post("/api/uploads?name=a.pdf", headers=H, content=(tmp_path / "a.pdf").read_bytes()).json()
+    a = c.post("/api/zusammenfuehren", headers={**H, "X-Agentur-Client": "chrome"}, json={"eintraege": [{"upload": up["id"]}]}).json()
+    for _ in range(100):
+        if c.get(f"/api/auftraege/{a['id']}", headers=H).json()["status"] == "fertig":
+            break
+        time.sleep(0.1)
+    time.sleep(0.2)
+    assert not [e for e in c.get("/api/ereignisse", headers=H).json()["ereignisse"] if e["art"] == "auftrag"]
+    # Aufräumen: Tab-Dokumente nach Ruhezeit schließen (geänderte bleiben)
+    speicher = c.app.state.dokumente
+    speicher.get(bild["id"]).geaendert = True
+    for d in speicher.alle():
+        d.benutzt -= app_modul.CHROME_RUHE_S + 5
+    asyncio.run(c.app.state.wartung())
+    offen = {d.id for d in speicher.alle()}
+    assert info["id"] not in offen and bild["id"] in offen

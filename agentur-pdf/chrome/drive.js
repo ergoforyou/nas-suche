@@ -18,7 +18,7 @@
       #agentur-pdf-drive button.zweit { background: #fff; color: #b5121b; }
       #agentur-pdf-drive button:disabled { opacity: .6; cursor: progress; }
     </style>
-    <button type="button" data-ziel="programm" title="In Agentur-PDF öffnen und bearbeiten">Agentur-PDF: öffnen</button>
+    <button type="button" data-ziel="tab" title="Im Agentur-PDF-Editor (neuer Tab) öffnen und bearbeiten">Agentur-PDF: öffnen</button>
     <button type="button" class="zweit" data-ziel="leiste" title="In die Agentur-PDF-Leiste übernehmen (z. B. zum Zusammenführen)">In Leiste</button>`;
   document.documentElement.append(knopf);
 
@@ -38,7 +38,7 @@
   setInterval(() => {
     ids = ausgewaehlt();
     knopf.style.display = ids.length ? "flex" : "none";
-    const haupt = knopf.querySelector('[data-ziel="programm"]');
+    const haupt = knopf.querySelector('[data-ziel="tab"]');
     haupt.textContent = ids.length > 1 ? `Agentur-PDF: ${ids.length} öffnen` : "Agentur-PDF: öffnen";
   }, 700);
 

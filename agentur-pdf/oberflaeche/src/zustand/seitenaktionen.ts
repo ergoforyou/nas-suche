@@ -302,6 +302,9 @@ export async function speichernUnter(d = aktiv()): Promise<boolean> {
   a.download = namensvorschlag(d).split(/[\\/]/).pop()!;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  // als gesichert vermerken (sonst warnt der Chrome-Tab beim Schließen)
+  const antwort = await api.heruntergeladen(d.id).catch(() => null);
+  if (antwort) anwenden(antwort);
   return true;
 }
 
