@@ -129,3 +129,19 @@ def test_chrome_tab_oeffnen_still_und_aufraeumen(tmp_path, monkeypatch):
     asyncio.run(c.app.state.wartung())
     offen = {d.id for d in speicher.alle()}
     assert info["id"] not in offen and bild["id"] in offen
+
+
+def test_nas_suche_darf_koppeln_und_datei_per_pfad_oeffnen(tmp_path):
+    from agentur_pdf.api.sicherheit import NAS_SUCHE
+
+    c = client()
+    assert c.post("/chrome/verbinden", headers={"Origin": f"chrome-extension://{NAS_SUCHE}"}).status_code == 200
+    testdaten.beschriftet(tmp_path / "Police Muster.pdf", "P", 2)
+    info = c.post("/api/chrome/datei", headers=H, json={"pfad": str(tmp_path / "Police Muster.pdf")}).json()
+    assert info["seitenanzahl"] == 2 and info["pfad"].endswith("Police Muster.pdf")
+    # erneut → dasselbe Dokument, Speichern schreibt in die Datei zurück
+    assert c.post("/api/chrome/datei", headers=H, json={"pfad": str(tmp_path / "Police Muster.pdf")}).json()["id"] == info["id"]
+    c.post(f"/api/dokumente/{info['id']}/seiten/loeschen", headers=H, json={"seiten": [1]})
+    assert c.post(f"/api/dokumente/{info['id']}/speichern", headers=H, json={}).status_code == 200
+    assert pymupdf.open(tmp_path / "Police Muster.pdf").page_count == 1
+    assert c.post("/api/chrome/datei", headers=H, json={"pfad": str(tmp_path / "fehlt.pdf")}).status_code == 400

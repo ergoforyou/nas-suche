@@ -96,6 +96,14 @@ GOOGLE CHROME: PDFs DIREKT IN ERGOFORYOU PDF
   bleibt Chromes Anzeige). Lokale PDFs (file://): auf der Erweiterungsseite
   bei Ergoforyou PDF „Details“ → „Zugriff auf Datei-URLs zulassen“ einschalten.
 
+ZUSAMMEN MIT DER ERGOFORYOU NAS-SUCHE (CHROME)
+  In der NAS-Suche im Browser zeigt „PDF-Vorschau“ den angeklickten Treffer
+  (PDF, Bild, Word, E-Mail …) rechts im vollständigen Ergoforyou-PDF-Editor –
+  im selben Tab, neben der Trefferliste. Bei PDFs schreibt Strg+S direkt in
+  die Datei auf dem NAS zurück. Breite am Rand ziehen, „↗ Eigener Tab“ öffnet
+  groß. Ergoforyou PDF muss dafür laufen (Programm Ergoforyou PDF ab 0.12.1,
+  NAS-Suche ab Erweiterungs-Version 1.3).
+
 GOOGLE CHROME: ERGOFORYOU-PDF-SEITENLEISTE
   Eine Leiste rechts in Chrome – neben Kundenportal, Webmailer & Co.:
   Dateien, Bilder und E-Mails (EML/MSG) hineinziehen → zu einer PDF

@@ -252,6 +252,9 @@ export async function updateInstallieren(): Promise<void> {
 /** Chrome-Tab: nur das übergebene Dokument zeigen, Titel des Tabs mitführen,
  * vor dem Schließen mit ungespeicherten Änderungen warnen. */
 async function chromeStarten(): Promise<void> {
+  // eingebettet (z. B. Vorschau in der NAS-Suche): schmaler Platz → Eigenschaften zu,
+  // Miniaturleiste schmal; beides lässt sich wie gewohnt wieder öffnen
+  if (window.self !== window.top) setzen((z) => ({ rechtsOffen: false, seitenleiste: { ...z.seitenleiste, breite: 150, miniGroesse: 90 } }));
   if (CHROME_MODUS.dok) {
     try {
       dokumentHinzufuegen(await api.info(CHROME_MODUS.dok));

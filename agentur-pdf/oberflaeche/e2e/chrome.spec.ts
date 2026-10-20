@@ -97,7 +97,7 @@ test("PDF-Link in Chrome öffnet sich im vollständigen Editor (statt Chromes An
     const seite = await kontext.newPage();
     await expect.poll(async () => (await seite.request.get("http://127.0.0.1:47899/b.pdf").catch(() => null))?.status(), { timeout: 10_000 }).toBe(200);
     await seite.goto("http://127.0.0.1:47899/b.pdf").catch(() => undefined); // Navigation wird umgeleitet
-    await expect(seite).toHaveURL(/127\.0\.0\.1:47811\//, { timeout: 15_000 });
+    await expect(seite).toHaveURL(/127\.0\.0\.1:47851\//, { timeout: 15_000 });
     await expect(seite).toHaveTitle(/b.*Ergoforyou PDF/);
     await expect(seite.locator(".seite-bild").first()).toBeVisible();
     // es ist der echte Editor: Menüband und Bearbeiten-Werkzeuge sind da
@@ -130,6 +130,6 @@ test("PDF-Link in Chrome öffnet sich im vollständigen Editor (statt Chromes An
 
 test("Fremde Webseite bekommt kein Token", async () => {
   const seite = await kontext.newPage();
-  const r = await seite.request.post("http://127.0.0.1:47811/chrome/verbinden", { headers: { Origin: "https://example.com" } });
+  const r = await seite.request.post("http://127.0.0.1:47851/chrome/verbinden", { headers: { Origin: "https://example.com" } });
   expect(r.status()).toBe(403);
 });

@@ -609,6 +609,29 @@ def erstelle_app(
         dok.chrome = True
         return await im_mupdf_thread(dokumente.info, dok.id)
 
+    @app.post("/api/chrome/datei")
+    async def chrome_datei(pfad: str = Body(..., embed=True)):
+        """Datei vom NAS/PC (z. B. Treffer der NAS-Suche) im Editor im Browser zeigen.
+        PDFs werden direkt geöffnet – Speichern schreibt zurück in die Datei;
+        andere Formate (Bild, Office, Mail) werden zu einer neuen PDF umgewandelt."""
+        pfad = os.path.abspath(pfad)
+        if not os.path.isfile(pfad):
+            raise DokumentFehler(f"Datei nicht gefunden: {pfad}")
+        if not unterstuetzt(pfad):
+            raise DokumentFehler(f"„{os.path.basename(pfad)}“: Dateityp wird nicht unterstützt.")
+        vorher = {d.id for d in dokumente.alle()}
+        if pfad.lower().endswith(".pdf"):
+            dok = await im_mupdf_thread(dokumente.oeffnen_pfad, pfad)
+        else:
+            ergebnis = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: zusammenfuehren([Eintrag(os.path.basename(pfad), pfad)], dokumente, Auftrag("chrome", pfad), im_mupdf_thread_sync, False, True),
+            )
+            dok = dokumente.get(ergebnis["dokumente"][0])
+        if dok.id not in vorher:
+            dok.chrome = True  # nur selbst geöffnete Dokumente räumt die Wartung wieder auf
+        return await im_mupdf_thread(dokumente.info, dok.id)
+
     @app.post("/api/chrome/zeigen")
     async def chrome_zeigen(dok_id: str = Body(..., embed=True)):
         """Ein in der Seitenleiste erstelltes Dokument im Programmfenster zeigen."""

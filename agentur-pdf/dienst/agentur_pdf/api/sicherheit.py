@@ -24,12 +24,14 @@ ERLAUBTE_HOSTS = {"127.0.0.1", "localhost", "testserver"}
 # Weitere Kennungen (z. B. nach Veröffentlichung im Chrome Web Store) über die
 # Einstellung „chrome_erweiterungen“.
 CHROME_ERWEITERUNG = "lghbgpogeocemchimfnflmjgekhnofca"
+# Ergoforyou NAS-Suche (Chrome-Oberfläche) – zeigt PDFs aus den Suchtreffern im Editor
+NAS_SUCHE = "nmgcgkmicmknekjhpdbebcmfpobglfch"
 
 
 def chrome_erlaubt(herkunft: str, weitere: list[str] | None = None) -> bool:
     """Nur die eigene Chrome-Erweiterung bekommt das Token. Webseiten können
     den Origin-Kopf nicht fälschen."""
-    kennungen = {CHROME_ERWEITERUNG, *(weitere or [])}
+    kennungen = {CHROME_ERWEITERUNG, NAS_SUCHE, *(weitere or [])}
     return herkunft in {f"chrome-extension://{k}" for k in kennungen if k}
 
 

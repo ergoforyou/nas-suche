@@ -53,7 +53,8 @@ def oberflaeche_ordner() -> Path | None:
 
 
 # Fester Port, damit die Chrome-Seitenleiste den Dienst findet (sonst zufällig)
-BEVORZUGTER_PORT = 47811
+# 47811–47820 belegt die NAS-Suche – daher 47851
+BEVORZUGTER_PORT = 47851
 
 
 def freier_port() -> int:
