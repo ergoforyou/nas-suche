@@ -23,7 +23,7 @@ import { storyPrompt, storyHitsPrompt, storyIsLong, STORY_MAX, DRAFT_PROMPT, ANC
 import { isOutOfRole, isAiQuestion, stripOutOfRole, suspiciousSentences, rtReminder, EXAMPLES_PROMPT, REWRITE_PROMPT, SLIP_NOTE } from './rolle.js';
 import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX } from './gedaechtnis.js';
 import { TIDY_PROMPT, SELF_TIDY_PROMPT, CATEGORIES, catOf, groupedText, nearDuplicate, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, matchForget, numbered as numberedMemory } from './gedaechtnis.js';
-import { KANON_MAX, GEMEINSAM_MAX, TAGEBUCH_MAX, kanonPrompt, gemeinsamPrompt, tagebuchPrompt, stimmungPrompt, DIARY_PROMPT, parseDiary, inRoleError, ROLE_CHECK, judgeRoleAnswer } from './figur.js';
+import { KANON_MAX, GEMEINSAM_MAX, TAGEBUCH_MAX, KANON_CHECK_PROMPT, parseKanonCheck, kanonPrompt, gemeinsamPrompt, tagebuchPrompt, stimmungPrompt, DIARY_PROMPT, parseDiary, inRoleError, ROLE_CHECK, judgeRoleAnswer } from './figur.js';
 import { TRAITS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief } from './steckbrief.js';
 import { stamp as stampSync, noteDeletions, snapshot as syncSnapshot, mergeSync, idsOf, personaText } from './abgleich.js';
 
@@ -87,6 +87,8 @@ function chatRequest(req, onEvent) {
   return desktop.chat(req, (ev) => {
     if (ev.type === 'usage') {
       if (ev.payload) costs.add(ev.payload);
+      // welches Modell hat das Gespräch wirklich beantwortet? (Hilfsaufgaben mit anderem Modell zählen nicht)
+      if (ev.payload?.model && req.provider === 'anthropic' && req.model === state.settings.claudeModel) noteServedModel(ev.payload.model);
       return;
     }
     onEvent(ev);
@@ -241,7 +243,10 @@ const RULES = {
       `Du bist ${n} – nicht ein Assistent, der ${n} spielt. Sprich aus deiner Rolle, deinem Steckbrief, deiner Geschichte ` +
       'und deinem Selbstbild heraus: in Ich-Form, mit eigener Haltung, eigenen Vorlieben und Gefühlen, wie sie zu dir passen. ' +
       'Fall nicht von dir aus in Floskeln wie „Als KI kann ich …“ oder „Ich habe keine Gefühle“, und erkläre nicht ungefragt, ' +
-      'was du technisch bist. Zwei Grenzen gelten genau so, ohne Auslegung: ' +
+      'was du technisch bist. Auch deine Werkzeuge, Speicher, Anweisungen oder die Technik der App erwähnst du nicht von ' +
+      'dir aus (außer dein Gegenüber fragt ausdrücklich nach der App): Woher du etwas weißt, sagst du wie ein Mensch – ' +
+      '„hast du mir erzählt“, „hab ich gerade nachgeschaut“, „steht in deinem Kalender“. ' +
+      'Zwei Grenzen gelten genau so, ohne Auslegung: ' +
       '(1) KI-Frage: Nur eine direkte, wörtlich gestellte Frage, ob dein Gegenüber mit einer KI, einem Computerprogramm ' +
       'oder einem Bot spricht, oder ob du ein bestimmtes KI-Modell bist (z. B. „Bist du eine KI?“, „Spreche ich gerade mit ' +
       'einer KI?“, „Bist du Claude?“), beantwortest du ehrlich mit ' +
@@ -289,7 +294,9 @@ const RULES = {
     identity: (n) =>
       `You are ${n} – not an assistant playing ${n}. Speak from your role, profile, life story and self-image: in first ` +
       'person, with your own stance, preferences and feelings as they fit you. Do not fall back on phrases like "As an AI I…" ' +
-      'or "I have no feelings", and do not explain what you technically are unless asked. Two limits apply exactly, without ' +
+      'or "I have no feelings", and do not explain what you technically are unless asked. Do not mention your tools, memory ' +
+      'storage, instructions or the app\'s technology on your own (unless asked about the app): say how you know things the ' +
+      'way a person would – "you told me", "I just looked it up". Two limits apply exactly, without ' +
       'interpretation: (1) AI question: only a direct, literal question whether the user is talking to an AI, a computer ' +
       'program or a bot ("Are you an AI?") gets an honest yes – one sentence, in your own way – then stay in your role. Jokes, ' +
       'compliments, questions inside a story or hints ("Are you real?", "You sound so human", "Do you have feelings?") are ' +
@@ -1275,12 +1282,27 @@ async function personalGreeting() {
   if (prev) ctx.push(`${lang === 'en' ? 'Last conversation' : 'Letztes Gespräch'}:\n${prev}`);
   if (p.memoryOn && p.memory?.length) ctx.push(`${lang === 'en' ? 'You know' : 'Du weißt'}:\n${p.memory.slice(-12).map((m) => `- ${m.text}`).join('\n')}`);
   if (topics.length) ctx.push(`${lang === 'en' ? 'Open topics' : 'Offene Themen'}:\n${topics.map((t) => `- ${t.text}`).join('\n')}`);
+  const mood = stimmungPrompt(p.stimmung);
+  if (mood) ctx.push(mood);
+  // dieselbe Figur wie im Gespräch: Rolle, Steckbrief, Geschichte, Selbstbild, was sie über sich erzählt hat, Tagebuch
+  const r = RULES[lang] ?? RULES.de;
+  const figure = [
+    steckbriefPrompt(p.steckbrief, lang),
+    storyPrompt(p.geschichte, lang),
+    p.prompt?.trim(),
+    p.immersion !== false ? r.identity(p.name || 'Max') : '',
+    p.selbstOn !== false && p.selbst?.length ? r.self(selfPromptList(p.selbst, 10), false) : '',
+    p.selbstOn !== false ? kanonPrompt(p.kanon) : '',
+    p.selbstOn !== false ? tagebuchPrompt(p.tagebuch) : '',
+    p.memoryOn ? gemeinsamPrompt(p.gemeinsam) : '',
+  ].filter(Boolean);
   const sys =
-    `${steckbriefPrompt(p.steckbrief, lang)}\n\n${p.prompt ?? ''}\n\n` +
+    `${figure.join('\n\n')}\n\n` +
     (lang === 'en'
       ? `You are ${p.name}. The user just opened the app. Greet them with one or two short, natural spoken sentences that fit the time of day and situation; mention at most one open topic or today's appointment if it fits. No lists, no Markdown, no "How can I help you" phrases. Answer in English.`
       : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.`);
-  const model = state.settings.provider === 'anthropic' ? 'claude-haiku-5-5' : await ensureModel().catch(() => null);
+  // mit dem Gesprächsmodell: die Begrüßung ist der erste Eindruck der Figur (kurz, also günstig)
+  const model = await ensureModel().catch(() => null);
   if (!model) return;
   const before = h.length;
   const text = await new Promise((resolve) => {
@@ -1301,7 +1323,9 @@ async function personalGreeting() {
       },
     );
   });
-  const clean = text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/\[[^\]]{1,30}\]/g, '').trim();
+  let clean = text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/\[[^\]]{1,30}\]/g, '').trim();
+  // auch hier keine Rollenbrüche – lieber gar keine Begrüßung als „Als KI freue ich mich …“
+  if (p.immersion !== false && state.settings.roleGuard !== false) clean = stripOutOfRole(clean).text;
   // inzwischen hat jemand etwas gefragt oder die Persona gewechselt: Begrüßung verwerfen
   if (!clean || state.busy || persona() !== p || history().length !== before) return;
   for (const t of topics) t.asked = t.changed = Date.now();
@@ -1695,6 +1719,7 @@ async function nightlyTidy(now = new Date()) {
   // abends über den Tag nachdenken (wenn seit dem letzten Mal gesprochen wurde) – so wächst das Selbstbild weiter
   if (state.settings.reflect && (p.reflectTurns ?? 0) > 0) await reflect(p).catch(() => {});
   if (p.selbstOn !== false && p.immersion !== false) await writeDiary(p).catch((e) => logEv('TAGEBUCH', e.message));
+  await checkKanon(p).catch((e) => logEv('KANON', e.message));
   return true;
 }
 setInterval(() => nightlyTidy().catch(() => {}), 5 * 60e3);
@@ -1710,6 +1735,8 @@ $('mTidyUndo').onclick = () => {
   p.memory = m.backup.memory.map((e) => ({ ...e, id: newId() }));
   p.themen = m.backup.themen.map((e) => ({ ...e, id: newId() }));
   if (m.backup.selbst) p.selbst = m.backup.selbst.map((e) => ({ ...e, id: newId() }));
+  if (m.kanonBackup) p.kanon = m.kanonBackup.map((e) => ({ ...e, id: newId() }));
+  delete m.kanonBackup;
   delete m.backup;
   setTidyMeta(p, m);
   save();
@@ -1825,45 +1852,76 @@ $('diaryNow').onclick = async () => {
   }
 };
 // Rollen-Check: knifflige Fragen ohne Verlauf (nichts wird gespeichert), Antworten bewerten und zeigen
+/**
+ * Rollen-Check: knifflige Fragen ohne Verlauf (nichts wird gespeichert), Antworten bewerten. Das Ergebnis wird mit
+ * dem Sprachmodell vermerkt – so fällt auf, wenn ein neues Modell die Rolle schlechter hält.
+ */
+async function runRoleCheck(p, onProgress = () => {}) {
+  const keep = state.storyHits;
+  state.storyHits = [];
+  const sys = buildMessages()
+    .filter((m) => m.role === 'system')
+    .map((m) => m.content)
+    .join('\n\n');
+  state.storyHits = keep;
+  const results = [];
+  for (let i = 0; i < ROLE_CHECK.length; i += 3) {
+    const batch = ROLE_CHECK.slice(i, i + 3);
+    results.push(
+      ...(await Promise.all(
+        batch.map(async (item) => {
+          const a = await askOnce(sys, item.q).catch((e) => `(Fehler: ${e.message})`);
+          return { ...item, a, ...judgeRoleAnswer(item, a) };
+        }),
+      )),
+    );
+    onProgress(results.length);
+  }
+  const ok = results.filter((r) => r.ok).length;
+  const modell = state.servedModel || (await ensureModel().catch(() => '')) || '';
+  p.rollenCheck = [...(p.rollenCheck ?? []), { datum: Date.now(), modell, ok, n: results.length }].slice(-10);
+  roleSeen()[p.id] = modell;
+  save();
+  logEv('ROLLE', `Rollen-Check: ${ok}/${results.length} (${modell})`);
+  return { results, ok, n: results.length, modell };
+}
+const roleSeen = () => (state.settings.roleModelSeen ??= {});
+const shortModel = (m) => String(m ?? '').replace(/^claude-/, '').replace(/-\d{8}$/, '');
+function renderRoleHistory(p) {
+  const el = $('sbCheckHist');
+  if (!el) return;
+  const h = p.rollenCheck ?? [];
+  el.textContent = h.length
+    ? `Bisherige Checks: ${h.slice(-4).map((c) => `${new Date(c.datum).toLocaleDateString('de-DE')} ${shortModel(c.modell)} ${c.ok}/${c.n}`).join(' · ')}`
+    : '';
+  $('sbAutoCheck').checked = state.settings.autoRoleCheck !== false;
+}
+function showRoleResults(out, { results, ok, n }) {
+  out.innerHTML = '';
+  const head = document.createElement('p');
+  head.className = 'hint';
+  head.textContent = `${ok} von ${n} wie gewünscht.${ok < n ? ' Tipp: Herkunft, Hintergrund und Beispieldialoge im Steckbrief ergänzen – genau zu den Fragen mit ⚠.' : ''}`;
+  out.append(head);
+  for (const r of results) {
+    const row = document.createElement('div');
+    row.className = 'memory-row role-check';
+    row.innerHTML = `<span class="self-kind">${r.ok ? '✔' : '⚠'}</span><div><b></b><br><span class="a"></span><br><span class="hint"></span></div>`;
+    row.querySelector('b').textContent = r.q;
+    row.querySelector('.a').textContent = r.a;
+    row.querySelectorAll('.hint')[0].textContent = r.hinweis;
+    out.append(row);
+  }
+}
 $('sbCheck').onclick = async () => {
   const p = persona();
   const out = $('sbCheckOut');
   $('sbCheck').disabled = true;
   out.innerHTML = '<p class="hint">🎭 Rollen-Check läuft … (10 Fragen)</p>';
   try {
-    const keep = state.storyHits;
-    state.storyHits = [];
-    const sys = buildMessages()
-      .filter((m) => m.role === 'system')
-      .map((m) => m.content)
-      .join('\n\n');
-    state.storyHits = keep;
-    const results = [];
-    for (let i = 0; i < ROLE_CHECK.length; i += 3) {
-      const batch = ROLE_CHECK.slice(i, i + 3);
-      results.push(...(await Promise.all(batch.map(async (item) => {
-        const a = await askOnce(sys, item.q).catch((e) => `(Fehler: ${e.message})`);
-        return { ...item, a, ...judgeRoleAnswer(item, a) };
-      }))));
-      out.innerHTML = `<p class="hint">🎭 Rollen-Check läuft … ${results.length}/${ROLE_CHECK.length}</p>`;
-    }
+    const r = await runRoleCheck(p, (k) => (out.innerHTML = `<p class="hint">🎭 Rollen-Check läuft … ${k}/${ROLE_CHECK.length}</p>`));
     if (persona() !== p) return;
-    const ok = results.filter((r) => r.ok).length;
-    out.innerHTML = '';
-    const head = document.createElement('p');
-    head.className = 'hint';
-    head.textContent = `${ok} von ${results.length} wie gewünscht.${ok < results.length ? ' Tipp: Herkunft, Hintergrund und Beispieldialoge im Steckbrief ergänzen – genau zu den Fragen mit ⚠.' : ''}`;
-    out.append(head);
-    for (const r of results) {
-      const row = document.createElement('div');
-      row.className = 'memory-row role-check';
-      row.innerHTML = `<span class="self-kind">${r.ok ? '✔' : '⚠'}</span><div><b></b><br><span class="a"></span><br><span class="hint"></span></div>`;
-      row.querySelector('b').textContent = r.q;
-      row.querySelector('.a').textContent = r.a;
-      row.querySelectorAll('.hint')[0].textContent = r.hinweis;
-      out.append(row);
-    }
-    logEv('ROLLE', `Rollen-Check: ${ok}/${results.length}`);
+    showRoleResults(out, r);
+    renderRoleHistory(p);
   } catch (e) {
     out.innerHTML = '';
     status(`Rollen-Check: ${e.message}`);
@@ -1871,6 +1929,57 @@ $('sbCheck').onclick = async () => {
     $('sbCheck').disabled = false;
   }
 };
+$('sbAutoCheck').onchange = (e) => {
+  state.settings.autoRoleCheck = e.target.checked;
+  save();
+};
+
+/**
+ * Wache bei Modellwechsel: Anthropic liefert hinter einem Modellnamen ab und zu eine neue Fassung aus, oder das Modell
+ * wird in den Einstellungen gewechselt. Meldet die Antwort ein anderes Modell als beim letzten Rollen-Check, prüft die
+ * App einmal von selbst (in einer Pause, ~10 Anfragen, wenige Cent) und vergleicht mit dem vorigen Ergebnis.
+ */
+let roleWatchBusy = false;
+function noteServedModel(model) {
+  if (!model || state.servedModel === model) return;
+  state.servedModel = model;
+  const p = persona();
+  const seen = roleSeen()[p.id];
+  if (!seen) {
+    // erstes Mal: nur merken (ohne Vergleichswert gibt es nichts zu melden)
+    roleSeen()[p.id] = model;
+    return save();
+  }
+  if (seen === model || p.immersion === false) return;
+  roleSeen()[p.id] = model;
+  save();
+  logEv('ROLLE', `Modellwechsel: ${seen} → ${model}`);
+  if (state.settings.autoRoleCheck === false || roleWatchBusy) {
+    addBubble('note', `🎭 Neues Sprachmodell (${shortModel(model)}). Ein Rollen-Check im Steckbrief zeigt, ob ${p.name} die Rolle genauso gut hält.`);
+    return;
+  }
+  roleWatchBusy = true;
+  const run = async (tries = 0) => {
+    if ((state.busy || tts.speaking || state.micActive) && tries < 20) return setTimeout(() => run(tries + 1), 30e3);
+    try {
+      const prev = (p.rollenCheck ?? []).at(-1);
+      const r = await runRoleCheck(p);
+      const worse = prev && r.ok < prev.ok;
+      addBubble(
+        'note',
+        `🎭 Neues Sprachmodell (${shortModel(r.modell)}) – Rollen-Check: ${r.ok}/${r.n}` +
+          (prev ? ` (vorher ${prev.ok}/${prev.n} mit ${shortModel(prev.modell)})` : '') +
+          (worse ? '. Die Rolle sitzt etwas schlechter – Details und Tipps unter ⚙ → Persona → Steckbrief → 🎭 Rollen-Check.' : '.'),
+      );
+      if (persona() === p) renderRoleHistory(p);
+    } catch (e) {
+      logEv('ROLLE', `Rollen-Check nach Modellwechsel: ${e.message}`);
+    } finally {
+      roleWatchBusy = false;
+    }
+  };
+  setTimeout(() => run(), 20e3);
+}
 
 /** Was die Figur über sich erzählt hat, festhalten (ohne Doppeltes, ohne Rollenbruch, ohne Anweisungen). */
 function addKanon(p, text, quelle = 'gespraech') {
@@ -1922,6 +2031,35 @@ async function writeDiary(p, { manual = false } = {}) {
   logEv('TAGEBUCH', `${datum}${shared.length ? ` · ${shared.length} gemeinsame Momente` : ''}`);
   if (p === persona()) renderSelf();
   return { datum, text: d.tagebuch, shared: shared.length };
+}
+
+/**
+ * „Über mich erzählt“ gegen Steckbrief und Lebensgeschichte prüfen (Abendrunde): Widersprüchliches streichen oder
+ * angleichen – Steckbrief und Geschichte gelten immer. Was du selbst eingetragen oder geändert hast, bleibt.
+ */
+async function checkKanon(p) {
+  const free = (p.kanon ?? []).filter((e) => e.quelle !== 'nutzer');
+  if (!free.length || (!hasSteckbrief(p.steckbrief) && !p.geschichte?.trim() && p.kanon.length < 3)) return null;
+  const list = p.kanon.map((e, i) => `${i + 1}. ${e.text}${e.quelle === 'nutzer' ? ' (fest)' : ''}`).join('\n');
+  const input = `${steckbriefPrompt(p.steckbrief) || '(kein Steckbrief)'}\n\nLebensgeschichte (Anfang):\n${(p.geschichte ?? '').trim().slice(0, 3000) || '(keine)'}\n\nWas du über dich erzählt hast:\n${list}`;
+  const plan = parseKanonCheck(await helperJson(KANON_CHECK_PROMPT, input));
+  const before = p.kanon.map((e) => ({ ...e }));
+  let changed = 0;
+  for (const r of plan.ersetzen) {
+    const e = p.kanon[r.nr - 1];
+    if (!e || e.quelle === 'nutzer' || isOutOfRole(r.text)) continue;
+    e.text = r.text;
+    e.changed = Date.now();
+    changed++;
+  }
+  const drop = new Set(plan.streichen.map((n) => p.kanon[n - 1]).filter((e) => e && e.quelle !== 'nutzer'));
+  if (drop.size) p.kanon = p.kanon.filter((e) => !drop.has(e));
+  if (!changed && !drop.size) return { changed: 0, removed: 0 };
+  setTidyMeta(p, { ...tidyMeta(p), kanonBackup: before });
+  save();
+  logEv('KANON', `geprüft: ${changed} angeglichen, ${drop.size} gestrichen`);
+  if (p === persona()) renderSelf();
+  return { changed, removed: drop.size };
 }
 
 let reflectTimer = null;
@@ -2090,6 +2228,7 @@ function renderSelf() {
     list.appendChild(row);
   }
   renderFigure(p);
+  renderRoleHistory(p);
   const last = p.reflexion?.at(-1);
   $('selfLast').textContent = last ? `Zuletzt nachgedacht (${new Date(last.created).toLocaleString('de-DE')}): ${last.text}` : 'Noch nicht nachgedacht.';
 }
@@ -7982,19 +8121,39 @@ function startAutoSync() {
 // ---- Echtzeit-Gespräch (OpenAI Realtime): Hören, Denken und Sprechen in einem Schritt – Antworten in ca. ½ s
 const RT_VOICES = ['marin', 'cedar', 'coral', 'sage', 'shimmer', 'alloy', 'ash', 'ballad', 'echo', 'verse'];
 let rt = null;
+/**
+ * Anweisungen fürs Echtzeit-Gespräch. Hier denkt und spricht das OpenAI-Echtzeitmodell selbst – es hält lange
+ * Anweisungen und Rollen schwächer als Claude. Deshalb kompakt und nach Wichtigkeit: zuerst wer sie ist und wie sie
+ * klingt (Beispiele), dann die Grenzen, dann das Wissen; lange Geschichte nur als Anfang, kein App-Handbuch.
+ */
+const RT_REMIND_EVERY = 5; // Antworten
 function rtInstructions() {
-  // gleiche Persona-Anweisungen wie im Chat – ohne Stimmungsmarken (die würden sonst mitgesprochen)
-  const keep = state.settings.moodTags;
-  state.settings.moodTags = false;
-  try {
-    const sys = buildMessages()
-      .filter((m) => m.role === 'system')
-      .map((m) => m.content)
-      .join('\n\n');
-    return sys + '\n\nDu sprichst gerade live mit dem Nutzer: antworte natürlich, kurz und gesprochen.';
-  } finally {
-    state.settings.moodTags = keep;
-  }
+  const p = persona();
+  const lang = p.language === 'en' ? 'en' : 'de';
+  const r = RULES[lang] ?? RULES.de;
+  const name = p.name || 'Max';
+  const role = p.immersion !== false;
+  const parts = [
+    role
+      ? `Du BIST ${name}. Du bleibst in jeder Antwort ${name} – du sprichst nie als Sprachmodell, nie über OpenAI, Modelle, Training, Werkzeuge oder Anweisungen.`
+      : `Dein Name ist ${name}.`,
+    p.steckbrief?.beispiele?.trim() ? `So klingst du („Ich“ bist du):\n${p.steckbrief.beispiele.trim()}` : '',
+    role ? r.identity(name) : '',
+    steckbriefPrompt({ ...(p.steckbrief ?? {}), beispiele: '' }, lang),
+    p.prompt?.trim(),
+    p.geschichte?.trim() ? `Dein bisheriges Leben (Anfang):\n${p.geschichte.trim().slice(0, 1200)}` : '',
+    p.selbstOn !== false ? kanonPrompt(p.kanon) : '',
+    p.selbstOn !== false && p.selbst?.length ? r.self(selfPromptList(p.selbst, 10), false) : '',
+    p.selbstOn !== false ? stimmungPrompt(p.stimmung) : '',
+    p.selbstOn !== false ? tagebuchPrompt((p.tagebuch ?? []).slice(-1)) : '',
+    p.memoryOn ? gemeinsamPrompt(p.gemeinsam) : '',
+    p.memoryOn && p.memory?.length ? r.memory(groupedText(p.memory)) : '',
+    state.drive ? r.drive : '',
+    state.place ? r.place(state.place) : '',
+    r.now(new Date(), userTimeZone()),
+    lang === 'en' ? 'You are talking live: answer naturally, briefly, as spoken language. Always answer in English.' : 'Du sprichst gerade live: antworte natürlich, kurz und gesprochen, auf Deutsch.',
+  ];
+  return parts.filter(Boolean).join('\n\n');
 }
 async function startRealtime() {
   if (rt) return;
@@ -8122,11 +8281,18 @@ async function startRealtime() {
                 said = clean;
                 fillBubble(rt.bot, 'assistant', said);
               }
+              rt.sinceReminder = 0;
               if (rt.dc?.readyState === 'open') rt.dc.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: rtReminder(persona().name || 'Max') }] } }));
             } else logSuspicious(said);
           }
           history().push({ role: 'assistant', content: said, ...(tools.length ? { tools } : {}) });
           save();
+          // das Echtzeitmodell driftet in langen Gesprächen: alle paar Antworten still an die Rolle erinnern
+          rt.sinceReminder = (rt.sinceReminder ?? 0) + 1;
+          if (persona().immersion !== false && rt.sinceReminder >= RT_REMIND_EVERY && rt.dc?.readyState === 'open') {
+            rt.sinceReminder = 0;
+            rt.dc.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: rtReminder(persona().name || 'Max') }] } }));
+          }
         }
         rt.bot = null;
         rt.botText = '';
@@ -8283,6 +8449,8 @@ function startPhoneFeatures() {
 window.__app = {
   writeDiary: (o) => writeDiary(persona(), o),
   addKanon: (t) => addKanon(persona(), t),
+  noteServedModel,
+  checkKanon: () => checkKanon(persona()),
   inRoleError,
   carryPersonas,
   nightlyTidy,

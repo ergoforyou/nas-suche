@@ -60,6 +60,27 @@ export function parseDiary(text) {
   return { tagebuch, stimmung: gefuehl ? { gefuehl, grund } : null, gemeinsam };
 }
 
+export const KANON_CHECK_PROMPT =
+  'Du prüfst, was du im Gespräch über dich erzählt hast (nummeriert), gegen deinen Steckbrief und deine Lebensgeschichte. ' +
+  'Steckbrief und Geschichte gelten immer. Widerspricht ein Eintrag ihnen, gleiche ihn an (ersetzen) oder streiche ihn, ' +
+  'wenn er nicht zu retten ist; widersprechen sich zwei Einträge, gilt der neuere (höhere Nummer). Einträge mit „(fest)“ ' +
+  'nie anfassen. Alles andere bleibt, wie es ist – im Zweifel behalten. Antworte ausschließlich mit JSON: ' +
+  '{"ersetzen":[{"nr":2,"text":"…"}],"streichen":[5]} (leer, wenn alles passt).';
+
+/** Antwort der Kanon-Prüfung lesen. */
+export function parseKanonCheck(text) {
+  const m = String(text ?? '')
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .match(/\{[\s\S]*\}/);
+  if (!m) return { ersetzen: [], streichen: [] };
+  const j = JSON.parse(m[0]);
+  const ersetzen = (Array.isArray(j.ersetzen) ? j.ersetzen : [])
+    .map((r) => ({ nr: Math.round(Number(r?.nr)), text: String(r?.text ?? '').trim() }))
+    .filter((r) => r.nr > 0 && r.text.length >= 6 && r.text.length <= 300);
+  const streichen = (Array.isArray(j.streichen) ? j.streichen : []).map((n) => Math.round(Number(n))).filter((n) => n > 0);
+  return { ersetzen, streichen };
+}
+
 /** Fehler in der Stimme der Figur (ohne Sprachmodell – der Fehler kann ja gerade das Sprachmodell sein). */
 export function inRoleError(msg, lang = 'de') {
   const m = String(msg ?? '');

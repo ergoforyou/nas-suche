@@ -139,6 +139,10 @@
         </div>
         <p id="sbInfo" class="hint"></p>
         <button id="sbCheck" title="Stellt der Figur 10 knifflige Fragen (ohne Verlauf, nichts wird gespeichert) und zeigt, wo sie aus der Rolle fällt – kostet ein paar Cent">🎭 Rollen-Check</button>
+        <label class="check"><input id="sbAutoCheck" type="checkbox" /> Nach einem Modellwechsel von selbst prüfen
+          <span class="hint">(meldet Anthropic ein neues Sprachmodell, läuft der Check einmal in einer Pause und vergleicht
+          mit dem vorigen Ergebnis – wenige Cent)</span></label>
+        <p id="sbCheckHist" class="hint"></p>
         <div id="sbCheckOut" class="memory-list"></div>
       </details>
       <details id="sgBox" class="steckbrief">
@@ -986,7 +990,9 @@
         <p class="hint">Hören, Denken und Sprechen in einem Schritt (OpenAI Realtime): Antworten in etwa einer halben Sekunde,
           sehr natürliche Stimme, Dazwischenreden jederzeit. Braucht den OpenAI-Schlüssel; kostet pro Gesprächsminute deutlich
           mehr als der normale Weg (Größenordnung einige Cent pro Minute). Kalender, Internetsuche und Firmenwissen sind
-          hier noch nicht eingebunden – dafür das normale Gespräch nutzen.</p>
+          hier noch nicht eingebunden – dafür das normale Gespräch nutzen. Hier denkt OpenAI selbst, nicht Claude: Die Figur
+          bekommt eine kompakte Fassung ihrer Rolle (Beispieldialoge zuerst) und wird alle paar Antworten still daran
+          erinnert – sie hält die Rolle trotzdem etwas schwächer. Für volle Rollentreue das normale Live-Gespräch nehmen.</p>
         <div class="row">
           <button id="privRealtime">🎙 Echtzeit-Gespräch starten</button>
           <select id="privRtVoice" title="Stimme"></select>

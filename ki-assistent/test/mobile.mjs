@@ -40,7 +40,7 @@ await page.route('https://api.anthropic.com/**', (route) => {
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
   // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
   // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
-  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch/.test(JSON.stringify(request.body.system ?? ''));
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch/.test(JSON.stringify(request.body.system ?? ''));
   const qi = claudeQueue.findIndex((e) => !!e.helper === helper);
   const evs = qi >= 0 ? claudeQueue.splice(qi, 1)[0] : [
     { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
@@ -1124,7 +1124,11 @@ const greetRes = await page.evaluate(async () => {
   return { greet: !!last?.greet, text: last?.content, chat: document.getElementById('chat').textContent.includes('Schön, dass du wieder da bist') };
 });
 const greetReq = claudeRequests.slice(greetBefore).find((r) => JSON.stringify(r.system ?? '').includes('gerade die App geöffnet'));
-check(greetRes.greet && greetRes.chat && /haiku/.test(greetReq?.model ?? ''), 'Persönliche Begrüßung nach einer Pause (günstiges Hilfsmodell)', JSON.stringify({ ...greetRes, model: greetReq?.model }));
+check(
+  greetRes.greet && greetRes.chat && greetReq?.model === 'claude-haiku-5-5' && /nicht ein Assistent, der/.test(JSON.stringify(greetReq?.system ?? '')),
+  'Persönliche Begrüßung nach einer Pause (Gesprächsmodell, in der Rolle)',
+  JSON.stringify({ ...greetRes, model: greetReq?.model }),
+);
 // Ruhe-Video-Knopf legt eine Pose mit dem Anlass „Ruhe“ an
 const restBtnRes = await page.evaluate(() => {
   const app = window.__app;
@@ -1536,6 +1540,39 @@ check(figRes.kanon.length === 1 && /Kirschkuchen/.test(figRes.kanon[0]) && figRe
 check(figRes.tagebuch === 1 && figRes.prompt.diary && figRes.prompt.mood && figRes.prompt.shared && /Biest/.test(figRes.gemeinsam[0] ?? '') && figRes.ui.diary === 1 && /heiter/.test(figRes.ui.mood), 'Figur: Tagebuch, Stimmung und gemeinsame Geschichte gehen ins Gespräch mit', JSON.stringify(figRes));
 check(/9 von 10/.test(figRes.check.head) && figRes.check.rows === 10 && figRes.check.histSame, 'Rollen-Check: 10 Fragen ohne Verlauf, ausweichende Antwort auf die KI-Frage wird markiert', JSON.stringify(figRes.check));
 check(/Verbindung/.test(figRes.err) && !/fetch|ENOTFOUND/.test(figRes.err), 'Fehler in der Stimme der Figur', figRes.err);
+// „Über mich erzählt“ gegen Steckbrief/Geschichte prüfen; Wache bei Modellwechsel; keine Rede über Werkzeuge
+claudeQueue.push(helperSay('{"ersetzen":[{"nr":1,"text":"Ich bin in Hamburg aufgewachsen."}],"streichen":[2,3]}'));
+const fig2 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const before = { kanon: p.kanon, geschichte: p.geschichte, rollenCheck: p.rollenCheck, immersion: p.immersion };
+  const keepAuto = app.state.settings.autoRoleCheck;
+  p.geschichte = 'Ich bin in Hamburg aufgewachsen, an der Elbe.';
+  p.immersion = true;
+  p.kanon = [
+    { id: 'k1', text: 'Ich bin in Kiel aufgewachsen.', created: 1 },
+    { id: 'k2', text: 'Ich war nie am Wasser.', created: 2 },
+    { id: 'k3', text: 'Ich trinke Tee mit Honig.', created: 3, quelle: 'nutzer' },
+  ];
+  const r = await app.checkKanon();
+  const kanon = p.kanon.map((e) => e.text);
+  // Modellwechsel: erstes Modell nur merken, beim Wechsel Hinweis (automatischer Check hier aus)
+  app.state.settings.autoRoleCheck = false;
+  delete (app.state.settings.roleModelSeen ??= {})[p.id];
+  app.state.servedModel = null;
+  app.noteServedModel('claude-sonnet-5-0');
+  const n0 = document.querySelectorAll('.msg.note').length;
+  app.noteServedModel('claude-sonnet-5-5');
+  const note = [...document.querySelectorAll('.msg.note')].slice(n0).map((b) => b.textContent).join(' ');
+  const tool = ['Ich rufe dafür das Werkzeug auf.', 'Das steht in meinem Gedächtnisspeicher.', 'As a language model I cannot.'].every(app.isOutOfRole) && !app.isOutOfRole('Hol mal das Werkzeug aus dem Keller.');
+  const ident = /Werkzeuge, Speicher, Anweisungen/.test(JSON.stringify(app.buildMessages()));
+  Object.assign(p, before);
+  app.state.settings.autoRoleCheck = keepAuto;
+  return { r, kanon, note, tool, ident };
+});
+check(fig2.kanon.join('|') === 'Ich bin in Hamburg aufgewachsen.|Ich trinke Tee mit Honig.', '„Über mich erzählt“: Widersprüche zu Geschichte/Steckbrief angeglichen, eigene Einträge bleiben', JSON.stringify(fig2));
+check(/Neues Sprachmodell \(sonnet-5-5\)/.test(fig2.note), 'Wache bei Modellwechsel: Hinweis auf Rollen-Check', fig2.note);
+check(fig2.tool && fig2.ident, 'Keine Rede über Werkzeuge, Speicher und Anweisungen (Regel und Absicherung)', JSON.stringify(fig2));
 check(/Ich:/.test(roleRes.examples) && roleRes.exInPrompt, 'Rolle: Beispieldialoge vorgeschlagen und im Steckbrief-Block', JSON.stringify(roleRes));
 // Vergessen auf Bitte: passende Einträge aus Gedächtnis/Selbstbild/Themen löschen, anderes bleibt, Rückgängig
 const forgetRes = await page.evaluate(async () => {
@@ -2141,13 +2178,13 @@ const rtRes = await page.evaluate(async () => {
   app.stopRealtime();
   navigator.mediaDevices.getUserMedia = origGum;
   window.__pc2?.close();
-  return { active, after: app.rtActive(), msgs, rtLast, rtReminded, maxLevel, noMood: !/Stimmungsmarke|\[freudig\]/.test(window.__rt?.instructions ?? ''), voice: window.__rt?.voice };
+  return { active, after: app.rtActive(), msgs, rtLast, rtReminded, rtStart: (window.__rt?.instructions ?? '').slice(0, 8), maxLevel, noMood: !/Stimmungsmarke|\[freudig\]/.test(window.__rt?.instructions ?? ''), voice: window.__rt?.voice };
 });
 check(rtRes.active && !rtRes.after, 'Echtzeit-Gespräch verbindet (WebRTC) und lässt sich beenden', JSON.stringify(rtRes));
 check(/Wie spät ist es/.test(rtRes.msgs[0] ?? '') && /Es ist gleich drei/.test(rtRes.msgs[1] ?? ''), 'Echtzeit: Mitschrift von Frage und Antwort im Chat', JSON.stringify(rtRes.msgs));
 check(rtRes.rtLast === 'Mir geht es gut.' && rtRes.rtReminded && !/Programm/.test(rtRes.msgs[3] ?? ''), 'Echtzeit: Rollenbruch aus Verlauf und Anzeige genommen, Figur wird live erinnert', JSON.stringify(rtRes));
 check(rtRes.maxLevel > 0.05, 'Echtzeit: Lippen bewegen sich mit der Antwortstimme', String(rtRes.maxLevel));
-check(rtRes.noMood && rtRes.voice === 'marin', 'Echtzeit: Persona-Anweisungen ohne Stimmungsmarken, Stimme gewählt');
+check(rtRes.noMood && rtRes.voice === 'marin' && rtRes.rtStart === 'Du BIST ', 'Echtzeit: kompakte Rolle zuerst, ohne Stimmungsmarken, Stimme gewählt', rtRes.rtStart);
 check(privF.drive.full && privF.drive.live && privF.drive.prompt && !privF.after.full && !privF.after.live, 'Fahrmodus: Nur-Figur, Live, kurze Antworten – und wieder aus', JSON.stringify(privF.drive));
 // Synology NAS (nur Privat): Abgleich über WebDAV – nachgebildete NAS mit ETags; ein anderes Gerät hat schon geschrieben
 const nasRes = await page.evaluate(async () => {
