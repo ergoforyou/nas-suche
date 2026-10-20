@@ -727,6 +727,7 @@ class Pane {
   // ----- Darstellung (nur sichtbare Zeilen) -----
 
   render() {
+    if (typeof Vorschau !== 'undefined') Vorschau.auswahl(this);
     const n = this.view.length;
     this.spacer.style.height = n * ROW_H + 'px';
     const top = this.tbody.scrollTop;
@@ -1021,6 +1022,7 @@ class Pane {
     const dir = first.isDir ? first.path : first.dir;
     Menu.show(e.clientX, e.clientY, [
       { label: 'Öffnen', key: 'Enter', action: () => this.activate(this.view.findIndex((v) => v.e === first)) },
+      ...(one && Vorschau.geeignet(first) && !PANEL ? [{ label: 'In der PDF-Vorschau zeigen', action: () => Vorschau.zeigen(first.path) }] : []),
       { label: `Im ${App.explorer} zeigen`, action: () => App.reveal(first.path) },
       { label: 'In der anderen Ansicht öffnen', action: () => { App.setSecond(true); App.panes[1 - this.idx].openFolder(dir); } },
       ...(!this.folder ? [{ label: 'Ordner hier anzeigen', action: () => this.openFolder(first.dir, { select: first.path }) }] : []),
@@ -1233,6 +1235,7 @@ const App = {
     this.setNav(this.state.nav, true);
     this.setSecond(this.state.second, true);
     this.bindGlobal();
+    Vorschau.init();
 
     const start = this.hello.start || [];
     if (start[0]) this.panes[0].openFolder(start[0]);

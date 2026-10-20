@@ -68,6 +68,12 @@ Opera hat keine Seitenleiste für Erweiterungen – dort als Tab nutzen.
 * Sicherheit: Nur die eigene Erweiterung darf mit dem Programm sprechen; Webseiten erhalten nur die Dateien,
   die man selbst hineinzieht.
 
+**PDF-Vorschau mit Ergoforyou PDF (ab Erweiterung 1.3):** „PDF-Vorschau einblenden“ zeigt den angeklickten
+Treffer (PDF, Bild, Word, E-Mail …) rechts im vollständigen Ergoforyou-PDF-Editor – im selben Tab, neben der
+Trefferliste (Pfeiltasten blättern durch). Bei PDFs speichert Strg+S direkt zurück aufs NAS. Breite am Rand
+ziehen, „↗ Eigener Tab“ öffnet groß, Rechtsklick → „In der PDF-Vorschau zeigen“. Voraussetzung: Ergoforyou PDF
+(ab 0.12.1) ist auf dem PC installiert und läuft; sonst bietet die Vorschau „Ergoforyou PDF starten“ an.
+
 Eine ausführliche Anleitung zum Ausrollen im Team steht in `ANLEITUNG-AUSROLLEN.md`.
 
 ## Mac-Version (MacBook Air & Co.)
