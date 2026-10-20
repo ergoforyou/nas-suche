@@ -1,8 +1,8 @@
 {
-  "id": "2cc560ac-98c8-4538-af5d-a413fe8e1070",
+  "id": "2993a6d0-8770-43e9-82e5-61c56d7a6b5d",
   "revision": 0,
-  "last_node_id": 20,
-  "last_link_id": 22,
+  "last_node_id": 21,
+  "last_link_id": 24,
   "nodes": [
     {
       "id": 1,
@@ -82,6 +82,49 @@
     },
     {
       "id": 3,
+      "type": "ResolutionSelector",
+      "pos": [
+        0,
+        1280
+      ],
+      "size": [
+        440,
+        330
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            7
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ResolutionSelector"
+      },
+      "widgets_values": [
+        "16:9 (Widescreen)",
+        0.98,
+        32
+      ],
+      "title": "Format: Hoch-/Querformat wählen (Vorschau zeigt Größe)",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 4,
       "type": "UNETLoader",
       "pos": [
         500,
@@ -92,7 +135,7 @@
         90
       ],
       "flags": {},
-      "order": 2,
+      "order": 3,
       "mode": 0,
       "inputs": [
         {
@@ -122,7 +165,7 @@
       ]
     },
     {
-      "id": 4,
+      "id": 5,
       "type": "LoraLoaderModelOnly",
       "pos": [
         500,
@@ -133,7 +176,7 @@
         90
       ],
       "flags": {},
-      "order": 3,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -164,7 +207,7 @@
           "type": "MODEL",
           "links": [
             2,
-            9
+            11
           ]
         }
       ],
@@ -180,7 +223,7 @@
       "bgcolor": "#533"
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "CLIPLoader",
       "pos": [
         500,
@@ -191,7 +234,7 @@
         110
       ],
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -222,53 +265,11 @@
       ]
     },
     {
-      "id": 6,
-      "type": "VAELoader",
-      "pos": [
-        500,
-        410
-      ],
-      "size": [
-        400,
-        60
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "vae_name",
-          "type": "COMBO",
-          "link": null,
-          "widget": {
-            "name": "vae_name"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "VAE",
-          "type": "VAE",
-          "links": [
-            4,
-            17
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAELoader"
-      },
-      "widgets_values": [
-        "minimax_h3_video_vae_int8_convrot.safetensors"
-      ],
-      "title": "Video-VAE"
-    },
-    {
       "id": 7,
       "type": "VAELoader",
       "pos": [
         500,
-        510
+        410
       ],
       "size": [
         400,
@@ -292,7 +293,49 @@
           "name": "VAE",
           "type": "VAE",
           "links": [
+            4,
             19
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_int8_convrot.safetensors"
+      ],
+      "title": "Video-VAE"
+    },
+    {
+      "id": 8,
+      "type": "VAELoader",
+      "pos": [
+        500,
+        510
+      ],
+      "size": [
+        400,
+        60
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae_name",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "vae_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            21
           ]
         }
       ],
@@ -305,7 +348,7 @@
       "title": "Audio-VAE"
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "KSamplerSelect",
       "pos": [
         500,
@@ -316,7 +359,7 @@
         60
       ],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -324,7 +367,7 @@
           "name": "SAMPLER",
           "type": "SAMPLER",
           "links": [
-            13
+            15
           ]
         }
       ],
@@ -336,7 +379,7 @@
       ]
     },
     {
-      "id": 9,
+      "id": 10,
       "type": "BasicScheduler",
       "pos": [
         500,
@@ -347,7 +390,7 @@
         110
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -369,7 +412,7 @@
           "name": "SIGMAS",
           "type": "SIGMAS",
           "links": [
-            14
+            16
           ]
         }
       ],
@@ -384,7 +427,7 @@
       "title": "Schritte (Turbo: 4 · ohne Turbo: 20)"
     },
     {
-      "id": 10,
+      "id": 11,
       "type": "RandomNoise",
       "pos": [
         500,
@@ -395,7 +438,7 @@
         90
       ],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -412,7 +455,7 @@
           "name": "NOISE",
           "type": "NOISE",
           "links": [
-            11
+            13
           ]
         }
       ],
@@ -426,7 +469,7 @@
       "title": "Seed"
     },
     {
-      "id": 11,
+      "id": 12,
       "type": "MiniMaxH3ImageToVideo",
       "pos": [
         960,
@@ -437,7 +480,7 @@
         440
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -473,7 +516,7 @@
         {
           "name": "width",
           "type": "INT",
-          "link": null,
+          "link": 7,
           "widget": {
             "name": "width"
           }
@@ -481,7 +524,7 @@
         {
           "name": "height",
           "type": "INT",
-          "link": null,
+          "link": 8,
           "widget": {
             "name": "height"
           }
@@ -489,7 +532,7 @@
         {
           "name": "length",
           "type": "INT",
-          "link": 8,
+          "link": 10,
           "widget": {
             "name": "length"
           }
@@ -500,14 +543,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            10
+            12
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            15
+            17
           ]
         }
       ],
@@ -520,10 +563,10 @@
         768,
         121
       ],
-      "title": "MiniMax H3 – Prompt · Breite · Höhe (768p: 1344×768 / 768×1344)"
+      "title": "MiniMax H3 – Prompt (Größe kommt aus Format)"
     },
     {
-      "id": 12,
+      "id": 13,
       "type": "PrimitiveFloat",
       "pos": [
         960,
@@ -534,7 +577,7 @@
         60
       ],
       "flags": {},
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -542,7 +585,7 @@
           "name": "FLOAT",
           "type": "FLOAT",
           "links": [
-            7
+            9
           ]
         }
       ],
@@ -555,7 +598,7 @@
       "title": "Dauer (s)"
     },
     {
-      "id": 13,
+      "id": 14,
       "type": "ComfyMathExpression",
       "pos": [
         1240,
@@ -568,14 +611,14 @@
       "flags": {
         "collapsed": true
       },
-      "order": 12,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
           "label": "a",
           "name": "values.a",
           "type": "FLOAT,INT,BOOLEAN",
-          "link": 7
+          "link": 9
         },
         {
           "label": "b",
@@ -595,7 +638,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            8
+            10
           ]
         },
         {
@@ -613,7 +656,7 @@
       "title": "Sekunden → Frames"
     },
     {
-      "id": 14,
+      "id": 15,
       "type": "BasicGuider",
       "pos": [
         960,
@@ -624,18 +667,18 @@
         50
       ],
       "flags": {},
-      "order": 13,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 9
+          "link": 11
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 10
+          "link": 12
         }
       ],
       "outputs": [
@@ -643,7 +686,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            12
+            14
           ]
         }
       ],
@@ -652,7 +695,7 @@
       }
     },
     {
-      "id": 15,
+      "id": 16,
       "type": "SamplerCustomAdvanced",
       "pos": [
         1220,
@@ -663,33 +706,33 @@
         110
       ],
       "flags": {},
-      "order": 14,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {
           "name": "noise",
           "type": "NOISE",
-          "link": 11
+          "link": 13
         },
         {
           "name": "guider",
           "type": "GUIDER",
-          "link": 12
+          "link": 14
         },
         {
           "name": "sampler",
           "type": "SAMPLER",
-          "link": 13
+          "link": 15
         },
         {
           "name": "sigmas",
           "type": "SIGMAS",
-          "link": 14
+          "link": 16
         },
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 15
+          "link": 17
         }
       ],
       "outputs": [
@@ -697,8 +740,8 @@
           "name": "output",
           "type": "LATENT",
           "links": [
-            16,
-            18
+            18,
+            20
           ]
         },
         {
@@ -712,7 +755,7 @@
       }
     },
     {
-      "id": 16,
+      "id": 17,
       "type": "VAEDecode",
       "pos": [
         960,
@@ -720,46 +763,6 @@
       ],
       "size": [
         220,
-        50
-      ],
-      "flags": {},
-      "order": 15,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 16
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 17
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            20
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAEDecode"
-      },
-      "title": "Bild dekodieren"
-    },
-    {
-      "id": 17,
-      "type": "VAEDecodeAudio",
-      "pos": [
-        960,
-        830
-      ],
-      "size": [
-        240,
         50
       ],
       "flags": {},
@@ -779,10 +782,50 @@
       ],
       "outputs": [
         {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 18,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        960,
+        830
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 20
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            21
+            23
           ]
         }
       ],
@@ -794,7 +837,7 @@
       "bgcolor": "#335"
     },
     {
-      "id": 18,
+      "id": 19,
       "type": "CreateVideo",
       "pos": [
         1220,
@@ -805,18 +848,18 @@
         100
       ],
       "flags": {},
-      "order": 17,
+      "order": 18,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 20
+          "link": 22
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 21,
+          "link": 23,
           "shape": 7
         }
       ],
@@ -825,7 +868,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            22
+            24
           ]
         }
       ],
@@ -839,7 +882,7 @@
       "title": "Video erstellen"
     },
     {
-      "id": 19,
+      "id": 20,
       "type": "SaveVideo",
       "pos": [
         1560,
@@ -850,13 +893,13 @@
         480
       ],
       "flags": {},
-      "order": 18,
+      "order": 19,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 22
+          "link": 24
         }
       ],
       "outputs": [],
@@ -869,7 +912,7 @@
       "title": "Video"
     },
     {
-      "id": 20,
+      "id": 21,
       "type": "MarkdownNote",
       "pos": [
         1560,
@@ -877,16 +920,16 @@
       ],
       "size": [
         620,
-        560
+        900
       ],
       "flags": {},
-      "order": 19,
+      "order": 20,
       "mode": 0,
       "inputs": [],
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "# H3 lokal – schnell 768p\n\n1. Start-/Endbild laden (oder mit `Ctrl+B` abschalten).\n2. Im H3-Node: **Prompt**, **Breite/Höhe** (Vielfache von 32).\n   - 16:9 → 1344×768 · 9:16 → 768×1344 · 1:1 → 1024×1024\n   - Schneller testen: 864×480\n3. `Dauer (s)` einstellen → **Queue**.\n\n**Tempo:** Turbo-LoRA mit 4 Schritten ist voreingestellt (schnellste Variante).\nBessere Qualität: LoRA `Ctrl+B` + `Schritte` auf 20.\n**Ohne Ton:** Node „Ton“ → `Ctrl+B`.\n**Neue Variante:** `Seed` ändern.\n\nBenötigt zusätzlich: `minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors` in `models/loras/`.\n"
+        "# H3 lokal – schnell 768p\n\n1. Start-/Endbild laden (oder mit `Ctrl+B` abschalten).\n2. Node **Format** (unter den Bildern): Seitenverhältnis wählen – *Portrait* = Hochformat.\n   Die Vorschau im Node zeigt Form und Pixelgröße. `megapixels`: **0.98** = 768p (Standard), **0.4** = schneller Test.\n   Bilder möglichst im selben Seitenverhältnis (sie werden sonst gestreckt).\n3. Im H3-Node den **Prompt** schreiben.\n4. `Dauer (s)` einstellen → **Queue**.\n\n| Format | 0.98 MP (768p) | 0.4 MP (Test) |\n|---|---|---|\n| 16:9 quer | 1344×768 | 864×480 |\n| 9:16 hoch | 768×1344 | 480×864 |\n| 1:1 | 1024×1024 | 640×640 |\n| 4:3 quer | 1184×864 | 736×576 |\n| 3:4 hoch | 864×1184 | 576×736 |\n| 3:2 quer | 1248×832 | 800×544 |\n| 2:3 hoch | 832×1248 | 544×800 |\n| 21:9 | 1536×672 | 992×416 |\n\n**Tempo:** Turbo-LoRA mit 4 Schritten ist voreingestellt (schnellste Variante).\nBessere Qualität: LoRA `Ctrl+B` + `Schritte` auf 20.\n**Ohne Ton:** Node „Ton“ → `Ctrl+B`.\n**Neue Variante:** `Seed` ändern.\n\nBenötigt zusätzlich: `minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors` in `models/loras/`.\n"
       ],
       "title": "Anleitung"
     }
@@ -894,33 +937,33 @@
   "links": [
     [
       1,
-      3,
-      0,
       4,
+      0,
+      5,
       0,
       "MODEL"
     ],
     [
       2,
-      4,
+      5,
       0,
-      9,
+      10,
       0,
       "MODEL"
     ],
     [
       3,
-      5,
+      6,
       0,
-      11,
+      12,
       0,
       "CLIP"
     ],
     [
       4,
-      6,
+      7,
       0,
-      11,
+      12,
       1,
       "VAE"
     ],
@@ -928,7 +971,7 @@
       5,
       1,
       0,
-      11,
+      12,
       2,
       "IMAGE"
     ],
@@ -936,101 +979,101 @@
       6,
       2,
       0,
-      11,
+      12,
       3,
       "IMAGE"
     ],
     [
       7,
+      3,
+      0,
       12,
-      0,
-      13,
-      0,
-      "FLOAT"
+      5,
+      "INT"
     ],
     [
       8,
-      13,
+      3,
       1,
-      11,
-      7,
+      12,
+      6,
       "INT"
     ],
     [
       9,
-      4,
+      13,
       0,
       14,
+      0,
+      "FLOAT"
+    ],
+    [
+      10,
+      14,
+      1,
+      12,
+      7,
+      "INT"
+    ],
+    [
+      11,
+      5,
+      0,
+      15,
       0,
       "MODEL"
     ],
     [
-      10,
-      11,
+      12,
+      12,
       0,
-      14,
+      15,
       1,
       "CONDITIONING"
     ],
     [
+      13,
       11,
-      10,
       0,
-      15,
+      16,
       0,
       "NOISE"
     ],
     [
-      12,
       14,
-      0,
       15,
+      0,
+      16,
       1,
       "GUIDER"
     ],
     [
-      13,
-      8,
-      0,
       15,
+      9,
+      0,
+      16,
       2,
       "SAMPLER"
     ],
     [
-      14,
-      9,
+      16,
+      10,
       0,
-      15,
+      16,
       3,
       "SIGMAS"
     ],
     [
-      15,
-      11,
+      17,
+      12,
       1,
-      15,
+      16,
       4,
       "LATENT"
     ],
     [
-      16,
-      15,
-      0,
-      16,
-      0,
-      "LATENT"
-    ],
-    [
-      17,
-      6,
-      0,
-      16,
-      1,
-      "VAE"
-    ],
-    [
       18,
-      15,
+      16,
       0,
       17,
       0,
@@ -1050,21 +1093,37 @@
       0,
       18,
       0,
-      "IMAGE"
+      "LATENT"
     ],
     [
       21,
-      17,
+      8,
       0,
       18,
+      1,
+      "VAE"
+    ],
+    [
+      22,
+      17,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      23,
+      18,
+      0,
+      19,
       1,
       "AUDIO"
     ],
     [
-      22,
-      18,
-      0,
+      24,
       19,
+      0,
+      20,
       0,
       "VIDEO"
     ]
@@ -1085,6 +1144,19 @@
     },
     {
       "id": 2,
+      "title": "Format",
+      "bounding": [
+        -20,
+        1200,
+        480,
+        430
+      ],
+      "color": "#2a5",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 3,
       "title": "Modelle (nichts ändern nötig)",
       "bounding": [
         480,
@@ -1097,7 +1169,7 @@
       "flags": {}
     },
     {
-      "id": 3,
+      "id": 4,
       "title": "Einstellen & Generieren",
       "bounding": [
         940,
