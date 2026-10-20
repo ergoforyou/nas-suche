@@ -1,4 +1,4 @@
-"""Drucker „Ergo4You PDF“ einrichten (einmalig, mit Administratorrechten).
+"""Drucker „Ergoforyou PDF“ einrichten (einmalig, mit Administratorrechten).
 
 Nutzt den in Windows 10/11 eingebauten Treiber „Microsoft Print To PDF“,
 aber mit einem Datei-Anschluss statt „Speichern unter“-Dialog: Jeder
@@ -13,15 +13,16 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-DRUCKER = "Ergo4You PDF"
-ALT = "Agentur-PDF"  # früherer Name – wird beim Einrichten/Entfernen mit entfernt
+DRUCKER = "Ergoforyou PDF"
+# frühere Namen – werden beim Einrichten/Entfernen mit entfernt
+ALT = "Agentur-PDF,Ergo4You PDF"
 TREIBER = "Microsoft Print To PDF"
 
 SKRIPT = r"""
-param([string]$Ordner, [string]$Name = "Ergo4You PDF", [string]$Alt = "", [switch]$Entfernen)
+param([string]$Ordner, [string]$Name = "Ergoforyou PDF", [string]$Alt = "", [switch]$Entfernen)
 $ErrorActionPreference = "Stop"
 $port = Join-Path $Ordner "Ausdruck.pdf"
-if ($Alt -and (Get-Printer -Name $Alt -ErrorAction SilentlyContinue)) { Remove-Printer -Name $Alt }
+foreach ($a in ($Alt -split ",")) { if ($a -and $a -ne $Name -and (Get-Printer -Name $a -ErrorAction SilentlyContinue)) { Remove-Printer -Name $a } }
 if ($Entfernen) {
   if (Get-Printer -Name $Name -ErrorAction SilentlyContinue) { Remove-Printer -Name $Name }
   if (Get-PrinterPort -Name $port -ErrorAction SilentlyContinue) { Remove-PrinterPort -Name $port }

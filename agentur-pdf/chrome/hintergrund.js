@@ -1,4 +1,4 @@
-// Hintergrund: PDFs in Chrome im Ergo4You-PDF-Editor (Tab) öffnen statt in
+// Hintergrund: PDFs in Chrome im Ergoforyou-PDF-Editor (Tab) öffnen statt in
 // Chromes eigener PDF-Anzeige, Rechtsklick-Menüs, Google-Drive-Knopf und
 // Seitenleiste per Symbol.
 
@@ -8,15 +8,15 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => 
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: "tab", title: "Mit Ergo4You PDF öffnen", contexts: ["link", "image"] });
-    chrome.contextMenus.create({ id: "leiste", title: "In Ergo4You-PDF-Leiste übernehmen", contexts: ["link", "image"] });
+    chrome.contextMenus.create({ id: "tab", title: "Mit Ergoforyou PDF öffnen", contexts: ["link", "image"] });
+    chrome.contextMenus.create({ id: "leiste", title: "In Ergoforyou-PDF-Leiste übernehmen", contexts: ["link", "image"] });
   });
 });
 
 async function melden(text) {
   await chrome.action.setBadgeBackgroundColor({ color: "#B5121B" });
   await chrome.action.setBadgeText({ text: "!" });
-  await chrome.action.setTitle({ title: `Ergo4You PDF: ${text}` });
+  await chrome.action.setTitle({ title: `Ergoforyou PDF: ${text}` });
   setTimeout(() => chrome.action.setBadgeText({ text: "" }), 8000);
 }
 

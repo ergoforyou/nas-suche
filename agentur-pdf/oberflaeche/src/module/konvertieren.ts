@@ -51,7 +51,7 @@ registrieren(
     icon: Printer,
     farbe: "#3B4A5A",
     stichworte: ["drucker", "drucken als pdf", "print to pdf", "aus word drucken", "fachsoftware", "ausdruck"],
-    beschreibung: "Aus jedem Programm auf den Drucker „Ergo4You PDF“ drucken – der Ausdruck öffnet sich hier als Dokument.",
+    beschreibung: "Aus jedem Programm auf den Drucker „Ergoforyou PDF“ drucken – der Ausdruck öffnet sich hier als Dokument.",
     ausfuehren: () => setzen({ dialog: { art: "drucker" } }),
   },
   {

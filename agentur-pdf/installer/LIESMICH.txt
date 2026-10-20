@@ -1,4 +1,4 @@
-Ergo4You PDF – Beta MK I
+Ergoforyou PDF – Beta MK I
 ========================
 
 INSTALLIEREN (EMPFOHLEN)
@@ -19,13 +19,13 @@ INSTALLIEREN (EMPFOHLEN)
 STANDARD-PDF-PROGRAMM
   „Beta MK I“ (oben rechts) → „Windows & Updates“ → „Als Standard-PDF-
   Programm festlegen …“. Windows öffnet „Standard-Apps“: dort bei „.pdf“
-  Ergo4You PDF auswählen (Windows erlaubt das nur von Hand).
+  Ergoforyou PDF auswählen (Windows erlaubt das nur von Hand).
 
 RECHTSKLICK IM EXPLORER
   Richtet das Setup ein (sonst: „Beta MK I“ → „Rechtsklick-Einträge
   einrichten“). Beim Rechtsklick auf PDFs, Bilder, Word-, Excel- und
   Maildateien:
-    • Mit Ergo4You PDF öffnen
+    • Mit Ergoforyou PDF öffnen
     • Zu einer PDF zusammenführen   (auch mehrere Dateien markiert)
     • In PDF umwandeln
   Rechtsklick auf einen Ordner: „Inhalt zu einer PDF zusammenführen“
@@ -35,7 +35,7 @@ RECHTSKLICK IM EXPLORER
 
 ALLE ARBEITSPLÄTZE: GEMEINSAMER ORDNER AUF DEM NAS
   Einmal an jedem PC: „Beta MK I“ → „Alle Arbeitsplätze (NAS)“ →
-  denselben Ordner eintragen, z. B. \\NAS\Ergo4You\PDF.
+  denselben Ordner eintragen, z. B. \\NAS\Ergoforyou\PDF.
   Dort liegen dann für alle gleich: Stempel, Texterkennungssprachen,
   Favoriten-Ordner und das eigene Wörterbuch der Rechtschreibprüfung.
   Kürzel, Unterschriften und Ansicht bleiben persönlich.
@@ -43,15 +43,15 @@ ALLE ARBEITSPLÄTZE: GEMEINSAMER ORDNER AUF DEM NAS
 UPDATES FÜR ALLE PCs
   Neue Setup-Datei (Agentur-PDF-Setup-x.y.z.exe) in den Unterordner
   „Updates“ des gemeinsamen Ordners legen. Jeder PC zeigt oben rechts
-  „Update x.y.z“ – ein Klick, Ergo4You PDF schließt sich, aktualisiert
+  „Update x.y.z“ – ein Klick, Ergoforyou PDF schließt sich, aktualisiert
   und startet neu. Ungespeicherte Änderungen werden vorher gesichert.
 
-PDF-DRUCKER „ERGO4YOU PDF“
+PDF-DRUCKER „ERGOFORYOU PDF“
   Einmal je PC einrichten: im Setup ankreuzen oder „Konvertieren“ →
   „PDF-Drucker“ → „Drucker einrichten …“ (Windows fragt nach
   Administratorrechten). Danach in Word, Outlook, Browser oder Fach-
-  software „Drucken“ → Drucker „Ergo4You PDF“: Der Ausdruck öffnet sich
-  sofort in Ergo4You PDF als neues Dokument.
+  software „Drucken“ → Drucker „Ergoforyou PDF“: Der Ausdruck öffnet sich
+  sofort in Ergoforyou PDF als neues Dokument.
 
 STAPELVERARBEITUNG
   „Konvertieren“ → „Stapelverarbeitung“: Dateien oder ganze Ordner auf
@@ -63,7 +63,7 @@ GEMEINSAM GENUTZTE DATEIEN, ABSTURZ
   • Hat ein Kollege eine Datei geöffnet, erscheint ein gelber Hinweis
     („Bei martina (PC-02) geöffnet“) und ein Schloss im Tab. Speichern
     fragt dann nach – am besten „Unter anderem Namen speichern“. Wird die
-    Datei frei, meldet Ergo4You PDF das von selbst.
+    Datei frei, meldet Ergoforyou PDF das von selbst.
   • Die Sperre ist eine versteckte Datei „~$Name.pdf.sperre“ neben der PDF;
     sie verschwindet beim Schließen.
   • Ungespeicherte Änderungen werden jede Minute gesichert. Nach einem
@@ -85,39 +85,39 @@ DESIGN (NEUES REGISTER)
   • Hausfarben: bis zu 6 Firmenfarben, erscheinen in allen Farbauswahlen.
   • KI-Bild/KI-Text sind vorbereitet und folgen in einer späteren Version.
 
-GOOGLE CHROME: PDFs DIREKT IN ERGO4YOU PDF
+GOOGLE CHROME: PDFs DIREKT IN ERGOFORYOU PDF
   Mit der Chrome-Erweiterung (Einrichtung siehe unten) öffnet sich jede PDF,
   die Sie in Chrome anklicken – Kundenportal, Webmail, Google Drive, lokale
-  Datei –, im vollständigen Ergo4You-PDF-Editor als Chrome-Tab statt in
+  Datei –, im vollständigen Ergoforyou-PDF-Editor als Chrome-Tab statt in
   Chromes eigener Anzeige: alle Register (Kommentieren, Bearbeiten, Design,
   Seiten, Schützen …). Strg+S speichert über Chromes Speichern-Dialog.
-  Abschalten: Seitenleiste (Ergo4You PDF-Symbol) → Häkchen „PDFs in Chrome
-  automatisch mit Ergo4You PDF öffnen“. Ergo4You PDF muss dafür laufen (sonst
+  Abschalten: Seitenleiste (Ergoforyou PDF-Symbol) → Häkchen „PDFs in Chrome
+  automatisch mit Ergoforyou PDF öffnen“. Ergoforyou PDF muss dafür laufen (sonst
   bleibt Chromes Anzeige). Lokale PDFs (file://): auf der Erweiterungsseite
-  bei Ergo4You PDF „Details“ → „Zugriff auf Datei-URLs zulassen“ einschalten.
+  bei Ergoforyou PDF „Details“ → „Zugriff auf Datei-URLs zulassen“ einschalten.
 
-GOOGLE CHROME: ERGO4YOU-PDF-SEITENLEISTE
+GOOGLE CHROME: ERGOFORYOU-PDF-SEITENLEISTE
   Eine Leiste rechts in Chrome – neben Kundenportal, Webmailer & Co.:
   Dateien, Bilder und E-Mails (EML/MSG) hineinziehen → zu einer PDF
   zusammenführen bzw. umwandeln → Vorschau, Seiten drehen/löschen →
   speichern, drucken oder „Im Programm“ weiterbearbeiten. Rechtsklick auf
-  einen Link oder ein Bild: „Mit Ergo4You PDF öffnen“ bzw. „In Ergo4You PDF-
+  einen Link oder ein Bild: „Mit Ergoforyou PDF öffnen“ bzw. „In Ergoforyou PDF-
   Leiste übernehmen“. Läuft das Programm nicht, startet die Leiste es.
   Einrichten (einmalig je PC, das Setup öffnet Chrome dafür automatisch):
   1. Chrome zeigt „Erweiterungen“; oben rechts „Entwicklermodus“ ein.
   2. „Entpackte Erweiterung laden“ → Ordner „Chrome-Erweiterung“ im
      Programmordner wählen (der Pfad liegt schon in der Zwischenablage:
      in die Adresszeile des Ordnerfensters klicken, Strg+V, Enter).
-  3. Puzzle-Symbol → Ergo4You PDF anheften. Öffnen: Symbol oder Alt+Umschalt+P.
-  Später nochmal: Ergo4You PDF → Einstellungen → „Chrome einrichten …“.
+  3. Puzzle-Symbol → Ergoforyou PDF anheften. Öffnen: Symbol oder Alt+Umschalt+P.
+  Später nochmal: Ergoforyou PDF → Einstellungen → „Chrome einrichten …“.
 
 GOOGLE DRIVE
   • Am besten mit „Google Drive für Desktop“: Drive erscheint im Explorer
     als Laufwerk (z. B. G:). Doppelklick auf eine PDF öffnet sie in
-    Ergo4You PDF (wenn Standard-PDF-Programm), „Speichern“ schreibt direkt
+    Ergoforyou PDF (wenn Standard-PDF-Programm), „Speichern“ schreibt direkt
     zurück nach Drive – auch Rechtsklick „Zusammenführen“ geht dort.
   • Im Browser (drive.google.com): Datei markieren oder öffnen → unten links
-    „Ergo4You PDF: öffnen“ (Editor im neuen Tab) oder „In Leiste“ (z. B.
+    „Ergoforyou PDF: öffnen“ (Editor im neuen Tab) oder „In Leiste“ (z. B.
     mehrere zum Zusammenführen sammeln). Das Ergebnis dann auf G:\ speichern
     oder über „Speichern …“ herunterladen und in Drive hochladen.
 

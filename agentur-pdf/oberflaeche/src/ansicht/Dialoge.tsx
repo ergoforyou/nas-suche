@@ -274,7 +274,7 @@ function WiederherstellungDialog({ eintraege }: { eintraege: Wiederherstellung[]
         <h2>
           <History size={18} /> Ungespeicherte Änderungen wiederherstellen?
         </h2>
-        <p>Ergo4You PDF wurde zuletzt nicht normal beendet. Diese Dokumente hatten ungespeicherte Änderungen:</p>
+        <p>Ergoforyou PDF wurde zuletzt nicht normal beendet. Diese Dokumente hatten ungespeicherte Änderungen:</p>
         <ul className="wiederherstellung-liste">
           {eintraege.map((e) => (
             <li key={e.schluessel}>

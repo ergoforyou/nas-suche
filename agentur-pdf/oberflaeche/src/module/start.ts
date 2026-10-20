@@ -394,7 +394,7 @@ registrieren(
   },
   {
     id: "hilfe.info",
-    titel: "Über Ergo4You PDF & Einrichtung",
+    titel: "Über Ergoforyou PDF & Einrichtung",
     register: "ansicht",
     gruppe: "Oberfläche",
     icon: Info,

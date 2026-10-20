@@ -69,7 +69,7 @@ test("Gemeinsamer NAS-Ordner: Stempel gelten für alle Arbeitsplätze", async ({
   rmSync(nas, { recursive: true, force: true });
   await start(page);
   await page.locator(".testversion").click();
-  const dialog = page.getByRole("dialog", { name: "Über Ergo4You PDF" });
+  const dialog = page.getByRole("dialog", { name: "Über Ergoforyou PDF" });
   await dialog.getByLabel("Gemeinsamer Ordner").fill(nas);
   await dialog.getByRole("button", { name: "Einstellungen speichern" }).click();
   await expect(page.locator(".meldung")).toContainText("Einstellungen gespeichert");

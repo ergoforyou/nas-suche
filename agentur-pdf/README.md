@@ -1,4 +1,4 @@
-# Ergo4You PDF
+# Ergoforyou PDF
 
 PDF-Programm für die Agentur: Web-Oberfläche + lokaler Python-Dienst.
 Architektur und Plan: [docs/ARCHITEKTUR_UND_PLAN.md](docs/ARCHITEKTUR_UND_PLAN.md)

@@ -171,7 +171,7 @@ export async function starten(): Promise<void> {
       seitenleiste: { ...z.seitenleiste, breite: einstellungen.seitenleiste_breite, miniGroesse: einstellungen.miniatur_groesse },
     }));
   } catch (e) {
-    melden(`Verbindung zum Ergo4You-PDF-Dienst fehlgeschlagen: ${fehlerText(e)}`, "fehler");
+    melden(`Verbindung zum Ergoforyou-PDF-Dienst fehlgeschlagen: ${fehlerText(e)}`, "fehler");
     return;
   }
   if (CHROME_MODUS.aktiv) {
@@ -232,7 +232,7 @@ export async function updateInstallieren(): Promise<void> {
   const ungespeichert = holen().dokumente.filter((d) => d.geaendert).length;
   const wahl = await fragen(
     `Update auf Version ${u.version}`,
-    `Ergo4You PDF wird kurz geschlossen, aktualisiert und startet von selbst wieder.${
+    `Ergoforyou PDF wird kurz geschlossen, aktualisiert und startet von selbst wieder.${
       ungespeichert ? ` ${ungespeichert} Dokument(e) mit ungespeicherten Änderungen werden gesichert und danach zum Wiederherstellen angeboten.` : ""
     }`,
     [
@@ -243,7 +243,7 @@ export async function updateInstallieren(): Promise<void> {
   if (wahl !== "los") return;
   try {
     await api.updateInstallieren();
-    melden(`Update auf ${u.version} wird installiert – Ergo4You PDF startet gleich neu …`);
+    melden(`Update auf ${u.version} wird installiert – Ergoforyou PDF startet gleich neu …`);
   } catch (e) {
     melden(fehlerText(e), "fehler");
   }

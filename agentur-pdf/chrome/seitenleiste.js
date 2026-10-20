@@ -48,11 +48,11 @@ $("starten").addEventListener("click", async () => {
     await new Promise((ok) => setTimeout(ok, 1000));
     if (await verbinden()) {
       chrome.tabs.remove(tab.id).catch(() => {});
-      melden("Ergo4You PDF ist bereit.");
+      melden("Ergoforyou PDF ist bereit.");
       return;
     }
   }
-  melden("Ergo4You PDF startet nicht – bitte über das Startmenü öffnen.", true);
+  melden("Ergoforyou PDF startet nicht – bitte über das Startmenü öffnen.", true);
 });
 
 // ------------------------------------------------------------ Dateien

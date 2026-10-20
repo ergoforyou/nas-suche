@@ -79,12 +79,12 @@ test("Google Drive: markierte Datei per Knopf im Programm öffnen", async () => 
   });
   const drive = await kontext.newPage();
   await drive.goto("https://drive.google.com/drive/my-drive");
-  const knopf = drive.getByRole("button", { name: "Ergo4You PDF: öffnen" });
+  const knopf = drive.getByRole("button", { name: "Ergoforyou PDF: öffnen" });
   await expect(knopf).toBeVisible({ timeout: 10_000 });
   const editorTab = kontext.waitForEvent("page");
   await knopf.click();
   const editor = await editorTab;
-  await expect(editor).toHaveTitle(/Police Muster.*Ergo4You PDF/, { timeout: 15_000 });
+  await expect(editor).toHaveTitle(/Police Muster.*Ergoforyou PDF/, { timeout: 15_000 });
   await expect(editor.locator(".seite-bild").first()).toBeVisible();
   await editor.close();
   await kontext.unroute("https://drive.google.com/**");
@@ -98,7 +98,7 @@ test("PDF-Link in Chrome öffnet sich im vollständigen Editor (statt Chromes An
     await expect.poll(async () => (await seite.request.get("http://127.0.0.1:47899/b.pdf").catch(() => null))?.status(), { timeout: 10_000 }).toBe(200);
     await seite.goto("http://127.0.0.1:47899/b.pdf").catch(() => undefined); // Navigation wird umgeleitet
     await expect(seite).toHaveURL(/127\.0\.0\.1:47811\//, { timeout: 15_000 });
-    await expect(seite).toHaveTitle(/b.*Ergo4You PDF/);
+    await expect(seite).toHaveTitle(/b.*Ergoforyou PDF/);
     await expect(seite.locator(".seite-bild").first()).toBeVisible();
     // es ist der echte Editor: Menüband und Bearbeiten-Werkzeuge sind da
     await expect(seite.locator(".mb-reiter").getByRole("tab", { name: "Bearbeiten" })).toBeVisible();
@@ -116,12 +116,12 @@ test("PDF-Link in Chrome öffnet sich im vollständigen Editor (statt Chromes An
     // Schalter „automatisch“ aus → Chrome-Ansicht bleibt
     const leiste = await kontext.newPage();
     await leiste.goto(`chrome-extension://${KENNUNG}/seitenleiste.html`);
-    await leiste.getByRole("checkbox", { name: /automatisch mit Ergo4You PDF/ }).uncheck();
+    await leiste.getByRole("checkbox", { name: /automatisch mit Ergoforyou PDF/ }).uncheck();
     const zweite = await kontext.newPage();
     await zweite.goto("http://127.0.0.1:47899/a.pdf").catch(() => undefined);
     await zweite.waitForTimeout(2500);
     expect(zweite.url()).toContain("47899/a.pdf");
-    await leiste.getByRole("checkbox", { name: /automatisch mit Ergo4You PDF/ }).check();
+    await leiste.getByRole("checkbox", { name: /automatisch mit Ergoforyou PDF/ }).check();
     await Promise.all([seite.close(), leiste.close(), zweite.close()]);
   } finally {
     server.kill();

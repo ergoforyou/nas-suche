@@ -1,4 +1,4 @@
-// „Über Ergo4You PDF & Einrichtung“: Version, Bausteine, Protokoll, Explorer-Menü.
+// „Über Ergoforyou PDF & Einrichtung“: Version, Bausteine, Protokoll, Explorer-Menü.
 
 import { PRODUKT, STAND } from "../marke";
 import { Camera, CheckCircle2, Download, Info, MonitorCog, MousePointerClick, RefreshCw, Settings, Users, XCircle } from "lucide-react";
@@ -80,7 +80,7 @@ function EinstellungenBereich() {
           <Users size={13} /> Alle Arbeitsplätze (NAS)
         </legend>
         <label className="feld">
-          Gemeinsamer Ordner – an allen PCs denselben eintragen, z. B. {"\\\\NAS\\Ergo4You\\PDF"}
+          Gemeinsamer Ordner – an allen PCs denselben eintragen, z. B. {"\\\\NAS\\Ergoforyou\\PDF"}
           <span className="feld-mit-knopf">
             <input value={gemeinsam} onChange={(ev) => setGemeinsam(ev.target.value)} placeholder="leer = nur dieser PC" aria-label="Gemeinsamer Ordner" />
             {desktop && (
@@ -168,7 +168,7 @@ export function InfoDialog() {
   };
   return (
     <div className="dialog-hintergrund" onMouseDown={schliessen}>
-      <div className="dialog sehr-breit" role="dialog" aria-label="Über Ergo4You PDF" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dialog sehr-breit" role="dialog" aria-label="Über Ergoforyou PDF" onMouseDown={(e) => e.stopPropagation()}>
         <h2>
           <Info size={18} /> {PRODUKT} {s ? s.version : ""} · {STAND}
         </h2>
@@ -186,7 +186,7 @@ export function InfoDialog() {
               <fieldset className="gruppe">
                 <legend>Windows-Explorer</legend>
                 <p className="leise">
-                  Rechtsklick auf Dateien: „Mit Ergo4You PDF öffnen“, „Zu einer PDF zusammenführen“, „In PDF umwandeln“. Wird nur für Ihr
+                  Rechtsklick auf Dateien: „Mit Ergoforyou PDF öffnen“, „Zu einer PDF zusammenführen“, „In PDF umwandeln“. Wird nur für Ihr
                   Benutzerkonto eingerichtet (keine Administratorrechte nötig). Unter Windows 11 unter „Weitere Optionen anzeigen“.
                 </p>
                 <div className="zf-werkzeuge">
@@ -257,8 +257,8 @@ function WindowsUndUpdates() {
         <>
           <p className={win.standard ? "leise" : "warnung"}>
             {win.standard
-              ? "Ergo4You PDF ist das Standard-Programm für PDF-Dateien."
-              : "Ein anderes Programm öffnet PDFs per Doppelklick. In den Windows-Einstellungen bei „.pdf“ Ergo4You PDF auswählen."}
+              ? "Ergoforyou PDF ist das Standard-Programm für PDF-Dateien."
+              : "Ein anderes Programm öffnet PDFs per Doppelklick. In den Windows-Einstellungen bei „.pdf“ Ergoforyou PDF auswählen."}
           </p>
           <div className="auswahl-zeile">
             {!win.standard && (
@@ -268,7 +268,7 @@ function WindowsUndUpdates() {
                 onClick={() =>
                   void api
                     .standardprogramm()
-                    .then(() => melden("Windows-Einstellungen geöffnet – dort bei „.pdf“ Ergo4You PDF wählen."))
+                    .then(() => melden("Windows-Einstellungen geöffnet – dort bei „.pdf“ Ergoforyou PDF wählen."))
                     .catch((e: Error) => melden(e.message, "fehler"))
                 }
               >
