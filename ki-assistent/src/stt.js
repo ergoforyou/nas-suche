@@ -114,7 +114,7 @@ export class SpeechInput {
     if (this.stream && this.micAec === aec) return;
     if (this.stream) this.closeMic();
     this.micAec = aec;
-    this.onMicOpen?.(); // Handy: Headset als Sprechgerät wählen, bevor das Mikrofon aufgeht
+    this.onMicOpen?.(aec); // Handy: Headset als Sprechgerät wählen, bevor das Mikrofon aufgeht (nur fürs Gespräch)
     const audio = { channelCount: 1, echoCancellation: aec, noiseSuppression: aec, autoGainControl: true };
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: this.deviceId ? { ...audio, deviceId: { exact: this.deviceId } } : audio });

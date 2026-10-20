@@ -447,8 +447,9 @@ function voiceRoute(on) {
     if (name) status(`🎧 Sprechen und Hören über ${name}`);
   }
   if (on) state.voiceDevice = name;
-  // mit Auto/Headset das Mikrofon immer gleich öffnen (sonst beendet jeder Wechsel den „Anruf“)
-  stt.forceAec = !!state.voiceDevice;
+  state.routeOn = !!on;
+  // während eines Gesprächs mit Auto/Headset das Mikrofon immer gleich öffnen (sonst beendet jeder Wechsel den „Anruf“)
+  stt.forceAec = voiceSession() && !!state.voiceDevice;
   const el = document.getElementById('phAudioDev');
   if (el) el.textContent = state.voiceDevice ? `Zuletzt verwendet: ${state.voiceDevice}.` : '';
   renderAudioChip();
@@ -472,7 +473,7 @@ window.__kiAudio = (json) => {
   } catch {}
   const before = state.audio ?? {};
   state.audio = a;
-  stt.forceAec = !!(a.comm || state.voiceDevice);
+  stt.forceAec = voiceSession() && !!(a.comm || state.voiceDevice);
   if ((before.comm ?? '') !== (a.comm ?? '')) {
     logEv('AUDIO', `Sprechgerät jetzt: ${a.comm || 'Handy'}${a.media ? ` · Ton: ${a.media}` : ''}`);
     state.voiceDevice = a.comm || '';
@@ -492,7 +493,7 @@ stt.onMicDead = async (why) => {
     return;
   }
   try {
-    voiceRoute(true);
+    if (voiceSession()) voiceRoute(true);
     await stt.restartMic();
     status('🎤 Mikrofon neu verbunden.');
   } catch (e) {
@@ -524,10 +525,15 @@ function renderAudioChip() {
 // zu und wieder auf – jedes Trennen schaltet das Auto zwischen „Anruf“ und Musik hin und her (Knacken, verlorene
 // Wortanfänge). Erst nach einer längeren Pause freigeben.
 let routeOffTimer = 0;
-stt.onMicOpen = () => {
+// Headset/Auto als Sprechgerät („Anruf“) nur, wenn wirklich gesprochen wird: im Gespräch (Live/Fahrmodus) oder beim
+// Sprechen per Knopf. Das Warten aufs Aktivierungswort (ohne Echo-Unterdrückung) läuft über das Handy-Mikrofon und
+// lässt den Ton anderer Apps in Ruhe – sonst reißt die App z. B. YouTube auf den Kopfhörern ständig weg.
+stt.onMicOpen = (aec) => {
   clearTimeout(routeOffTimer);
   routeOffTimer = 0;
-  voiceRoute(true);
+  const want = !!aec || voiceSession();
+  // nur ansprechen, wenn sich etwas ändert (Aktivierungswort öffnet das Mikrofon oft)
+  if (want || state.routeOn) voiceRoute(want);
 };
 stt.onMicClose = () => {
   clearTimeout(routeOffTimer);

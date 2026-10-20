@@ -99,6 +99,21 @@ public class KIConversationService extends Service {
         return START_NOT_STICKY;
     }
 
+    /** App aus der Übersicht weggewischt: Ton zurücksetzen und den Dienst beenden (sonst läuft er ohne App weiter). */
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        MainActivity a = MainActivity.current.get();
+        if (a != null) a.shutdownAudio();
+        try {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am != null && am.getMode() == android.media.AudioManager.MODE_IN_COMMUNICATION) am.setMode(android.media.AudioManager.MODE_NORMAL);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Ton zurücksetzen", e);
+        }
+        stopSelf();
+        super.onTaskRemoved(rootIntent);
+    }
+
     @Override
     public void onDestroy() {
         running = false;

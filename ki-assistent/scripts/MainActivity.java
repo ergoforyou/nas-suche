@@ -324,6 +324,14 @@ public class MainActivity extends BridgeActivity {
                         if (k != null && k.getAction() == KeyEvent.ACTION_DOWN && k.getRepeatCount() == 0) {
                             int c = k.getKeyCode();
                             if (c == KeyEvent.KEYCODE_HEADSETHOOK || c == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || c == KeyEvent.KEYCODE_MEDIA_PLAY || c == KeyEvent.KEYCODE_MEDIA_PAUSE) {
+                                // spielt gerade eine andere App (YouTube, Musik) und läuft bei uns kein Gespräch: Taste
+                                // durchreichen – sonst greift die App bei jedem Play/Pause (oder beim Einsetzen der
+                                // Ohrhörer) nach dem Kopfhörer und reißt den Ton der anderen App weg
+                                android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                                if (am != null && am.isMusicActive() && !voiceWanted) {
+                                    Log.i("KI-Assistent", "Kopfhörer-Taste: andere App spielt – nicht abgefangen");
+                                    return false;
+                                }
                                 pushAction("talk");
                                 return true;
                             }
@@ -411,6 +419,63 @@ public class MainActivity extends BridgeActivity {
         String n = String.valueOf(d.getProductName());
         return n == null || n.trim().isEmpty() || n.equals("null") ? "" : n.trim();
     }
+    private static boolean voiceTypeOk(int type) {
+        return type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET
+            || type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET || type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET;
+    }
+    // Schutz vor Hin und Her: höchstens 4 Verbindungsversuche pro Minute
+    private final java.util.ArrayDeque<Long> routeTimes = new java.util.ArrayDeque<>();
+    private boolean routeBudget() {
+        long now = System.currentTimeMillis();
+        while (!routeTimes.isEmpty() && now - routeTimes.peekFirst() > 60000) routeTimes.pollFirst();
+        if (routeTimes.size() >= 4) {
+            Log.w("KI-Assistent", "Sprechgerät: zu viele Versuche – Pause");
+            return false;
+        }
+        routeTimes.addLast(now);
+        return true;
+    }
+    private volatile boolean audioShutdown;
+    private android.media.AudioDeviceCallback deviceCallback;
+    private android.media.AudioManager.OnCommunicationDeviceChangedListener commCallback;
+    private android.content.BroadcastReceiver scoReceiver;
+
+    /**
+     * App wird beendet oder geschlossen: Sprechverbindung sofort freigeben, Telefonie-Modus zurück auf normal, alle
+     * Wächter abmelden – sonst schaltet ein übrig gebliebener Wächter das Handy weiter in den „Anruf“ (Lautstärke
+     * springt, andere Apps werden leise), obwohl die App zu ist.
+     */
+    void shutdownAudio() {
+        audioShutdown = true;
+        voiceWanted = false;
+        audioHandler.removeCallbacksAndMessages(null);
+        android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return;
+        try {
+            if (deviceCallback != null) am.unregisterAudioDeviceCallback(deviceCallback);
+            if (Build.VERSION.SDK_INT >= 31 && commCallback != null) am.removeOnCommunicationDeviceChangedListener(commCallback);
+            if (scoReceiver != null) unregisterReceiver(scoReceiver);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Audio abmelden", e);
+        }
+        deviceCallback = null;
+        commCallback = null;
+        scoReceiver = null;
+        deviceWatch = false;
+        commListener = false;
+        try {
+            if (Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice();
+            if (scoStarted) {
+                am.setBluetoothScoOn(false);
+                am.stopBluetoothSco();
+                scoStarted = false;
+            }
+            if (callMode || am.getMode() == android.media.AudioManager.MODE_IN_COMMUNICATION) am.setMode(android.media.AudioManager.MODE_NORMAL);
+            callMode = false;
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Audio zurücksetzen", e);
+        }
+    }
     private static boolean isBt(int type) {
         return type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET
             || type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || type == android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER;
@@ -460,12 +525,12 @@ public class MainActivity extends BridgeActivity {
 
     /** Verbindung zum Sprechgerät verloren, obwohl gewünscht: bis zu 3× mit wachsender Pause neu aufbauen. */
     private void retryRoute() {
-        if (!voiceWanted || routeRetries >= 3) return;
+        if (audioShutdown || !voiceWanted || routeRetries >= 3) return;
         long delay = 1500L << routeRetries;
         routeRetries++;
         Log.i("KI-Assistent", "Sprechgerät weg – neuer Versuch " + routeRetries);
         audioHandler.postDelayed(() -> {
-            if (!voiceWanted) return;
+            if (audioShutdown || !voiceWanted) return;
             String name = routeVoice(true);
             if (!name.isEmpty()) routeRetries = 0;
             notifyAudio();
@@ -475,15 +540,17 @@ public class MainActivity extends BridgeActivity {
         if (commListener) return;
         commListener = true;
         if (Build.VERSION.SDK_INT >= 31) {
-            am.addOnCommunicationDeviceChangedListener(getMainExecutor(), (d) -> {
+            commCallback = (d) -> {
+                if (audioShutdown) return;
                 boolean lost = d == null || d.getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || d.getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
                 if (voiceWanted && lost && hasVoiceDevice(am)) retryRoute();
                 else if (!lost) routeRetries = 0;
                 notifyAudio();
-            });
+            };
+            am.addOnCommunicationDeviceChangedListener(getMainExecutor(), commCallback);
         } else {
             try {
-                registerReceiver(new android.content.BroadcastReceiver() {
+                registerReceiver(scoReceiver = new android.content.BroadcastReceiver() {
                     @Override
                     public void onReceive(Context c, Intent i) {
                         int st = i.getIntExtra(android.media.AudioManager.EXTRA_SCO_AUDIO_STATE, -1);
@@ -522,6 +589,13 @@ public class MainActivity extends BridgeActivity {
                     setCallMode(am, false);
                     return "";
                 }
+                // schon verbunden: nichts neu setzen (jedes Setzen kann die Verbindung kurz trennen und neu aufbauen)
+                android.media.AudioDeviceInfo cur = am.getCommunicationDevice();
+                if (cur != null && voiceTypeOk(cur.getType())) {
+                    if (isBt(cur.getType())) setCallMode(am, true);
+                    return devName(cur);
+                }
+                if (!routeBudget()) return "";
                 // Reihenfolge: Bluetooth (LE, klassisch), dann Kabel/USB-Headset
                 int[] prefer = { android.media.AudioDeviceInfo.TYPE_BLE_HEADSET, android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
                     android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET, android.media.AudioDeviceInfo.TYPE_USB_HEADSET };
@@ -572,9 +646,10 @@ public class MainActivity extends BridgeActivity {
     private void watchAudioDevices(android.media.AudioManager am) {
         if (deviceWatch || Build.VERSION.SDK_INT < 23) return;
         deviceWatch = true;
-        am.registerAudioDeviceCallback(new android.media.AudioDeviceCallback() {
+        am.registerAudioDeviceCallback(deviceCallback = new android.media.AudioDeviceCallback() {
             @Override
             public void onAudioDevicesAdded(android.media.AudioDeviceInfo[] added) {
+                if (audioShutdown) return;
                 if (voiceWanted) {
                     routeRetries = 0;
                     routeVoice(true);
@@ -584,6 +659,7 @@ public class MainActivity extends BridgeActivity {
 
             @Override
             public void onAudioDevicesRemoved(android.media.AudioDeviceInfo[] removed) {
+                if (audioShutdown) return;
                 if (voiceWanted) routeVoice(true);
                 notifyAudio();
             }
@@ -1126,6 +1202,7 @@ public class MainActivity extends BridgeActivity {
          */
         @JavascriptInterface
         public String voiceRoute(boolean on) {
+            if (on) audioShutdown = false;
             voiceWanted = on;
             if (on) routeRetries = 0;
             String name = routeVoice(on);
@@ -1295,6 +1372,7 @@ public class MainActivity extends BridgeActivity {
         public void quit() {
             runOnUiThread(() -> {
                 try {
+                    shutdownAudio();
                     floatEnabled = false;
                     pipEnabled = false;
                     hideFloat();
@@ -1818,8 +1896,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
-        // Telefonie-Modus nie hängen lassen (sonst bliebe das Auto im „Anruf“)
-        if (callMode || scoStarted) routeVoice(false);
+        // Telefonie-Modus nie hängen lassen (sonst bliebe das Auto im „Anruf“), Wächter abmelden
+        shutdownAudio();
         if (carReceiver != null) {
             try { unregisterReceiver(carReceiver); } catch (Exception ignored) {}
             carReceiver = null;

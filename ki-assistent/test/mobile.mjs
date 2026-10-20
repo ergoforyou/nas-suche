@@ -1441,6 +1441,37 @@ const audioRes = await page.evaluate(async () => {
   return { shown, afterZeros, capped, msg };
 });
 check(/Golf/.test(audioRes.shown.text) && audioRes.shown.bt && !audioRes.shown.hidden && audioRes.shown.aec && audioRes.shown.dev === 'Golf', 'Sprachkette: Auto als Sprechgerät angezeigt, Mikrofon bleibt im Gesprächsmodus', JSON.stringify(audioRes.shown));
+// Kopfhörer nicht wegschnappen: Warten aufs Aktivierungswort nimmt das Handy-Mikrofon (YouTube & Co. laufen weiter),
+// erst im Gespräch bzw. beim Sprechen per Knopf wird der Kopfhörer zum Sprechgerät
+const grabRes = await page.evaluate(() => {
+  const app = window.__app;
+  const had = window.KIDevice;
+  const calls = [];
+  window.KIDevice = { ...(had ?? {}), voiceRoute: (on) => (calls.push(on), on ? 'Pixel Buds' : '') };
+  const keep = { hf: app.state.settings.handsFree, dev: app.state.voiceDevice };
+  app.state.settings.handsFree = false;
+  app.state.voiceDevice = 'Pixel Buds';
+  app.stt.onMicOpen(false); // Aktivierungswort
+  const wake = { calls: [...calls], aec: app.stt.forceAec };
+  app.stt.onMicOpen(true); // Sprechen per Knopf
+  const talk = calls.at(-1);
+  app.stt.onMicOpen(false); // zurück zum Aktivierungswort: wieder freigeben
+  const back = calls.at(-1);
+  app.state.settings.handsFree = true;
+  app.stt.onMicOpen(false); // im Live-Gespräch
+  const live = { on: calls.at(-1), aec: app.stt.forceAec };
+  app.state.settings.handsFree = keep.hf;
+  app.state.voiceDevice = keep.dev;
+  app.stt.forceAec = false;
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  return { wake, talk, back, live };
+});
+check(
+  grabRes.wake.calls.length === 0 && !grabRes.wake.aec && grabRes.talk === true && grabRes.back === false && grabRes.live.on === true && grabRes.live.aec,
+  'Kopfhörer: Aktivierungswort lässt andere Apps in Ruhe, nur Gespräch/Sprechen nimmt den Kopfhörer',
+  JSON.stringify(grabRes),
+);
 check(audioRes.afterZeros === 1 && audioRes.capped === 3 && /hängt/.test(audioRes.msg), 'Sprachkette: hängendes Mikrofon (nur Nullen) wird neu geöffnet – höchstens 3× in 2 Minuten', JSON.stringify(audioRes));
 // Wetter-Werkzeug (Open-Meteo, nachgebildet): Ort aus dem Standort, kompakte Übersicht
 await page.route('https://geocoding-api.open-meteo.com/**', (route) =>
