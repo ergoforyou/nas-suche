@@ -74,6 +74,27 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'nachrichten',
+    description:
+      'Holt die wichtigsten Nachrichten des Tages: lokal (zum Ort des Nutzers), Wetter, Wirtschaft, Deutschland, Welt ' +
+      '(Quellen: tagesschau.de, Google News, Open-Meteo). Nimm es für „Was gibt es Neues?“, „Nachrichten“, ' +
+      '„Tagesüberblick“, „Was ist heute los?“ oder Fragen nach aktuellen Meldungen eines Bereichs – statt einer ' +
+      'Internetsuche. Fasse danach je Bereich das Wichtigste in deiner Art zusammen (wenige Sätze, ohne Aufzählung ' +
+      'aller Titel); nenne bei Bedarf die Quelle. Ohne Ort gilt der aktuelle Standort.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        bereiche: {
+          type: 'array',
+          items: { type: 'string', enum: ['lokal', 'wetter', 'wirtschaft', 'deutschland', 'welt'] },
+          description: 'Welche Bereiche (leer = alle)',
+        },
+        ort: { type: 'string', description: 'Ort für Lokales und Wetter (leer = aktueller Standort)' },
+        anzahl: { type: 'integer', description: 'Meldungen je Bereich (2–8, Standard 5)' },
+      },
+    },
+  },
+  {
     name: 'an_claude_uebergeben',
     desktopOnly: true, // nur am PC (Claude-App unter Windows)
     description:
@@ -95,6 +116,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   an_claude_uebergeben: '✳ Übergebe an Claude …',
   gedaechtnis_loeschen: '🗑 Vergesse …',
   wetter: '🌦 Schaue nach dem Wetter …',
+  nachrichten: '📰 Schaue in die Nachrichten …',
 };
 
 module.exports = { APP_TOOLS, APP_TOOL_STATUS };

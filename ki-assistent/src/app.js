@@ -271,7 +271,7 @@ const RULES = {
       'Fahrmodus: Der Nutzer fährt gerade Auto. Antworte sehr kurz (höchstens zwei Sätze), ohne Aufzählungen und ohne ' +
       'etwas, das man lesen müsste. Bei Navigation oder Verkehr nur das Wichtigste.',
     web:
-      'Du hast Internetzugang über die Werkzeuge web_search und web_fetch (für das Wetter gibt es das Werkzeug wetter). Für aktuelle Dinge wie Verkehr und ' +
+      'Du hast Internetzugang über die Werkzeuge web_search und web_fetch (für Wetter und Nachrichten gibt es die Werkzeuge wetter und nachrichten). Für aktuelle Dinge wie Verkehr und ' +
       'Staus, Nachrichten, Öffnungszeiten oder Preise suche selbst im Internet, statt zu sagen, dass du das nicht ' +
       'abrufen kannst. Findest du nichts Passendes, sag kurz, wo du gesucht hast.',
   },
@@ -5793,6 +5793,12 @@ async function runAppToolInner(name, input) {
     const ort = String(input?.ort ?? '').trim() || (await currentPlace());
     if (!ort) return { fehler: 'Kein Ort bekannt – frag nach dem Ort oder bitte darum, ihn in ⚙ einzutragen bzw. den Standort zu erlauben.' };
     return desktop.weather({ ort, tage: input?.tage });
+  }
+  if (name === 'nachrichten') {
+    if (state.settings.offline) throw new Error('offline – keine Nachrichten abrufbar');
+    if (!desktop.news) throw new Error('Nachrichten sind hier nicht verfügbar');
+    const ort = String(input?.ort ?? '').trim() || (await currentPlace());
+    return desktop.news({ bereiche: input?.bereiche, ort, anzahl: input?.anzahl });
   }
   if (name === 'wissen_suchen') {
     const q = String(input.suchbegriff ?? '').trim();

@@ -20,6 +20,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
 const { weather } = require('./wetter.js');
+const { news } = require('./nachrichten.js');
 const { friendlyCloudError, chatAnthropic, chatOpenAI, transcribeOpenAI, appTools, mergeTools } = require('./cloud.js');
 
 const DIST = path.join(__dirname, 'dist');
@@ -244,6 +245,10 @@ async function claudeWindow() {
 ipcMain.handle('weather:get', async (_e, opts = {}) => {
   if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
   return weather(opts, { fetchFn: (u) => net.fetch(u, { signal: AbortSignal.timeout(15000) }) });
+});
+ipcMain.handle('news:get', async (_e, opts = {}) => {
+  if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
+  return news(opts, { fetchFn: (u) => net.fetch(u, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 KI-Assistent' } }) });
 });
 ipcMain.handle('claude:handoff', async (_e, { text, send } = {}) => {
   if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');

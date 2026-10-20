@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('desktop', {
   officePaste: (opts) => ipcRenderer.invoke('office:paste', opts),
   claudeHandoff: (opts) => ipcRenderer.invoke('claude:handoff', opts),
   weather: (opts) => ipcRenderer.invoke('weather:get', opts),
+  news: (opts) => ipcRenderer.invoke('news:get', opts),
   officeCopy: (text) => ipcRenderer.invoke('office:copy', text),
   officeForeground: () => ipcRenderer.invoke('office:foreground'),
   officeState: () => ipcRenderer.invoke('office:state'),

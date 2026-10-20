@@ -1439,6 +1439,34 @@ const wxRes = await page.evaluate(async () => {
   return r;
 });
 check(wxRes.ort === 'Hannover, Niedersachsen' && wxRes.jetzt?.wetter === 'leichter Regen' && wxRes.jetzt.temp === 11.4 && wxRes.tage?.length === 2 && wxRes.naechste_stunden?.length >= 3 && /latitude=52.37/.test(wxUrl), 'Wetter-Werkzeug: Ort vom Standort, aktuelles Wetter und Vorhersage', JSON.stringify(wxRes).slice(0, 300));
+// Nachrichten-Werkzeug: Welt/Deutschland/Wirtschaft (tagesschau.de), Lokales (Google News), Wetter – Feeds nachgebildet
+const rss = (titles) => `<?xml version="1.0"?><rss><channel>${titles.map((t) => `<item><title>${t}</title><description>&lt;p&gt;${t} – mehr dazu.&lt;/p&gt;</description><pubDate>Tue, 20 Oct 2026 06:00:00 GMT</pubDate></item>`).join('')}</channel></rss>`;
+const newsUrls = [];
+await page.route('https://www.tagesschau.de/**', (route) => {
+  const u = route.request().url();
+  newsUrls.push(u);
+  const t = /wirtschaft/.test(u) ? ['DAX legt zu', 'Inflation sinkt'] : /ausland/.test(u) ? ['Gipfel in Brüssel'] : ['Bundestag tagt'];
+  route.fulfill({ status: 200, headers: { 'content-type': 'application/rss+xml', 'access-control-allow-origin': '*' }, body: rss(t) });
+});
+await page.route('https://news.google.com/**', (route) => {
+  newsUrls.push(route.request().url());
+  route.fulfill({ status: 200, headers: { 'content-type': 'application/rss+xml', 'access-control-allow-origin': '*' }, body: rss(['Neue Stadtbahnlinie in Hannover - HAZ']).replace('</title>', '</title><source url="https://www.haz.de">HAZ</source>') });
+});
+const newsRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = app.state.settings.place;
+  app.state.settings.place = 'Hannover, Niedersachsen';
+  const r = await app.runAppTool('nachrichten', {}).catch((e) => ({ err: e.message }));
+  app.state.settings.place = keep;
+  return r;
+});
+check(
+  newsRes.wirtschaft?.[0]?.titel === 'DAX legt zu' && newsRes.welt?.[0]?.titel === 'Gipfel in Brüssel' && newsRes.deutschland?.[0]?.titel === 'Bundestag tagt' &&
+    newsRes.lokal?.meldungen?.[0]?.titel === 'Neue Stadtbahnlinie in Hannover' && newsRes.wetter?.jetzt?.wetter === 'leichter Regen' &&
+    newsUrls.some((u) => /q=Hannover/.test(u)) && !newsUrls.some((u) => /Niedersachsen/.test(u)),
+  'Nachrichten-Werkzeug: lokal, Wetter, Wirtschaft, Deutschland, Welt – nur der Ortsname geht hinaus',
+  JSON.stringify(newsRes).slice(0, 400),
+);
 // Live-Gespräch: ein Geräusch während der Antwort hält die Stimme nur kurz an – nichts wird abgebrochen
 const bargeRes = await page.evaluate(async () => {
   const app = window.__app;

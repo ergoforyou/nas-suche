@@ -1,7 +1,7 @@
 {
   "name": "ki-assistent",
   "productName": "KI-Assistent",
-  "version": "1.26.0-beta.52",
+  "version": "1.26.0-beta.53",
   "description": "Lokaler Desktop-Assistent mit Avatar, Spracherkennung und Sprachausgabe für LM Studio",
   "main": "main.js",
   "author": "ergoforyou",
@@ -48,6 +48,7 @@
       "cloud.js",
       "apptools.js",
       "wetter.js",
+      "nachrichten.js",
       "google.js",
       "dist/**/*"
     ],
