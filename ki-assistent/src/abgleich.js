@@ -11,7 +11,7 @@ const SELF_MAX = 40;
 const REFLEX_MAX = 20;
 
 // Teile einer Persona, die nicht als „Text“ zählen: eigene Regeln beim Zusammenführen bzw. gerätebezogen
-const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp']);
+const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp']);
 const newId = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 const norm = (x) => String(x ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -36,7 +36,7 @@ export function stamp(data, cache, { now = Date.now(), record = false, initial =
     });
   }
   for (const p of data.personas ?? []) {
-    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? [])]) e.id ??= newId();
+    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? []), ...(p.kanon ?? []), ...(p.gemeinsam ?? []), ...(p.tagebuch ?? [])]) e.id ??= newId();
     const text = JSON.stringify(personaText(p));
     const av = JSON.stringify(p.avatar ?? null);
     const c = cache.get(p.id);
@@ -54,7 +54,7 @@ export function idsOf(data) {
   const ids = new Set();
   for (const p of data.personas ?? []) {
     ids.add(p.id);
-    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? [])]) if (e.id) ids.add(e.id);
+    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? []), ...(p.kanon ?? []), ...(p.gemeinsam ?? []), ...(p.tagebuch ?? [])]) if (e.id) ids.add(e.id);
     for (const m of data.history?.[p.id] ?? []) if (m.id) ids.add(m.id);
   }
   for (const e of data.saved ?? []) if (e.id) ids.add(e.id);
@@ -162,6 +162,11 @@ export function mergeSync(a, b) {
       }),
       // offene Themen: „schon angesprochen“ auf einem Gerät gilt für beide (neuerer Stand gewinnt)
       themen: mergeEntries(pa.themen, pb.themen, { dead, max: 20, same: (x, y) => norm(x.text) === norm(y.text) }),
+      // Kanon, gemeinsame Geschichte, Tagebuch (je Tag ein Eintrag) und die Stimmung (die neuere gilt)
+      kanon: mergeEntries(pa.kanon, pb.kanon, { dead, max: 60, same: (x, y) => norm(x.text) === norm(y.text), keep: (e) => e.quelle === 'nutzer' }),
+      gemeinsam: mergeEntries(pa.gemeinsam, pb.gemeinsam, { dead, max: 40, same: (x, y) => norm(x.text) === norm(y.text) }),
+      tagebuch: mergeEntries(pa.tagebuch, pb.tagebuch, { dead, max: 30, same: (x, y) => x.datum === y.datum }),
+      stimmung: (pb.stimmung?.t ?? 0) > (pa.stimmung?.t ?? 0) ? pb.stimmung : pa.stimmung,
       reflexion: [...new Map([...(pa.reflexion ?? []), ...(pb.reflexion ?? [])].map((r) => [r.created, r])).values()]
         .sort((x, y) => x.created - y.created)
         .slice(-REFLEX_MAX),

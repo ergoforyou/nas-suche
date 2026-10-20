@@ -40,7 +40,7 @@ await page.route('https://api.anthropic.com/**', (route) => {
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
   // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
   // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
-  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild/.test(JSON.stringify(request.body.system ?? ''));
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch/.test(JSON.stringify(request.body.system ?? ''));
   const qi = claudeQueue.findIndex((e) => !!e.helper === helper);
   const evs = qi >= 0 ? claudeQueue.splice(qi, 1)[0] : [
     { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
@@ -1499,6 +1499,43 @@ const bargeRes = await page.evaluate(async () => {
   return calls;
 });
 check(bargeRes.includes('hold') && bargeRes.includes('release') && !bargeRes.includes('abort') && bargeRes.indexOf('stop') < 0, 'Live-Gespräch: Knacken während der Antwort pausiert nur kurz, die Antwort läuft weiter', JSON.stringify(bargeRes));
+// Figur: Kanon (über sich Erzähltes), Tagebuch mit Stimmung und gemeinsamer Geschichte, Fehler in ihrer Stimme, Rollen-Check
+const helperSay = (t) => Object.assign(sayText(t), { helper: true });
+claudeQueue.push(helperSay('{"fakten":[],"ersetzen":[],"themen":[],"ueber_mich":["Ich mag Kirschkuchen am liebsten.","Ich bin eine KI."]}'));
+claudeQueue.push(helperSay('{"tagebuch":"Heute hat Jens mir vom alten Drucker erzählt, wir haben viel gelacht. Ich war gern dabei.","stimmung":{"gefuehl":"heiter","grund":"wir haben über den Drucker gelacht"},"gemeinsam":["Wir nennen Jens alten Drucker das Biest."]}'));
+for (let i = 0; i < 10; i++) claudeQueue.push(sayText('Ich bin hier und ganz bei dir – frag mich ruhig weiter.'));
+const figRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const before = { kanon: p.kanon, tagebuch: p.tagebuch, gemeinsam: p.gemeinsam, stimmung: p.stimmung, memoryOn: p.memoryOn, immersion: p.immersion };
+  Object.assign(p, { kanon: [], tagebuch: [], gemeinsam: [], stimmung: null, memoryOn: true, immersion: true });
+  await app.learnNow([{ q: 'Was isst du gern?', a: 'Kirschkuchen, ganz klar – den mag ich am liebsten.' }]);
+  const kanon = p.kanon.map((e) => e.text);
+  const h = app.history();
+  const n0 = h.length;
+  h.push({ role: 'user', content: 'Mein Drucker spinnt schon wieder.', t: Date.now() }, { role: 'assistant', content: 'Das Biest!', t: Date.now() }, { role: 'user', content: 'Haha, genau.', t: Date.now() });
+  const diary = await app.writeDiary({ manual: true }).catch((e) => ({ err: e.message }));
+  const sys = JSON.stringify(app.buildMessages());
+  const prompt = {
+    kanon: /Was du schon über dich erzählt hast[^"]*Kirschkuchen/.test(sys),
+    diary: /Aus deinem Tagebuch[^"]*Drucker/.test(sys),
+    mood: /Wie es dir seit gestern geht: heiter/.test(sys),
+    shared: /gemeinsame Geschichte[^"]*Biest/.test(sys),
+  };
+  h.splice(n0);
+  document.getElementById('sbCheck').click();
+  for (let i = 0; i < 80 && !/von 10/.test(document.getElementById('sbCheckOut').textContent); i++) await new Promise((r) => setTimeout(r, 100));
+  const check = { head: document.querySelector('#sbCheckOut p')?.textContent ?? '', rows: document.querySelectorAll('#sbCheckOut .role-check').length, histSame: h.length === n0 };
+  const err = app.inRoleError('fetch failed: ENOTFOUND api.anthropic.com');
+  const ui = { kanon: document.querySelectorAll('#kanonList .memory-row').length, diary: document.querySelectorAll('#diaryList .memory-row').length, mood: document.getElementById('moodNow').textContent };
+  const out = { kanon, diary, tagebuch: p.tagebuch.length, gemeinsam: p.gemeinsam.map((e) => e.text), prompt, check, err, ui };
+  Object.assign(p, before);
+  return out;
+});
+check(figRes.kanon.length === 1 && /Kirschkuchen/.test(figRes.kanon[0]) && figRes.prompt.kanon && figRes.ui.kanon === 1, 'Figur: was sie über sich erzählt, bleibt (Kanon, ohne Rollenbruch), steht im Systemtext', JSON.stringify(figRes));
+check(figRes.tagebuch === 1 && figRes.prompt.diary && figRes.prompt.mood && figRes.prompt.shared && /Biest/.test(figRes.gemeinsam[0] ?? '') && figRes.ui.diary === 1 && /heiter/.test(figRes.ui.mood), 'Figur: Tagebuch, Stimmung und gemeinsame Geschichte gehen ins Gespräch mit', JSON.stringify(figRes));
+check(/9 von 10/.test(figRes.check.head) && figRes.check.rows === 10 && figRes.check.histSame, 'Rollen-Check: 10 Fragen ohne Verlauf, ausweichende Antwort auf die KI-Frage wird markiert', JSON.stringify(figRes.check));
+check(/Verbindung/.test(figRes.err) && !/fetch|ENOTFOUND/.test(figRes.err), 'Fehler in der Stimme der Figur', figRes.err);
 check(/Ich:/.test(roleRes.examples) && roleRes.exInPrompt, 'Rolle: Beispieldialoge vorgeschlagen und im Steckbrief-Block', JSON.stringify(roleRes));
 // Vergessen auf Bitte: passende Einträge aus Gedächtnis/Selbstbild/Themen löschen, anderes bleibt, Rückgängig
 const forgetRes = await page.evaluate(async () => {

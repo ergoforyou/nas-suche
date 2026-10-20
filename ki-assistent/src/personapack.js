@@ -28,6 +28,10 @@ export async function packPersona(persona, { withMemory = false, version = '', o
     delete p.selbst;
     delete p.reflexion;
     delete p.themen;
+    delete p.kanon;
+    delete p.gemeinsam;
+    delete p.tagebuch;
+    delete p.stimmung;
   }
   delete p.reflectTurns;
   delete p.reflectedAt;

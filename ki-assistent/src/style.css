@@ -428,3 +428,7 @@ body.floating .stage { display: none; }
 .lock-screen[hidden] { display: none; }
 .lock-screen .lock-icon { font-size: 56px; }
 .lock-screen button { font-size: 17px; padding: 10px 28px; }
+.memory-row textarea { flex: 1; min-width: 0; font: inherit; }
+.memory-row.role-check { align-items: flex-start; }
+.memory-row.role-check > div { flex: 1; min-width: 0; font-size: 13px; }
+.memory-row.role-check .a { white-space: pre-wrap; }

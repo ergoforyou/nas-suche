@@ -138,6 +138,8 @@
           <button id="sbClear" class="danger">Leeren</button>
         </div>
         <p id="sbInfo" class="hint"></p>
+        <button id="sbCheck" title="Stellt der Figur 10 knifflige Fragen (ohne Verlauf, nichts wird gespeichert) und zeigt, wo sie aus der Rolle fällt – kostet ein paar Cent">🎭 Rollen-Check</button>
+        <div id="sbCheckOut" class="memory-list"></div>
       </details>
       <details id="sgBox" class="steckbrief">
         <summary>📖 Lebensgeschichte <span id="sgState" class="hint"></span></summary>
@@ -413,6 +415,23 @@
         <button id="selfNow">🪞 Jetzt nachdenken</button>
         <button id="selfClear" class="danger">Selbstbild löschen</button>
       </div>
+
+      <h3>📖 Über mich erzählt <span id="kanonCount" class="hint"></span></h3>
+      <p class="hint">Was die Figur im Gespräch über sich erzählt hat (Herkunft, Erlebnisse, Vorlieben). Das gilt ab dann
+        – so widerspricht sie sich nicht. Stimmt etwas nicht, ändere oder streiche es hier.</p>
+      <div id="kanonList" class="memory-list"></div>
+
+      <h3>📔 Tagebuch <span id="diaryCount" class="hint"></span></h3>
+      <p class="hint">In der Abendrunde schreibt die Figur ein paar Sätze über den Tag mit dir, in Ich-Form. Die letzten
+        drei Einträge und ihre Stimmung nimmt sie ins nächste Gespräch mit.</p>
+      <p id="moodNow" class="hint"></p>
+      <div id="diaryList" class="memory-list"></div>
+      <button id="diaryNow">📔 Jetzt ins Tagebuch schreiben</button>
+
+      <h3>🤝 Gemeinsame Geschichte <span id="sharedCount" class="hint"></span></h3>
+      <p class="hint">Besondere Momente, Insider und Rituale von euch beiden – entstehen beim Tagebuchschreiben (nur mit
+        eingeschaltetem Gedächtnis).</p>
+      <div id="sharedList" class="memory-list"></div>
     </div>
 
     <div class="tab" data-tab="voice" hidden>
