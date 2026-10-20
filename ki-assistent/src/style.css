@@ -432,3 +432,9 @@ body.floating .stage { display: none; }
 .memory-row.role-check { align-items: flex-start; }
 .memory-row.role-check > div { flex: 1; min-width: 0; font-size: 13px; }
 .memory-row.role-check .a { white-space: pre-wrap; }
+/* welches Mikrofon / welcher Ton gerade aktiv ist – auch im Bild-im-Bild und in der schwebenden Figur */
+.audio-chip { position: absolute; right: 8px; bottom: 8px; z-index: 4; padding: 2px 8px; border-radius: 10px; font-size: 11px;
+  background: rgba(20, 24, 32, 0.72); color: #fff; pointer-events: none; max-width: 70%; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.audio-chip.bt { background: rgba(46, 155, 79, 0.85); }
+.pip .audio-chip { top: 6px; bottom: auto; right: 6px; font-size: 10px; padding: 1px 6px; }

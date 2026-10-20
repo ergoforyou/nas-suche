@@ -447,8 +447,78 @@ function voiceRoute(on) {
     if (name) status(`🎧 Sprechen und Hören über ${name}`);
   }
   if (on) state.voiceDevice = name;
+  // mit Auto/Headset das Mikrofon immer gleich öffnen (sonst beendet jeder Wechsel den „Anruf“)
+  stt.forceAec = !!state.voiceDevice;
   const el = document.getElementById('phAudioDev');
   if (el) el.textContent = state.voiceDevice ? `Zuletzt verwendet: ${state.voiceDevice}.` : '';
+  renderAudioChip();
+}
+/** Gespräch läuft (Live oder Fahrmodus) und ein Sprechgerät ist verbunden? */
+const voiceSession = () => MOBILE && (state.settings.handsFree || state.drive);
+// Mikrofon zwischen zwei Fragen nicht schließen, solange ein Gespräch über Auto/Headset läuft (jedes Schließen
+// beendet dort den „Anruf“); sonst nach 4 s wieder zu, damit andere Töne nicht leiser bleiben
+let idleCloseOverride = null; // nur für Tests
+Object.defineProperty(stt, 'idleCloseMs', {
+  get: () => idleCloseOverride ?? (voiceSession() && state.voiceDevice ? 120000 : 4000),
+  set: (v) => (idleCloseOverride = v ?? null),
+});
+
+// ---- Sprachkette überwachen (Android meldet Gerätewechsel; das Mikrofon meldet, wenn es hängt)
+state.audio = {};
+window.__kiAudio = (json) => {
+  let a = {};
+  try {
+    a = JSON.parse(json);
+  } catch {}
+  const before = state.audio ?? {};
+  state.audio = a;
+  stt.forceAec = !!(a.comm || state.voiceDevice);
+  if ((before.comm ?? '') !== (a.comm ?? '')) {
+    logEv('AUDIO', `Sprechgerät jetzt: ${a.comm || 'Handy'}${a.media ? ` · Ton: ${a.media}` : ''}`);
+    state.voiceDevice = a.comm || '';
+    // das offene Mikrofon hängt sonst am alten Gerät: neu öffnen, laufendes Zuhören bleibt
+    if (stt.stream) stt.restartMic().catch((e) => logEv('AUDIO', `Mikrofon neu öffnen: ${e.message}`));
+  }
+  renderAudioChip();
+};
+let micDeadTimes = [];
+stt.onMicDead = async (why) => {
+  const now = Date.now();
+  micDeadTimes = micDeadTimes.filter((t) => now - t < 120e3);
+  micDeadTimes.push(now);
+  logEv('AUDIO', `Mikrofon ${why} – öffne neu (${micDeadTimes.length}.)`);
+  if (micDeadTimes.length > 3) {
+    status('🎤 Das Mikrofon hängt – tippe auf 🎤 oder trenne das Headset/Auto kurz.');
+    return;
+  }
+  try {
+    voiceRoute(true);
+    await stt.restartMic();
+    status('🎤 Mikrofon neu verbunden.');
+  } catch (e) {
+    logEv('AUDIO', `Neu öffnen fehlgeschlagen: ${e.message}`);
+  }
+};
+/** Anzeige auf der Bühne (auch im Bild-im-Bild und in der schwebenden Figur): welches Mikrofon, welcher Ton. */
+function renderAudioChip() {
+  const el = document.getElementById('audioChip');
+  if (!el) return;
+  const a = state.audio ?? {};
+  const short = (s) => String(s ?? '').replace(/\s*\(.*\)$/, '').slice(0, 18);
+  let mic;
+  let out;
+  if (MOBILE) {
+    mic = a.comm || state.voiceDevice || 'Handy';
+    out = a.comm || state.voiceDevice || a.media || 'Handy';
+  } else {
+    mic = stt.activeLabel ? stt.activeLabel.replace(/^(Standard|Default|Kommunikation|Communications)\s*-\s*/i, '') : 'Standard';
+    out = 'Standard';
+  }
+  const live = !!(stt.stream || state.settings.handsFree || state.drive);
+  el.hidden = !live;
+  el.textContent = `🎤 ${short(mic)}${short(out) !== short(mic) ? ` · 🔊 ${short(out)}` : ''}`;
+  el.title = `Mikrofon: ${mic}\nTon: ${out}${a.call ? '\n(Gesprächsverbindung aktiv)' : ''}`;
+  el.classList.toggle('bt', !!(a.bt || state.voiceDevice));
 }
 // Sprechverbindung nicht bei jeder Pause trennen: Zwischen Aktivierungswort, Frage und Antwort geht das Mikrofon kurz
 // zu und wieder auf – jedes Trennen schaltet das Auto zwischen „Anruf“ und Musik hin und her (Knacken, verlorene
@@ -461,8 +531,16 @@ stt.onMicOpen = () => {
 };
 stt.onMicClose = () => {
   clearTimeout(routeOffTimer);
-  routeOffTimer = setTimeout(() => !stt.stream && !rt && voiceRoute(false), state.settings.handsFree || state.drive ? 30000 : 3000);
+  renderAudioChip();
+  // während Live/Fahrmodus gar nicht freigeben (erst beim Beenden), sonst nach kurzer Pause
+  if (voiceSession()) return;
+  routeOffTimer = setTimeout(() => !stt.stream && !rt && voiceRoute(false), 3000);
 };
+/** Gespräch zu Ende (Live/Fahrmodus aus): Sprechverbindung freigeben, wenn das Mikrofon zu ist. */
+function releaseVoiceSoon() {
+  clearTimeout(routeOffTimer);
+  routeOffTimer = setTimeout(() => !voiceSession() && !stt.stream && !rt && voiceRoute(false), 3000);
+}
 
 // Figur im Chatfenster: anklicken = Rahmen zum Verschieben/Skalieren, Doppelklick = sprechen
 new RubberBand($('stage'), avatar, {
@@ -2570,8 +2648,13 @@ function setHandsFree(on) {
   // wartet das Aktivierungswort gerade aufs Mikrofon: sofort freigeben, damit Live gleich zuhören kann
   if (on && state.wakeListening) stt.cancel();
   if (on) maybeListenHandsFree();
-  else stt.cancel();
+  else {
+    stt.cancel();
+    releaseVoiceSoon();
+  }
+  keepAliveForVoice();
   updateBadge();
+  renderAudioChip();
   // Knöpfe überall nachziehen (Bild-im-Bild, schwebende Figur am Handy, freie Figur am PC)
   syncFullCtl();
 }
@@ -6897,6 +6980,25 @@ $('phTile').onclick = () => {
 $('phAssist').onclick = () => dev()?.assistantSettings?.();
 
 // ---------------------------------------------------------------- Android: Gespräch im Hintergrund
+/**
+ * Live-Gespräch oder Fahrmodus läuft: den Hintergrund-Dienst (Benachrichtigung „hört im Hintergrund“) automatisch
+ * mitlaufen lassen – nur so darf Android Mikrofon und Ton bei Bildschirm aus weiterlaufen lassen. Danach wieder aus,
+ * wenn er nicht ohnehin eingeschaltet ist.
+ */
+let autoBg = false;
+function keepAliveForVoice() {
+  if (!MOBILE || state.settings.bgTalk) return;
+  const want = state.drive || state.settings.handsFree;
+  if (want && !autoBg) {
+    autoBg = true;
+    dev()?.setBackground?.(true);
+    logEv('AUDIO', 'Hintergrund-Dienst für das Gespräch an');
+  } else if (!want && autoBg) {
+    autoBg = false;
+    // die schwebende Figur braucht den Dienst selbst
+    if (!state.settings.floatOverlay) dev()?.setBackground?.(false);
+  }
+}
 function setBgTalk(on) {
   state.settings.bgTalk = on;
   $('phBgTalk').checked = on;
@@ -7197,6 +7299,7 @@ function setDrive(on) {
     if (state.settings.handsFree) setHandsFree(false);
     setStageFull(false);
   }
+  keepAliveForVoice();
   logEv('FAHRMODUS', on ? 'an' : 'aus');
 }
 function fillCars() {
@@ -8031,12 +8134,17 @@ function lockNow() {
   $('lockMsg').textContent = '';
   $('drawer').hidden = true;
   if (!was) {
-    liveBeforeLock = !!state.settings.handsFree;
-    if (liveBeforeLock) setHandsFree(false);
-    tts.stop();
-    stt.cancel();
+    // Fahrmodus oder Auto/Headset verbunden: nur die Anzeige sperren, das Gespräch per Stimme läuft weiter
+    // (sonst wäre die App im Auto bei jedem Bildschirm-Aus „tot“) – abschaltbar unter ⚙ → Handy → App-Sperre
+    const keepTalking = lockCfg().talk !== false && (state.drive || (state.settings.handsFree && !!state.voiceDevice));
+    liveBeforeLock = !keepTalking && !!state.settings.handsFree;
+    if (!keepTalking) {
+      if (liveBeforeLock) setHandsFree(false);
+      tts.stop();
+      stt.cancel();
+    }
     dev()?.setLocked?.(true);
-    logEv('SPERRE', 'gesperrt');
+    logEv('SPERRE', keepTalking ? 'gesperrt – Gespräch läuft per Stimme weiter' : 'gesperrt');
   }
   if (!document.hidden) askUnlock({ auto: true });
 }
@@ -8090,6 +8198,7 @@ function renderLock() {
   $('phLock').checked = !!c.on;
   $('phLock').disabled = !avail && !c.on;
   $('phLockDelay').value = String(c.delay ?? 0);
+  $('phLockTalk').checked = c.talk !== false;
   $('phLockInfo').textContent = avail ? '' : 'Dafür zuerst in den Android-Einstellungen eine Bildschirmsperre (PIN, Muster, Fingerabdruck) einrichten.';
 }
 $('phLock').onchange = (e) => {
@@ -8098,6 +8207,9 @@ $('phLock').onchange = (e) => {
   dev()?.setSecure?.(c.on);
   logEv('SPERRE', c.on ? 'an' : 'aus');
   renderLock();
+};
+$('phLockTalk').onchange = (e) => {
+  localStorage.setItem(LOCK_KEY, JSON.stringify({ ...lockCfg(), talk: e.target.checked }));
 };
 $('phLockDelay').onchange = (e) => {
   localStorage.setItem(LOCK_KEY, JSON.stringify({ ...lockCfg(), delay: Number(e.target.value) || 0 }));
@@ -8450,6 +8562,8 @@ window.__app = {
   writeDiary: (o) => writeDiary(persona(), o),
   addKanon: (t) => addKanon(persona(), t),
   noteServedModel,
+  renderAudioChip,
+  keepAliveForVoice,
   checkKanon: () => checkKanon(persona()),
   inRoleError,
   carryPersonas,

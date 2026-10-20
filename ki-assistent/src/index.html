@@ -39,6 +39,7 @@
     </div>
     <div class="state-badge" id="stateBadge" hidden></div>
     <div id="pipDot" class="pip-dot"></div>
+    <div id="audioChip" class="audio-chip" hidden></div>
     <div id="pipFrame" class="pip-frame"></div>
     <div class="resize-handle" id="stageResize" title="Größe ändern"></div>
   </section>
@@ -918,6 +919,9 @@
           welche Wartezeit eingestellt ist. Solange gesperrt ist, hört die App nicht zu (kein Aktivierungswort, kein Live-Gespräch),
           liest keine Nachrichten vor und die schwebende Figur ist weg – nach dem Entsperren läuft alles wieder wie vorher.
           Gilt für beide Bereiche.</p>
+        <label class="check"><input id="phLockTalk" type="checkbox" /> Im Fahrmodus und mit Auto/Headset weitersprechen, auch wenn gesperrt
+          <span class="hint">(gesperrt wird dann nur die Anzeige – Chats, Gedächtnis und Einstellungen bleiben verborgen; das
+          laufende Gespräch geht per Stimme weiter)</span></label>
         <p id="phLockInfo" class="hint"></p>
       </div>
       <div id="phShared" class="mobile-only">

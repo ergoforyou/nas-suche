@@ -388,19 +388,133 @@ public class MainActivity extends BridgeActivity {
 
     /** Wie ein Anruf: Mikrofon und Ton laufen über das Bluetooth-Gerät, mit dessen Echo-Unterdrückung (Auto-Freisprechen). */
     private void setCallMode(android.media.AudioManager am, boolean on) {
-        if (on == callMode) return;
         try {
-            am.setMode(on ? android.media.AudioManager.MODE_IN_COMMUNICATION : android.media.AudioManager.MODE_NORMAL);
+            // den tatsächlichen Modus prüfen: die WebView setzt ihn beim Öffnen/Schließen des Mikrofons selbst um
+            int want = on ? android.media.AudioManager.MODE_IN_COMMUNICATION : android.media.AudioManager.MODE_NORMAL;
+            if (on || callMode) {
+                if (am.getMode() != want) am.setMode(want);
+            }
             callMode = on;
         } catch (Exception e) {
             Log.w("KI-Assistent", "Telefonie-Modus", e);
         }
     }
 
+    // ---- Sprechgerät überwachen: bricht die Verbindung ab (Auto beendet den „Anruf“, Headset hängt), neu aufbauen
+    // und der Oberfläche melden – die öffnet dann das Mikrofon neu und zeigt an, was gerade aktiv ist
+    private int routeRetries;
+    private final android.os.Handler audioHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean commListener;
+
+    private String devName(android.media.AudioDeviceInfo d) {
+        if (d == null) return "";
+        String n = String.valueOf(d.getProductName());
+        return n == null || n.trim().isEmpty() || n.equals("null") ? "" : n.trim();
+    }
+    private static boolean isBt(int type) {
+        return type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET
+            || type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || type == android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER;
+    }
+
+    /** Was gerade aktiv ist: Sprechgerät (Mikrofon + Ton im Gespräch) und Gerät für Medienton. */
+    String audioState() {
+        org.json.JSONObject o = new org.json.JSONObject();
+        android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        try {
+            if (am == null) return "{}";
+            String comm = "";
+            int commType = 0;
+            if (Build.VERSION.SDK_INT >= 31) {
+                android.media.AudioDeviceInfo d = am.getCommunicationDevice();
+                if (d != null && d.getType() != android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE && d.getType() != android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                    comm = devName(d);
+                    commType = d.getType();
+                }
+            } else if (am.isBluetoothScoOn()) {
+                comm = "Bluetooth-Headset";
+                commType = android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO;
+            }
+            String media = "";
+            for (android.media.AudioDeviceInfo d : am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)) {
+                int t = d.getType();
+                if (isBt(t) || t == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET || t == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES || t == android.media.AudioDeviceInfo.TYPE_USB_HEADSET) {
+                    media = devName(d);
+                    break;
+                }
+            }
+            o.put("comm", comm);
+            o.put("bt", isBt(commType));
+            o.put("media", media);
+            o.put("call", am.getMode() == android.media.AudioManager.MODE_IN_COMMUNICATION);
+            o.put("wanted", voiceWanted);
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Audio-Zustand", e);
+        }
+        return o.toString();
+    }
+    void notifyAudio() {
+        audioHandler.removeCallbacks(notifyAudioRun);
+        audioHandler.postDelayed(notifyAudioRun, 300);
+    }
+    private final Runnable notifyAudioRun = () -> runJs("window.__kiAudio && window.__kiAudio(" + org.json.JSONObject.quote(audioState()) + ")");
+
+    /** Verbindung zum Sprechgerät verloren, obwohl gewünscht: bis zu 3× mit wachsender Pause neu aufbauen. */
+    private void retryRoute() {
+        if (!voiceWanted || routeRetries >= 3) return;
+        long delay = 1500L << routeRetries;
+        routeRetries++;
+        Log.i("KI-Assistent", "Sprechgerät weg – neuer Versuch " + routeRetries);
+        audioHandler.postDelayed(() -> {
+            if (!voiceWanted) return;
+            String name = routeVoice(true);
+            if (!name.isEmpty()) routeRetries = 0;
+            notifyAudio();
+        }, delay);
+    }
+    private void watchCommDevice(android.media.AudioManager am) {
+        if (commListener) return;
+        commListener = true;
+        if (Build.VERSION.SDK_INT >= 31) {
+            am.addOnCommunicationDeviceChangedListener(getMainExecutor(), (d) -> {
+                boolean lost = d == null || d.getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || d.getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+                if (voiceWanted && lost && hasVoiceDevice(am)) retryRoute();
+                else if (!lost) routeRetries = 0;
+                notifyAudio();
+            });
+        } else {
+            try {
+                registerReceiver(new android.content.BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context c, Intent i) {
+                        int st = i.getIntExtra(android.media.AudioManager.EXTRA_SCO_AUDIO_STATE, -1);
+                        if (st == android.media.AudioManager.SCO_AUDIO_STATE_DISCONNECTED && voiceWanted && scoStarted) retryRoute();
+                        else if (st == android.media.AudioManager.SCO_AUDIO_STATE_CONNECTED) routeRetries = 0;
+                        notifyAudio();
+                    }
+                }, new IntentFilter(android.media.AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED));
+            } catch (Exception e) {
+                Log.w("KI-Assistent", "SCO-Empfänger", e);
+            }
+        }
+    }
+    /** Gibt es ein Gerät, über das man sprechen kann (Auto, Headset)? */
+    private boolean hasVoiceDevice(android.media.AudioManager am) {
+        if (Build.VERSION.SDK_INT >= 31) {
+            for (android.media.AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
+                int t = d.getType();
+                if (t == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO || t == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET
+                    || t == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET || t == android.media.AudioDeviceInfo.TYPE_USB_HEADSET) return true;
+            }
+            return false;
+        }
+        return hasBtHeadset(am);
+    }
+
     String routeVoice(boolean on) {
         android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return "";
         watchAudioDevices(am);
+        watchCommDevice(am);
         try {
             if (Build.VERSION.SDK_INT >= 31) {
                 if (!on) {
@@ -461,12 +575,17 @@ public class MainActivity extends BridgeActivity {
         am.registerAudioDeviceCallback(new android.media.AudioDeviceCallback() {
             @Override
             public void onAudioDevicesAdded(android.media.AudioDeviceInfo[] added) {
-                if (voiceWanted) routeVoice(true);
+                if (voiceWanted) {
+                    routeRetries = 0;
+                    routeVoice(true);
+                }
+                notifyAudio();
             }
 
             @Override
             public void onAudioDevicesRemoved(android.media.AudioDeviceInfo[] removed) {
                 if (voiceWanted) routeVoice(true);
+                notifyAudio();
             }
         }, new android.os.Handler(android.os.Looper.getMainLooper()));
     }
@@ -1008,7 +1127,16 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public String voiceRoute(boolean on) {
             voiceWanted = on;
-            return routeVoice(on);
+            if (on) routeRetries = 0;
+            String name = routeVoice(on);
+            notifyAudio();
+            return name;
+        }
+
+        /** Was gerade als Mikrofon/Ton aktiv ist (JSON: comm, bt, media, call, wanted). */
+        @JavascriptInterface
+        public String audioState() {
+            return MainActivity.this.audioState();
         }
 
         /**

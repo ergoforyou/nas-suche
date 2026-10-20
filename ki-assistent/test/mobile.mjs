@@ -1149,7 +1149,6 @@ check(restBtnRes.trigger === "rest" && /Ruhe-Video/.test(restBtnRes.name), 'Knop
 const micRes = await page.evaluate(async () => {
   const stt = window.__app.stt;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const keep = stt.idleCloseMs;
   stt.idleCloseMs = 200;
   // künstliches Mikrofon (der Testbrowser hat keins); merkt sich die angeforderten Einstellungen
   const asked = [];
@@ -1168,7 +1167,7 @@ const micRes = await page.evaluate(async () => {
   await p;
   await wait(500);
   const closed = !stt.stream;
-  stt.idleCloseMs = keep;
+  stt.idleCloseMs = undefined;
   navigator.mediaDevices.getUserMedia = orig;
   return { open, aec, track, closed };
 });
@@ -1416,6 +1415,33 @@ const role2 = await page.evaluate(() => {
   return { herkunft: /Fragt jemand, wo du herkommst[^"]*ergoforyou/.test(sys), caught, spared, claudeQ: app.isAiQuestion('Bist du Claude?') && !app.isAiQuestion('Wer hat dich gemacht?'), suspect: app.suspiciousSentences('Ich arbeite gern digital. Mir geht es gut.').length === 1 };
 });
 check(role2.herkunft && role2.caught && role2.spared && role2.claudeQ && role2.suspect, 'Rolle: mehr Umschreibungen erkannt, Herkunft aus dem Steckbrief, „Bist du Claude?“ ehrlich, Verdächtiges ins Log', JSON.stringify(role2));
+// Sprachkette: Gerätewechsel neu verbinden, hängendes Mikrofon erkennen, Anzeige von Mikrofon/Ton, Sperre im Auto
+const audioRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = { hf: app.state.settings.handsFree, restart: app.stt.restartMic, voice: app.state.voiceDevice, lock: localStorage.getItem('ki-sperre') };
+  app.state.settings.handsFree = true;
+  window.__kiAudio(JSON.stringify({ comm: 'Golf', bt: true, media: 'Golf', call: true }));
+  const chip = document.getElementById('audioChip');
+  const shown = { text: chip.textContent, bt: chip.classList.contains('bt'), hidden: chip.hidden, aec: app.stt.forceAec, dev: app.state.voiceDevice };
+  // hängendes Mikrofon: exakte Nullen über 3 s → neu öffnen (höchstens 3× in 2 Minuten)
+  let restarts = 0;
+  app.stt.restartMic = async () => restarts++;
+  for (let i = 0; i < 26; i++) app.stt.handleAudio(new Float32Array(2048));
+  await new Promise((r) => setTimeout(r, 50));
+  const afterZeros = restarts;
+  for (let i = 0; i < 4; i++) await app.stt.onMicDead('stumm');
+  const capped = restarts;
+  const msg = document.getElementById('status').textContent;
+  app.stt.restartMic = keep.restart;
+  app.state.settings.handsFree = keep.hf;
+  app.state.voiceDevice = keep.voice;
+  window.__kiAudio(JSON.stringify({}));
+  app.state.voiceDevice = keep.voice;
+  app.stt.forceAec = false;
+  return { shown, afterZeros, capped, msg };
+});
+check(/Golf/.test(audioRes.shown.text) && audioRes.shown.bt && !audioRes.shown.hidden && audioRes.shown.aec && audioRes.shown.dev === 'Golf', 'Sprachkette: Auto als Sprechgerät angezeigt, Mikrofon bleibt im Gesprächsmodus', JSON.stringify(audioRes.shown));
+check(audioRes.afterZeros === 1 && audioRes.capped === 3 && /hängt/.test(audioRes.msg), 'Sprachkette: hängendes Mikrofon (nur Nullen) wird neu geöffnet – höchstens 3× in 2 Minuten', JSON.stringify(audioRes));
 // Wetter-Werkzeug (Open-Meteo, nachgebildet): Ort aus dem Standort, kompakte Übersicht
 await page.route('https://geocoding-api.open-meteo.com/**', (route) =>
   route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ results: [{ name: 'Hannover', admin1: 'Niedersachsen', country_code: 'DE', latitude: 52.37, longitude: 9.73 }] }) }),
@@ -1790,6 +1816,13 @@ const lockRes = await page.evaluate(async () => {
   document.getElementById('lockBtn').click();
   await wait(150);
   const liveBack = app.state.settings.handsFree;
+  // mit Auto/Headset: Bildschirm aus sperrt nur die Anzeige, das Gespräch per Stimme läuft weiter
+  app.state.voiceDevice = 'Golf';
+  window.__kiScreenOff();
+  const keepTalk = app.state.locked && !ls.hidden && app.state.settings.handsFree;
+  document.getElementById('lockBtn').click();
+  await wait(150);
+  app.state.voiceDevice = '';
   app.setHandsFree(false);
   // wieder aus
   box.checked = false;
@@ -1798,12 +1831,12 @@ const lockRes = await page.evaluate(async () => {
   window.__kiPause();
   window.__kiResume();
   delete window.KIDevice;
-  return { on: cfg.on, secureOn: secure === false, openBefore, lockedAfterResume, failMsg, unlocked, asks, shortAway, off, stillOpen: ls.hidden, screenLocked, said, liveBack, locks };
+  return { on: cfg.on, secureOn: secure === false, openBefore, lockedAfterResume, failMsg, unlocked, asks, shortAway, off, stillOpen: ls.hidden, screenLocked, said, liveBack, keepTalk, locks: locks.slice(0, 4) };
 });
 check(
-  lockRes.on && !lockRes.openBefore && lockRes.lockedAfterResume && /Nicht entsperrt/.test(lockRes.failMsg) && lockRes.unlocked && lockRes.asks === 3 && lockRes.shortAway && lockRes.off === false && lockRes.secureOn && lockRes.stillOpen &&
-    lockRes.screenLocked && !lockRes.said.length && lockRes.liveBack && lockRes.locks.join() === 'true,false,true,false',
-  'App-Sperre: nach Rückkehr gesperrt, Fingerabdruck/PIN entsperrt, Fehlschlag bleibt gesperrt, Verzögerung wirkt; Bildschirm aus sperrt sofort und pausiert Zuhören/Vorlesen',
+  lockRes.on && !lockRes.openBefore && lockRes.lockedAfterResume && /Nicht entsperrt/.test(lockRes.failMsg) && lockRes.unlocked && lockRes.asks === 4 && lockRes.shortAway && lockRes.off === false && lockRes.secureOn && lockRes.stillOpen &&
+    lockRes.screenLocked && !lockRes.said.length && lockRes.liveBack && lockRes.keepTalk && lockRes.locks.join() === 'true,false,true,false',
+  'App-Sperre: nach Rückkehr gesperrt, Fingerabdruck/PIN entsperrt, Fehlschlag bleibt gesperrt, Verzögerung wirkt; Bildschirm aus sperrt sofort und pausiert Zuhören/Vorlesen (mit Auto/Headset läuft das Gespräch weiter)',
   JSON.stringify(lockRes),
 );
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)

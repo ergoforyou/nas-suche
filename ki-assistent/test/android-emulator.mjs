@@ -153,6 +153,9 @@ check(await run(`return ${JSON.stringify(FNS)}.every((f) => typeof window.KIDevi
 const pw = await run(`return JSON.parse(KIDevice.power())`);
 check(typeof pw.level === 'number' && pw.level >= 0, 'Akkustand lesbar', JSON.stringify(pw));
 check(typeof (await run(`return KIDevice.lockAvailable()`)) === 'boolean', 'App-Sperre: Bildschirmsperre des Handys abfragbar');
+// Sprachkette: Zustand abfragbar, Sprechgerät wählen/freigeben bringt die App nicht zum Absturz und meldet sich zurück
+const au = await run(`KIDevice.voiceRoute(true); KIDevice.voiceRoute(false); return JSON.parse(KIDevice.audioState())`);
+check(au && typeof au.call === 'boolean' && typeof au.comm === 'string', 'Sprachkette: Audio-Zustand abfragbar (Sprechgerät, Ton, Gesprächsmodus)', JSON.stringify(au));
 await run(`window.__app.state.settings.speak = false; document.querySelector('#input').value = ''; return true`);
 adb('shell', 'am', 'start', '-a', 'android.intent.action.SEND', '-t', 'text/plain', '--es', 'android.intent.extra.TEXT', 'Geteilt-aus-Test', '-n', ACT);
 let shared = '';

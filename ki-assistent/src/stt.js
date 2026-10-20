@@ -108,6 +108,9 @@ export class SpeechInput {
    */
   async ensureMic(aec = true) {
     clearTimeout(this.idleTimer);
+    // mit Auto/Headset immer im Gesprächsmodus öffnen: jeder Wechsel (Aktivierungswort ↔ Gespräch) würde sonst den
+    // „Anruf“ beenden und neu aufbauen – dabei bleibt das Mikrofon gern ganz hängen
+    aec = aec || !!this.forceAec;
     if (this.stream && this.micAec === aec) return;
     if (this.stream) this.closeMic();
     this.micAec = aec;
@@ -123,6 +126,16 @@ export class SpeechInput {
     }
     // welches Mikrofon nimmt wirklich auf? (bei „Standard“ entscheidet Windows – das kann wechseln)
     const track = this.stream.getAudioTracks()[0];
+    // Wache: Spur beendet oder länger stumm (Gerät weg, „Anruf“ beendet) → melden, die App öffnet neu
+    if (track) {
+      track.onended = () => this.stream?.getAudioTracks()[0] === track && this.onMicDead?.('beendet');
+      track.onmute = () => {
+        clearTimeout(this.muteTimer);
+        this.muteTimer = setTimeout(() => track.muted && this.stream?.getAudioTracks()[0] === track && this.onMicDead?.('stumm'), 2500);
+      };
+      track.onunmute = () => clearTimeout(this.muteTimer);
+    }
+    this.zeroMs = 0;
     this.activeLabel = track?.label || '';
     this.activeId = track?.getSettings?.().deviceId || '';
     this.onMicActive?.(this.activeLabel, !!this.usedFallback);
@@ -172,11 +185,35 @@ export class SpeechInput {
     });
   }
 
+  /** Mikrofon neu öffnen, ohne das laufende Zuhören abzubrechen (nach Gerätewechsel oder hängendem Mikrofon). */
+  async restartMic() {
+    const rec = this.rec;
+    this.rec = null;
+    const aec = this.micAec ?? true;
+    this.closeMic();
+    try {
+      await this.ensureMic(aec);
+      if (this.ctx?.state === 'suspended') await this.ctx.resume();
+    } finally {
+      this.rec = rec;
+    }
+  }
+
   handleAudio(input) {
     const data = new Float32Array(input);
     let sum = 0;
-    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) {
+      sum += data[i] * data[i];
+      if (data[i] !== 0) peak = 1;
+    }
     const rms = Math.sqrt(sum / data.length);
+    // echte Mikrofone rauschen immer ein wenig: kommen sekundenlang nur exakte Nullen, hängt die Verbindung
+    this.zeroMs = peak ? 0 : (this.zeroMs ?? 0) + (data.length / SAMPLE_RATE) * 1000;
+    if (this.zeroMs > 3000) {
+      this.zeroMs = -30000; // nicht dauernd melden
+      this.onMicDead?.('stille');
+    }
     this.onLevel(rms);
     // Ruhepegel: fällt sofort mit, steigt nur langsam (Sprechen hebt ihn kaum an)
     this.floor = this.floor == null ? rms : rms < this.floor ? rms : this.floor + (rms - this.floor) * 0.002;
