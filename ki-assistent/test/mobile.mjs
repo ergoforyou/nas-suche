@@ -1412,6 +1412,65 @@ const role2 = await page.evaluate(() => {
   return { herkunft: /Fragt jemand, wo du herkommst[^"]*ergoforyou/.test(sys), caught, spared, claudeQ: app.isAiQuestion('Bist du Claude?') && !app.isAiQuestion('Wer hat dich gemacht?'), suspect: app.suspiciousSentences('Ich arbeite gern digital. Mir geht es gut.').length === 1 };
 });
 check(role2.herkunft && role2.caught && role2.spared && role2.claudeQ && role2.suspect, 'Rolle: mehr Umschreibungen erkannt, Herkunft aus dem Steckbrief, „Bist du Claude?“ ehrlich, Verdächtiges ins Log', JSON.stringify(role2));
+// Wetter-Werkzeug (Open-Meteo, nachgebildet): Ort aus dem Standort, kompakte Übersicht
+await page.route('https://geocoding-api.open-meteo.com/**', (route) =>
+  route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ results: [{ name: 'Hannover', admin1: 'Niedersachsen', country_code: 'DE', latitude: 52.37, longitude: 9.73 }] }) }),
+);
+let wxUrl = '';
+await page.route('https://api.open-meteo.com/**', (route) => {
+  wxUrl = route.request().url();
+  const hours = Array.from({ length: 48 }, (_, i) => `2026-10-20T${String(i % 24).padStart(2, '0')}:00`);
+  route.fulfill({
+    status: 200,
+    headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+    body: JSON.stringify({
+      current: { time: '2026-10-20T08:00', temperature_2m: 11.4, apparent_temperature: 9.8, weather_code: 61, wind_speed_10m: 14, wind_gusts_10m: 30, precipitation: 0.3, relative_humidity_2m: 88 },
+      hourly: { time: hours, temperature_2m: hours.map(() => 12), precipitation_probability: hours.map(() => 70), precipitation: hours.map(() => 0.4), weather_code: hours.map(() => 63) },
+      daily: { time: ['2026-10-20', '2026-10-21'], weather_code: [61, 3], temperature_2m_max: [13, 15], temperature_2m_min: [8, 7], precipitation_probability_max: [80, 20], precipitation_sum: [4.2, 0], wind_speed_10m_max: [25, 12], sunrise: ['2026-10-20T07:52', '2026-10-21T07:54'], sunset: ['2026-10-20T18:20', '2026-10-21T18:18'] },
+    }),
+  });
+});
+const wxRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = app.state.settings.place;
+  app.state.settings.place = 'Hannover, Niedersachsen';
+  const r = await app.runAppTool('wetter', {}).catch((e) => ({ err: e.message }));
+  app.state.settings.place = keep;
+  return r;
+});
+check(wxRes.ort === 'Hannover, Niedersachsen' && wxRes.jetzt?.wetter === 'leichter Regen' && wxRes.jetzt.temp === 11.4 && wxRes.tage?.length === 2 && wxRes.naechste_stunden?.length >= 3 && /latitude=52.37/.test(wxUrl), 'Wetter-Werkzeug: Ort vom Standort, aktuelles Wetter und Vorhersage', JSON.stringify(wxRes).slice(0, 300));
+// Live-Gespräch: ein Geräusch während der Antwort hält die Stimme nur kurz an – nichts wird abgebrochen
+const bargeRes = await page.evaluate(async () => {
+  const app = window.__app;
+  const calls = [];
+  const orig = { listen: app.stt.listen, hold: app.tts.hold, release: app.tts.release, stop: app.tts.stop, abort: window.desktop.abortChat };
+  const keep = { bargeIn: app.state.settings.bargeIn, wakeOn: app.state.settings.wakeOn };
+  Object.defineProperty(app.tts, 'speaking', { get: () => true, configurable: true });
+  app.tts.hold = () => calls.push('hold');
+  app.tts.release = () => calls.push('release');
+  app.tts.stop = () => calls.push('stop');
+  window.desktop.abortChat = () => calls.push('abort');
+  let n = 0;
+  app.stt.listen = async (o) => {
+    if (n++) return new Promise((r) => setTimeout(() => r(null), 100)); // danach: nichts gehört
+    o.onSpeechStart?.();
+    return new Float32Array(16000 * 0.2); // kurzes Knacken
+  };
+  app.state.settings.bargeIn = true;
+  app.state.settings.wakeOn = false;
+  app.setHandsFree(true);
+  for (let i = 0; i < 30 && !calls.includes('release'); i++) await new Promise((r) => setTimeout(r, 100));
+  app.setHandsFree(false);
+  await new Promise((r) => setTimeout(r, 300));
+  delete app.tts.speaking;
+  Object.assign(app.stt, { listen: orig.listen });
+  Object.assign(app.tts, { hold: orig.hold, release: orig.release, stop: orig.stop });
+  window.desktop.abortChat = orig.abort;
+  Object.assign(app.state.settings, keep);
+  app.state.micActive = false;
+  return calls;
+});
+check(bargeRes.includes('hold') && bargeRes.includes('release') && !bargeRes.includes('abort') && bargeRes.indexOf('stop') < 0, 'Live-Gespräch: Knacken während der Antwort pausiert nur kurz, die Antwort läuft weiter', JSON.stringify(bargeRes));
 check(/Ich:/.test(roleRes.examples) && roleRes.exInPrompt, 'Rolle: Beispieldialoge vorgeschlagen und im Steckbrief-Block', JSON.stringify(roleRes));
 // Vergessen auf Bitte: passende Einträge aus Gedächtnis/Selbstbild/Themen löschen, anderes bleibt, Rückgängig
 const forgetRes = await page.evaluate(async () => {

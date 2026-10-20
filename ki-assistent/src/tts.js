@@ -405,8 +405,27 @@ export class SpeechOutput {
     });
   }
 
+  /**
+   * Kurz anhalten, ohne etwas zu verwerfen (jemand scheint dazwischenzureden). Stellt sich heraus, dass es nur ein
+   * Geräusch war, geht es mit release() genau dort weiter.
+   */
+  hold() {
+    if (this.held || !this.playing) return;
+    this.held = true;
+    this.ctx?.suspend().catch(() => {});
+    globalThis.speechSynthesis?.pause();
+  }
+  release() {
+    if (!this.held) return;
+    this.held = false;
+    this.ctx?.resume().catch(() => {});
+    globalThis.speechSynthesis?.resume();
+  }
+
   /** Alles sofort abbrechen (z. B. wenn der Nutzer dazwischenredet). */
   stop() {
+    this.held = false;
+    this.ctx?.resume().catch(() => {});
     this.generation++;
     this.queue = [];
     try {

@@ -9,6 +9,7 @@ import Anthropic, { toFile } from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import cloud from '../../cloud.js';
 import googleLib from '../../google.js';
+import wetter from '../../wetter.js';
 
 const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI, appTools, mergeTools } = cloud;
 // Rückkanal für Werkzeuge der App (laufen in der Oberfläche)
@@ -208,6 +209,8 @@ const api = {
   },
   // App ganz beenden (Hintergrund, Aktivierungswort, schwebende Figur aus)
   quit: () => window.KIDevice?.quit?.(),
+  // Wetter (Open-Meteo): nur Ortsname/Koordinaten gehen hinaus
+  weather: (o) => wetter.weather(o, { fetchFn: (u) => fetch(u, { signal: AbortSignal.timeout(15000) }) }),
   nasHasPassword: async () => AREA === 'privat' && !!(await getKeys()).nas,
   nasReq: async ({ base, user, method = 'GET', path = '', body, headers = {} }) => {
     if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');

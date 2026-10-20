@@ -19,6 +19,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
+const { weather } = require('./wetter.js');
 const { friendlyCloudError, chatAnthropic, chatOpenAI, transcribeOpenAI, appTools, mergeTools } = require('./cloud.js');
 
 const DIST = path.join(__dirname, 'dist');
@@ -239,6 +240,11 @@ function claudeExe() {
 async function claudeWindow() {
   return Number(await helperCmd('CLAUDE')) || 0;
 }
+// Wetter (Open-Meteo, ohne Schlüssel): nur Ortsname/Koordinaten gehen hinaus – in der lokalen Ausgabe gesperrt
+ipcMain.handle('weather:get', async (_e, opts = {}) => {
+  if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
+  return weather(opts, { fetchFn: (u) => net.fetch(u, { signal: AbortSignal.timeout(15000) }) });
+});
 ipcMain.handle('claude:handoff', async (_e, { text, send } = {}) => {
   if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
   text = String(text ?? '').trim();

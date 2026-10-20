@@ -271,7 +271,7 @@ const RULES = {
       'Fahrmodus: Der Nutzer fährt gerade Auto. Antworte sehr kurz (höchstens zwei Sätze), ohne Aufzählungen und ohne ' +
       'etwas, das man lesen müsste. Bei Navigation oder Verkehr nur das Wichtigste.',
     web:
-      'Du hast Internetzugang über die Werkzeuge web_search und web_fetch. Für aktuelle Dinge wie Wetter, Verkehr und ' +
+      'Du hast Internetzugang über die Werkzeuge web_search und web_fetch (für das Wetter gibt es das Werkzeug wetter). Für aktuelle Dinge wie Verkehr und ' +
       'Staus, Nachrichten, Öffnungszeiten oder Preise suche selbst im Internet, statt zu sagen, dass du das nicht ' +
       'abrufen kannst. Findest du nichts Passendes, sag kurz, wo du gesucht hast.',
   },
@@ -442,8 +442,19 @@ function voiceRoute(on) {
   const el = document.getElementById('phAudioDev');
   if (el) el.textContent = state.voiceDevice ? `Zuletzt verwendet: ${state.voiceDevice}.` : '';
 }
-stt.onMicOpen = () => voiceRoute(true);
-stt.onMicClose = () => voiceRoute(false);
+// Sprechverbindung nicht bei jeder Pause trennen: Zwischen Aktivierungswort, Frage und Antwort geht das Mikrofon kurz
+// zu und wieder auf – jedes Trennen schaltet das Auto zwischen „Anruf“ und Musik hin und her (Knacken, verlorene
+// Wortanfänge). Erst nach einer längeren Pause freigeben.
+let routeOffTimer = 0;
+stt.onMicOpen = () => {
+  clearTimeout(routeOffTimer);
+  routeOffTimer = 0;
+  voiceRoute(true);
+};
+stt.onMicClose = () => {
+  clearTimeout(routeOffTimer);
+  routeOffTimer = setTimeout(() => !stt.stream && !rt && voiceRoute(false), state.settings.handsFree || state.drive ? 30000 : 3000);
+};
 
 // Figur im Chatfenster: anklicken = Rahmen zum Verschieben/Skalieren, Doppelklick = sprechen
 new RubberBand($('stage'), avatar, {
@@ -2104,15 +2115,16 @@ async function listenOnce({ handsFree = false } = {}) {
   if (state.micActive) return;
   state.micActive = true;
   let interrupted = false;
+  let held = false; // Antwort angehalten, weil jemand dazwischenzureden scheint – abgebrochen wird erst bei echten Worten
   let duringSpeech = false; // begann ich zu sprechen, während der Avatar redete?
   try {
     // Während der Avatar spricht, muss es lauter und länger sein (sonst unterbricht er sich durch sein Echo selbst)
     const live = handsFree && liveBargeIn();
     const p = stt.listen({
       waitForSpeech: handsFree,
-      threshold: () => state.settings.sensitivity * (live && tts.speaking ? 2.5 : 1),
+      threshold: () => state.settings.sensitivity * (live && tts.speaking && !tts.held ? 2.5 : 1),
       // während der Avatar spricht keine Absenkung der Schwelle (sonst unterbricht ihn sein eigenes Echo)
-      adaptive: () => !(live && tts.speaking),
+      adaptive: () => !(live && tts.speaking && !tts.held),
       // im Live-Gespräch sinkt die Schwelle höchstens auf die Hälfte (sonst lösen leise Hintergrundgeräusche aus)
       minThreshold: () => (handsFree ? state.settings.sensitivity * 0.5 : 0.003),
       // im Freihand-Modus mindestens ~⅓ s Stimme, damit Tastenklicks und Räuspern nichts auslösen
@@ -2127,9 +2139,12 @@ async function listenOnce({ handsFree = false } = {}) {
           state.hearing = true;
           updateBadge();
         }
+        // nicht gleich abbrechen: Knacken, Fahrgeräusche oder das eigene Echo sollen keine Antwort verschlucken.
+        // Die Stimme pausiert nur; abgebrochen wird erst, wenn wirklich Worte erkannt wurden.
         if (live && (tts.speaking || state.busy)) {
-          interrupted = true;
-          interrupt();
+          held = true;
+          tts.hold();
+          status('Ich höre zu …');
         }
       },
     });
@@ -2162,6 +2177,11 @@ async function listenOnce({ handsFree = false } = {}) {
       if (why) return overheard(text, why);
     }
     if (handsFree && duringSpeech && isEcho(text)) return;
+    if (held) {
+      held = false;
+      interrupted = true;
+      interrupt();
+    }
     fireEvent('ack', 1500);
     if (interrupted) await waitIdle(2500);
     await send(interrupted ? joinTornSentence(text) : text);
@@ -2171,6 +2191,11 @@ async function listenOnce({ handsFree = false } = {}) {
     addBubble('error', `Mikrofon/Spracherkennung: ${friendlyError(e)}`);
     if (state.settings.handsFree) setHandsFree(false);
   } finally {
+    // war es doch nur ein Geräusch: die angehaltene Antwort läuft einfach weiter
+    if (held) {
+      tts.release();
+      logEv('STT', 'Geräusch während der Antwort – weitergesprochen');
+    }
     state.micActive = false;
     updateBadge();
     maybeListenHandsFree();
@@ -5761,6 +5786,13 @@ async function runAppToolInner(name, input) {
     fireEvent('success', 2500);
     status(`💾 Im Wissen gespeichert: „${r.title}“`);
     return { gespeichert: true, titel: r.title, aktualisiert: r.same, eintraege: state.saved.length };
+  }
+  if (name === 'wetter') {
+    if (state.settings.offline) throw new Error('offline – kein Wetter abrufbar');
+    if (!desktop.weather) throw new Error('Wetter ist hier nicht verfügbar');
+    const ort = String(input?.ort ?? '').trim() || (await currentPlace());
+    if (!ort) return { fehler: 'Kein Ort bekannt – frag nach dem Ort oder bitte darum, ihn in ⚙ einzutragen bzw. den Standort zu erlauben.' };
+    return desktop.weather({ ort, tage: input?.tage });
   }
   if (name === 'wissen_suchen') {
     const q = String(input.suchbegriff ?? '').trim();

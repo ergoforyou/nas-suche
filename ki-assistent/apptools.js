@@ -60,6 +60,20 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'wetter',
+    description:
+      'Ruft das aktuelle Wetter und die Vorhersage (nächste Stunden und bis zu 7 Tage) für einen Ort ab – zuverlässiger ' +
+      'als eine Internetsuche, nimm es für jede Wetterfrage. Ohne Ort gilt der aktuelle Standort des Nutzers. Fasse das ' +
+      'Ergebnis in deiner Art kurz zusammen (Temperatur, Regen, Wind – was für die Frage zählt), lies keine Tabellen vor.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ort: { type: 'string', description: 'Ortsname, z. B. „Hannover“ (leer = aktueller Standort)' },
+        tage: { type: 'integer', description: 'Vorhersage-Tage 1–7 (Standard 2: heute und morgen)' },
+      },
+    },
+  },
+  {
     name: 'an_claude_uebergeben',
     desktopOnly: true, // nur am PC (Claude-App unter Windows)
     description:
@@ -80,6 +94,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   selbst_notieren: '🪞 Notiere etwas über mich …',
   an_claude_uebergeben: '✳ Übergebe an Claude …',
   gedaechtnis_loeschen: '🗑 Vergesse …',
+  wetter: '🌦 Schaue nach dem Wetter …',
 };
 
 module.exports = { APP_TOOLS, APP_TOOL_STATUS };

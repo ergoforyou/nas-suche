@@ -384,6 +384,18 @@ public class MainActivity extends BridgeActivity {
     private volatile boolean voiceWanted;
     private boolean scoStarted;
     private boolean deviceWatch;
+    private boolean callMode; // Telefonie-Modus selbst gesetzt (Auto/Headset wie bei einem Anruf)
+
+    /** Wie ein Anruf: Mikrofon und Ton laufen über das Bluetooth-Gerät, mit dessen Echo-Unterdrückung (Auto-Freisprechen). */
+    private void setCallMode(android.media.AudioManager am, boolean on) {
+        if (on == callMode) return;
+        try {
+            am.setMode(on ? android.media.AudioManager.MODE_IN_COMMUNICATION : android.media.AudioManager.MODE_NORMAL);
+            callMode = on;
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Telefonie-Modus", e);
+        }
+    }
 
     String routeVoice(boolean on) {
         android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
@@ -393,6 +405,7 @@ public class MainActivity extends BridgeActivity {
             if (Build.VERSION.SDK_INT >= 31) {
                 if (!on) {
                     am.clearCommunicationDevice();
+                    setCallMode(am, false);
                     return "";
                 }
                 // Reihenfolge: Bluetooth (LE, klassisch), dann Kabel/USB-Headset
@@ -402,6 +415,8 @@ public class MainActivity extends BridgeActivity {
                 for (int type : prefer) {
                     for (android.media.AudioDeviceInfo d : devs) {
                         if (d.getType() != type) continue;
+                        boolean bt = type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET || type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO;
+                        if (bt) setCallMode(am, true);
                         boolean ok = am.setCommunicationDevice(d);
                         String name = String.valueOf(d.getProductName());
                         Log.i("KI-Assistent", "Sprechgerät: " + name + " (" + type + ") " + (ok ? "gewählt" : "abgelehnt"));
@@ -409,10 +424,12 @@ public class MainActivity extends BridgeActivity {
                     }
                 }
                 am.clearCommunicationDevice();
+                setCallMode(am, false);
                 return "";
             }
             // Android 8–11: Bluetooth-Sprechverbindung (SCO) selbst aufbauen
             if (on && am.isBluetoothScoAvailableOffCall() && hasBtHeadset(am)) {
+                setCallMode(am, true);
                 am.startBluetoothSco();
                 am.setBluetoothScoOn(true);
                 scoStarted = true;
@@ -423,6 +440,7 @@ public class MainActivity extends BridgeActivity {
                 am.stopBluetoothSco();
                 scoStarted = false;
             }
+            setCallMode(am, false);
         } catch (Exception e) {
             Log.w("KI-Assistent", "Sprechgerät", e);
         }
@@ -1672,6 +1690,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        // Telefonie-Modus nie hängen lassen (sonst bliebe das Auto im „Anruf“)
+        if (callMode || scoStarted) routeVoice(false);
         if (carReceiver != null) {
             try { unregisterReceiver(carReceiver); } catch (Exception ignored) {}
             carReceiver = null;
