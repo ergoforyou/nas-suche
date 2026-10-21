@@ -1,5 +1,5 @@
 {
-  "id": "2993a6d0-8770-43e9-82e5-61c56d7a6b5d",
+  "id": "a458e07f-86ad-41f0-90f5-831170060462",
   "revision": 0,
   "last_node_id": 21,
   "last_link_id": 24,
@@ -558,7 +558,7 @@
         "Node name for S&R": "MiniMaxH3ImageToVideo"
       },
       "widgets_values": [
-        "One continuous cinematic shot, no cuts. The scene opens exactly on image 1 and ends exactly on image 2.\nDescribe action, camera movement, light and mood.\nAudio: ...",
+        "CAMERA (fixed, never changes): single continuous shot, one take, no cuts, no scene changes. Locked-off static camera on a tripod at eye level, wide shot, 35mm lens. The camera does not move, does not zoom in or out, does not pan, tilt or dolly. The framing, camera angle, distance and background stay exactly identical to image 1 for the entire clip. No close-ups, no detail shots, no new viewpoints.\nThe scene opens exactly on image 1 and ends exactly on image 2.\nSCENE: describe the place, light and weather here (stays the same in every scene).\nPEOPLE: describe each person with position, hair and clothing here; all people stay fully visible inside the frame.\nSTYLE: photorealistic, natural colors, soft contrast, consistent lighting. No text, no logos.\nACTION: one calm main action, only people move.\nAudio: ...\nCamera, framing, zoom level and background remain exactly the same as at the start: static locked-off wide shot, no zoom, no camera movement, no cuts. Only the people move.",
         1344,
         768,
         121
@@ -929,7 +929,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "# H3 lokal – schnell 768p\n\n1. Start-/Endbild laden (oder mit `Ctrl+B` abschalten).\n2. Node **Format** (unter den Bildern): Seitenverhältnis wählen – *Portrait* = Hochformat.\n   Die Vorschau im Node zeigt Form und Pixelgröße. `megapixels`: **0.98** = 768p (Standard), **0.4** = schneller Test.\n   Bilder möglichst im selben Seitenverhältnis (sie werden sonst gestreckt).\n3. Im H3-Node den **Prompt** schreiben.\n4. `Dauer (s)` einstellen → **Queue**.\n\n| Format | 0.98 MP (768p) | 0.4 MP (Test) |\n|---|---|---|\n| 16:9 quer | 1344×768 | 864×480 |\n| 9:16 hoch | 768×1344 | 480×864 |\n| 1:1 | 1024×1024 | 640×640 |\n| 4:3 quer | 1184×864 | 736×576 |\n| 3:4 hoch | 864×1184 | 576×736 |\n| 3:2 quer | 1248×832 | 800×544 |\n| 2:3 hoch | 832×1248 | 544×800 |\n| 21:9 | 1536×672 | 992×416 |\n\n**Tempo:** Turbo-LoRA mit 4 Schritten ist voreingestellt (schnellste Variante).\nBessere Qualität: LoRA `Ctrl+B` + `Schritte` auf 20.\n**Ohne Ton:** Node „Ton“ → `Ctrl+B`.\n**Neue Variante:** `Seed` ändern.\n\nBenötigt zusätzlich: `minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors` in `models/loras/`.\n"
+        "# H3 lokal – schnell 768p\n\n1. Start-/Endbild laden (oder mit `Ctrl+B` abschalten).\n2. Node **Format** (unter den Bildern): Seitenverhältnis wählen – *Portrait* = Hochformat.\n   Die Vorschau im Node zeigt Form und Pixelgröße. `megapixels`: **0.98** = 768p (Standard), **0.4** = schneller Test.\n   Bilder möglichst im selben Seitenverhältnis (sie werden sonst gestreckt).\n3. Im H3-Node den **Prompt** ergänzen: SCENE, PEOPLE, ACTION ausfüllen. Die CAMERA-Zeilen oben und die Kamera-Regel am Ende stehen lassen (feste Einstellung, kein Zoom). Keine Kamerawörter (close-up, zoom, reveal) in der Handlung.\n4. `Dauer (s)` einstellen → **Queue**.\n\n| Format | 0.98 MP (768p) | 0.4 MP (Test) |\n|---|---|---|\n| 16:9 quer | 1344×768 | 864×480 |\n| 9:16 hoch | 768×1344 | 480×864 |\n| 1:1 | 1024×1024 | 640×640 |\n| 4:3 quer | 1184×864 | 736×576 |\n| 3:4 hoch | 864×1184 | 576×736 |\n| 3:2 quer | 1248×832 | 800×544 |\n| 2:3 hoch | 832×1248 | 544×800 |\n| 21:9 | 1536×672 | 992×416 |\n\n**Tempo:** Turbo-LoRA mit 4 Schritten ist voreingestellt (schnellste Variante).\nBessere Qualität: LoRA `Ctrl+B` + `Schritte` auf 20.\n**Ohne Ton:** Node „Ton“ → `Ctrl+B`.\n**Neue Variante:** `Seed` ändern.\n\nBenötigt zusätzlich: `minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors` in `models/loras/`.\n"
       ],
       "title": "Anleitung"
     }
