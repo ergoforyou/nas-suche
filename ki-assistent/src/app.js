@@ -866,7 +866,7 @@ function buildMessages() {
   if (state.drive) parts.push(r.drive);
   if (webActive()) parts.push(r.web);
   const ctx = [];
-  if (googleActive()) ctx.push(googleLib.toolPrompt(new Date(), userTimeZone()));
+  if (googleActive()) ctx.push(googleLib.toolPrompt(new Date(), userTimeZone()) + (PRIV && state.google?.mail ? ` ${googleLib.mailToolPrompt()}` : ''));
   else if (webActive() || state.place) ctx.push(r.now(new Date(), userTimeZone()));
   if (state.place) ctx.push(r.place(state.place));
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
@@ -5989,7 +5989,9 @@ async function refreshGoogle() {
     state.google = { connected: false };
   }
   const g = state.google;
-  $('gInfo').textContent = g.connected ? `✔ Verbunden${g.email ? ` als ${g.email}` : ''}` : 'Nicht verbunden';
+  $('gInfo').textContent = g.connected
+    ? `✔ Verbunden${g.email ? ` als ${g.email}` : ''}${PRIV ? (g.mail ? ' · Gmail freigegeben' : ' · Gmail noch nicht freigegeben – „Neu verbinden“ und Gmail zulassen') : ''}`
+    : 'Nicht verbunden';
   $('gDisconnect').hidden = !g.connected;
   $('gConnect').textContent = g.connected ? 'Neu verbinden' : 'Mit Google verbinden';
   $('gUse').checked = state.settings.googleUse !== false;

@@ -1476,6 +1476,30 @@ check(
   JSON.stringify(grabRes),
 );
 check(audioRes.afterZeros === 1 && audioRes.capped === 3 && /hängt/.test(audioRes.msg), 'Sprachkette: hängendes Mikrofon (nur Nullen) wird neu geöffnet – höchstens 3× in 2 Minuten', JSON.stringify(audioRes));
+// Gmail (Privat): Mail-Format, Klartext, Senden nur nach Rückfrage der App, Werkzeuge nur mit Freigabe
+{
+  const { createRequire } = await import('node:module');
+  const g = createRequire(import.meta.url)('../google.js');
+  const raw = g.rfc822({ to: 'anna@example.de', subject: 'Grüße', text: 'Hallo Anna' });
+  const part = { mimeType: 'multipart/alternative', parts: [{ mimeType: 'text/html', body: { data: Buffer.from('<p>HTML</p>').toString('base64url') } }, { mimeType: 'text/plain', body: { data: Buffer.from('Klartext ä').toString('base64url') } }] };
+  const sent = [];
+  const fake = {
+    api: async (m, u, body) => {
+      if (u.includes('/drafts/send')) return sent.push(body.id), { id: 'm1' };
+      if (u.includes('/drafts/')) return { message: { payload: { headers: [{ name: 'To', value: 'anna@example.de' }, { name: 'Subject', value: 'Grüße' }] } } };
+      return {};
+    },
+  };
+  const no = await g.runTool(fake, 'mail_senden', { entwurf_id: 'd1' }, { confirm: async () => false });
+  const none = await g.runTool(fake, 'mail_senden', { entwurf_id: 'd1' }, {});
+  const yes = await g.runTool(fake, 'mail_senden', { entwurf_id: 'd1' }, { confirm: async () => true });
+  check(
+    /Subject: =\?UTF-8\?B\?/.test(raw) && g.plainText(part) === 'Klartext ä' && !no.gesendet && !none.gesendet && yes.gesendet && sent.join() === 'd1' &&
+      g.toolsFor().every((t) => !t.name.startsWith('mail_')) && g.toolsFor({ mail: true }).some((t) => t.name === 'mail_senden') && /gmail.readonly/.test(g.authUrl({ clientId: 'x', redirectUri: 'y', challenge: 'c', state: 's', mail: true })) && !/gmail/.test(g.authUrl({ clientId: 'x', redirectUri: 'y', challenge: 'c', state: 's' })),
+    'Gmail: Mails richtig verpackt, Klartext gelesen, Senden nur nach Rückfrage, nur mit Freigabe (Privat)',
+    JSON.stringify({ no, yes }),
+  );
+}
 // Wetter-Werkzeug (Open-Meteo, nachgebildet): Ort aus dem Standort, kompakte Übersicht
 await page.route('https://geocoding-api.open-meteo.com/**', (route) =>
   route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify({ results: [{ name: 'Hannover', admin1: 'Niedersachsen', country_code: 'DE', latitude: 52.37, longitude: 9.73 }] }) }),

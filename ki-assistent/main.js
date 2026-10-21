@@ -1639,7 +1639,8 @@ ipcMain.handle('google:connect', async (_e, { clientId, clientSecret }) => {
     }, 5 * 60 * 1000);
     server.listen(0, '127.0.0.1', () => {
       port = server.address().port;
-      shell.openExternal(googleLib.authUrl({ clientId, redirectUri: `http://127.0.0.1:${port}`, challenge, state }));
+      // Gmail nur im Bereich Privat anfragen
+      shell.openExternal(googleLib.authUrl({ clientId, redirectUri: `http://127.0.0.1:${port}`, challenge, state, mail: AREA === 'privat' }));
     });
   });
   const email = await google.exchange({ clientId, clientSecret, code: result.code, verifier, redirectUri: result.redirectUri });
@@ -1649,11 +1650,19 @@ ipcMain.handle('google:connect', async (_e, { clientId, clientSecret }) => {
 
 /** Werkzeuge für den Chat, wenn Google verbunden ist. */
 async function googleTools(timeZone) {
-  if (EDITION === 'lokal' || !(await google.status()).connected) return null;
+  if (EDITION === 'lokal') return null;
+  const st = await google.status();
+  if (!st.connected) return null;
+  // Senden einer Mail: die App fragt selbst nach (das Sprachmodell allein darf nicht senden)
+  const confirm = async (text) => {
+    const opts = { type: 'question', buttons: ['Senden', 'Abbrechen'], defaultId: 1, cancelId: 1, message: text };
+    const r = win && !win.isDestroyed() ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts);
+    return r.response === 0;
+  };
   return {
-    defs: googleLib.TOOLS,
+    defs: googleLib.toolsFor({ mail: AREA === 'privat' && st.mail }),
     status: googleLib.TOOL_STATUS,
-    run: (name, input) => googleLib.runTool(google, name, input, { timeZone }),
+    run: (name, input) => googleLib.runTool(google, name, input, { timeZone, confirm }),
   };
 }
 

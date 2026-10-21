@@ -161,11 +161,13 @@ const google = googleLib.createGoogle({
 });
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin';
 async function googleTools() {
-  if (!(await google.status()).connected) return null;
+  const st = await google.status();
+  if (!st.connected) return null;
   return {
-    defs: googleLib.TOOLS,
+    defs: googleLib.toolsFor({ mail: AREA === 'privat' && st.mail }),
     status: googleLib.TOOL_STATUS,
-    run: (name, input) => googleLib.runTool(google, name, input, { timeZone: timeZone() }),
+    // Senden einer Mail: die App fragt selbst nach (das Sprachmodell allein darf nicht senden)
+    run: (name, input) => googleLib.runTool(google, name, input, { timeZone: timeZone(), confirm: async (t) => window.confirm(t) }),
   };
 }
 // Antwort der Anmeldung (MainActivity.java -> Auth): "/?code=…&state=…"
@@ -555,7 +557,7 @@ const api = {
         authWaiter = null;
         resolve(t);
       };
-      auth.open(googleLib.authUrl({ clientId, redirectUri, challenge, state }));
+      auth.open(googleLib.authUrl({ clientId, redirectUri, challenge, state, mail: AREA === 'privat' }));
     });
     const q = new URL(target || '/', redirectUri).searchParams;
     if (q.get('state') !== state) throw new Error('Anmeldung abgebrochen.');
