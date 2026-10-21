@@ -23,6 +23,7 @@ import { storyPrompt, storyHitsPrompt, storyIsLong, STORY_MAX, DRAFT_PROMPT, ANC
 import { isOutOfRole, isAiQuestion, stripOutOfRole, suspiciousSentences, rtReminder, EXAMPLES_PROMPT, REWRITE_PROMPT, SLIP_NOTE } from './rolle.js';
 import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX, isFixedSelf, promoteKern, kernPrompt } from './gedaechtnis.js';
 import { TIDY_PROMPT, SELF_TIDY_PROMPT, CATEGORIES, catOf, groupedText, nearDuplicate, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, matchForget, numbered as numberedMemory } from './gedaechtnis.js';
+import { EPISODE_PICK_PROMPT, RECALL_RE } from './figur.js';
 import { ZIELE_MAX, ENTWICKLUNG_MAX, zielePrompt, entwicklungPrompt, WEEK_PROMPT, parseWeek, feedbackKind, signalText, EPISODEN_MAX, EPISODE_PROMPT, parseEpisode, splitSessions, episodeHitsPrompt } from './figur.js';
 import { KANON_MAX, GEMEINSAM_MAX, TAGEBUCH_MAX, KANON_CHECK_PROMPT, parseKanonCheck, kanonPrompt, gemeinsamPrompt, tagebuchPrompt, stimmungPrompt, DIARY_PROMPT, parseDiary, inRoleError, ROLE_CHECK, judgeRoleAnswer } from './figur.js';
 import { TRAITS, TEXT_FIELDS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief, INTERVIEW_Q_PROMPT, INTERVIEW_A_PROMPT, REVIEW_PROMPT } from './steckbrief.js';
@@ -80,6 +81,37 @@ document.getElementById('btnCost')?.addEventListener('click', () => {
   if (!pop.hidden) renderCostPop();
 });
 costs.onChange(renderCostChip);
+costs.onChange(() => checkBudget());
+
+// ---- Kostenbremse (Privat): Monatsbudget in US-Dollar. Ab 80 % ein Hinweis, ab 100 % auf Wunsch sparen: Gespräche mit
+// dem günstigen Modell, Extras (Wochenrückblick, Tagebuch, Morgenrunde, Zusammenfassungen, Rollen-Check) ruhen bis
+// zum Monatsende. Der Zähler schätzt nach Listenpreisen.
+function budgetState() {
+  const limit = Number(state.settings?.budgetMonth) || 0;
+  if (!limit || desktop.area !== 'privat') return { limit: 0, used: 0, pct: 0, hit: false, save: false };
+  const used = costs.summary().month;
+  const pct = used / limit;
+  return { limit, used, pct, hit: pct >= 1, save: pct >= 1 && state.settings.budgetAction !== 'nur-hinweis' };
+}
+/** Sollen Extras gerade ruhen? */
+const budgetSaving = () => budgetState().save;
+function checkBudget() {
+  if (!state.settings) return;
+  const b = budgetState();
+  if (!b.limit) return;
+  const month = new Date().toISOString().slice(0, 7);
+  const seen = (state.settings.budgetNoted ??= {});
+  const note = (level, text) => {
+    if (seen[level] === month) return;
+    seen[level] = month;
+    save();
+    addBubble('note', text);
+    logEv('KOSTEN', text);
+  };
+  if (b.pct >= 1)
+    note('100', `💲 Monatsbudget erreicht (${fmtUsd(b.used)} von ${fmtUsd(b.limit)}).${b.save ? ' Bis Monatsende spare ich: günstiges Modell, keine Extras wie Wochenrückblick oder Morgenrunde.' : ''}`);
+  else if (b.pct >= 0.8) note('80', `💲 80 % des Monatsbudgets verbraucht (${fmtUsd(b.used)} von ${fmtUsd(b.limit)}).`);
+}
 // Tageswechsel: Anzeige ab und zu auffrischen
 setInterval(renderCostChip, 60e3);
 renderCostChip();
@@ -367,6 +399,7 @@ function save({ quiet = false } = {}) {
       activeId: state.activeId,
       history: state.history,
       abgleich: state.abgleich,
+      erinnerungen: state.erinnerungen ?? [],
     });
     if (saveLoud) {
       autoSyncSoon();
@@ -977,7 +1010,8 @@ function llmParams(model, question, attachments) {
 
 async function ensureModel() {
   const s = state.settings;
-  if (s.provider === 'anthropic') return s.claudeModel || CLAUDE_MODELS[0][0];
+  // Kostenbremse: bis Monatsende das günstige Modell
+  if (s.provider === 'anthropic') return budgetSaving() ? 'claude-haiku-5-5' : s.claudeModel || CLAUDE_MODELS[0][0];
   if (s.provider === 'openai') {
     if (s.openaiModel) return s.openaiModel;
     const models = await desktop.openaiModels();
@@ -1203,7 +1237,8 @@ async function send(text) {
   state.storyHits = storyIsLong(persona().geschichte) ? searchIndex(storyIndex(persona()), text, 2) : [];
   state.savedHits = savedIndex?.n ? searchIndex(savedIndex, text, 3) : [];
   // frühere Gespräche, die zur Frage passen (nur mit eingeschaltetem Gedächtnis)
-  state.episodeHits = persona().memoryOn && persona().episoden?.length ? findEpisodes(persona(), text, 2, 6) : [];
+  // klingt die Frage nach Erinnerung („weißt du noch …“), auch Umschreibungen verstehen (kurz das Hilfsmodell fragen)
+  state.episodeHits = persona().memoryOn && persona().episoden?.length ? (RECALL_RE.test(text) ? await findEpisodesSmart(persona(), text, 2, 6) : findEpisodes(persona(), text, 2, 6)) : [];
   const id = newId();
   state.currentChatId = id;
   // Denklaut: kommt nach gut einer Sekunde noch nichts, sagt die Figur kurz „Hm, Moment …“ (statt Stille)
@@ -1373,7 +1408,7 @@ function topicsPrompt(topics, lang) {
 // Gespräch, offene Themen – ein, zwei natürliche Sätze statt „Wie kann ich helfen?“. Mit dem günstigen Hilfsmodell.
 /** Heute schon Morgenrunde gehabt? Ab 5 bis 11 Uhr, einmal am Tag (abschaltbar). */
 const todayKey = () => new Date().toLocaleDateString('sv-SE');
-const morningDue = () => state.settings.morningBrief !== false && new Date().getHours() >= 5 && new Date().getHours() < 11 && state.settings.morningDay !== todayKey();
+const morningDue = () => !budgetSaving() && state.settings.morningBrief !== false && new Date().getHours() >= 5 && new Date().getHours() < 11 && state.settings.morningDay !== todayKey();
 
 /** Was die Morgenrunde braucht: Wetter, wichtigste Nachrichten, was gestern offen blieb (Termine kommen immer mit). */
 async function morningContext(p) {
@@ -1661,6 +1696,7 @@ function renderTopics() {
   if (!list) return;
   $('cGreet').checked = state.settings.personalGreet !== false;
   $('cMorning').checked = state.settings.morningBrief !== false;
+  renderBudget();
   $('cThink').checked = state.settings.thinkSounds !== false;
   const topics = (p.themen ?? []).filter((t) => !t.asked);
   const done = (p.themen ?? []).length - topics.length;
@@ -1683,6 +1719,25 @@ function renderTopics() {
     row.append(span, del);
     list.appendChild(row);
   }
+}
+$('cBudget').onchange = (e) => {
+  state.settings.budgetMonth = Math.max(0, Number(String(e.target.value).replace(',', '.')) || 0);
+  save();
+  renderBudget();
+  checkBudget();
+};
+$('cBudgetAction').onchange = (e) => {
+  state.settings.budgetAction = e.target.value;
+  save();
+  renderBudget();
+};
+function renderBudget() {
+  if (!$('budgetWrap')) return;
+  $('budgetWrap').hidden = desktop.area !== 'privat' || LOCAL_ONLY;
+  $('cBudget').value = state.settings.budgetMonth || '';
+  $('cBudgetAction').value = state.settings.budgetAction === 'nur-hinweis' ? 'nur-hinweis' : 'sparen';
+  const b = budgetState();
+  $('budgetInfo').textContent = b.limit ? `Diesen Monat: ${fmtUsd(b.used)} von ${fmtUsd(b.limit)} (${Math.round(b.pct * 100)} %)${b.save ? ' – spart gerade' : ''}.` : 'Kein Budget gesetzt.';
 }
 $('cMorning').onchange = (e) => {
   state.settings.morningBrief = e.target.checked;
@@ -1874,6 +1929,10 @@ async function nightlyTidy(now = new Date()) {
   await tidyMemory(p, { full: true });
   // abends über den Tag nachdenken (wenn seit dem letzten Mal gesprochen wurde) – so wächst das Selbstbild weiter
   if (state.settings.reflect && (p.reflectTurns ?? 0) > 0) await reflect(p).catch(() => {});
+  if (budgetSaving()) {
+    logEv('KOSTEN', 'Abendrunde ohne Extras (Monatsbudget erreicht)');
+    return true;
+  }
   await summarizeEpisodes(p).catch((e) => logEv('ERINNERUNG', e.message));
   if (p.selbstOn !== false && p.immersion !== false) await writeDiary(p).catch((e) => logEv('TAGEBUCH', e.message));
   await checkKanon(p).catch((e) => logEv('KANON', e.message));
@@ -2179,7 +2238,7 @@ function noteServedModel(model) {
   roleSeen()[p.id] = model;
   save();
   logEv('ROLLE', `Modellwechsel: ${seen} → ${model}`);
-  if (state.settings.autoRoleCheck === false || roleWatchBusy) {
+  if (state.settings.autoRoleCheck === false || roleWatchBusy || budgetSaving()) {
     addBubble('note', `🎭 Neues Sprachmodell (${shortModel(model)}). Ein Rollen-Check im Steckbrief zeigt, ob ${p.name} die Rolle genauso gut hält.`);
     return;
   }
@@ -2319,7 +2378,7 @@ const REFLECT_PROMPT =
 /** Über die letzten Gespräche nachdenken und das Selbstbild pflegen. manual = Knopf „Jetzt nachdenken“. */
 async function reflect(p, manual = false) {
   if (state.reflecting) return null;
-  if (!manual && (p.selbstOn === false || !state.settings.reflect)) return null;
+  if (!manual && (p.selbstOn === false || !state.settings.reflect || budgetSaving())) return null;
   // von selbst nur in Ruhe; auf Knopfdruck sofort (läuft im Hintergrund, stört das Gespräch nicht)
   if (!manual && (state.busy || tts.speaking || state.micActive)) {
     reflectTimer = setTimeout(() => reflect(p).catch(() => {}), 60e3);
@@ -2510,6 +2569,24 @@ function findEpisodes(p, q, k = 3, minLen = 4) {
     .sort((a, b) => b.n - a.n || (b.e.von ?? 0) - (a.e.von ?? 0))
     .slice(0, k)
     .map((x) => x.e);
+}
+/**
+ * Wie findEpisodes – findet die Stichwortsuche nichts, wählt das günstige Hilfsmodell aus den Titeln und Kurzfassungen
+ * aus (versteht Umschreibungen und Zeitangaben). Nur im Bereich Privat und nicht bei aktiver Kostenbremse.
+ */
+async function findEpisodesSmart(p, q, k = 3, minLen = 4) {
+  const hits = findEpisodes(p, q, k, minLen);
+  const list = (p.episoden ?? []).slice(-150);
+  if (hits.length || !PRIV || budgetSaving() || list.length < 2 || !String(q ?? '').trim()) return hits;
+  try {
+    const lines = list.map((e, i) => `${i + 1}. ${new Date(e.von).toLocaleDateString('de-DE')} – ${e.titel}: ${String(e.text).slice(0, 140)}`).join('\n');
+    const raw = await helperJson(EPISODE_PICK_PROMPT, `Heute: ${new Date().toLocaleDateString('de-DE')}\nFrage: ${q}\n\nFrühere Gespräche:\n${lines}`);
+    const nr = JSON.parse(String(raw).match(/\{[\s\S]*\}/)?.[0] ?? '{}').nr ?? [];
+    return nr.map((n) => list[Number(n) - 1]).filter(Boolean).slice(0, k);
+  } catch (e) {
+    logEv('ERINNERUNG', `Auswahl: ${e.message}`);
+    return [];
+  }
 }
 const episodeIdx = new Map();
 function episodeIndex(p) {
@@ -6187,6 +6264,7 @@ async function init() {
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;
   state.history = data.history ?? {};
   state.saved = Array.isArray(data.wissen) ? data.wissen : [];
+  state.erinnerungen = Array.isArray(data.erinnerungen) ? data.erinnerungen.filter((r) => r.at > Date.now() - 86400e3) : [];
   state.abgleich = data.abgleich ?? { base: [], deleted: {} };
   stampSync(state, syncCache, { record: true, initial: true });
   rebuildSaved();
@@ -6608,6 +6686,10 @@ async function runAppToolInner(name, input) {
     if (!ort) return { fehler: 'Kein Ort bekannt – frag nach dem Ort oder bitte darum, ihn in ⚙ einzutragen bzw. den Standort zu erlauben.' };
     return desktop.weather({ ort, tage: input?.tage });
   }
+  if (name === 'erinnerung_setzen' || name === 'erinnerungen_verwalten') {
+    if (!PRIV) throw new Error('Erinnerungen gibt es vorerst im Bereich Privat.');
+    return reminderTool(name, input);
+  }
   if (name === 'verkehr') {
     if (state.settings.offline) throw new Error('offline – keine Verkehrslage abrufbar');
     if (!desktop.traffic) throw new Error('Verkehr ist hier nicht verfügbar');
@@ -6624,7 +6706,7 @@ async function runAppToolInner(name, input) {
     const bis = day(input?.bis, true) ?? Infinity;
     const inRange = (e) => (e.von ?? 0) >= von && (e.von ?? 0) <= bis;
     const q = String(input?.suchbegriff ?? '').trim();
-    let list = q ? findEpisodes(p, q, 8).filter(inRange) : (p.episoden ?? []).filter(inRange).slice(-6).reverse();
+    let list = q ? (await findEpisodesSmart(p, q, 5)).filter(inRange) : (p.episoden ?? []).filter(inRange).slice(-6).reverse();
     list = list.slice(0, 5);
     // die heutigen, noch nicht zusammengefassten Gespräche stehen im Verlauf
     return {
@@ -7414,8 +7496,10 @@ $('phAssist').onclick = () => dev()?.assistantSettings?.();
  */
 let autoBg = false;
 function keepAliveForVoice() {
-  if (!MOBILE || state.settings.bgTalk) return;
+  if (!MOBILE) return;
   const want = state.drive || state.settings.handsFree;
+  dev()?.keepAlive?.(!!want);
+  if (state.settings.bgTalk) return;
   if (want && !autoBg) {
     autoBg = true;
     dev()?.setBackground?.(true);
@@ -7441,20 +7525,71 @@ const remInfo = (t) => {
   $('phRemInfo').textContent = t;
   $('offRemInfo').textContent = t;
 };
+// ---- Eigene Erinnerungen und Timer (Privat, ohne Google): liegen in den Daten dieses Bereichs, werden zusammen mit
+// den Google-Erinnerungen auf dem Gerät geplant (Benachrichtigung auch bei geschlossener App) und – läuft die App –
+// von der Figur in ihrer Stimme gesagt
+const ownReminders = () => (state.erinnerungen ??= []);
+const ownReminderItems = () =>
+  ownReminders()
+    .filter((r) => r.at > Date.now())
+    .map((r) => ({ key: `e:${r.id}`, at: r.at, title: `⏰ ${persona().name || 'KI-Assistent'}`, text: r.text }));
+function reminderTool(name, input) {
+  const fmt = (t) => new Date(t).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+  if (name === 'erinnerungen_verwalten') {
+    const list = ownReminders().filter((r) => r.at > Date.now() - 60e3);
+    if (input?.aktion === 'loeschen') {
+      const q = String(input?.text ?? '').toLowerCase().trim();
+      const gone = q === 'alle' ? list : list.filter((r) => q && r.text.toLowerCase().includes(q));
+      state.erinnerungen = ownReminders().filter((r) => !gone.includes(r));
+      save();
+      syncReminders();
+      return { geloescht: gone.map((r) => r.text) };
+    }
+    return { erinnerungen: list.map((r) => ({ wann: fmt(r.at), text: r.text })) };
+  }
+  const text = String(input?.text ?? '').trim().slice(0, 200);
+  if (!text) throw new Error('Woran soll ich erinnern?');
+  let at = null;
+  if (Number(input?.in_minuten) > 0) at = Date.now() + Number(input.in_minuten) * 60e3;
+  else if (input?.zeitpunkt) at = Date.parse(String(input.zeitpunkt).slice(0, 16));
+  if (!Number.isFinite(at) || at < Date.now() + 20e3) throw new Error('Wann? (in Minuten oder als Zeitpunkt in der Zukunft)');
+  ownReminders().push({ id: newId(), at, text, created: Date.now() });
+  state.erinnerungen = ownReminders().filter((r) => r.at > Date.now() - 86400e3).slice(-50);
+  save();
+  syncReminders();
+  logEv('ERINNERUNG', `gestellt für ${fmt(at)}`);
+  return { gestellt: true, wann: fmt(at), text };
+}
+// Läuft die App: fällige eigene Erinnerungen in ihrer Stimme sagen (die Benachrichtigung kommt zusätzlich vom Handy)
+setInterval(() => {
+  const due = ownReminders().filter((r) => !r.done && r.at <= Date.now() && Date.now() - r.at < 10 * 60e3);
+  for (const r of due) {
+    r.done = true;
+    const p = persona();
+    const line = `${p.language === 'en' ? 'Reminder' : 'Erinnerung'}: ${r.text}`;
+    addBubble('note', `⏰ ${line}`);
+    if (state.settings.speak && !state.dnd) tts.enqueue(line, { mood: 'freundlich', text: line, local: !navigator.onLine });
+    fireEvent('greet', 2500);
+  }
+  if (due.length) save();
+}, 15e3);
+
 async function syncReminders() {
   const d = dev()?.setReminders ? dev() : OFFICE ? { setReminders: (j) => scheduleLocalReminders(JSON.parse(j)) } : null;
   if (!d) return;
-  if (!state.settings.reminders || !desktop.googleUpcoming) return d.setReminders('[]');
+  const own = PRIV ? ownReminderItems() : [];
+  const plan = (items) => d.setReminders(JSON.stringify([...items, ...own].filter((i) => i.at > Date.now()).sort((a, b) => a.at - b.at).slice(0, 60)));
+  if (!state.settings.reminders || !desktop.googleUpcoming) return plan([]);
   let up;
   try {
     up = await desktop.googleUpcoming({ timeZone: userTimeZone(), hours: 48 });
   } catch (e) {
     remInfo(`Google nicht erreichbar: ${e.message}`);
-    return;
+    return plan([]);
   }
   if (!up) {
     remInfo('Erst unter Verbindung mit Google verbinden.');
-    return d.setReminders('[]');
+    return plan([]);
   }
   const lead = Number(state.settings.reminderLead) || 15;
   const now = Date.now();
@@ -7475,7 +7610,7 @@ async function syncReminders() {
     items.push({ key: `a:${t.id}:${t.faellig}`, at: at(t.faellig, 9), title: 'Aufgabe heute fällig', text: t.titel });
   }
   const next = items.filter((i) => i.at > now).sort((a, b) => a.at - b.at).slice(0, 50);
-  d.setReminders(JSON.stringify(next));
+  plan(next);
   remInfo(next.length
     ? `Geplant: ${next.length} Erinnerung${next.length > 1 ? 'en' : ''}, nächste ${new Date(next[0].at).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} Uhr.`
     : 'Keine anstehenden Termine oder Aufgaben in den nächsten 2 Tagen.');
@@ -8563,7 +8698,7 @@ function lockNow() {
   if (!was) {
     // Fahrmodus oder Auto/Headset verbunden: nur die Anzeige sperren, das Gespräch per Stimme läuft weiter
     // (sonst wäre die App im Auto bei jedem Bildschirm-Aus „tot“) – abschaltbar unter ⚙ → Handy → App-Sperre
-    const keepTalking = lockCfg().talk !== false && (state.drive || (state.settings.handsFree && !!state.voiceDevice));
+    const keepTalking = lockCfg().talk !== false && (state.drive || state.settings.handsFree);
     liveBeforeLock = !keepTalking && !!state.settings.handsFree;
     if (!keepTalking) {
       if (liveBeforeLock) setHandsFree(false);
@@ -8573,12 +8708,35 @@ function lockNow() {
     dev()?.setLocked?.(true);
     logEv('SPERRE', keepTalking ? 'gesperrt – Gespräch läuft per Stimme weiter' : 'gesperrt');
   }
-  if (!document.hidden) askUnlock({ auto: true });
+  // bei Bildschirm aus nicht gleich die Entsperr-Abfrage öffnen (die schiebt sich vor die App und unterbricht den Ton)
+  if (!document.hidden && !screenIsOff) askUnlock({ auto: true });
 }
+let screenIsOff = false;
 // Bildschirm aus: sofort sperren (unabhängig von der eingestellten Wartezeit)
 window.__kiScreenOff = () => {
+  screenIsOff = true;
+  if (voiceSession()) {
+    keepAliveForVoice();
+    logEv('AUDIO', `Bildschirm aus – Gespräch läuft weiter (Mikrofon ${stt.stream ? 'offen' : 'zu'}, Ton ${tts.ctx?.state ?? '–'})`);
+  }
   if (lockCfg().on && !state.locked) lockNow();
 };
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) screenIsOff = false;
+});
+// Wache für die Tonwege, solange ein Gespräch läuft: Android kann die Audio-Verarbeitung der Oberfläche bei
+// Bildschirm aus anhalten – dann hört die App nichts mehr und die Stimme bleibt stumm. Alle 2 s prüfen und wecken.
+setInterval(() => {
+  if (!MOBILE || !voiceSession()) return;
+  for (const [name, ctx] of [['Mikrofon', stt.ctx], ['Stimme', tts.held ? null : tts.ctx]]) {
+    if (ctx?.state === 'suspended') {
+      ctx.resume().then(
+        () => logEv('AUDIO', `${name} geweckt (${document.hidden ? 'im Hintergrund' : 'sichtbar'})`),
+        (e) => logEv('AUDIO', `${name} nicht zu wecken: ${e.message}`),
+      );
+    }
+  }
+}, 2000);
 // läuft gerade eine Abfrage, nicht noch eine starten (das Android-Fenster pausiert die App kurz)
 let unlockAsking = false;
 let unlockEndedAt = 0;
@@ -8746,7 +8904,7 @@ async function startRealtime() {
             type: 'session.update',
             session: {
               type: 'realtime',
-              tools: appToolsLib.APP_TOOLS.filter((d) => !(MOBILE && d.desktopOnly)).map((d) => ({ type: 'function', name: d.name, description: d.description, parameters: d.input_schema })),
+              tools: appToolsLib.APP_TOOLS.filter((d) => !(MOBILE && d.desktopOnly) && !(d.privatOnly && !PRIV)).map((d) => ({ type: 'function', name: d.name, description: d.description, parameters: d.input_schema })),
               tool_choice: 'auto',
             },
           }),
@@ -8990,6 +9148,9 @@ window.__app = {
   writeDiary: (o) => writeDiary(persona(), o),
   addKanon: (t) => addKanon(persona(), t),
   noteServedModel,
+  budgetState,
+  checkBudget,
+  ensureModel: () => ensureModel(),
   weeklyReview: (o) => weeklyReview(persona(), o),
   summarizeEpisodes: (o) => summarizeEpisodes(persona(), o),
   noteFeedback: (t) => noteFeedback(persona(), t),

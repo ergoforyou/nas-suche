@@ -1724,7 +1724,7 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
     const name = provider === 'anthropic' ? 'Claude' : 'ChatGPT';
     try {
       if (provider === 'anthropic') {
-        const clientTools = mergeTools(useGoogle ? await googleTools(timeZone) : null, useApp ? appTools((name, input) => askRenderer('tool', { name, input }), { desktop: true }) : null);
+        const clientTools = mergeTools(useGoogle ? await googleTools(timeZone) : null, useApp ? appTools((name, input) => askRenderer('tool', { name, input }), { desktop: true, privat: AREA === 'privat' }) : null);
         const ctx = { containers: claudeContainers, uploads: claudeUploads, saveFile: saveCreatedFile, clientTools };
         const req = { model, messages, effort, web, files, conversation };
         try {
@@ -1738,7 +1738,7 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
         }
       }
       else {
-        const clientTools = mergeTools(useGoogle ? await googleTools(timeZone) : null, useApp ? appTools((name, input) => askRenderer('tool', { name, input }), { desktop: true }) : null);
+        const clientTools = mergeTools(useGoogle ? await googleTools(timeZone) : null, useApp ? appTools((name, input) => askRenderer('tool', { name, input }), { desktop: true, privat: AREA === 'privat' }) : null);
         await chatOpenAI(openaiClient().client, { model, messages, effort }, send, ctrl.signal, { clientTools });
       }
     } catch (err) {

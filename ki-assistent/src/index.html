@@ -406,6 +406,17 @@
       <label class="check"><input id="cMorning" type="checkbox" /> ☀️ Morgenrunde <span class="hint">(die erste Begrüßung zwischen 5 und
         11 Uhr wird zum kurzen Überblick: Termine, Wetter, ein, zwei Nachrichten, was gestern offen blieb – einmal am Tag)</span></label>
       <button id="morningNow">☀️ Morgenrunde jetzt</button>
+      <div id="budgetWrap" hidden>
+        <h3>💲 Kostenbremse</h3>
+        <label>Monatsbudget in US-Dollar (leer = keins) <input id="cBudget" type="number" min="0" step="1" placeholder="z. B. 20" /></label>
+        <label>Wenn erreicht <select id="cBudgetAction">
+          <option value="sparen">sparen: günstiges Modell, Extras ruhen bis Monatsende</option>
+          <option value="nur-hinweis">nur Hinweis</option>
+        </select></label>
+        <p class="hint">Ab 80 % kommt ein Hinweis. „Extras“: Wochenrückblick, Tagebuch, Morgenrunde, Zusammenfassen früherer Gespräche,
+          Nachdenken von selbst, Rollen-Check nach Modellwechsel. Der Zähler schätzt nach Listenpreisen (💲 oben).</p>
+        <p id="budgetInfo" class="hint"></p>
+      </div>
       <label class="check"><input id="cThink" type="checkbox" /> Denklaute <span class="hint">(dauert die Antwort, sagt die Figur
         kurz „Hm, Moment …“ statt still zu warten – nur mit Sprachausgabe)</span></label>
       <h3>📌 Offene Themen <span id="tCount" class="hint"></span></h3>
@@ -948,10 +959,10 @@
         </select></label>
         <p class="hint">Ohne Entsperren sieht niemand Chats, Gedächtnis oder Einstellungen; im App-Wechsler wird der Inhalt verborgen
           (dafür sind Bildschirmfotos der App gesperrt, solange die Sperre an ist). <b>Bildschirm aus = sofort gesperrt</b>, egal
-          welche Wartezeit eingestellt ist. Solange gesperrt ist, hört die App nicht zu (kein Aktivierungswort, kein Live-Gespräch),
+          welche Wartezeit eingestellt ist. Solange gesperrt ist, hört die App nicht zu (kein Aktivierungswort; ein laufendes Live-Gespräch nur, wenn unten erlaubt),
           liest keine Nachrichten vor und die schwebende Figur ist weg – nach dem Entsperren läuft alles wieder wie vorher.
           Gilt für beide Bereiche.</p>
-        <label class="check"><input id="phLockTalk" type="checkbox" /> Im Fahrmodus und mit Auto/Headset weitersprechen, auch wenn gesperrt
+        <label class="check"><input id="phLockTalk" type="checkbox" /> Im Live-Gespräch und Fahrmodus weitersprechen, auch wenn gesperrt
           <span class="hint">(gesperrt wird dann nur die Anzeige – Chats, Gedächtnis und Einstellungen bleiben verborgen; das
           laufende Gespräch geht per Stimme weiter)</span></label>
         <p id="phLockInfo" class="hint"></p>

@@ -1391,6 +1391,24 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(() -> MainActivity.this.setBackground(on));
         }
 
+        /**
+         * Gespräch läuft (Live/Fahrmodus): die Oberfläche auch bei Bildschirm aus nicht herabstufen – sonst drosselt
+         * Android sie, und Mikrofon und Stimme (laufen in der Oberfläche) verstummen. Ton darf ohne Antippen starten.
+         */
+        @JavascriptInterface
+        public void keepAlive(boolean on) {
+            runOnUiThread(() -> {
+                try {
+                    android.webkit.WebView wv = bridge.getWebView();
+                    wv.getSettings().setMediaPlaybackRequiresUserGesture(false);
+                    if (Build.VERSION.SDK_INT >= 26)
+                        wv.setRendererPriorityPolicy(on ? android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT : android.webkit.WebView.RENDERER_PRIORITY_BOUND, !on);
+                } catch (Exception e) {
+                    Log.w("KI-Assistent", "Oberfläche wach halten", e);
+                }
+            });
+        }
+
         @JavascriptInterface
         public boolean backgroundRunning() {
             return KIConversationService.running;

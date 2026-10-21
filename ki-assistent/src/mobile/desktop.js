@@ -16,7 +16,7 @@ import verkehr from '../../verkehr.js';
 const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI, appTools, mergeTools } = cloud;
 // Rückkanal für Werkzeuge der App (laufen in der Oberfläche)
 let uiHandler = null;
-const uiTools = () => appTools((name, input) => (uiHandler ? uiHandler('tool', { name, input }) : Promise.reject(new Error('nicht bereit'))));
+const uiTools = () => appTools((name, input) => (uiHandler ? uiHandler('tool', { name, input }) : Promise.reject(new Error('nicht bereit'))), { privat: AREA === 'privat' });
 
 // ---------------------------------------------------------------- Dateien im App-Speicher
 async function readJson(path) {

@@ -253,3 +253,11 @@ export function episodeHitsPrompt(hits) {
     hits.map((h) => `(${fmtDay(h.von)}) ${h.titel}: ${h.text}${h.offen ? ` Offen blieb: ${h.offen}` : ''}`).join('\n')
   );
 }
+
+/** Auswahl passender früherer Gespräche, wenn die Stichwortsuche nichts findet (versteht Umschreibungen). */
+export const EPISODE_PICK_PROMPT =
+  'Wähle aus den früheren Gesprächen (nummeriert, mit Datum, Titel und Kurzfassung) die aus, die zur Frage passen – auch ' +
+  'wenn andere Wörter benutzt werden (Drucker = Printer, Auto = Wagen, „letzte Woche“ = Datum). Höchstens 3, nur wirklich ' +
+  'passende; passt keines, leere Liste. Antworte ausschließlich mit JSON: {"nr":[2,5]}';
+/** Klingt die Frage nach einer Erinnerung an früher? */
+export const RECALL_RE = /\b(weißt du noch|erinnerst du dich|hatten wir|haben wir (da|damals|letzt|neulich)|letzte[nrs]? (woche|mal|monat)|neulich|damals|vorhin|besprochen|wie war das (mit|nochmal))\b/i;

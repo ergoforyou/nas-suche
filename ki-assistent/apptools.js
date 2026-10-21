@@ -95,6 +95,33 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'erinnerung_setzen',
+    privatOnly: true,
+    description:
+      'Stellt eine Erinnerung oder einen Timer auf dem Gerät (ohne Google, auch offline): „Erinnere mich in 20 Minuten an ' +
+      'den Rückruf“, „Weck mich um 6:30“, „Morgen um 9 an den Zahnarzt erinnern“. Entweder in_minuten oder zeitpunkt ' +
+      '(Ortszeit YYYY-MM-DDTHH:MM). Sag danach kurz, wann du erinnerst.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Woran erinnert werden soll (kurz)' },
+        in_minuten: { type: 'number', description: 'In wie vielen Minuten (für Timer)' },
+        zeitpunkt: { type: 'string', description: 'Ortszeit YYYY-MM-DDTHH:MM' },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'erinnerungen_verwalten',
+    privatOnly: true,
+    description: 'Zeigt die gestellten Erinnerungen/Timer oder löscht eine (aktion „liste“ oder „loeschen“ mit text bzw. „alle“).',
+    input_schema: {
+      type: 'object',
+      properties: { aktion: { type: 'string', enum: ['liste', 'loeschen'] }, text: { type: 'string' } },
+      required: ['aktion'],
+    },
+  },
+  {
     name: 'verkehr',
     description:
       'Aktuelle Verkehrslage auf einer deutschen Autobahn (Autobahn GmbH): Staus, Unfälle, Sperrungen und Baustellen mit ' +
@@ -150,6 +177,8 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   wetter: '🌦 Schaue nach dem Wetter …',
   gespraeche_suchen: '💭 Erinnere mich …',
   verkehr: '🚗 Schaue nach dem Verkehr …',
+  erinnerung_setzen: '⏰ Stelle die Erinnerung …',
+  erinnerungen_verwalten: '⏰ Schaue in die Erinnerungen …',
   nachrichten: '📰 Schaue in die Nachrichten …',
 };
 

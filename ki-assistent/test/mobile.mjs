@@ -40,7 +40,7 @@ await page.route('https://api.anthropic.com/**', (route) => {
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
   // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
   // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
-  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis/.test(JSON.stringify(request.body.system ?? ''));
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis|Wähle aus den früheren Gesprächen/.test(JSON.stringify(request.body.system ?? ''));
   const sysText = JSON.stringify(request.body.system ?? '');
   // gezielte Antworten (match) gehen nur an die passende Anfrage, sonst die nächste freie
   let qi = claudeQueue.findIndex((e) => !!e.helper === helper && e.match?.test(sysText));
@@ -1971,7 +1971,7 @@ const lockRes = await page.evaluate(async () => {
   await wait(150);
   const unlocked = ls.hidden;
   // mit Verzögerung: kurz weg = nicht sperren
-  localStorage.setItem('ki-sperre', JSON.stringify({ on: true, delay: 5 }));
+  localStorage.setItem('ki-sperre', JSON.stringify({ on: true, delay: 5, talk: false }));
   window.__kiPause();
   window.__kiResume();
   await wait(50);
@@ -1993,7 +1993,9 @@ const lockRes = await page.evaluate(async () => {
   document.getElementById('lockBtn').click();
   await wait(150);
   const liveBack = app.state.settings.handsFree;
-  // mit Auto/Headset: Bildschirm aus sperrt nur die Anzeige, das Gespräch per Stimme läuft weiter
+  // im Live-Gespräch (erlaubt): Bildschirm aus sperrt nur die Anzeige, das Gespräch per Stimme läuft weiter
+  localStorage.setItem('ki-sperre', JSON.stringify({ on: true, delay: 5 }));
+  app.setHandsFree(true);
   app.state.voiceDevice = 'Golf';
   window.__kiScreenOff();
   const keepTalk = app.state.locked && !ls.hidden && app.state.settings.handsFree;
@@ -2171,6 +2173,38 @@ check(
   JSON.stringify({ before: keysBefore, privat: priv.keys }),
 );
 check(priv.area === 'privat' && priv.cls && priv.kb === null && priv.history === 0, 'Bereich Privat: getrennte Daten, kein Firmenwissen', JSON.stringify(priv));
+// Beta 61 (Privat): Erinnerungen/Timer per Sprache, Erinnerung versteht Umschreibungen, Kostenbremse
+claudeQueue.push(Object.assign(sayText('{"nr":[1]}'), { helper: true, match: /Wähle aus den früheren Gesprächen/ }));
+const b61 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const set = await app.runAppTool('erinnerung_setzen', { text: 'Rückruf bei Anna', in_minuten: 20 });
+  const list = await app.runAppTool('erinnerungen_verwalten', { aktion: 'liste' });
+  const del = await app.runAppTool('erinnerungen_verwalten', { aktion: 'loeschen', text: 'anna' });
+  const after = await app.runAppTool('erinnerungen_verwalten', { aktion: 'liste' });
+  const keep = { memoryOn: p.memoryOn, episoden: p.episoden, model: app.state.settings.claudeModel, budget: app.state.settings.budgetMonth, noted: app.state.settings.budgetNoted };
+  p.memoryOn = true;
+  p.episoden = [
+    { id: 'e1', von: Date.now() - 5 * 86400e3, titel: 'Druckerproblem', text: 'Wir haben den streikenden Drucker im Büro wieder zum Laufen gebracht.', created: 1 },
+    { id: 'e2', von: Date.now() - 3 * 86400e3, titel: 'Urlaubsplanung', text: 'Wir haben über einen Kurzurlaub an der Ostsee gesprochen.', created: 2 },
+  ];
+  const smart = await app.runAppTool('gespraeche_suchen', { suchbegriff: 'Printer' });
+  // Kostenbremse: Budget überschritten → günstiges Modell, Extras ruhen, Hinweis
+  app.state.settings.claudeModel = 'claude-sonnet-5-5';
+  app.state.settings.budgetNoted = {};
+  app.state.settings.budgetMonth = 0.000001;
+  app.costs.add({ kind: 'chat', model: 'claude-sonnet-5-5', input: 100000, output: 10000 });
+  const b = app.budgetState();
+  app.checkBudget();
+  const model = await app.ensureModel();
+  const note = [...document.querySelectorAll('.msg.note')].map((n) => n.textContent).join(' ');
+  Object.assign(p, { memoryOn: keep.memoryOn, episoden: keep.episoden });
+  Object.assign(app.state.settings, { claudeModel: keep.model, budgetMonth: keep.budget, budgetNoted: keep.noted });
+  return { set, n: list.erinnerungen?.length, del: del.geloescht, after: after.erinnerungen?.length, smart: smart.gespraeche?.map((g) => g.titel), b: { hit: b.hit, save: b.save }, model, note: /Monatsbudget erreicht/.test(note) };
+});
+check(b61.set.gestellt && b61.n === 1 && b61.del?.[0] === 'Rückruf bei Anna' && b61.after === 0, 'Erinnerungen per Sprache (Privat): stellen, anzeigen, löschen', JSON.stringify(b61));
+check(b61.smart?.[0] === 'Druckerproblem', 'Erinnerung versteht Umschreibungen (Printer → Drucker)', JSON.stringify(b61.smart));
+check(b61.b.hit && b61.b.save && b61.model === 'claude-haiku-5-5' && b61.note, 'Kostenbremse: Budget erreicht → günstiges Modell, Hinweis', JSON.stringify(b61));
 // Bereichswechsel nimmt Personas mit (Avatar usw.), Gedächtnis bleibt je Bereich
 const carry = await page.evaluate(async () => {
   const mine = [
