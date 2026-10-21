@@ -95,6 +95,22 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'verkehr',
+    description:
+      'Aktuelle Verkehrslage auf einer deutschen Autobahn (Autobahn GmbH): Staus, Unfälle, Sperrungen und Baustellen mit ' +
+      'Sperrung. Nimm es für Fragen wie „Ist die A2 frei?“, „Stau auf der A7 bei Hannover?“ – statt einer Internetsuche. ' +
+      'Für Stadt- und Landstraßen gibt es hier nichts. Fasse kurz zusammen, was für die Fahrt zählt (im Auto höchstens ' +
+      'zwei Sätze).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        autobahn: { type: 'string', description: 'z. B. „A2“' },
+        ort: { type: 'string', description: 'Optional: Ort oder Anschlussstelle, um die Meldungen einzugrenzen (z. B. „Hannover“)' },
+      },
+      required: ['autobahn'],
+    },
+  },
+  {
     name: 'gespraeche_suchen',
     description:
       'Durchsucht deine Erinnerung an frühere Gespräche mit deinem Gegenüber (Zusammenfassungen: Thema, Ergebnis, was ' +
@@ -133,6 +149,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   gedaechtnis_loeschen: '🗑 Vergesse …',
   wetter: '🌦 Schaue nach dem Wetter …',
   gespraeche_suchen: '💭 Erinnere mich …',
+  verkehr: '🚗 Schaue nach dem Verkehr …',
   nachrichten: '📰 Schaue in die Nachrichten …',
 };
 

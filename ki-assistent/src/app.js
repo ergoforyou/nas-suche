@@ -25,7 +25,7 @@ import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX, isFixedSelf, p
 import { TIDY_PROMPT, SELF_TIDY_PROMPT, CATEGORIES, catOf, groupedText, nearDuplicate, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, matchForget, numbered as numberedMemory } from './gedaechtnis.js';
 import { ZIELE_MAX, ENTWICKLUNG_MAX, zielePrompt, entwicklungPrompt, WEEK_PROMPT, parseWeek, feedbackKind, signalText, EPISODEN_MAX, EPISODE_PROMPT, parseEpisode, splitSessions, episodeHitsPrompt } from './figur.js';
 import { KANON_MAX, GEMEINSAM_MAX, TAGEBUCH_MAX, KANON_CHECK_PROMPT, parseKanonCheck, kanonPrompt, gemeinsamPrompt, tagebuchPrompt, stimmungPrompt, DIARY_PROMPT, parseDiary, inRoleError, ROLE_CHECK, judgeRoleAnswer } from './figur.js';
-import { TRAITS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief } from './steckbrief.js';
+import { TRAITS, TEXT_FIELDS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief, INTERVIEW_Q_PROMPT, INTERVIEW_A_PROMPT, REVIEW_PROMPT } from './steckbrief.js';
 import { stamp as stampSync, noteDeletions, snapshot as syncSnapshot, mergeSync, idsOf, personaText } from './abgleich.js';
 
 const $ = (id) => document.getElementById(id);
@@ -196,7 +196,7 @@ const DEFAULT_SETTINGS = {
   floatingSize: 0.4,
   provider: desktop.platform === 'android' ? 'anthropic' : 'lmstudio', // 'lmstudio' | 'anthropic' | 'openai'
   claudeModel: 'claude-haiku-5-5',
-  claudeEffort: 'low',
+  claudeEffort: 'auto', // 'auto' = je nach Frage: schnell bei Kleinem, gründlich bei Schwierigem
   openaiModel: '',
   cloudTtsModel: 'gpt-4o-mini-tts',
   claudeWeb: true, // Internetsuche (nur Claude)
@@ -954,10 +954,24 @@ class ThinkFilter {
 }
 
 /** Anfrageparameter für den gewählten KI-Anbieter. */
-function llmParams(model) {
+/**
+ * Denktiefe automatisch: kurze Plaudereien schnell (low), Erklärungen mittel, Analysen, Vergleiche, Pläne, Texte und
+ * Fragen mit Anhängen gründlich (high). Im Fahrmodus immer schnell. Hilfsaufgaben ohne Frage: low.
+ */
+const HARD_Q = /\b(analysier|vergleich|bewert|plan(e|ung)|strategie|konzept|entwirf|entwurf|schreib (mir )?(einen|eine|ein)|formulier|berechn|kalkulier|recherchier|pro und contra|vor- und nachteile|abwäg|begründ|gliederung|angebot|zusammenfass)\w*/i;
+const MID_Q = /\b(erklär|wie funktioniert|was ist der unterschied|warum|wieso|weshalb|tipps?|ideen?|vorschl|empfiehl|empfehlung|was meinst du|wie würdest du)\w*/i;
+function autoEffort(question, attachments) {
+  if (state.drive) return 'low';
+  const q = String(question ?? '');
+  if (attachments?.length || q.length > 350 || HARD_Q.test(q)) return 'high';
+  if (MID_Q.test(q) || q.length > 140) return 'medium';
+  return 'low';
+}
+function llmParams(model, question, attachments) {
   const s = state.settings;
-  if (s.provider === 'anthropic') return { provider: 'anthropic', model, effort: s.claudeEffort };
-  if (s.provider === 'openai') return { provider: 'openai', model, effort: s.claudeEffort };
+  const effort = s.claudeEffort === 'auto' ? (question == null ? 'low' : autoEffort(question, attachments)) : s.claudeEffort;
+  if (s.provider === 'anthropic') return { provider: 'anthropic', model, effort };
+  if (s.provider === 'openai') return { provider: 'openai', model, effort };
   return { provider: 'lmstudio', baseUrl: s.baseUrl, model, temperature: s.temperature };
 }
 
@@ -1018,6 +1032,13 @@ const NEW_CHAT_COMMAND = /^(neuer chat|neues gespräch|new chat)[.!]?$/i;
 async function send(text) {
   text = text.trim();
   if (NEW_CHAT_COMMAND.test(text) && !pendingAttachments.length) return newChat();
+  // „Morgenrunde“ – den Tagesüberblick auch auf Zuruf
+  if (/^\s*(morgenrunde|morgen-?briefing|tagesüberblick)\s*[.!?]?\s*$/i.test(text ?? '') && !pendingAttachments.length) {
+    const h = history();
+    h.push({ role: 'user', content: text, t: Date.now() });
+    addBubble('user', text);
+    return personalGreeting({ morning: true });
+  }
   // „An Claude: …“ – ohne eigenes Sprachmodell direkt an die Claude-App übergeben
   const toClaude = CLAUDE_HANDOFF && !pendingAttachments.length && text.match(CLAUDE_RE);
   // „Schick das an Claude“ ohne eigenen Text: das Sprachmodell stellt die Aufgabe aus dem Gespräch zusammen (Werkzeug)
@@ -1199,7 +1220,7 @@ async function send(text) {
   chatRequest(
     {
       id,
-      ...llmParams(model),
+      ...llmParams(model, text, attachments),
       ...(state.settings.provider === 'anthropic'
         ? { web: state.settings.claudeWeb, files: state.settings.claudeFiles && filesNeeded(text, attachments), conversation: `${persona().id}:${chatSerial}` }
         : {}),
@@ -1350,17 +1371,49 @@ function topicsPrompt(topics, lang) {
 
 // ---- Persönliche Begrüßung beim Start (nach mindestens 4 Stunden Pause): Tageszeit, heutige Termine, letztes
 // Gespräch, offene Themen – ein, zwei natürliche Sätze statt „Wie kann ich helfen?“. Mit dem günstigen Hilfsmodell.
-async function personalGreeting() {
+/** Heute schon Morgenrunde gehabt? Ab 5 bis 11 Uhr, einmal am Tag (abschaltbar). */
+const todayKey = () => new Date().toLocaleDateString('sv-SE');
+const morningDue = () => state.settings.morningBrief !== false && new Date().getHours() >= 5 && new Date().getHours() < 11 && state.settings.morningDay !== todayKey();
+
+/** Was die Morgenrunde braucht: Wetter, wichtigste Nachrichten, was gestern offen blieb (Termine kommen immer mit). */
+async function morningContext(p) {
+  const out = [];
+  const ort = await currentPlace().catch(() => '');
+  const quick = (pr) => Promise.race([pr, new Promise((ok) => setTimeout(() => ok(null), 8000))]).catch(() => null);
+  const [w, n] = await Promise.all([
+    ort && desktop.weather && !state.settings.offline ? quick(desktop.weather({ ort, tage: 1 })) : null,
+    desktop.news && !state.settings.offline ? quick(desktop.news({ bereiche: ['lokal', 'deutschland', 'wirtschaft', 'welt'], ort, anzahl: 3 })) : null,
+  ]);
+  if (w?.jetzt) out.push(`Wetter in ${w.ort}: jetzt ${w.jetzt.temp} °C, ${w.jetzt.wetter}; heute ${w.tage?.[0]?.min}–${w.tage?.[0]?.max} °C, ${w.tage?.[0]?.wetter}, Regenwahrscheinlichkeit ${w.tage?.[0]?.regenwahrscheinlichkeit ?? '?'} %.`);
+  if (n) {
+    const titles = (x) => (Array.isArray(x) ? x : x?.meldungen ?? []).slice(0, 3).map((m) => m.titel).filter(Boolean);
+    const parts = [['Lokal', titles(n.lokal)], ['Deutschland', titles(n.deutschland)], ['Wirtschaft', titles(n.wirtschaft)], ['Welt', titles(n.welt)]].filter(([, t]) => t.length);
+    if (parts.length) out.push(`Schlagzeilen heute:\n${parts.map(([k, t]) => `${k}: ${t.join(' | ')}`).join('\n')}`);
+  }
+  const y = new Date();
+  y.setHours(0, 0, 0, 0);
+  const open = (p.episoden ?? []).filter((e) => e.offen && (e.von ?? 0) >= y.getTime() - 86400e3).slice(-3);
+  if (open.length) out.push(`Gestern offen geblieben:\n${open.map((e) => `- ${e.titel}: ${e.offen}`).join('\n')}`);
+  return out;
+}
+
+async function personalGreeting({ morning: forceMorning = false } = {}) {
   const p = persona();
-  if (state.settings.personalGreet === false || state.busy) return;
+  if ((state.settings.personalGreet === false && !forceMorning) || state.busy) return;
   const h = history();
   const last = h.at(-1);
   // nur nach einem früheren Gespräch und einer längeren Pause (ein leerer Chat zeigt den festen Begrüßungstext)
   // (Nachricht ohne Zeitpunkt = gerade eben entstanden, noch nicht gespeichert)
-  if (!last || Date.now() - (last.t ?? Date.now()) < 4 * 3600e3) return;
+  if (!forceMorning && (!last || Date.now() - (last.t ?? Date.now()) < 4 * 3600e3)) return;
   const lang = p.language === 'en' ? 'en' : 'de';
-  const topics = dueTopics(p).slice(-1); // höchstens ein Thema – bei der Begrüßung nicht ausfragen
+  const morning = forceMorning || morningDue();
+  const topics = dueTopics(p).slice(morning ? -3 : -1); // bei der Begrüßung nicht ausfragen
   const ctx = [r_now(lang)];
+  if (morning) {
+    state.settings.morningDay = todayKey();
+    save();
+    ctx.push(...(await morningContext(p)));
+  }
   if (googleActive() && desktop.googleUpcoming) {
     try {
       const up = await desktop.googleUpcoming({ timeZone: userTimeZone(), hours: 14 });
@@ -1392,7 +1445,9 @@ async function personalGreeting() {
     `${figure.join('\n\n')}\n\n` +
     (lang === 'en'
       ? `You are ${p.name}. The user just opened the app. Greet them with one or two short, natural spoken sentences that fit the time of day and situation; mention at most one open topic or today's appointment if it fits. No lists, no Markdown, no "How can I help you" phrases. Answer in English.`
-      : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.`);
+      : morning
+        ? `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet – es ist Morgen. Begrüße es und gib in deiner Art eine kurze Morgenrunde, gesprochen, ${state.drive ? 'höchstens 4 Sätze (es fährt Auto)' : '4 bis 7 Sätze'}: das Wichtigste zuerst (heutige Termine), dann das Wetter in einem Satz, dann ein, zwei Nachrichten, die dein Gegenüber interessieren dürften, zum Schluss etwas Persönliches (ein offenes Thema oder was gestern offen blieb). Nur, was unten steht – nichts erfinden. Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.`
+        : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.`);
   // mit dem Gesprächsmodell: die Begrüßung ist der erste Eindruck der Figur (kurz, also günstig)
   const model = await ensureModel().catch(() => null);
   if (!model) return;
@@ -1605,6 +1660,7 @@ function renderTopics() {
   const list = $('tList');
   if (!list) return;
   $('cGreet').checked = state.settings.personalGreet !== false;
+  $('cMorning').checked = state.settings.morningBrief !== false;
   $('cThink').checked = state.settings.thinkSounds !== false;
   const topics = (p.themen ?? []).filter((t) => !t.asked);
   const done = (p.themen ?? []).length - topics.length;
@@ -1628,6 +1684,14 @@ function renderTopics() {
     list.appendChild(row);
   }
 }
+$('cMorning').onchange = (e) => {
+  state.settings.morningBrief = e.target.checked;
+  save();
+};
+$('morningNow').onclick = () => {
+  $('drawer').hidden = true;
+  personalGreeting({ morning: true }).catch((e) => status(`Morgenrunde: ${e.message}`));
+};
 $('cGreet').onchange = (e) => {
   state.settings.personalGreet = e.target.checked;
   save();
@@ -3581,7 +3645,7 @@ personaField('pPrompt', 'prompt');
 personaField('pGreeting', 'greeting');
 
 // ---- Steckbrief: Werte, Regeln, Grenzen, Charakter-Regler (wird vor den Systemprompt gesetzt)
-const SB_FIELDS = { sbRolle: 'rolle', sbHintergrund: 'hintergrund', sbFach: 'fach', sbHerkunft: 'herkunft', sbRegeln: 'regeln', sbGrenzen: 'grenzen', sbSprechweise: 'sprechweise', sbVermeiden: 'vermeiden', sbBeispiele: 'beispiele' };
+const SB_FIELDS = { sbRolle: 'rolle', sbHintergrund: 'hintergrund', sbFach: 'fach', sbHerkunft: 'herkunft', sbKanten: 'kanten', sbGefuehle: 'gefuehle', sbBeziehung: 'beziehung', sbInnenwelt: 'innenwelt', sbRegeln: 'regeln', sbGrenzen: 'grenzen', sbSprechweise: 'sprechweise', sbVermeiden: 'vermeiden', sbBeispiele: 'beispiele' };
 for (const [k, name, low, high] of TRAITS) {
   const lab = document.createElement('label');
   lab.textContent = name + ' ';
@@ -3605,6 +3669,94 @@ function renderSteckbrief() {
 $('sbGuard').onchange = (e) => {
   state.settings.roleGuard = e.target.checked;
   save();
+};
+/** Grundlage für Interview und Prüfung: Steckbrief, Systemprompt, Geschichte (Anfang), über sich Erzähltes. */
+function personaDossier(p) {
+  return [
+    `Name: ${p.name}`,
+    steckbriefPrompt(p.steckbrief) || '(kein Steckbrief)',
+    `Systemprompt:\n${(p.prompt ?? '').slice(0, 2000) || '(leer)'}`,
+    p.geschichte?.trim() ? `Lebensgeschichte (Anfang):\n${p.geschichte.trim().slice(0, 2500)}` : '',
+    p.kanon?.length ? `Im Gespräch über sich erzählt:\n${p.kanon.map((e) => `- ${e.text}`).join('\n')}` : '',
+  ].filter(Boolean).join('\n\n');
+}
+const jsonOf = (t) => JSON.parse(String(t ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').match(/\{[\s\S]*\}/)?.[0] ?? 'null');
+// Persona-Interview: Fragen zu den Lücken, Antworten werden in den Steckbrief eingearbeitet (mit Vorschau)
+$('sbInterview').onclick = async () => {
+  const p = persona();
+  const box = $('sbInterviewBox');
+  $('sbInterview').disabled = true;
+  $('sbInfo').textContent = '🎤 Fragen werden vorbereitet …';
+  try {
+    const j = jsonOf(await askOnce(INTERVIEW_Q_PROMPT, personaDossier(p)));
+    const fragen = (j?.fragen ?? []).filter((f) => f?.frage && TEXT_FIELDS.includes(f.feld)).slice(0, 6);
+    if (!fragen.length) throw new Error('keine Fragen erhalten');
+    if (persona() !== p) return;
+    box.hidden = false;
+    box.innerHTML = '<p class="hint">Beantworte, was du magst (leer lassen = überspringen):</p>';
+    for (const f of fragen) {
+      const lab = document.createElement('label');
+      lab.textContent = f.frage;
+      const ta = document.createElement('textarea');
+      ta.rows = 2;
+      ta.dataset.feld = f.feld;
+      ta.dataset.frage = f.frage;
+      lab.append(ta);
+      box.append(lab);
+    }
+    const go = document.createElement('button');
+    go.textContent = '✔ In den Steckbrief übernehmen';
+    go.onclick = async () => {
+      const qa = [...box.querySelectorAll('textarea')].filter((t) => t.value.trim()).map((t) => `[${t.dataset.feld}] ${t.dataset.frage}\nAntwort: ${t.value.trim()}`);
+      if (!qa.length) return (box.hidden = true);
+      go.disabled = true;
+      $('sbInfo').textContent = '🎤 Antworten werden eingearbeitet …';
+      try {
+        const upd = jsonOf(await askOnce(INTERVIEW_A_PROMPT, `${steckbriefPrompt(p.steckbrief) || '(leer)'}\n\nInterview:\n${qa.join('\n\n')}`)) ?? {};
+        const changed = Object.entries(upd).filter(([k, v]) => TEXT_FIELDS.includes(k) && typeof v === 'string' && v.trim());
+        p.steckbrief = { ...(p.steckbrief ?? {}), ...Object.fromEntries(changed.map(([k, v]) => [k, v.trim().slice(0, 1500)])) };
+        save();
+        renderSteckbrief();
+        box.hidden = true;
+        $('sbInfo').textContent = changed.length ? `✔ Ergänzt: ${changed.map(([k]) => k).join(', ')} – bitte kurz durchlesen.` : 'Nichts zu ergänzen.';
+      } catch (e) {
+        $('sbInfo').textContent = `Einarbeiten nicht möglich: ${e.message}`;
+        go.disabled = false;
+      }
+    };
+    box.append(go);
+    $('sbInfo').textContent = '';
+  } catch (e) {
+    $('sbInfo').textContent = `Interview nicht möglich: ${e.message}`;
+  } finally {
+    $('sbInterview').disabled = false;
+  }
+};
+// Persona prüfen: Widersprüche und Lücken
+$('sbReview').onclick = async () => {
+  const p = persona();
+  const out = $('sbReviewOut');
+  $('sbReview').disabled = true;
+  out.innerHTML = '<p class="hint">🔍 Wird geprüft …</p>';
+  try {
+    const j = jsonOf(await askOnce(REVIEW_PROMPT, personaDossier(p)));
+    const punkte = (j?.punkte ?? []).slice(0, 6);
+    out.innerHTML = punkte.length ? '' : '<p class="hint">✔ Keine Widersprüche oder größeren Lücken gefunden.</p>';
+    for (const k of punkte) {
+      const row = document.createElement('div');
+      row.className = 'memory-row role-check';
+      row.innerHTML = '<span class="self-kind"></span><div><b></b><br><span class="hint"></span></div>';
+      row.querySelector('.self-kind').textContent = k.art === 'widerspruch' ? '⚠ Widerspruch' : '＋ Lücke';
+      row.querySelector('b').textContent = String(k.was ?? '');
+      row.querySelector('.hint').textContent = k.vorschlag ? `Vorschlag: ${k.vorschlag}` : '';
+      out.append(row);
+    }
+  } catch (e) {
+    out.innerHTML = '';
+    status(`Prüfen: ${e.message}`);
+  } finally {
+    $('sbReview').disabled = false;
+  }
 };
 $('sbExamples').onclick = async () => {
   const p = persona();
@@ -6013,6 +6165,11 @@ async function init() {
   stt.setDevice(state.settings.micId || '');
   if (!['german', 'english'].includes(state.settings.sttLang)) state.settings.sttLang = 'persona';
   // Ältere Installationen einmalig umstellen: Cloud-Erkennung (Cloud-Ausgabe) und genaueres lokales Modell
+  // Denktiefe: bisher fest „niedrig“ → einmalig auf automatisch umstellen
+  if (!data.settings?.effortAuto) {
+    if ((state.settings.claudeEffort ?? 'low') === 'low') state.settings.claudeEffort = 'auto';
+    state.settings.effortAuto = 1;
+  }
   if ((data.settings?.sttDefaults ?? 0) < 2) {
     if (!LOCAL_ONLY && desktop.transcribeCloud) state.settings.sttEngine = 'cloud';
     if (state.settings.sttModel === 'onnx-community/whisper-base') state.settings.sttModel = 'onnx-community/whisper-small';
@@ -6448,6 +6605,11 @@ async function runAppToolInner(name, input) {
     const ort = String(input?.ort ?? '').trim() || (await currentPlace());
     if (!ort) return { fehler: 'Kein Ort bekannt – frag nach dem Ort oder bitte darum, ihn in ⚙ einzutragen bzw. den Standort zu erlauben.' };
     return desktop.weather({ ort, tage: input?.tage });
+  }
+  if (name === 'verkehr') {
+    if (state.settings.offline) throw new Error('offline – keine Verkehrslage abrufbar');
+    if (!desktop.traffic) throw new Error('Verkehr ist hier nicht verfügbar');
+    return desktop.traffic({ autobahn: input?.autobahn, ort: input?.ort });
   }
   if (name === 'gespraeche_suchen') {
     const p = persona();
@@ -8851,7 +9013,8 @@ window.__app = {
   autoSync,
   pairWith,
   nasSync,
-  personalGreeting: () => personalGreeting(),
+  personalGreeting: (o) => personalGreeting(o),
+  autoEffort,
   addTopic,
   dueTopics,
   padAudio,

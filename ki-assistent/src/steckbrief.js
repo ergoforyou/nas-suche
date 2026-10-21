@@ -12,7 +12,7 @@ export const TRAITS = [
   ['initiative', 'Eigeninitiative', 'zurückhaltend (wartet auf Fragen)', 'proaktiv (schlägt selbst Dinge vor)'],
   ['widerspruch', 'Widerspruch', 'zustimmend', 'kritisch (widerspricht offen, wenn du anderer Meinung bist)'],
 ];
-export const TEXT_FIELDS = ['rolle', 'hintergrund', 'fach', 'herkunft', 'regeln', 'grenzen', 'sprechweise', 'vermeiden', 'beispiele'];
+export const TEXT_FIELDS = ['rolle', 'hintergrund', 'fach', 'herkunft', 'regeln', 'grenzen', 'kanten', 'gefuehle', 'beziehung', 'innenwelt', 'sprechweise', 'vermeiden', 'beispiele'];
 
 /** Wortlaut einer Reglerstufe, z. B. „eher direkt“. */
 export function traitLabel(low, high, v) {
@@ -48,6 +48,10 @@ export function steckbriefPrompt(sb, lang = 'de') {
   if (grenzen.length) out.push(`Das tust du nie:\n${grenzen.map((r) => `- ${r}`).join('\n')}`);
   const traits = TRAITS.filter(([k]) => Number(sb.regler?.[k]) > 0).map(([k, , low, high]) => traitLabel(low, high, Number(sb.regler[k])));
   if (traits.length) out.push(`Deine Art: ${traits.join('; ')}.`);
+  if (sb.kanten?.trim()) out.push(`Deine Ecken und Kanten (sie gehören zu dir – glätte sie nicht weg): ${sb.kanten.trim()}`);
+  if (sb.gefuehle?.trim()) out.push(`So reagierst du gefühlsmäßig: ${sb.gefuehle.trim()}`);
+  if (sb.beziehung?.trim()) out.push(`Du und dein Gegenüber: ${sb.beziehung.trim()}`);
+  if (sb.innenwelt?.trim()) out.push(`Was dich interessiert und worüber du gern nachdenkst (daraus entstehen deine Ansichten): ${sb.innenwelt.trim()}`);
   if (sb.sprechweise?.trim()) out.push(`So sprichst du: ${sb.sprechweise.trim()}`);
   if (sb.vermeiden?.trim()) out.push(`Diese Wörter und Floskeln benutzt du nicht: ${sb.vermeiden.trim()}`);
   if (sb.beispiele?.trim()) out.push(`So klingst du – Beispiele aus Gesprächen mit dir („Ich“ bist du):\n${sb.beispiele.trim()}`);
@@ -58,11 +62,34 @@ export function steckbriefPrompt(sb, lang = 'de') {
   return out.join('\n');
 }
 
+/** Persona-Interview: Fragen zu Lücken im Steckbrief entwerfen. */
+export const INTERVIEW_Q_PROMPT =
+  'Du hilfst, eine Persona lebendiger zu beschreiben. Unten stehen ihr Steckbrief (leere Felder fehlen), ihr Systemprompt ' +
+  'und der Anfang ihrer Geschichte. Stelle dem Menschen, der die Persona gestaltet, 5 kurze, konkrete Fragen zu den ' +
+  'größten Lücken – besonders: Ecken und Kanten, Gefühle, eure Beziehung, innere Welt, Sprechweise. Fragen so, dass man ' +
+  'mit einem Satz antworten kann (z. B. „Was bringt sie auf die Palme?“). Feld je Frage aus: kanten, gefuehle, beziehung, ' +
+  'innenwelt, sprechweise, hintergrund, vermeiden. Antworte ausschließlich mit JSON: {"fragen":[{"feld":"kanten","frage":"…"}]}';
+/** Persona-Interview: Antworten in den Steckbrief einarbeiten. */
+export const INTERVIEW_A_PROMPT =
+  'Arbeite die Antworten aus dem Interview in den Steckbrief ein: je betroffenes Feld den vollständigen neuen Text ' +
+  '(Bestehendes behalten und sinnvoll ergänzen, knapp, in der dritten Person bzw. wie das Feld es verlangt). Nichts ' +
+  'erfinden, was nicht in den Antworten oder dem Steckbrief steht. Antworte ausschließlich mit JSON: {"kanten":"…",' +
+  '"gefuehle":"…"} – nur die geänderten Felder.';
+/** Persona prüfen: Widersprüche und Lücken finden. */
+export const REVIEW_PROMPT =
+  'Prüfe die Beschreibung einer Persona: Steckbrief, freier Systemprompt, Lebensgeschichte und was sie im Gespräch über ' +
+  'sich erzählt hat. Finde Widersprüche (z. B. Steckbrief sagt „direkt“, Systemprompt „diplomatisch“; Geschichte sagt ' +
+  'Hamburg, erzählt hat sie Kiel) und die wichtigsten Lücken, die eine glaubwürdige Figur braucht. Höchstens 6 Punkte, ' +
+  'je mit einem konkreten Vorschlag. Antworte ausschließlich mit JSON: {"punkte":[{"art":"widerspruch|luecke",' +
+  '"was":"…","vorschlag":"…"}]}';
+
 /** Aufgabe für das Sprachmodell: Steckbrief aus einem freien Systemprompt ableiten. */
 export const FILL_PROMPT =
   'Leite aus dem folgenden Systemprompt einer KI-Persona einen Steckbrief ab. Antworte NUR mit einem JSON-Objekt (ohne ```), ' +
   'Schlüssel: rolle, hintergrund, fach, herkunft (je ein kurzer Satz oder leer; herkunft = wie sie auf „Wer hat dich gemacht?“ antwortet), werte (Liste von 3–6 kurzen Werten, wichtigster zuerst), ' +
-  'regeln (Entscheidungsregeln, je Zeile eine), grenzen (je Zeile eine), sprechweise, vermeiden (je kurz oder leer), ' +
+  'regeln (Entscheidungsregeln, je Zeile eine), grenzen (je Zeile eine), kanten (Schwächen, Eigenheiten), gefuehle ' +
+  '(wie sie gefühlsmäßig reagiert), beziehung (wie sie zum Gegenüber steht, wie sie es nennt), innenwelt (Interessen), ' +
+  'sprechweise, vermeiden (je kurz oder leer), ' +
   'regler (Objekt mit waerme, direktheit, humor, foermlichkeit, ausfuehrlichkeit, initiative, widerspruch – je 1 bis 5, 3 = ausgewogen, ' +
   '0 wenn der Prompt nichts dazu hergibt). Erfinde nichts, was dem Prompt widerspricht; was er nicht hergibt, bleibt leer bzw. 0. Deutsch.';
 

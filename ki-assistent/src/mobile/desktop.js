@@ -11,6 +11,7 @@ import cloud from '../../cloud.js';
 import googleLib from '../../google.js';
 import wetter from '../../wetter.js';
 import nachrichten from '../../nachrichten.js';
+import verkehr from '../../verkehr.js';
 
 const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI, appTools, mergeTools } = cloud;
 // Rückkanal für Werkzeuge der App (laufen in der Oberfläche)
@@ -219,6 +220,7 @@ const api = {
   // Wetter (Open-Meteo): nur Ortsname/Koordinaten gehen hinaus
   weather: (o) => wetter.weather(o, { fetchFn: nativeGet }),
   news: (o) => nachrichten.news(o, { fetchFn: nativeGet }),
+  traffic: (o) => verkehr.traffic(o, { fetchFn: nativeGet }),
   nasHasPassword: async () => AREA === 'privat' && !!(await getKeys()).nas,
   nasReq: async ({ base, user, method = 'GET', path = '', body, headers = {} }) => {
     if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');

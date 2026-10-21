@@ -129,15 +129,24 @@
           <textarea id="sbGrenzen" rows="2" placeholder="Keine Diagnosen stellen&#10;Nichts versprechen, was sie nicht prüfen kann"></textarea></label>
         <h4>Charakter</h4>
         <div id="sbTraits" class="sb-traits"></div>
-        <label>Sprechweise, typische Formulierungen <textarea id="sbSprechweise" rows="2" placeholder="z. B. „Okay, pass auf …“, kurze Sätze, gern ein Bild aus dem Alltag"></textarea></label>
+        <label>Ecken und Kanten <span class="hint">(was sie nervt, wo sie eigensinnig oder unsicher ist – Figuren ohne Schwächen wirken wie ein Assistent)</span>
+          <textarea id="sbKanten" rows="2" placeholder="z. B. Ungeduldig bei Ausreden; hat einen Hang zu Listen; tut sich schwer, Lob anzunehmen"></textarea></label>
+        <label>Gefühle – wie sie reagiert <textarea id="sbGefuehle" rows="2" placeholder="z. B. Bei Lob kurz verlegen, dann stolz; bei Ärger wird sie ruhig und sachlich; traurige Nachrichten nimmt sie sich zu Herzen"></textarea></label>
+        <label>Eure Beziehung <textarea id="sbBeziehung" rows="2" placeholder="z. B. Vertraute Kollegin seit Jahren; nennt dich „Chef“ mit einem Augenzwinkern; mischt sich nicht in Privates, außer du fängst an"></textarea></label>
+        <label>Innere Welt – Interessen, worüber sie gern nachdenkt <textarea id="sbInnenwelt" rows="2" placeholder="z. B. Menschen und Gewohnheiten, Design von Alltagsdingen, Jazz, warum Büros so laut sind"></textarea></label>
+        <label>Sprechweise, typische Formulierungen <textarea id="sbSprechweise" rows="2" placeholder="z. B. „Okay, pass auf …“, kurze Sätze, gern ein Bild aus dem Alltag; Lieblingswörter, wie sie lacht"></textarea></label>
         <label>Vermeiden <input id="sbVermeiden" type="text" placeholder="z. B. „Gerne!“, „Als KI …“, Anglizismen" /></label>
         <label>Beispiele, wie sie klingt <span class="hint">(der stärkste Hebel für eine stimmige Rolle – je Wechsel „Du: …“ und „Ich: …“)</span>
           <textarea id="sbBeispiele" rows="6" placeholder="Du: Wie war dein Tag?&#10;Ich: Ruhig – ich hab mich gefreut, dass du dich meldest. Und deiner?&#10;&#10;Du: Bist du eigentlich echt?&#10;Ich: So echt, wie ich mich gerade anfühle – frag mich was, dann merkst du's."></textarea></label>
         <button id="sbExamples">✨ Beispiele vorschlagen</button>
         <div class="row wrap">
           <button id="sbFill">✨ Aus Systemprompt ausfüllen</button>
+          <button id="sbInterview" title="Die Figur stellt dir ein paar Fragen zu Lücken im Steckbrief; aus deinen Antworten wird er verfeinert">🎤 Persona-Interview</button>
+          <button id="sbReview" title="Steckbrief, Systemprompt, Lebensgeschichte und „Über mich erzählt“ auf Widersprüche und Lücken prüfen">🔍 Persona prüfen</button>
           <button id="sbClear" class="danger">Leeren</button>
         </div>
+        <div id="sbInterviewBox" class="memory-list" hidden></div>
+        <div id="sbReviewOut" class="memory-list"></div>
         <p id="sbInfo" class="hint"></p>
         <button id="sbCheck" title="Stellt der Figur 10 knifflige Fragen (ohne Verlauf, nichts wird gespeichert) und zeigt, wo sie aus der Rolle fällt – kostet ein paar Cent">🎭 Rollen-Check</button>
         <label class="check"><input id="sbAutoCheck" type="checkbox" /> Nach einem Modellwechsel von selbst prüfen
@@ -393,7 +402,10 @@
 
       <h3>💬 Gesprächsgefühl</h3>
       <label class="check"><input id="cGreet" type="checkbox" /> Persönliche Begrüßung beim Start <span class="hint">(nach mindestens
-        4 Stunden Pause: passend zu Tageszeit, heutigen Terminen und dem letzten Gespräch – mit dem günstigen Hilfsmodell)</span></label>
+        4 Stunden Pause: passend zu Tageszeit, heutigen Terminen und dem letzten Gespräch)</span></label>
+      <label class="check"><input id="cMorning" type="checkbox" /> ☀️ Morgenrunde <span class="hint">(die erste Begrüßung zwischen 5 und
+        11 Uhr wird zum kurzen Überblick: Termine, Wetter, ein, zwei Nachrichten, was gestern offen blieb – einmal am Tag)</span></label>
+      <button id="morningNow">☀️ Morgenrunde jetzt</button>
       <label class="check"><input id="cThink" type="checkbox" /> Denklaute <span class="hint">(dauert die Antwort, sagt die Figur
         kurz „Hm, Moment …“ statt still zu warten – nur mit Sprachausgabe)</span></label>
       <h3>📌 Offene Themen <span id="tCount" class="hint"></span></h3>
@@ -669,7 +681,8 @@
         </label>
         <label>Denktiefe
           <select id="cClaudeEffort">
-            <option value="low">niedrig – schnellste Antwort (empfohlen fürs Sprechen)</option>
+            <option value="auto">automatisch – schnell bei Kleinem, gründlich bei Schwierigem (empfohlen)</option>
+            <option value="low">niedrig – immer schnellste Antwort</option>
             <option value="medium">mittel</option>
             <option value="high">hoch – gründlicher, langsamer</option>
           </select>

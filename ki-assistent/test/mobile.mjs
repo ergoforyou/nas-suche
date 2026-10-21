@@ -1531,6 +1531,56 @@ check(
   'Nachrichten-Werkzeug: lokal, Wetter, Wirtschaft, Deutschland, Welt – nur der Ortsname geht hinaus',
   JSON.stringify(newsRes).slice(0, 400),
 );
+// Beta 59: Verkehr (Autobahn), Morgenrunde, automatische Denktiefe, Persona-Interview und -Prüfung
+await page.route('https://verkehr.autobahn.de/**', (route) => {
+  const kind = route.request().url().split('/').pop();
+  const body = {
+    warning: { warning: [{ title: 'A2 | Hannover - Berlin', subtitle: 'zwischen Lehrte und Peine', description: ['Stau', '3 km Stau, 15 Minuten Zeitverlust'] }, { title: 'A2 | Dortmund', subtitle: 'bei Bielefeld', description: ['Unfall'] }] },
+    closure: { closure: [] },
+    roadworks: { roadworks: [] },
+  }[kind];
+  route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+});
+claudeQueue.push(Object.assign(sayText('Guten Morgen! Um zehn hast du den Zahnarzt, draußen nieselt es bei elf Grad.'), { helper: true, match: /Morgenrunde/ }));
+claudeQueue.push(Object.assign(sayText('{"fragen":[{"feld":"kanten","frage":"Was bringt sie auf die Palme?"},{"feld":"innenwelt","frage":"Worüber denkt sie gern nach?"}]}'), { match: /Persona lebendiger/ }));
+claudeQueue.push(Object.assign(sayText('{"kanten":"Wird ungeduldig bei Ausreden."}'), { match: /Arbeite die Antworten/ }));
+claudeQueue.push(Object.assign(sayText('{"punkte":[{"art":"widerspruch","was":"Steckbrief direkt, Systemprompt diplomatisch","vorschlag":"Eines davon festlegen"}]}'), { match: /Prüfe die Beschreibung einer Persona/ }));
+const b59 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const keep = { place: app.state.settings.place, sb: p.steckbrief, morningDay: app.state.settings.morningDay, greet: app.state.settings.personalGreet };
+  app.state.settings.place = 'Hannover, Niedersachsen';
+  const traffic = await app.runAppTool('verkehr', { autobahn: 'A 2', ort: 'Lehrte' }).catch((e) => ({ err: e.message }));
+  const effort = [app.autoEffort('Hallo'), app.autoEffort('Warum ist der Himmel blau?'), app.autoEffort('Vergleiche bitte die beiden Angebote')];
+  // Morgenrunde
+  const h = app.history();
+  const n0 = h.length;
+  await app.personalGreeting({ morning: true });
+  const greet = h.at(-1)?.content ?? '';
+  h.splice(n0);
+  // Steckbrief: neue Felder im Systemtext, Interview, Prüfung
+  p.steckbrief = { ...(p.steckbrief ?? {}), rolle: 'Büroassistentin', innenwelt: 'Jazz und Alltagsdesign' };
+  const sysHasInner = /Was dich interessiert und worüber du gern nachdenkst[^"]*Jazz/.test(JSON.stringify(app.buildMessages()));
+  document.getElementById('sbInterview').click();
+  for (let i = 0; i < 50 && !document.querySelector('#sbInterviewBox textarea'); i++) await new Promise((r) => setTimeout(r, 100));
+  const qs = document.querySelectorAll('#sbInterviewBox textarea');
+  qs[0].value = 'Ausreden.';
+  document.querySelector('#sbInterviewBox button').click();
+  for (let i = 0; i < 50 && !p.steckbrief.kanten; i++) await new Promise((r) => setTimeout(r, 100));
+  const kanten = p.steckbrief.kanten;
+  document.getElementById('sbReview').click();
+  for (let i = 0; i < 50 && !document.querySelector('#sbReviewOut .role-check'); i++) await new Promise((r) => setTimeout(r, 100));
+  const review = document.getElementById('sbReviewOut').textContent;
+  p.steckbrief = keep.sb;
+  Object.assign(app.state.settings, { place: keep.place, morningDay: keep.morningDay, personalGreet: keep.greet });
+  return { traffic, effort, greet, qs: qs.length, kanten, review, sysHasInner };
+});
+const morningReq = claudeRequests.find((r) => /Morgenrunde/.test(JSON.stringify(r.system ?? '')));
+const morningCtx = JSON.stringify(morningReq?.messages ?? '');
+check(b59.traffic.meldungen?.length === 1 && b59.traffic.meldungen[0].verzoegerung_min === 15 && b59.traffic.autobahn === 'A2', 'Verkehr: Autobahn-Meldungen, eingegrenzt auf den Ort', JSON.stringify(b59.traffic));
+check(b59.effort.join() === 'low,medium,high', 'Denktiefe automatisch: Plauderei schnell, Erklärung mittel, Analyse gründlich', b59.effort.join());
+check(/Zahnarzt/.test(b59.greet) && /Wetter in Hannover/.test(morningCtx) && /Schlagzeilen heute/.test(morningCtx), 'Morgenrunde: Begrüßung mit Wetter und Schlagzeilen', morningCtx.slice(0, 300));
+check(b59.sysHasInner && b59.qs === 2 && /ungeduldig/i.test(b59.kanten ?? '') && /Widerspruch/.test(b59.review), 'Persona: neue Steckbrief-Felder, Interview ergänzt den Steckbrief, Prüfung findet Widersprüche', JSON.stringify(b59));
 // Live-Gespräch: ein Geräusch während der Antwort hält die Stimme nur kurz an – nichts wird abgebrochen
 const bargeRes = await page.evaluate(async () => {
   const app = window.__app;
