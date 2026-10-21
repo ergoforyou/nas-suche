@@ -11,7 +11,7 @@ const SELF_MAX = 40;
 const REFLEX_MAX = 20;
 
 // Teile einer Persona, die nicht als „Text“ zählen: eigene Regeln beim Zusammenführen bzw. gerätebezogen
-const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'ziele', 'entwicklung', 'episoden', 'episodeUntil', 'signale', 'weekReviewAt', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp']);
+const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'ziele', 'entwicklung', 'episoden', 'episodeUntil', 'signale', 'weekReviewAt', 'sicherungen', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp']);
 const newId = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 const norm = (x) => String(x ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -174,6 +174,7 @@ export function mergeSync(a, b) {
       episodeUntil: Math.max(pa.episodeUntil ?? 0, pb.episodeUntil ?? 0) || undefined,
       weekReviewAt: Math.max(pa.weekReviewAt ?? 0, pb.weekReviewAt ?? 0) || undefined,
       signale: pa.signale,
+      sicherungen: pa.sicherungen, // Sicherungen bleiben je Gerät
       reflexion: [...new Map([...(pa.reflexion ?? []), ...(pb.reflexion ?? [])].map((r) => [r.created, r])).values()]
         .sort((x, y) => x.created - y.created)
         .slice(-REFLEX_MAX),

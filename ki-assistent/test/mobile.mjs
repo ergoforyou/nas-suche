@@ -2205,6 +2205,43 @@ const b61 = await page.evaluate(async () => {
 check(b61.set.gestellt && b61.n === 1 && b61.del?.[0] === 'Rückruf bei Anna' && b61.after === 0, 'Erinnerungen per Sprache (Privat): stellen, anzeigen, löschen', JSON.stringify(b61));
 check(b61.smart?.[0] === 'Druckerproblem', 'Erinnerung versteht Umschreibungen (Printer → Drucker)', JSON.stringify(b61.smart));
 check(b61.b.hit && b61.b.save && b61.model === 'claude-haiku-5-5' && b61.note, 'Kostenbremse: Budget erreicht → günstiges Modell, Hinweis', JSON.stringify(b61));
+// Beta 62 (Privat): Tagesstimmung in der Stimme, Feierabendrunde, eigene Initiative, Persona-Sicherung
+claudeQueue.push(Object.assign(sayText('Na, Feierabend! Heute ging es viel um das Angebot. Wie war dein Tag?'), { match: /Feierabendrunde/ }));
+claudeQueue.push(Object.assign(sayText('Ich hab noch über dein Angebot nachgedacht – sollen wir morgen kurz drüberschauen?'), { match: /meldest dich von dir aus/ }));
+const b62 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const keep = { stimmung: p.stimmung, ziele: p.ziele, kanon: p.kanon, sich: p.sicherungen, immersion: p.immersion, selbstOn: p.selbstOn };
+  Object.assign(p, { immersion: true, selbstOn: true, stimmung: { gefuehl: 'heiter', grund: 'Test', t: Date.now() } });
+  const mood = app.baseMood();
+  const h = app.history();
+  const n0 = h.length;
+  h.push({ role: 'user', content: 'Das Angebot für die Firma ist raus.', t: Date.now() - 60e3 });
+  const evening = await app.personalGreeting({ evening: true });
+  p.ziele = [{ id: 'z1', text: 'Ich will verstehen, worauf es bei Angeboten ankommt.', created: Date.now() }];
+  const ini = await app.maybeInitiative({ force: true });
+  const runden = h.slice(n0).map((m) => m.runde).filter(Boolean);
+  h.splice(n0);
+  // Sicherung: jetzt sichern, ändern, zurückholen
+  p.kanon = [{ id: 'k1', text: 'Ich mag Kirschkuchen.', created: 1 }];
+  p.sicherungen = [];
+  document.getElementById('backupNow').click();
+  p.kanon = [{ id: 'k2', text: 'Ich mag keinen Kuchen.', created: 2 }];
+  app.renderBackups();
+  const conf = window.confirm;
+  window.confirm = () => true;
+  document.querySelector('#backupList button').click();
+  window.confirm = conf;
+  const restored = p.kanon.map((e) => e.text);
+  const backups = p.sicherungen.length;
+  const newId = p.kanon[0]?.id !== 'k1';
+  Object.assign(p, { stimmung: keep.stimmung, ziele: keep.ziele, kanon: keep.kanon, sicherungen: keep.sich, immersion: keep.immersion, selbstOn: keep.selbstOn });
+  return { mood, evening, ini, runden, restored, backups, newId };
+});
+const eveReq = claudeRequests.find((r) => /Feierabendrunde/.test(JSON.stringify(r.system ?? '')));
+check(b62.mood === 'freudig', 'Tagesstimmung: heiter → freudiger Grundton der Stimme', String(b62.mood));
+check(/Wie war dein Tag/.test(b62.evening ?? '') && /Worum es heute ging[^"]*Angebot/.test(JSON.stringify(eveReq?.messages ?? '')) && /Angebot/.test(b62.ini ?? '') && b62.runden.join() === 'evening,initiative', 'Feierabendrunde und eigene Initiative (Privat)', JSON.stringify(b62));
+check(b62.restored.join() === 'Ich mag Kirschkuchen.' && b62.backups === 2 && b62.newId, 'Persona-Sicherung: früheren Stand zurückholen (der jetzige wird vorher gesichert)', JSON.stringify(b62));
 // Bereichswechsel nimmt Personas mit (Avatar usw.), Gedächtnis bleibt je Bereich
 const carry = await page.evaluate(async () => {
   const mine = [

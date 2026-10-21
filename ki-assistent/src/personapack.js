@@ -39,6 +39,7 @@ export async function packPersona(persona, { withMemory = false, version = '', o
     delete p.signale;
     delete p.weekReviewAt;
   }
+  delete p.sicherungen; // Sicherungen bleiben auf dem Gerät
   delete p.reflectTurns;
   delete p.reflectedAt;
   const zip = new JSZip();

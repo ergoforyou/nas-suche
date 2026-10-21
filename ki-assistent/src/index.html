@@ -406,6 +406,13 @@
       <label class="check"><input id="cMorning" type="checkbox" /> ☀️ Morgenrunde <span class="hint">(die erste Begrüßung zwischen 5 und
         11 Uhr wird zum kurzen Überblick: Termine, Wetter, ein, zwei Nachrichten, was gestern offen blieb – einmal am Tag)</span></label>
       <button id="morningNow">☀️ Morgenrunde jetzt</button>
+      <div id="privRounds" hidden>
+        <label class="check"><input id="cEvening" type="checkbox" /> 🌆 Feierabendrunde <span class="hint">(zwischen 17 und 22 Uhr beim
+          Öffnen: was heute war, was offen ist, der erste Termin morgen – und wie dein Tag war; auch per „Feierabend“)</span></label>
+        <label class="check"><input id="cInitiative" type="checkbox" /> 💬 Eigene Initiative <span class="hint">(höchstens zweimal am Tag
+          meldet sich die Figur in einer Pause von selbst – zu ihrem Ziel, einem offenen Thema oder einem Gedanken aus dem Tagebuch;
+          9–21 Uhr, nie im Fahrmodus)</span></label>
+      </div>
       <div id="budgetWrap" hidden>
         <h3>💲 Kostenbremse</h3>
         <label>Monatsbudget in US-Dollar (leer = keins) <input id="cBudget" type="number" min="0" step="1" placeholder="z. B. 20" /></label>
@@ -459,6 +466,11 @@
       <div id="goalList" class="memory-list"></div>
       <p id="signalInfo" class="hint"></p>
       <button id="weekNow">🌱 Wochenrückblick jetzt</button>
+      <h4>🗂 Persona-Sicherungen</h4>
+      <p class="hint">Etwa einmal im Monat wird die Persönlichkeit gesichert (Selbstbild, Kern, über sich Erzähltes, Ziele, Entwicklung,
+        Steckbrief). Entwickelt sie sich in eine Richtung, die dir nicht gefällt, holst du einen früheren Stand zurück.</p>
+      <div id="backupList" class="memory-list"></div>
+      <button id="backupNow">🗂 Jetzt sichern</button>
 
       <h3>💭 Erinnerung an frühere Gespräche <span id="epCount" class="hint"></span></h3>
       <p class="hint">Abends fasst die App abgeschlossene Gespräche kurz zusammen (Thema, Ergebnis, was offen blieb – ohne

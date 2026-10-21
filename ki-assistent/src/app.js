@@ -23,7 +23,7 @@ import { storyPrompt, storyHitsPrompt, storyIsLong, STORY_MAX, DRAFT_PROMPT, ANC
 import { isOutOfRole, isAiQuestion, stripOutOfRole, suspiciousSentences, rtReminder, EXAMPLES_PROMPT, REWRITE_PROMPT, SLIP_NOTE } from './rolle.js';
 import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX, isFixedSelf, promoteKern, kernPrompt } from './gedaechtnis.js';
 import { TIDY_PROMPT, SELF_TIDY_PROMPT, CATEGORIES, catOf, groupedText, nearDuplicate, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, matchForget, numbered as numberedMemory } from './gedaechtnis.js';
-import { EPISODE_PICK_PROMPT, RECALL_RE } from './figur.js';
+import { EPISODE_PICK_PROMPT, RECALL_RE, moodFromFeeling, INITIATIVE_PROMPT, initiativeSeeds, SICHERUNG_MAX, snapshotPersona } from './figur.js';
 import { ZIELE_MAX, ENTWICKLUNG_MAX, zielePrompt, entwicklungPrompt, WEEK_PROMPT, parseWeek, feedbackKind, signalText, EPISODEN_MAX, EPISODE_PROMPT, parseEpisode, splitSessions, episodeHitsPrompt } from './figur.js';
 import { KANON_MAX, GEMEINSAM_MAX, TAGEBUCH_MAX, KANON_CHECK_PROMPT, parseKanonCheck, kanonPrompt, gemeinsamPrompt, tagebuchPrompt, stimmungPrompt, DIARY_PROMPT, parseDiary, inRoleError, ROLE_CHECK, judgeRoleAnswer } from './figur.js';
 import { TRAITS, TEXT_FIELDS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief, INTERVIEW_Q_PROMPT, INTERVIEW_A_PROMPT, REVIEW_PROMPT } from './steckbrief.js';
@@ -1073,6 +1073,11 @@ async function send(text) {
     addBubble('user', text);
     return personalGreeting({ morning: true });
   }
+  if (PRIV && /^\s*(feierabend(runde)?|tagesrückblick)\s*[.!?]?\s*$/i.test(text ?? '') && !pendingAttachments.length) {
+    history().push({ role: 'user', content: text, t: Date.now() });
+    addBubble('user', text);
+    return personalGreeting({ evening: true });
+  }
   // „An Claude: …“ – ohne eigenes Sprachmodell direkt an die Claude-App übergeben
   const toClaude = CLAUDE_HANDOFF && !pendingAttachments.length && text.match(CLAUDE_RE);
   // „Schick das an Claude“ ohne eigenen Text: das Sprachmodell stellt die Aufgabe aus dem Gespräch zusammen (Werkzeug)
@@ -1133,7 +1138,8 @@ async function send(text) {
       return;
     }
     // Hält sich das Modell nicht an die Marken, wird die Stimmung aus dem Satz erraten
-    const mood = moods.tagged ? moods.current : (guessed = guessMood(s) ?? guessed);
+    // ohne eigene Stimmung im Satz: Grundton aus der Tagesstimmung (Privat)
+    const mood = moods.tagged ? moods.current : (guessed = guessMood(s) ?? guessed) ?? baseMood();
     const gesture = moods.takeGesture();
     if (!speak) {
       if (state.settings.bubble !== 'aus') showBubble(s);
@@ -1406,6 +1412,9 @@ function topicsPrompt(topics, lang) {
 
 // ---- Persönliche Begrüßung beim Start (nach mindestens 4 Stunden Pause): Tageszeit, heutige Termine, letztes
 // Gespräch, offene Themen – ein, zwei natürliche Sätze statt „Wie kann ich helfen?“. Mit dem günstigen Hilfsmodell.
+/** Grundton der Stimme aus der Stimmung seit gestern (nur Privat). */
+const baseMood = () => (PRIV ? moodFromFeeling(persona().stimmung) : null);
+
 /** Heute schon Morgenrunde gehabt? Ab 5 bis 11 Uhr, einmal am Tag (abschaltbar). */
 const todayKey = () => new Date().toLocaleDateString('sv-SE');
 const morningDue = () => !budgetSaving() && state.settings.morningBrief !== false && new Date().getHours() >= 5 && new Date().getHours() < 11 && state.settings.morningDay !== todayKey();
@@ -1432,24 +1441,74 @@ async function morningContext(p) {
   return out;
 }
 
-async function personalGreeting({ morning: forceMorning = false } = {}) {
+/** Die Figur, wie sie im Gespräch ist (für Begrüßung, Runden und Initiative): Rolle, Steckbrief, Geschichte, Selbstbild … */
+function figureParts(p, lang) {
+  const r = RULES[lang] ?? RULES.de;
+  return [
+    steckbriefPrompt(p.steckbrief, lang),
+    storyPrompt(p.geschichte, lang),
+    p.prompt?.trim(),
+    p.immersion !== false ? r.identity(p.name || 'Max') : '',
+    p.selbstOn !== false ? kernPrompt(p.selbst) : '',
+    p.selbstOn !== false && p.selbst?.length ? r.self(selfPromptList(p.selbst, 10), false) : '',
+    p.selbstOn !== false ? zielePrompt(p.ziele) : '',
+    p.selbstOn !== false ? kanonPrompt(p.kanon) : '',
+    p.selbstOn !== false ? tagebuchPrompt(p.tagebuch) : '',
+    p.memoryOn ? gemeinsamPrompt(p.gemeinsam) : '',
+  ].filter(Boolean);
+}
+/** Feierabendrunde fällig? (Privat, 17–22 Uhr, einmal am Tag, abschaltbar) */
+const eveningDue = () => PRIV && !budgetSaving() && state.settings.eveningBrief !== false && new Date().getHours() >= 17 && new Date().getHours() < 22 && state.settings.eveningDay !== todayKey();
+
+/** Was die Feierabendrunde braucht: was heute besprochen wurde, der erste Termin morgen. */
+async function eveningContext(p) {
+  const out = [];
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const today = (state.history[p.id] ?? []).filter((m) => (m.t ?? 0) >= start.getTime() && m.role === 'user' && typeof m.content === 'string');
+  if (today.length) out.push(`Worum es heute ging (deine Notizen aus euren Gesprächen):\n${today.slice(-15).map((m) => `- ${m.content.slice(0, 160)}`).join('\n')}`);
+  if (googleActive() && desktop.googleUpcoming) {
+    try {
+      const up = await desktop.googleUpcoming({ timeZone: userTimeZone(), hours: 40 });
+      const tomorrow = new Date(Date.now() + 86400e3).toLocaleDateString('sv-SE');
+      const t = (up?.termine ?? []).filter((e) => String(e.beginn ?? '').startsWith(tomorrow)).slice(0, 3);
+      if (t.length) out.push(`Morgen:\n${t.map((e) => `- ${e.titel} ${String(e.beginn).slice(11, 16) || 'ganztägig'}`).join('\n')}`);
+      const due = (up?.aufgaben ?? []).slice(0, 3);
+      if (due.length) out.push(`Offene Aufgaben:\n${due.map((a) => `- ${a.titel}`).join('\n')}`);
+    } catch {}
+  }
+  return out;
+}
+
+/**
+ * Persönliche Begrüßung beim Öffnen – je nach Lage als Morgenrunde, Feierabendrunde (Privat) oder schlichte Begrüßung.
+ * mode „initiative“: die Figur meldet sich in einer Pause von sich aus (seeds = woran sie anknüpft).
+ */
+async function personalGreeting({ morning: forceMorning = false, evening: forceEvening = false, mode: forced = null, seeds = [] } = {}) {
   const p = persona();
-  if ((state.settings.personalGreet === false && !forceMorning) || state.busy) return;
+  const forcedAny = forceMorning || forceEvening || !!forced;
+  if ((state.settings.personalGreet === false && !forcedAny) || state.busy) return;
   const h = history();
   const last = h.at(-1);
-  // nur nach einem früheren Gespräch und einer längeren Pause (ein leerer Chat zeigt den festen Begrüßungstext)
-  // (Nachricht ohne Zeitpunkt = gerade eben entstanden, noch nicht gespeichert)
-  if (!forceMorning && (!last || Date.now() - (last.t ?? Date.now()) < 4 * 3600e3)) return;
+  const mode = forced ?? (forceMorning ? 'morning' : forceEvening ? 'evening' : morningDue() ? 'morning' : eveningDue() ? 'evening' : 'greet');
+  // nur nach einem früheren Gespräch und einer Pause (ein leerer Chat zeigt den festen Begrüßungstext);
+  // Morgen-/Feierabendrunde schon nach einer Stunde, auf Zuruf sofort
+  const gap = forcedAny ? 0 : mode === 'greet' ? 4 * 3600e3 : 3600e3;
+  if (!forcedAny && (!last || Date.now() - (last.t ?? Date.now()) < gap)) return;
   const lang = p.language === 'en' ? 'en' : 'de';
-  const morning = forceMorning || morningDue();
-  const topics = dueTopics(p).slice(morning ? -3 : -1); // bei der Begrüßung nicht ausfragen
+  const morning = mode === 'morning';
+  const topics = mode === 'initiative' ? [] : dueTopics(p).slice(morning || mode === 'evening' ? -3 : -1); // nicht ausfragen
   const ctx = [r_now(lang)];
   if (morning) {
     state.settings.morningDay = todayKey();
     save();
     ctx.push(...(await morningContext(p)));
-  }
-  if (googleActive() && desktop.googleUpcoming) {
+  } else if (mode === 'evening') {
+    state.settings.eveningDay = todayKey();
+    save();
+    ctx.push(...(await eveningContext(p)));
+  } else if (mode === 'initiative') ctx.push(`Woran du gerade denkst:\n${seeds.map((x) => `- ${x}`).join('\n')}`);
+  if (mode !== 'initiative' && mode !== 'evening' && googleActive() && desktop.googleUpcoming) {
     try {
       const up = await desktop.googleUpcoming({ timeZone: userTimeZone(), hours: 14 });
       const termine = (up?.termine ?? []).slice(0, 4).map((e) => `- ${e.titel ?? e.title ?? 'Termin'} ${e.beginn ? `(${String(e.beginn).slice(11, 16) || 'ganztägig'})` : ''}`);
@@ -1462,27 +1521,20 @@ async function personalGreeting({ morning: forceMorning = false } = {}) {
   if (topics.length) ctx.push(`${lang === 'en' ? 'Open topics' : 'Offene Themen'}:\n${topics.map((t) => `- ${t.text}`).join('\n')}`);
   const mood = stimmungPrompt(p.stimmung);
   if (mood) ctx.push(mood);
-  // dieselbe Figur wie im Gespräch: Rolle, Steckbrief, Geschichte, Selbstbild, was sie über sich erzählt hat, Tagebuch
-  const r = RULES[lang] ?? RULES.de;
-  const figure = [
-    steckbriefPrompt(p.steckbrief, lang),
-    storyPrompt(p.geschichte, lang),
-    p.prompt?.trim(),
-    p.immersion !== false ? r.identity(p.name || 'Max') : '',
-    p.selbstOn !== false ? kernPrompt(p.selbst) : '',
-    p.selbstOn !== false && p.selbst?.length ? r.self(selfPromptList(p.selbst, 10), false) : '',
-    p.selbstOn !== false ? zielePrompt(p.ziele) : '',
-    p.selbstOn !== false ? kanonPrompt(p.kanon) : '',
-    p.selbstOn !== false ? tagebuchPrompt(p.tagebuch) : '',
-    p.memoryOn ? gemeinsamPrompt(p.gemeinsam) : '',
-  ].filter(Boolean);
-  const sys =
-    `${figure.join('\n\n')}\n\n` +
-    (lang === 'en'
+  // dieselbe Figur wie im Gespräch
+  const figure = figureParts(p, lang);
+  const avoid = 'Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.';
+  const task =
+    lang === 'en'
       ? `You are ${p.name}. The user just opened the app. Greet them with one or two short, natural spoken sentences that fit the time of day and situation; mention at most one open topic or today's appointment if it fits. No lists, no Markdown, no "How can I help you" phrases. Answer in English.`
       : morning
-        ? `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet – es ist Morgen. Begrüße es und gib in deiner Art eine kurze Morgenrunde, gesprochen, ${state.drive ? 'höchstens 4 Sätze (es fährt Auto)' : '4 bis 7 Sätze'}: das Wichtigste zuerst (heutige Termine), dann das Wetter in einem Satz, dann ein, zwei Nachrichten, die dein Gegenüber interessieren dürften, zum Schluss etwas Persönliches (ein offenes Thema oder was gestern offen blieb). Nur, was unten steht – nichts erfinden. Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.`
-        : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. Keine Aufzählungen, kein Markdown, keine Floskel wie „Wie kann ich helfen?“.`);
+        ? `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet – es ist Morgen. Begrüße es und gib in deiner Art eine kurze Morgenrunde, gesprochen, ${state.drive ? 'höchstens 4 Sätze (es fährt Auto)' : '4 bis 7 Sätze'}: das Wichtigste zuerst (heutige Termine), dann das Wetter in einem Satz, dann ein, zwei Nachrichten, die dein Gegenüber interessieren dürften, zum Schluss etwas Persönliches (ein offenes Thema oder was gestern offen blieb). Nur, was unten steht – nichts erfinden. ${avoid}`
+        : mode === 'evening'
+          ? `Du bist ${p.name}. Es ist Feierabend. Gib in deiner Art eine kurze Feierabendrunde, gesprochen, ${state.drive ? 'höchstens 3 Sätze' : '3 bis 6 Sätze'}: was heute los war bzw. erledigt wurde, was offen ist, der erste Termin morgen (falls bekannt) – und frag zum Schluss, wie dein Gegenüber den Tag fand. Nur, was unten steht – nichts erfinden. ${avoid}`
+          : mode === 'initiative'
+            ? `Du bist ${p.name}. ${INITIATIVE_PROMPT}`
+            : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. ${avoid}`;
+  const sys = `${figure.join('\n\n')}\n\n${task}`;
   // mit dem Gesprächsmodell: die Begrüßung ist der erste Eindruck der Figur (kurz, also günstig)
   const model = await ensureModel().catch(() => null);
   if (!model) return;
@@ -1511,15 +1563,16 @@ async function personalGreeting({ morning: forceMorning = false } = {}) {
   // inzwischen hat jemand etwas gefragt oder die Persona gewechselt: Begrüßung verwerfen
   if (!clean || state.busy || persona() !== p || history().length !== before) return;
   for (const t of topics) t.asked = t.changed = Date.now();
-  const entry = { role: 'assistant', content: clean, greet: true };
+  const entry = { role: 'assistant', content: clean, t: Date.now(), greet: true, ...(mode !== 'greet' ? { runde: mode } : {}) };
   h.push(entry);
   decorateBubble(addBubble('assistant', clean), entry);
   save();
   fireEvent('greet', 3500);
   if (state.settings.speak && !state.dnd) {
     tts.newTurn();
-    tts.enqueue(clean, { mood: 'freudig', text: clean });
+    tts.enqueue(clean, { mood: baseMood() ?? (mode === 'evening' ? 'ruhig' : 'freudig'), text: clean });
   }
+  return clean;
 }
 const r_now = (lang) => (RULES[lang] ?? RULES.de).now(new Date(), userTimeZone());
 
@@ -1696,6 +1749,9 @@ function renderTopics() {
   if (!list) return;
   $('cGreet').checked = state.settings.personalGreet !== false;
   $('cMorning').checked = state.settings.morningBrief !== false;
+  $('cEvening').checked = state.settings.eveningBrief !== false;
+  $('cInitiative').checked = state.settings.initiative !== false;
+  $('privRounds').hidden = !PRIV;
   renderBudget();
   $('cThink').checked = state.settings.thinkSounds !== false;
   const topics = (p.themen ?? []).filter((t) => !t.asked);
@@ -1739,6 +1795,14 @@ function renderBudget() {
   const b = budgetState();
   $('budgetInfo').textContent = b.limit ? `Diesen Monat: ${fmtUsd(b.used)} von ${fmtUsd(b.limit)} (${Math.round(b.pct * 100)} %)${b.save ? ' – spart gerade' : ''}.` : 'Kein Budget gesetzt.';
 }
+$('cEvening').onchange = (e) => {
+  state.settings.eveningBrief = e.target.checked;
+  save();
+};
+$('cInitiative').onchange = (e) => {
+  state.settings.initiative = e.target.checked;
+  save();
+};
 $('cMorning').onchange = (e) => {
   state.settings.morningBrief = e.target.checked;
   save();
@@ -1929,6 +1993,12 @@ async function nightlyTidy(now = new Date()) {
   await tidyMemory(p, { full: true });
   // abends über den Tag nachdenken (wenn seit dem letzten Mal gesprochen wurde) – so wächst das Selbstbild weiter
   if (state.settings.reflect && (p.reflectTurns ?? 0) > 0) await reflect(p).catch(() => {});
+  // Persona-Sicherung: etwa einmal im Monat ein Schnappschuss der Persönlichkeit (kostet nichts)
+  if (Date.now() - ((p.sicherungen ?? []).at(-1)?.datum ?? 0) > 28 * 86400e3 && (p.selbst?.length || p.kanon?.length)) {
+    p.sicherungen = [...(p.sicherungen ?? []), snapshotPersona(p)].slice(-SICHERUNG_MAX);
+    save();
+    logEv('ROLLE', 'Persona-Sicherung angelegt');
+  }
   if (budgetSaving()) {
     logEv('KOSTEN', 'Abendrunde ohne Extras (Monatsbudget erreicht)');
     return true;
@@ -2094,9 +2164,50 @@ function renderGrowth(p) {
     };
     list.append(row);
   }
+  renderBackups(p);
   const n = (p.signale?.lob ?? 0) + (p.signale?.korrektur ?? 0) + (p.signale?.laenge ?? 0) + (p.signale?.unterbrochen ?? 0);
   $('signalInfo').textContent = n ? `Rückmeldungen seit dem letzten Rückblick: ${p.signale.lob ?? 0}× Lob, ${p.signale.korrektur ?? 0}× Korrektur, ${p.signale.laenge ?? 0}× „zu lang“, ${p.signale.unterbrochen ?? 0}× unterbrochen.` : '';
 }
+/** Persona-Sicherungen: anzeigen, jetzt sichern, früheren Stand zurückholen (der aktuelle wird vorher gesichert). */
+function renderBackups(p) {
+  const list = $('backupList');
+  if (!list) return;
+  list.innerHTML = '';
+  const all = [...(p.sicherungen ?? [])].reverse();
+  if (!all.length) list.innerHTML = '<p class="hint">Noch keine – etwa einmal im Monat legt die Abendrunde eine an.</p>';
+  for (const b of all) {
+    const row = document.createElement('div');
+    row.className = 'memory-row';
+    const z = b.zahlen ?? {};
+    const info = document.createElement('span');
+    info.className = 'hint';
+    info.style.flex = '1';
+    info.textContent = `${new Date(b.datum).toLocaleDateString('de-DE')} – Selbstbild ${z.selbst ?? 0} (Kern ${z.kern ?? 0}), über sich erzählt ${z.kanon ?? 0}, Ziele ${z.ziele ?? 0}${b.rollenCheck ? `, Rollen-Check ${b.rollenCheck}` : ''}`;
+    const back = document.createElement('button');
+    back.textContent = '↩ Zurückholen';
+    back.onclick = () => {
+      if (!confirm(`Persönlichkeit von „${p.name}“ auf den Stand vom ${new Date(b.datum).toLocaleDateString('de-DE')} zurücksetzen?\n\nSelbstbild, Kern, über sich Erzähltes, Ziele, Entwicklung und Steckbrief. Der jetzige Stand wird vorher gesichert.`)) return;
+      p.sicherungen = [...(p.sicherungen ?? []), snapshotPersona(p)].slice(-SICHERUNG_MAX);
+      const fresh = (arr) => (arr ?? []).map((e) => ({ ...e, id: newId() })); // neue Kennungen: die alten gelten im Abgleich als gelöscht
+      const d = JSON.parse(JSON.stringify(b.data));
+      Object.assign(p, { selbst: fresh(d.selbst), kanon: fresh(d.kanon), ziele: fresh(d.ziele), entwicklung: fresh(d.entwicklung), steckbrief: d.steckbrief ?? p.steckbrief });
+      save();
+      renderSelf();
+      renderSteckbrief();
+      status(`↩ Persönlichkeit auf den ${new Date(b.datum).toLocaleDateString('de-DE')} zurückgesetzt.`);
+      logEv('ROLLE', 'Persona-Sicherung zurückgeholt');
+    };
+    row.append(info, back);
+    list.append(row);
+  }
+}
+$('backupNow').onclick = () => {
+  const p = persona();
+  p.sicherungen = [...(p.sicherungen ?? []), snapshotPersona(p)].slice(-SICHERUNG_MAX);
+  save();
+  renderBackups(p);
+  status('🗂 Persönlichkeit gesichert.');
+};
 $('weekNow').onclick = async () => {
   const p = persona();
   $('weekNow').disabled = true;
@@ -8722,8 +8833,39 @@ window.__kiScreenOff = () => {
   if (lockCfg().on && !state.locked) lockNow();
 };
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) screenIsOff = false;
+  if (document.hidden) return;
+  screenIsOff = false;
+  // App wieder geöffnet: ist gerade Morgen- oder Feierabendrunde fällig, kommt sie jetzt
+  if (!state.locked && (morningDue() || eveningDue())) setTimeout(() => personalGreeting().catch(() => {}), 1500);
 });
+
+/**
+ * Eigene Initiative (Privat): ab und zu meldet sich die Figur in einer Pause von sich aus – mit einem Gedanken zu
+ * ihrem Ziel, einem offenen Thema oder aus ihrem Tagebuch. Höchstens zweimal am Tag, 9–21 Uhr, nur wenn die App offen
+ * ist und gerade nichts läuft, nie im Fahrmodus; abschaltbar.
+ */
+const INITIATIVE_MAX = 2;
+async function maybeInitiative({ force = false } = {}) {
+  const p = persona();
+  if (!PRIV || p.immersion === false || p.selbstOn === false) return null;
+  if (!force && (state.settings.initiative === false || budgetSaving() || state.drive || state.locked || document.hidden)) return null;
+  if (!force && (state.busy || tts.speaking || state.micActive || state.transcribing || state.dnd)) return null;
+  const hour = new Date().getHours();
+  const day = todayKey();
+  const cnt = state.settings.initiativeDay?.day === day ? state.settings.initiativeDay.n : 0;
+  if (!force && (hour < 9 || hour >= 21 || cnt >= INITIATIVE_MAX)) return null;
+  // nur in einer echten Pause, aber nicht nach langer Abwesenheit (dann übernimmt die Begrüßung)
+  const last = Math.max(state.lastExchange ?? 0, history().at(-1)?.t ?? 0);
+  const idle = Date.now() - last;
+  if (!force && (idle < 20 * 60e3 || idle > 6 * 3600e3)) return null;
+  const seeds = initiativeSeeds(p, dueTopics(p));
+  if (!seeds.length) return null;
+  state.settings.initiativeDay = { day, n: cnt + 1 };
+  save();
+  logEv('ROLLE', `Initiative (${cnt + 1}/${INITIATIVE_MAX})`);
+  return personalGreeting({ mode: 'initiative', seeds: seeds.slice(0, 2) });
+}
+setInterval(() => maybeInitiative().catch(() => {}), 5 * 60e3);
 // Wache für die Tonwege, solange ein Gespräch läuft: Android kann die Audio-Verarbeitung der Oberfläche bei
 // Bildschirm aus anhalten – dann hört die App nichts mehr und die Stimme bleibt stumm. Alle 2 s prüfen und wecken.
 setInterval(() => {
@@ -9148,6 +9290,9 @@ window.__app = {
   writeDiary: (o) => writeDiary(persona(), o),
   addKanon: (t) => addKanon(persona(), t),
   noteServedModel,
+  maybeInitiative: (o) => maybeInitiative(o),
+  baseMood: () => baseMood(),
+  renderBackups: () => renderBackups(persona()),
   budgetState,
   checkBudget,
   ensureModel: () => ensureModel(),

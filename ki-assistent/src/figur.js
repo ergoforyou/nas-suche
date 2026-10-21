@@ -261,3 +261,48 @@ export const EPISODE_PICK_PROMPT =
   'passende; passt keines, leere Liste. Antworte ausschließlich mit JSON: {"nr":[2,5]}';
 /** Klingt die Frage nach einer Erinnerung an früher? */
 export const RECALL_RE = /\b(weißt du noch|erinnerst du dich|hatten wir|haben wir (da|damals|letzt|neulich)|letzte[nrs]? (woche|mal|monat)|neulich|damals|vorhin|besprochen|wie war das (mit|nochmal))\b/i;
+
+// ---------------------------------------------------------------- Tagesstimmung, Initiative, Feierabend, Sicherungen
+/** Stimmung seit gestern („heiter, weil …“) → Grundton der Stimme, wenn ein Satz keine eigene Stimmung hat. */
+export function moodFromFeeling(s, now = Date.now()) {
+  if (!s?.gefuehl || now - (s.t ?? 0) > 36 * 3600e3) return null;
+  const g = String(s.gefuehl).toLowerCase();
+  if (/heiter|fröhlich|froh|gut gelaunt|glücklich|freudig|beschwingt|vergnügt|begeistert|stolz/.test(g)) return 'freudig';
+  if (/traurig|bedrückt|niedergeschlagen|wehmütig|enttäuscht|müde|erschöpft/.test(g)) return 'traurig';
+  if (/nachdenklich|grübl|unsicher|neugierig|verwirrt/.test(g)) return 'nachdenklich';
+  if (/ernst|besorgt|angespannt|gestresst/.test(g)) return 'ernst';
+  if (/ruhig|gelassen|zufrieden|entspannt|ausgeglichen/.test(g)) return 'ruhig';
+  return null;
+}
+
+export const INITIATIVE_PROMPT =
+  'Du meldest dich von dir aus bei deinem Gegenüber – so, wie ein vertrauter Mensch zwischendurch etwas aufgreift. Unten ' +
+  'steht, woran du gerade denkst. Sag dazu ein, zwei kurze, natürliche, gesprochene Sätze in deiner Art: ein Gedanke, ' +
+  'eine Frage oder ein Angebot. Nicht aufdringlich, nichts erfinden, kein „Wie kann ich helfen?“, keine Aufzählung.';
+
+/** Woran die Figur von sich aus anknüpfen könnte (Ziel, offenes Thema, Tagebuch-Gedanke, offen Gebliebenes). */
+export function initiativeSeeds(p, topics = [], now = Date.now()) {
+  const out = [];
+  for (const t of topics.slice(-2)) out.push(`Offenes Thema: ${t.text}`);
+  const z = (p.ziele ?? []).find((x) => x.status !== 'erreicht');
+  if (z) out.push(`Dein Ziel: ${z.text}${z.fortschritt ? ` (bisher: ${z.fortschritt})` : ''}`);
+  const d = (p.tagebuch ?? []).at(-1);
+  if (d && now - (d.created ?? 0) < 3 * 86400e3) out.push(`Aus deinem Tagebuch: ${d.text}`);
+  const e = (p.episoden ?? []).filter((x) => x.offen && now - (x.von ?? 0) < 7 * 86400e3).at(-1);
+  if (e) out.push(`Offen geblieben (${e.titel}): ${e.offen}`);
+  return out;
+}
+
+export const SICHERUNG_MAX = 12;
+/** Schnappschuss der Persönlichkeit (für „Zurückholen“, wenn sie sich in eine ungewollte Richtung entwickelt). */
+export function snapshotPersona(p, now = Date.now()) {
+  const pick = (x) => JSON.parse(JSON.stringify(x ?? null));
+  const last = (p.rollenCheck ?? []).at(-1);
+  return {
+    id: Math.random().toString(36).slice(2, 10),
+    datum: now,
+    zahlen: { selbst: (p.selbst ?? []).length, kern: (p.selbst ?? []).filter((e) => e.kern).length, kanon: (p.kanon ?? []).length, ziele: (p.ziele ?? []).length },
+    ...(last ? { rollenCheck: `${last.ok}/${last.n}` } : {}),
+    data: { selbst: pick(p.selbst), kanon: pick(p.kanon), ziele: pick(p.ziele), entwicklung: pick(p.entwicklung), steckbrief: pick(p.steckbrief) },
+  };
+}
