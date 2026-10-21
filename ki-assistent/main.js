@@ -189,10 +189,16 @@ function helperCmd(cmd) {
   // erster Aufruf: PowerShell übersetzt den Helfer erst (Add-Type) – das kann auf langsamen Rechnern dauern
   const first = !helperReady;
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), first ? 30000 : 8000);
+    // Platzhalter in der Warteschlange: kommt die Antwort zu spät, wird sie hier „verbraucht“ – sonst landete sie
+    // beim nächsten Befehl, und alle folgenden Antworten wären um eins verschoben
+    let done = false;
+    const timer = setTimeout(() => {
+      done = true;
+      resolve(null);
+    }, first ? 60000 : 10000);
     helperQueue.push((v) => {
       clearTimeout(timer);
-      resolve(v);
+      if (!done) resolve(v);
     });
     helper.stdin.write(cmd + '\r\n');
   });
@@ -951,7 +957,9 @@ function runSmokeTest() {
       if (!aktion || buttons < 5) return fail('Text-Aktionsfenster');
       aktion.close();
       if (process.platform === 'win32') {
-        const st = Number(await helperCmd('STATE'));
+        // der erste Aufruf übersetzt den Helfer erst – auf langsamen Rechnern einmal nachfragen
+        let st = Number(await helperCmd('STATE'));
+        if (!(st >= 1)) st = Number(await helperCmd('STATE'));
         const fg = await helperCmd('FG');
         console.log('Windows-Helfer: Zustand', st, '| Vordergrundfenster', fg);
         if (!(st >= 1) || !fg) return fail('Windows-Helfer antwortet nicht');
