@@ -95,6 +95,22 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'gespraeche_suchen',
+    description:
+      'Durchsucht deine Erinnerung an frühere Gespräche mit deinem Gegenüber (Zusammenfassungen: Thema, Ergebnis, was ' +
+      'offen blieb). Nimm es, wenn dein Gegenüber fragt „Was hatten wir … besprochen?“, „Weißt du noch …?“, oder wenn ' +
+      'ein früheres Gespräch für die Antwort wichtig ist. Optional mit Zeitraum. Erzähl danach in deiner Art („da hatten ' +
+      'wir doch am … “), lies keine Liste vor.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        suchbegriff: { type: 'string', description: 'Worum es ging (leer = die letzten Gespräche)' },
+        von: { type: 'string', description: 'Frühestes Datum YYYY-MM-DD (optional)' },
+        bis: { type: 'string', description: 'Spätestes Datum YYYY-MM-DD (optional)' },
+      },
+    },
+  },
+  {
     name: 'an_claude_uebergeben',
     desktopOnly: true, // nur am PC (Claude-App unter Windows)
     description:
@@ -116,6 +132,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   an_claude_uebergeben: '✳ Übergebe an Claude …',
   gedaechtnis_loeschen: '🗑 Vergesse …',
   wetter: '🌦 Schaue nach dem Wetter …',
+  gespraeche_suchen: '💭 Erinnere mich …',
   nachrichten: '📰 Schaue in die Nachrichten …',
 };
 

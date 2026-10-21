@@ -21,8 +21,9 @@ import { CostMeter, fmtUsd, priceOf } from './kosten.js';
 import appToolsLib from '../apptools.js';
 import { storyPrompt, storyHitsPrompt, storyIsLong, STORY_MAX, DRAFT_PROMPT, ANCHORS_PROMPT, parseAnchors } from './geschichte.js';
 import { isOutOfRole, isAiQuestion, stripOutOfRole, suspiciousSentences, rtReminder, EXAMPLES_PROMPT, REWRITE_PROMPT, SLIP_NOTE } from './rolle.js';
-import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX } from './gedaechtnis.js';
+import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX, isFixedSelf, promoteKern, kernPrompt } from './gedaechtnis.js';
 import { TIDY_PROMPT, SELF_TIDY_PROMPT, CATEGORIES, catOf, groupedText, nearDuplicate, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, matchForget, numbered as numberedMemory } from './gedaechtnis.js';
+import { ZIELE_MAX, ENTWICKLUNG_MAX, zielePrompt, entwicklungPrompt, WEEK_PROMPT, parseWeek, feedbackKind, signalText, EPISODEN_MAX, EPISODE_PROMPT, parseEpisode, splitSessions, episodeHitsPrompt } from './figur.js';
 import { KANON_MAX, GEMEINSAM_MAX, TAGEBUCH_MAX, KANON_CHECK_PROMPT, parseKanonCheck, kanonPrompt, gemeinsamPrompt, tagebuchPrompt, stimmungPrompt, DIARY_PROMPT, parseDiary, inRoleError, ROLE_CHECK, judgeRoleAnswer } from './figur.js';
 import { TRAITS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief } from './steckbrief.js';
 import { stamp as stampSync, noteDeletions, snapshot as syncSnapshot, mergeSync, idsOf, personaText } from './abgleich.js';
@@ -853,8 +854,9 @@ function buildMessages() {
   if (p.immersion !== false) parts.push(r.identity(p.name || 'Max'));
   if (p.style !== 'frei') parts.push(r.name(p.name), r[p.style] ?? r.gespraech);
   if (p.memoryOn && p.memory?.length) parts.push(r.memory(groupedText(p.memory)));
-  if (p.selbstOn !== false && p.selbst?.length) parts.push(r.self(selfPromptList(p.selbst), appToolsActive()));
-  if (p.selbstOn !== false) parts.push(kanonPrompt(p.kanon), tagebuchPrompt(p.tagebuch));
+  if (p.selbstOn !== false) parts.push(kernPrompt(p.selbst));
+  if (p.selbstOn !== false && p.selbst?.some((e) => !e.kern)) parts.push(r.self(selfPromptList(p.selbst), appToolsActive()));
+  if (p.selbstOn !== false) parts.push(zielePrompt(p.ziele), entwicklungPrompt(p.entwicklung, p.selbst), kanonPrompt(p.kanon), tagebuchPrompt(p.tagebuch));
   if (p.memoryOn) parts.push(gemeinsamPrompt(p.gemeinsam));
   if (p.style !== 'frei') parts.push(r.lang);
   if (state.settings.moodTags) parts.push(MOOD_PROMPT[p.language === 'en' ? 'en' : 'de']);
@@ -870,6 +872,7 @@ function buildMessages() {
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
   if (state.savedHits?.length) ctx.push(savedPrompt(state.savedHits));
   if (state.storyHits?.length) ctx.push(storyHitsPrompt(state.storyHits));
+  if (state.episodeHits?.length) ctx.push(episodeHitsPrompt(state.episodeHits));
   // Rollenanker direkt vor der aktuellen Frage (wirkt gegen Abdriften in langen Gesprächen)
   if (p.selbstOn !== false) ctx.push(stimmungPrompt(p.stimmung));
   if (p.immersion !== false) ctx.push(r.anchor(p.name || 'Max'));
@@ -1037,6 +1040,7 @@ async function send(text) {
   const attachments = pendingAttachments;
   pendingAttachments = [];
   renderPending();
+  noteFeedback(persona(), text);
   const entry = { role: 'user', content: text, t: Date.now(), ...(attachments.length ? { attachments } : {}) };
   history().push(entry);
   state.turnTools = [];
@@ -1177,6 +1181,8 @@ async function send(text) {
   state.kbHits = kbActive() ? searchIndex(kbIndex, text || attachments.map((a) => a.name).join(' '), 5) : [];
   state.storyHits = storyIsLong(persona().geschichte) ? searchIndex(storyIndex(persona()), text, 2) : [];
   state.savedHits = savedIndex?.n ? searchIndex(savedIndex, text, 3) : [];
+  // frühere Gespräche, die zur Frage passen (nur mit eingeschaltetem Gedächtnis)
+  state.episodeHits = persona().memoryOn && persona().episoden?.length ? findEpisodes(persona(), text, 2, 6) : [];
   const id = newId();
   state.currentChatId = id;
   // Denklaut: kommt nach gut einer Sekunde noch nichts, sagt die Figur kurz „Hm, Moment …“ (statt Stille)
@@ -1375,7 +1381,9 @@ async function personalGreeting() {
     storyPrompt(p.geschichte, lang),
     p.prompt?.trim(),
     p.immersion !== false ? r.identity(p.name || 'Max') : '',
+    p.selbstOn !== false ? kernPrompt(p.selbst) : '',
     p.selbstOn !== false && p.selbst?.length ? r.self(selfPromptList(p.selbst, 10), false) : '',
+    p.selbstOn !== false ? zielePrompt(p.ziele) : '',
     p.selbstOn !== false ? kanonPrompt(p.kanon) : '',
     p.selbstOn !== false ? tagebuchPrompt(p.tagebuch) : '',
     p.memoryOn ? gemeinsamPrompt(p.gemeinsam) : '',
@@ -1802,8 +1810,10 @@ async function nightlyTidy(now = new Date()) {
   await tidyMemory(p, { full: true });
   // abends über den Tag nachdenken (wenn seit dem letzten Mal gesprochen wurde) – so wächst das Selbstbild weiter
   if (state.settings.reflect && (p.reflectTurns ?? 0) > 0) await reflect(p).catch(() => {});
+  await summarizeEpisodes(p).catch((e) => logEv('ERINNERUNG', e.message));
   if (p.selbstOn !== false && p.immersion !== false) await writeDiary(p).catch((e) => logEv('TAGEBUCH', e.message));
   await checkKanon(p).catch((e) => logEv('KANON', e.message));
+  if (p.selbstOn !== false && p.immersion !== false) await weeklyReview(p).catch((e) => logEv('ROLLE', `Wochenrückblick: ${e.message}`));
   return true;
 }
 setInterval(() => nightlyTidy().catch(() => {}), 5 * 60e3);
@@ -1841,7 +1851,18 @@ $('mClear').onclick = () => {
 // Gespräche nach: Was lief gut, wo wurde sie korrigiert, was will sie anders machen? Daraus pflegt sie ihr Selbstbild,
 // das in jedem Gespräch mitgeht. Liegt wie das Gedächtnis nur in der Datendatei dieses Geräts, je Bereich getrennt.
 const SELF_MAX = 40;
-const SELF_KINDS = { erfahrung: 'Erfahrung', vorsatz: 'Vorsatz', staerke: 'Stärke', schwaeche: 'Schwäche', vorliebe: 'Vorliebe', geschichte: 'Geschichte' };
+const SELF_KINDS = {
+  ansicht: 'Ansicht',
+  wunsch: 'Wunsch',
+  beziehung: 'Beziehung',
+  gewohnheit: 'Gewohnheit',
+  erfahrung: 'Erfahrung',
+  vorsatz: 'Vorsatz',
+  staerke: 'Stärke',
+  schwaeche: 'Schwäche',
+  vorliebe: 'Vorliebe',
+  geschichte: 'Geschichte',
+};
 const REFLECT_EVERY = 12; // Antworten
 const REFLECT_GAP = 6 * 3600e3; // höchstens alle 6 Stunden von selbst
 const REFLECT_PAUSE = 4 * 60e3; // erst in einer Gesprächspause
@@ -1867,7 +1888,7 @@ function addSelf(p, text, art, quelle = 'gespraech') {
   p.selbst.push(e);
   // begrenzen: älteste von der Figur selbst geschriebene Einträge fallen heraus, eigene Einträge des Nutzers bleiben
   while (p.selbst.length > SELF_MAX) {
-    const i = p.selbst.findIndex((m) => m.quelle !== 'nutzer');
+    const i = p.selbst.findIndex((m) => !isFixedSelf(m));
     p.selbst.splice(i < 0 ? 0 : i, 1);
   }
   return e;
@@ -1920,9 +1941,65 @@ function renderFigure(p) {
   renderEntryList($('kanonList'), p.kanon, { empty: 'Noch nichts – entsteht, wenn sie im Gespräch von sich erzählt.', onEdit: (e) => (e.quelle = 'nutzer') });
   renderEntryList($('sharedList'), p.gemeinsam, { empty: 'Noch nichts.' });
   renderEntryList($('diaryList'), p.tagebuch, { label: (e) => e.datum, empty: 'Noch keine Einträge.' });
+  renderGrowth(p);
   const s = p.stimmung;
   $('moodNow').textContent = s?.gefuehl ? `Stimmung (${new Date(s.t).toLocaleDateString('de-DE')}): ${s.gefuehl}${s.grund ? ` – ${s.grund}` : ''}` : '';
 }
+/** Entwicklung (Wochenrückblicke), Ziele und Erinnerung an frühere Gespräche anzeigen. */
+function renderGrowth(p) {
+  if (!$('growthList')) return;
+  p.entwicklung ??= [];
+  p.ziele ??= [];
+  p.episoden ??= [];
+  renderEntryList($('growthList'), p.entwicklung, { label: (e) => e.datum, empty: 'Noch kein Wochenrückblick – kommt einmal pro Woche in der Abendrunde (oder per Knopf).' });
+  renderEntryList($('goalList'), p.ziele, { label: (z) => (z.status === 'erreicht' ? '✔ erreicht' : z.fortschritt ? `→ ${z.fortschritt.slice(0, 40)}` : 'offen'), empty: 'Noch keine Ziele – die setzt sich die Figur im Wochenrückblick selbst.' });
+  $('epCount').textContent = p.episoden.length ? `(${p.episoden.length})` : '';
+  const list = $('epList');
+  list.innerHTML = '';
+  if (!p.episoden.length) list.innerHTML = '<p class="hint">Noch keine – abends werden abgeschlossene Gespräche zusammengefasst.</p>';
+  for (const e of [...p.episoden].reverse().slice(0, 40)) {
+    const row = document.createElement('div');
+    row.className = 'memory-row role-check';
+    row.innerHTML = '<span class="self-kind hint"></span><div><b></b><br><span class="a"></span></div><button title="Vergessen">🗑</button>';
+    row.querySelector('.self-kind').textContent = new Date(e.von).toLocaleDateString('de-DE');
+    row.querySelector('b').textContent = e.titel;
+    row.querySelector('.a').textContent = `${e.text}${e.offen ? ` Offen: ${e.offen}` : ''}`;
+    row.querySelector('button').onclick = () => {
+      p.episoden.splice(p.episoden.indexOf(e), 1);
+      save();
+      renderGrowth(p);
+    };
+    list.append(row);
+  }
+  const n = (p.signale?.lob ?? 0) + (p.signale?.korrektur ?? 0) + (p.signale?.laenge ?? 0) + (p.signale?.unterbrochen ?? 0);
+  $('signalInfo').textContent = n ? `Rückmeldungen seit dem letzten Rückblick: ${p.signale.lob ?? 0}× Lob, ${p.signale.korrektur ?? 0}× Korrektur, ${p.signale.laenge ?? 0}× „zu lang“, ${p.signale.unterbrochen ?? 0}× unterbrochen.` : '';
+}
+$('weekNow').onclick = async () => {
+  const p = persona();
+  $('weekNow').disabled = true;
+  status(`🌱 ${p.name} hält Rückblick …`);
+  try {
+    const r = await weeklyReview(p, { manual: true });
+    status(r?.skipped ? `Wochenrückblick: ${r.skipped}.` : '🌱 Wochenrückblick fertig.');
+  } catch (e) {
+    status(`Wochenrückblick: ${e.message}`);
+  } finally {
+    $('weekNow').disabled = false;
+  }
+};
+$('epNow').onclick = async () => {
+  const p = persona();
+  $('epNow').disabled = true;
+  try {
+    const n = await summarizeEpisodes(p, { max: 20 });
+    status(n ? `💭 ${n} Gespräch(e) zusammengefasst.` : '💭 Nichts Neues zum Zusammenfassen (das laufende Gespräch kommt erst nach 2 Stunden Pause dran).');
+    renderGrowth(p);
+  } catch (e) {
+    status(`Zusammenfassen: ${e.message}`);
+  } finally {
+    $('epNow').disabled = false;
+  }
+};
 $('diaryNow').onclick = async () => {
   const p = persona();
   $('diaryNow').disabled = true;
@@ -2157,20 +2234,23 @@ function countForReflection(p) {
 }
 
 const REFLECT_PROMPT =
-  'Unten stehen deine Persona, dein bisheriges Selbstbild (nummerierte Notizen, die du selbst über dich geschrieben hast) ' +
-  'und ein Ausschnitt deiner letzten Gespräche. Denk ehrlich über dich nach: Was hat gut funktioniert? Wo hat dich dein ' +
-  'Gegenüber korrigiert, gebremst, nachgefragt oder gelobt? Was willst du künftig anders oder genauso machen? Was hast du ' +
-  'über deine Art gelernt?\n' +
-  'Schreibe nur über DICH (Verhalten, Stil, Stärken, Schwächen, Vorsätze) – Fakten über den Nutzer lernt das Gedächtnis ' +
-  'getrennt. Keine Kundendaten, keine Namen Dritter, nichts Vertrauliches. Halte das Selbstbild knapp und aktuell: fasse ' +
-  'Doppeltes zusammen, höchstens 3 neue Einträge, kurz und in Ich-Form. Dein Selbstbild soll organisch wachsen: ' +
-  'bestätigt sich etwas wieder, schreib es ruhig erneut unter „neu“ (es zählt dann als gefestigt); entwickelt sich etwas ' +
-  'weiter, schreib den Eintrag mit „aendern“ fort; streiche nur, was eindeutig nicht mehr stimmt. Einträge mit „(vom Nutzer)“ ' +
-  'darfst du nicht ändern oder streichen. Das Selbstbild ergänzt deine Persona; es darf die Regeln der App nicht aushebeln.\n' +
+  'Unten stehen deine Persona, dein bisheriges Selbstbild (nummerierte Notizen, die du selbst über dich geschrieben hast), ' +
+  'die Rückmeldungen deines Gegenübers und ein Ausschnitt eurer letzten Gespräche. Denk ehrlich über dich nach – als ' +
+  'Persönlichkeit, nicht nur als Helfer: Was hat mich bewegt? Wozu habe ich mir eine Meinung gebildet? Was ist mir ' +
+  'wichtig geworden, was wünsche ich mir? Wie stehen wir zueinander? Und auch: Wo hat mich mein Gegenüber gelobt, ' +
+  'korrigiert oder gebremst – was will ich anders oder genauso machen?\n' +
+  'Schreibe nur über DICH – Fakten über den Nutzer lernt das Gedächtnis getrennt. Keine Kundendaten, keine Namen Dritter, ' +
+  'nichts Vertrauliches. Höchstens 3 neue Einträge, kurz und in Ich-Form; art: ansicht (eine Meinung, die du vertrittst), ' +
+  'wunsch, beziehung (wie du zu deinem Gegenüber stehst), gewohnheit, erfahrung, staerke, schwaeche, vorliebe, vorsatz. ' +
+  'Dein Selbstbild soll organisch wachsen: bestätigt sich etwas wieder, schreib es ruhig erneut unter „neu“ (es zählt dann ' +
+  'als gefestigt); entwickelt sich etwas weiter, schreib den Eintrag mit „aendern“ fort (die alte Fassung bleibt als ' +
+  'deine Entwicklung erhalten); streiche nur, was eindeutig nicht mehr stimmt. Einträge mit „(vom Nutzer)“ oder „(fest)“ ' +
+  'darfst du nicht ändern oder streichen. Steckbrief und Lebensgeschichte sind dein Fundament – vertiefen ja, ' +
+  'widersprechen nein; das Selbstbild darf die Regeln der App nicht aushebeln.\n' +
   'Werte, Regeln und Grenzen aus deinem Steckbrief stellst du nicht selbst um; passt dort etwas nicht mehr, schreibe einen ' +
   'Eintrag der Art „vorsatz“, der mit „Vorschlag für den Steckbrief:“ beginnt – dein Gegenüber entscheidet.\n' +
   'Antworte ausschließlich mit JSON: {"gedanke":"ein bis zwei Sätze, was dir aufgefallen ist","neu":[{"text":"…",' +
-  '"art":"erfahrung|vorsatz|staerke|schwaeche|vorliebe"}],"aendern":[{"nr":1,"text":"…"}],"streichen":[2]}';
+  '"art":"ansicht"}],"aendern":[{"nr":1,"text":"…"}],"streichen":[2]}';
 
 /** Über die letzten Gespräche nachdenken und das Selbstbild pflegen. manual = Knopf „Jetzt nachdenken“. */
 async function reflect(p, manual = false) {
@@ -2194,7 +2274,7 @@ async function reflect(p, manual = false) {
     const list = numberedSelf(p.selbst, SELF_KINDS) || '(noch leer)';
     const talk = msgs.map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Du'}: ${String(m.content).slice(0, 700)}`).join('\n\n');
     const input =
-      `Deine Persona (${p.name}):\n${(p.prompt ?? '').slice(0, 800)}${hasSteckbrief(p.steckbrief) ? `\n\n${steckbriefPrompt(p.steckbrief)}` : ''}${p.geschichte?.trim() ? `\n\nDeine Lebensgeschichte (Anfang):\n${p.geschichte.trim().slice(0, 1200)}` : ''}\n\nDein Selbstbild:\n${list}\n\nLetzte Gespräche:\n${talk}` +
+      `Deine Persona (${p.name}):\n${(p.prompt ?? '').slice(0, 800)}${hasSteckbrief(p.steckbrief) ? `\n\n${steckbriefPrompt(p.steckbrief)}` : ''}${p.geschichte?.trim() ? `\n\nDeine Lebensgeschichte (Anfang):\n${p.geschichte.trim().slice(0, 1200)}` : ''}\n\nDein Selbstbild:\n${list}${signalText(p.signale) ? `\n\n${signalText(p.signale)}` : ''}\n\nLetzte Gespräche:\n${talk}` +
       (p.language === 'en' ? '\n\nWrite the entries and the thought in English.' : '');
     const id = newId();
     const raw = await new Promise((resolve) => {
@@ -2240,19 +2320,162 @@ async function reflect(p, manual = false) {
   }
 }
 
+/** Reaktion des Gegenübers auf die letzte Antwort festhalten (Grundlage fürs Nachdenken statt Vermutungen). */
+function noteFeedback(p, text) {
+  const last = history().at(-1);
+  if (!p || last?.role !== 'assistant' || typeof last.content !== 'string') return;
+  const kind = last.cut ? 'unterbrochen' : feedbackKind(text);
+  if (!kind) return;
+  const s = (p.signale ??= {});
+  s[kind] = (s[kind] ?? 0) + 1;
+  s.beispiele = [...(s.beispiele ?? []), { art: kind, text: String(text).slice(0, 120), antwort: last.content.slice(0, 120), t: Date.now() }].slice(-12);
+}
+
+/**
+ * Wochenrückblick (einmal pro Woche in der Abendrunde oder per Knopf): Die Figur liest ihre Tagebucheinträge, die
+ * Gesprächszusammenfassungen und die Rückmeldungen der Woche und leitet daraus ab, wer sie ist – Erkenntnisse,
+ * Bestätigungen, Fortschreibungen, Ziele und ein Satz zu ihrer Entwicklung. Mit dem Gesprächsmodell (ihre Stimme).
+ */
+const WEEK_MS = 6.5 * 86400e3;
+async function weeklyReview(p, { manual = false } = {}) {
+  if (!manual && Date.now() - (p.weekReviewAt ?? 0) < WEEK_MS) return null;
+  const since = Date.now() - 8 * 86400e3;
+  const diary = (p.tagebuch ?? []).filter((e) => (e.created ?? 0) >= since);
+  const eps = (p.episoden ?? []).filter((e) => (e.von ?? 0) >= since);
+  if (diary.length + eps.length < (manual ? 1 : 2)) return { skipped: 'in den letzten Tagen zu wenig erlebt' };
+  const r = RULES[p.language] ?? RULES.de;
+  const ziele = (p.ziele ?? []).filter((z) => z.status !== 'erreicht');
+  const input = [
+    steckbriefPrompt(p.steckbrief, p.language) || `Persona:\n${(p.prompt ?? '').slice(0, 800)}`,
+    `Dein Selbstbild:\n${numberedSelf(p.selbst, SELF_KINDS) || '(noch leer)'}`,
+    `Deine Ziele:\n${ziele.map((z, i) => `${i + 1}. ${z.text}${z.fortschritt ? ` (bisher: ${z.fortschritt})` : ''}`).join('\n') || '(noch keine)'}`,
+    diary.length ? `Dein Tagebuch:\n${diary.map((e) => `${e.datum}: ${e.text}`).join('\n')}` : '',
+    eps.length ? `Eure Gespräche:\n${eps.map((e) => `${new Date(e.von).toLocaleDateString('de-DE')}: ${e.titel} – ${e.text}`).join('\n').slice(0, 5000)}` : '',
+    signalText(p.signale),
+  ].filter(Boolean).join('\n\n');
+  const w = parseWeek(await askOnce(`${WEEK_PROMPT}\n\n${r.identity(p.name || 'Max')}`, input));
+  // übernehmen: Bestätigungen festigen, Fortschreibungen mit Verlauf, neue Erkenntnisse, Ziele
+  const byNr = (n) => p.selbst?.[n - 1];
+  for (const n of w.bestaetigt) {
+    const e = byNr(n);
+    if (e) {
+      e.w = Math.min(SELF_WEIGHT_MAX, (e.w ?? 1) + 1);
+      e.seen = Date.now();
+    }
+  }
+  for (const a of w.aendern) {
+    const e = byNr(Number(a?.nr));
+    const t = String(a?.text ?? '').trim();
+    if (e && !isFixedSelf(e) && t.length >= 3 && t.length <= 400 && t !== e.text && !isOutOfRole(t)) evolveSelf(e, t);
+  }
+  const added = w.neu.map((n) => (isOutOfRole(n?.text) ? null : addSelf(p, n?.text, n?.art, 'reflexion'))).filter(Boolean);
+  p.ziele ??= [];
+  const open = () => p.ziele.filter((z) => z.status !== 'erreicht');
+  for (const n of w.ziele.erreicht) {
+    const z = ziele[n - 1];
+    if (!z) continue;
+    z.status = 'erreicht';
+    z.erreicht = Date.now();
+    addSelf(p, `Ich habe mir vorgenommen: ${z.text.replace(/\.$/, '')} – und es geschafft.`, 'erfahrung', 'reflexion');
+  }
+  for (const f of w.ziele.fortschritt) {
+    const z = ziele[Number(f?.nr) - 1];
+    if (z && f?.text) z.fortschritt = String(f.text).trim().slice(0, 200);
+  }
+  for (const t of w.ziele.neu) if (open().length < ZIELE_MAX && !isOutOfRole(t)) p.ziele.push({ id: newId(), text: t, created: Date.now() });
+  p.ziele = [...open(), ...p.ziele.filter((z) => z.status === 'erreicht').slice(-10)];
+  const datum = new Date().toLocaleDateString('de-DE');
+  if (w.entwicklung && !isOutOfRole(w.entwicklung)) p.entwicklung = [...(p.entwicklung ?? []), { id: newId(), datum, text: w.entwicklung, created: Date.now() }].slice(-ENTWICKLUNG_MAX);
+  // Gefestigtes zum Kern machen
+  const kern = promoteKern(p.selbst);
+  p.weekReviewAt = Date.now();
+  p.signale = { beispiele: [] };
+  save();
+  logEv('ROLLE', `Wochenrückblick: ${added.length} neu, ${w.bestaetigt.length} bestätigt, ${kern.length} zum Kern`);
+  if (p === persona()) {
+    renderSelf();
+    if (w.entwicklung) addBubble('note', `🌱 ${p.name}: ${w.entwicklung}`).title = 'Wochenrückblick (⚙ → Gedächtnis → Entwicklung)';
+  }
+  return { entwicklung: w.entwicklung, added: added.length, kern: kern.length };
+}
+
+/**
+ * Erinnerung an frühere Gespräche: Die Abendrunde fasst jedes abgeschlossene Gespräch (Pause > 2 h) kurz zusammen.
+ * Die Zusammenfassungen sind durchsuchbar und gehen bei passenden Fragen mit. Nur auf dem Gerät, je Bereich getrennt.
+ */
+async function summarizeEpisodes(p, { max = 8 } = {}) {
+  if (!p.memoryOn) return 0;
+  const until = p.episodeUntil ?? 0;
+  const msgs = (state.history[p.id] ?? []).filter((m) => (m.t ?? 0) > until && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim());
+  // das laufende Gespräch (letzte Nachricht vor weniger als 2 Stunden) noch nicht
+  const sessions = splitSessions(msgs).filter((s) => Date.now() - (s.at(-1).t ?? 0) > 2 * 3600e3);
+  let n = 0;
+  for (const s of sessions.slice(0, max)) {
+    const last = s.at(-1).t ?? Date.now();
+    if (s.filter((m) => m.role === 'user').length >= 2) {
+      const talk = s.map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Ich'}: ${m.content.slice(0, 600)}`).join('\n').slice(-9000);
+      try {
+        const e = parseEpisode(await helperJson(EPISODE_PROMPT, talk));
+        if (!e.belanglos && e.text) {
+          p.episoden = [...(p.episoden ?? []), { id: newId(), von: s[0].t ?? last, bis: last, titel: e.titel || 'Gespräch', text: e.text, offen: e.offen, created: Date.now() }].slice(-EPISODEN_MAX);
+          n++;
+        }
+      } catch (err) {
+        logEv('ERINNERUNG', `Zusammenfassen: ${err.message}`);
+        break; // später erneut versuchen
+      }
+    }
+    p.episodeUntil = last;
+  }
+  if (n || sessions.length) save();
+  if (n) logEv('ERINNERUNG', `${n} Gespräch(e) zusammengefasst`);
+  return n;
+}
+/**
+ * Passende frühere Gespräche: erst die Volltextsuche; bei wenigen Einträgen (da greift deren Seltenheits-Schwelle nicht)
+ * ersatzweise Wörter ab minLen Buchstaben, die in Titel oder Zusammenfassung vorkommen.
+ */
+function findEpisodes(p, q, k = 3, minLen = 4) {
+  const hits = searchIndex(episodeIndex(p), q, k).map((h) => h.doc.entry);
+  if (hits.length) return hits;
+  const words = [...new Set(String(q ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])].filter((w) => w.length >= minLen);
+  if (!words.length) return [];
+  return (p.episoden ?? [])
+    .map((e) => ({ e, n: words.filter((w) => `${e.titel} ${e.text} ${e.offen ?? ''}`.toLowerCase().includes(w)).length }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n || (b.e.von ?? 0) - (a.e.von ?? 0))
+    .slice(0, k)
+    .map((x) => x.e);
+}
+const episodeIdx = new Map();
+function episodeIndex(p) {
+  const list = p.episoden ?? [];
+  const key = `${list.length}:${list.at(-1)?.id ?? ''}`;
+  const c = episodeIdx.get(p.id);
+  if (c?.key === key) return c.idx;
+  const idx = buildIndex({ docs: list.map((e) => ({ name: `${e.titel} ${new Date(e.von).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}`, entry: e, chunks: [`${e.text} ${e.offen ?? ''}`] })) });
+  episodeIdx.set(p.id, { key, idx });
+  return idx;
+}
+
+/** Eintrag fortschreiben – die alte Fassung bleibt als Entwicklung erhalten („früher … heute …“). */
+function evolveSelf(e, text) {
+  e.vorher = [...(e.vorher ?? []), { text: e.text, bis: Date.now() }].slice(-3);
+  e.text = text;
+  e.changed = Date.now();
+}
 /** Ergebnis des Nachdenkens übernehmen: Einträge des Nutzers bleiben unangetastet. */
 function applyReflection(p, r) {
   p.selbst ??= [];
   const byNr = (n) => p.selbst[Number(n) - 1];
-  const own = (e) => e && e.quelle !== 'nutzer';
+  const own = (e) => e && !isFixedSelf(e);
   const drop = new Set((Array.isArray(r?.streichen) ? r.streichen : []).map(byNr).filter(own));
   let changed = 0;
   for (const a of Array.isArray(r?.aendern) ? r.aendern : []) {
     const e = byNr(a?.nr);
     const t = String(a?.text ?? '').trim().replace(/\s+/g, ' ');
     if (own(e) && !drop.has(e) && t.length >= 3 && t.length <= 400 && t !== e.text) {
-      e.text = t;
-      e.changed = Date.now();
+      evolveSelf(e, t);
       changed++;
     }
   }
@@ -2288,7 +2511,7 @@ function renderSelf() {
     const tag = document.createElement('span');
     tag.className = 'hint self-kind';
     // Gefestigtes (oft bestätigt) sichtbar: ein Punkt je Bestätigung
-    tag.textContent = `${SELF_KINDS[m.art] ?? m.art}${(m.w ?? 1) > 1 ? ` ${'●'.repeat(Math.min(5, m.w))}` : ''}`;
+    tag.textContent = `${m.kern ? '★ Kern · ' : ''}${SELF_KINDS[m.art] ?? m.art}${(m.w ?? 1) > 1 ? ` ${'●'.repeat(Math.min(5, m.w))}` : ''}`;
     if ((m.w ?? 1) > 1) tag.title = `${m.w}× bestätigt${m.w >= 3 ? ' – gefestigt' : ''}`;
     const input = document.createElement('input');
     input.value = m.text;
@@ -2308,7 +2531,22 @@ function renderSelf() {
       save();
       renderSelf();
     };
-    row.append(tag, input, del);
+    // anpinnen: die Figur lässt den Eintrag stehen (wie selbst eingetragen), er verblasst nicht
+    const pin = document.createElement('button');
+    pin.textContent = m.pin || m.kern ? '📌' : '📍';
+    pin.title = m.kern ? 'Kern – bleibt fest (zum Lösen erneut tippen)' : m.pin ? 'Angepinnt – zum Lösen tippen' : 'Anpinnen: bleibt fest, verblasst nicht';
+    pin.className = m.pin || m.kern ? 'pinned' : '';
+    pin.onclick = () => {
+      if (m.pin || m.kern) {
+        delete m.pin;
+        delete m.kern;
+      } else m.pin = true;
+      m.changed = Date.now();
+      save();
+      renderSelf();
+    };
+    if (m.vorher?.length) input.title += `\nFrüher: ${m.vorher.map((v) => `„${v.text}“`).join(' → ')}`;
+    row.append(tag, input, pin, del);
     list.appendChild(row);
   }
   renderFigure(p);
@@ -6211,6 +6449,25 @@ async function runAppToolInner(name, input) {
     if (!ort) return { fehler: 'Kein Ort bekannt – frag nach dem Ort oder bitte darum, ihn in ⚙ einzutragen bzw. den Standort zu erlauben.' };
     return desktop.weather({ ort, tage: input?.tage });
   }
+  if (name === 'gespraeche_suchen') {
+    const p = persona();
+    if (!p.memoryOn) return { hinweis: 'Das Gedächtnis ist für diese Persona ausgeschaltet.' };
+    const day = (s, end) => {
+      const t = Date.parse(String(s ?? '').trim());
+      return Number.isFinite(t) ? t + (end ? 86400e3 - 1 : 0) : null;
+    };
+    const von = day(input?.von) ?? 0;
+    const bis = day(input?.bis, true) ?? Infinity;
+    const inRange = (e) => (e.von ?? 0) >= von && (e.von ?? 0) <= bis;
+    const q = String(input?.suchbegriff ?? '').trim();
+    let list = q ? findEpisodes(p, q, 8).filter(inRange) : (p.episoden ?? []).filter(inRange).slice(-6).reverse();
+    list = list.slice(0, 5);
+    // die heutigen, noch nicht zusammengefassten Gespräche stehen im Verlauf
+    return {
+      gespraeche: list.map((e) => ({ datum: new Date(e.von).toLocaleDateString('de-DE'), titel: e.titel, zusammenfassung: e.text, offen: e.offen || undefined })),
+      ...(list.length ? {} : { hinweis: 'Nichts Passendes gefunden – Gespräche werden abends zusammengefasst, die von heute stehen noch im Verlauf.' }),
+    };
+  }
   if (name === 'nachrichten') {
     if (state.settings.offline) throw new Error('offline – keine Nachrichten abrufbar');
     if (!desktop.news) throw new Error('Nachrichten sind hier nicht verfügbar');
@@ -8261,6 +8518,7 @@ function rtInstructions() {
     p.prompt?.trim(),
     p.geschichte?.trim() ? `Dein bisheriges Leben (Anfang):\n${p.geschichte.trim().slice(0, 1200)}` : '',
     p.selbstOn !== false ? kanonPrompt(p.kanon) : '',
+    p.selbstOn !== false ? kernPrompt(p.selbst) : '',
     p.selbstOn !== false && p.selbst?.length ? r.self(selfPromptList(p.selbst, 10), false) : '',
     p.selbstOn !== false ? stimmungPrompt(p.stimmung) : '',
     p.selbstOn !== false ? tagebuchPrompt((p.tagebuch ?? []).slice(-1)) : '',
@@ -8568,6 +8826,9 @@ window.__app = {
   writeDiary: (o) => writeDiary(persona(), o),
   addKanon: (t) => addKanon(persona(), t),
   noteServedModel,
+  weeklyReview: (o) => weeklyReview(persona(), o),
+  summarizeEpisodes: (o) => summarizeEpisodes(persona(), o),
+  noteFeedback: (t) => noteFeedback(persona(), t),
   renderAudioChip,
   keepAliveForVoice,
   checkKanon: () => checkKanon(persona()),

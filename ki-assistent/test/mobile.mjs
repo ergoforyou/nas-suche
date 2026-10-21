@@ -40,8 +40,11 @@ await page.route('https://api.anthropic.com/**', (route) => {
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
   // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
   // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
-  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch/.test(JSON.stringify(request.body.system ?? ''));
-  const qi = claudeQueue.findIndex((e) => !!e.helper === helper);
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis/.test(JSON.stringify(request.body.system ?? ''));
+  const sysText = JSON.stringify(request.body.system ?? '');
+  // gezielte Antworten (match) gehen nur an die passende Anfrage, sonst die nächste freie
+  let qi = claudeQueue.findIndex((e) => !!e.helper === helper && e.match?.test(sysText));
+  if (qi < 0) qi = claudeQueue.findIndex((e) => !!e.helper === helper && !e.match);
   const evs = qi >= 0 ? claudeQueue.splice(qi, 1)[0] : [
     { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
     { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
@@ -1562,8 +1565,9 @@ const bargeRes = await page.evaluate(async () => {
 check(bargeRes.includes('hold') && bargeRes.includes('release') && !bargeRes.includes('abort') && bargeRes.indexOf('stop') < 0, 'Live-Gespräch: Knacken während der Antwort pausiert nur kurz, die Antwort läuft weiter', JSON.stringify(bargeRes));
 // Figur: Kanon (über sich Erzähltes), Tagebuch mit Stimmung und gemeinsamer Geschichte, Fehler in ihrer Stimme, Rollen-Check
 const helperSay = (t) => Object.assign(sayText(t), { helper: true });
-claudeQueue.push(helperSay('{"fakten":[],"ersetzen":[],"themen":[],"ueber_mich":["Ich mag Kirschkuchen am liebsten.","Ich bin eine KI."]}'));
-claudeQueue.push(helperSay('{"tagebuch":"Heute hat Jens mir vom alten Drucker erzählt, wir haben viel gelacht. Ich war gern dabei.","stimmung":{"gefuehl":"heiter","grund":"wir haben über den Drucker gelacht"},"gemeinsam":["Wir nennen Jens alten Drucker das Biest."]}'));
+for (let i = claudeQueue.length - 1; i >= 0; i--) if (claudeQueue[i].helper) claudeQueue.splice(i, 1); // übrig gebliebene Hilfsantworten nicht vertauschen
+claudeQueue.push(Object.assign(helperSay('{"fakten":[],"ersetzen":[],"themen":[],"ueber_mich":["Ich mag Kirschkuchen am liebsten.","Ich bin eine KI."]}'), { match: /Langzeitgedächtnis/ }));
+claudeQueue.push(Object.assign(helperSay('{"tagebuch":"Heute hat Jens mir vom alten Drucker erzählt, wir haben viel gelacht. Ich war gern dabei.","stimmung":{"gefuehl":"heiter","grund":"wir haben über den Drucker gelacht"},"gemeinsam":["Wir nennen Jens alten Drucker das Biest."]}'), { match: /Du schreibst dein Tagebuch/ }));
 for (let i = 0; i < 10; i++) claudeQueue.push(sayText('Ich bin hier und ganz bei dir – frag mich ruhig weiter.'));
 const figRes = await page.evaluate(async () => {
   const app = window.__app;
@@ -1630,6 +1634,74 @@ const fig2 = await page.evaluate(async () => {
 check(fig2.kanon.join('|') === 'Ich bin in Hamburg aufgewachsen.|Ich trinke Tee mit Honig.', '„Über mich erzählt“: Widersprüche zu Geschichte/Steckbrief angeglichen, eigene Einträge bleiben', JSON.stringify(fig2));
 check(/Neues Sprachmodell \(sonnet-5-5\)/.test(fig2.note), 'Wache bei Modellwechsel: Hinweis auf Rollen-Check', fig2.note);
 check(fig2.tool && fig2.ident, 'Keine Rede über Werkzeuge, Speicher und Anweisungen (Regel und Absicherung)', JSON.stringify(fig2));
+// Selbstbild 2.0: Rückmeldungen, Persönlichkeit beim Nachdenken, Entwicklung, Wochenrückblick mit Kern und Zielen,
+// Erinnerung an frühere Gespräche
+for (let i = claudeQueue.length - 1; i >= 0; i--) if (claudeQueue[i].helper) claudeQueue.splice(i, 1); // übrig gebliebene Hilfsantworten nicht vertauschen
+claudeQueue.push(Object.assign(helperSay('{"gedanke":"Mir ist aufgefallen, dass ich Bilder mag.","neu":[{"text":"Ich finde, gute Ergonomie fängt beim Zuhören an.","art":"ansicht"}],"aendern":[{"nr":1,"text":"Ich erkläre Dinge am liebsten mit Bildern."}],"streichen":[]}'), { match: /Denk ehrlich über dich nach/ }));
+claudeQueue.push(Object.assign(helperSay('{"entwicklung":"Ich traue mich inzwischen, eigene Meinungen zu vertreten.","neu":[{"text":"Ich mag es, wenn Jens mir früh von Problemen erzählt.","art":"beziehung"}],"bestaetigt":[2],"aendern":[],"ziele":{"neu":["Ich will verstehen, worauf es ergoforyou-Kunden ankommt."],"erreicht":[],"fortschritt":[]}}'), { match: /Wochenrückblick/ }));
+claudeQueue.push(Object.assign(helperSay('{"titel":"Druckerproblem","zusammenfassung":"Wir haben den streikenden Drucker im Büro besprochen; ich habe einen Neustart des Spoolers vorgeschlagen, das hat geholfen.","offen":"Toner bestellen","belanglos":false}'), { match: /Fasse das folgende Gespräch/ }));
+const grow2Res = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const before = { selbst: p.selbst, signale: p.signale, ziele: p.ziele, entwicklung: p.entwicklung, tagebuch: p.tagebuch, episoden: p.episoden, episodeUntil: p.episodeUntil, weekReviewAt: p.weekReviewAt, memoryOn: p.memoryOn, immersion: p.immersion, selbstOn: p.selbstOn };
+  const keepReflect = app.state.settings.reflect;
+  Object.assign(p, { signale: {}, ziele: [], entwicklung: [], episoden: [], memoryOn: true, immersion: true, selbstOn: true, weekReviewAt: 0 });
+  const month = Date.now() - 30 * 86400e3;
+  p.selbst = [
+    { id: 's1', text: 'Ich erkläre Dinge gern mit Beispielen.', art: 'vorliebe', quelle: 'gespraech', created: month },
+    { id: 's2', text: 'Ich bleibe ruhig, wenn es stressig wird.', art: 'staerke', quelle: 'reflexion', created: month, w: 4 },
+  ];
+  const h = app.history();
+  const n0 = h.length;
+  // Rückmeldungen
+  h.push({ role: 'assistant', content: 'Hier ist die lange Erklärung …', t: Date.now() });
+  app.noteFeedback('Das ist mir zu lang.');
+  h.push({ role: 'user', content: 'Das ist mir zu lang.', t: Date.now() }, { role: 'assistant', content: 'Kurz: Neustart.', t: Date.now() });
+  app.noteFeedback('Danke, super!');
+  const signale = { lob: p.signale.lob, laenge: p.signale.laenge };
+  // Nachdenken: Persönlichkeit, Fortschreibung mit früherer Fassung
+  h.push({ role: 'user', content: 'Wie siehst du das mit Ergonomie?', t: Date.now() }, { role: 'assistant', content: 'Ich finde, es fängt beim Zuhören an.', t: Date.now() });
+  await app.reflect(true);
+  const refl = { arts: p.selbst.map((e) => e.art), vorher: p.selbst[0].vorher?.[0]?.text, text: p.selbst[0].text };
+  // Wochenrückblick
+  p.tagebuch = [
+    { id: 'd1', datum: '2026-10-19', text: 'Heute ging es um den Drucker.', created: Date.now() - 2 * 86400e3 },
+    { id: 'd2', datum: '2026-10-20', text: 'Jens hat mir früh von seinem Problem erzählt.', created: Date.now() - 86400e3 },
+  ];
+  const wk = await app.weeklyReview({ manual: true }).catch((e) => ({ err: e.message }));
+  const week = { wk, kern: p.selbst.filter((e) => e.kern).map((e) => e.text), ziele: p.ziele.map((z) => z.text), entw: p.entwicklung.map((e) => e.text), signaleReset: !p.signale.lob };
+  const sys = JSON.stringify(app.buildMessages());
+  const prompt = {
+    kern: /Das macht dich aus[^"]*ruhig/.test(sys),
+    ziele: /Was du dir gerade vornimmst[^"]*ergoforyou-Kunden/.test(sys),
+    entw: /Wie du dich in letzter Zeit verändert hast[^"]*Früher: „Ich erkläre Dinge gern mit Beispielen/.test(sys),
+  };
+  // Erinnerung an frühere Gespräche
+  h.splice(n0);
+  const old = Date.now() - 5 * 3600e3;
+  h.push(
+    { role: 'user', content: 'Der Drucker im Büro streikt schon wieder.', t: old },
+    { role: 'assistant', content: 'Starte mal den Druckspooler neu.', t: old + 1000 },
+    { role: 'user', content: 'Hat geklappt, danke!', t: old + 60000 },
+    { role: 'assistant', content: 'Prima.', t: old + 61000 },
+  );
+  p.episodeUntil = 0;
+  const nEp = await app.summarizeEpisodes();
+  const tool = await app.runAppTool('gespraeche_suchen', { suchbegriff: 'Drucker' });
+  h.splice(n0);
+  const out = { signale, refl, week, prompt, nEp, ep: p.episoden.map((e) => e.titel), tool };
+  Object.assign(p, before);
+  app.state.settings.reflect = keepReflect;
+  return out;
+});
+check(grow2Res.signale.lob === 1 && grow2Res.signale.laenge === 1, 'Selbstbild: Rückmeldungen (Lob, „zu lang“) werden gezählt', JSON.stringify(grow2Res.signale));
+check(grow2Res.refl.arts.includes('ansicht') && grow2Res.refl.vorher === 'Ich erkläre Dinge gern mit Beispielen.' && /Bildern/.test(grow2Res.refl.text), 'Selbstbild: Nachdenken bildet Ansichten, Fortschreibung behält die frühere Fassung', JSON.stringify(grow2Res.refl));
+check(
+  grow2Res.week.kern.length === 1 && grow2Res.week.ziele.length === 1 && /eigene Meinungen/.test(grow2Res.week.entw[0] ?? '') && grow2Res.week.signaleReset && grow2Res.prompt.kern && grow2Res.prompt.ziele && grow2Res.prompt.entw,
+  'Wochenrückblick: Bestätigtes wird Kern, eigenes Ziel, Entwicklung – alles im Gespräch',
+  JSON.stringify({ week: grow2Res.week, prompt: grow2Res.prompt }),
+);
+check(grow2Res.nEp === 1 && grow2Res.ep[0] === 'Druckerproblem' && grow2Res.tool.gespraeche?.[0]?.titel === 'Druckerproblem', 'Erinnerung an frühere Gespräche: zusammengefasst und durchsuchbar', JSON.stringify({ nEp: grow2Res.nEp, tool: grow2Res.tool }));
 check(/Ich:/.test(roleRes.examples) && roleRes.exInPrompt, 'Rolle: Beispieldialoge vorgeschlagen und im Steckbrief-Block', JSON.stringify(roleRes));
 // Vergessen auf Bitte: passende Einträge aus Gedächtnis/Selbstbild/Themen löschen, anderes bleibt, Rückgängig
 const forgetRes = await page.evaluate(async () => {

@@ -32,6 +32,12 @@ export async function packPersona(persona, { withMemory = false, version = '', o
     delete p.gemeinsam;
     delete p.tagebuch;
     delete p.stimmung;
+    delete p.ziele;
+    delete p.entwicklung;
+    delete p.episoden;
+    delete p.episodeUntil;
+    delete p.signale;
+    delete p.weekReviewAt;
   }
   delete p.reflectTurns;
   delete p.reflectedAt;

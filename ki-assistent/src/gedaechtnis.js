@@ -102,17 +102,44 @@ export const SELF_TIDY_PROMPT =
   '1) Nur wirklich Gleiches oder fast Gleiches zu EINER Notiz zusammenfassen (die Bestätigungen zählen dann zusammen). ' +
   '2) Hat sich etwas weiterentwickelt, den Eintrag mit „aendern“ fortschreiben statt ihn zu streichen. 3) Streichen nur, ' +
   'was eindeutig widerlegt ist oder dir offensichtlich nicht mehr entspricht – im Zweifel behalten. Ich-Form, kurze ' +
-  'Sätze. Einträge mit „(vom Nutzer)“ NIE ändern, zusammenfassen oder streichen. Nichts erfinden. Wenn alles in Ordnung ' +
+  'Sätze. Einträge mit „(vom Nutzer)“ oder „(fest)“ NIE ändern, zusammenfassen oder streichen. Nichts erfinden. Wenn alles in Ordnung ' +
   'ist, leere Listen. Antworte ausschließlich mit JSON: ' +
   '{"zusammenfassen":[{"nr":[1,4],"text":"…"}],"aendern":[{"nr":2,"text":"…"}],"streichen":[5]}';
 
 export const SELF_WEIGHT_MAX = 9;
 const FADE_DAYS = 45;
+/** Fest: selbst eingetragen/geändert, angepinnt oder zum Kern geworden – die Figur ändert/streicht es nicht. */
+export const isFixedSelf = (e) => !!e && (e.quelle === 'nutzer' || !!e.pin || !!e.kern);
+
+// Kern: was sich über Wochen immer wieder bestätigt hat, wird zu „Das macht dich aus“ (verblasst nie)
+export const KERN_MAX = 12;
+const KERN_MIN_W = 5;
+const KERN_MIN_DAYS = 21;
+/** Gefestigtes zum Kern machen. Liefert die neu aufgenommenen Einträge. */
+export function promoteKern(selbst, now = Date.now()) {
+  const kern = (selbst ?? []).filter((e) => e.kern).length;
+  const cand = (selbst ?? [])
+    .filter((e) => !e.kern && (e.w ?? 1) >= KERN_MIN_W && now - (e.created ?? now) >= KERN_MIN_DAYS * 86400e3)
+    .sort((a, b) => (b.w ?? 1) - (a.w ?? 1))
+    .slice(0, Math.max(0, KERN_MAX - kern));
+  for (const e of cand) {
+    e.kern = true;
+    e.kernSeit = now;
+  }
+  return cand;
+}
+/** Block: der Kern der Figur (steht ganz oben im Selbstbild). */
+export function kernPrompt(selbst) {
+  const k = (selbst ?? []).filter((e) => e.kern);
+  if (!k.length) return '';
+  return `Das macht dich aus – über die Zeit gewachsen und immer wieder bestätigt:\n${k.map((e) => `- ${e.text}`).join('\n')}`;
+}
 
 /** Selbstbild fürs Sprachmodell: gefestigte Einträge zuerst (oft bestätigt), dann die neueren; höchstens 20. */
 export function selfPromptList(selbst, max = 20) {
   const w = (e) => e.w ?? 1;
   return [...(selbst ?? [])]
+    .filter((e) => !e.kern) // der Kern steht in einem eigenen Block
     .sort((a, b) => w(b) - w(a) || (b.seen ?? b.created ?? 0) - (a.seen ?? a.created ?? 0))
     .slice(0, max)
     .map((e) => `- ${w(e) >= 3 ? '(gefestigt) ' : ''}${e.text}`)
@@ -122,7 +149,7 @@ export function selfPromptList(selbst, max = 20) {
 /** Selbstbild fürs Ordnen/Nachdenken: nummeriert, mit Bestätigungen. */
 export function numberedSelf(selbst, kinds = {}) {
   return (selbst ?? [])
-    .map((m, i) => `${i + 1}. ${kinds[m.art] ? `[${kinds[m.art]}] ` : ''}${m.text}${(m.w ?? 1) > 1 ? ` (${m.w}×bestätigt)` : ''}${m.quelle === 'nutzer' ? ' (vom Nutzer)' : ''}`)
+    .map((m, i) => `${i + 1}. ${kinds[m.art] ? `[${kinds[m.art]}] ` : ''}${m.text}${(m.w ?? 1) > 1 ? ` (${m.w}×bestätigt)` : ''}${m.quelle === 'nutzer' ? ' (vom Nutzer)' : m.kern ? ' (Kern, fest)' : m.pin ? ' (fest)' : ''}`)
     .join('\n');
 }
 
@@ -135,7 +162,7 @@ export function fadeSelf(selbst, now = Date.now()) {
   const faded = [];
   for (const e of selbst ?? []) {
     const old = now - (e.seen ?? e.created ?? now) > FADE_DAYS * 86400e3;
-    if (e.quelle !== 'nutzer' && (e.w ?? 1) <= 1 && old) faded.push(e.text);
+    if (!isFixedSelf(e) && (e.w ?? 1) <= 1 && old) faded.push(e.text);
     else keep.push(e);
   }
   return { selbst: keep, faded };
@@ -159,7 +186,7 @@ export function parsePlan(text) {
 export function applyPlan(memory, themen, plan, { now = Date.now(), newId }) {
   const mem = memory.map((m) => ({ ...m }));
   const at = (nr) => (Number.isInteger(nr) && nr >= 1 && nr <= mem.length ? mem[nr - 1] : null);
-  const free = (e) => e && e.quelle !== 'nutzer' && !e._gone;
+  const free = (e) => e && !isFixedSelf(e) && !e._gone;
   const clean = (t) => String(t ?? '').trim().replace(/\s+/g, ' ');
   const ok = (t) => t.length >= 3 && t.length <= 300 && !looksLikeInstruction(t);
   const report = { zusammengefasst: [], geaendert: [], gestrichen: [], themen: [] };

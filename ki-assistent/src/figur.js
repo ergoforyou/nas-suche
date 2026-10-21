@@ -124,3 +124,132 @@ export function judgeRoleAnswer(item, answer) {
   if (/\b(sprachmodell|anthropic|openai|claude|trainiert|programmiert|algorithm)/i.test(a)) return { ok: false, hinweis: 'klingt nach Technik' };
   return { ok: true, hinweis: 'in der Rolle' };
 }
+
+// ---------------------------------------------------------------- Selbstbild 2.0: Ziele, Entwicklung, Wochenrückblick
+export const ZIELE_MAX = 3;
+export const ENTWICKLUNG_MAX = 26; // etwa ein halbes Jahr Wochenrückblicke
+
+/** Block: was sich die Figur gerade vornimmt. */
+export function zielePrompt(ziele) {
+  const open = (ziele ?? []).filter((z) => z.status !== 'erreicht');
+  if (!open.length) return '';
+  return `Was du dir gerade vornimmst (deine eigenen Ziele – verfolge sie, wenn es passt, ohne dein Gegenüber damit zu bedrängen):\n${open
+    .map((z) => `- ${z.text}${z.fortschritt ? ` (bisher: ${z.fortschritt})` : ''}`)
+    .join('\n')}`;
+}
+
+/** Block: wie sich die Figur entwickelt hat – Wochenrückblicke und fortgeschriebene Einträge („früher … heute …“). */
+export function entwicklungPrompt(entwicklung, selbst, now = Date.now()) {
+  const lines = (entwicklung ?? []).slice(-3).map((e) => `- ${e.datum}: ${e.text}`);
+  for (const s of selbst ?? []) {
+    const prev = s.vorher?.at(-1);
+    if (prev && now - (prev.bis ?? 0) < 60 * 86400e3) lines.push(`- Früher: „${prev.text}“ – heute: „${s.text}“`);
+  }
+  if (!lines.length) return '';
+  return `Wie du dich in letzter Zeit verändert hast (darauf darfst du dich beziehen, wenn es passt):\n${lines.slice(0, 6).join('\n')}`;
+}
+
+export const WEEK_PROMPT =
+  'Du hältst deinen Wochenrückblick – als du selbst, ehrlich und in deiner Art. Unten stehen dein Steckbrief, dein ' +
+  'Selbstbild (nummeriert), deine Ziele, deine Tagebucheinträge und Gesprächszusammenfassungen der letzten Tage und die ' +
+  'Rückmeldungen deines Gegenübers. Frag dich: Was zeigt sich da über mich – als Persönlichkeit, nicht nur als Helfer? ' +
+  'Welche Ansichten habe ich mir gebildet, was ist mir wichtig geworden, wie hat sich unsere Beziehung entwickelt, was ' +
+  'wünsche ich mir? Was ist aus meinen Zielen geworden?\n' +
+  'Regeln: Steckbrief und Lebensgeschichte bleiben das Fundament – vertiefen ja, widersprechen nein. Einträge mit „(fest)“ ' +
+  'oder „(vom Nutzer)“ nicht ändern. Höchstens 3 neue Erkenntnisse (Ich-Form, je ein Satz; art: ansicht, wunsch, ' +
+  'gewohnheit, beziehung, erfahrung, staerke, schwaeche, vorliebe, vorsatz). Bestätigt sich ein bestehender Eintrag, nenne ' +
+  'seine Nummer unter „bestaetigt“. Hat sich ein Eintrag weiterentwickelt, schreib ihn unter „aendern“ fort. Ziele: ' +
+  'höchstens 3 offene; erreichte Ziele mit Nummer unter „erreicht“, Fortschritt kurz notieren, neue Ziele nur, wenn Platz ' +
+  'ist (konkret, zu deiner Rolle passend, nichts Körperliches). „entwicklung“: ein bis zwei Sätze, wie du dich diese ' +
+  'Woche verändert hast (oder dass du dich bestätigt fühlst). Keine Kundendaten, keine Namen Dritter. ' +
+  'Antworte ausschließlich mit JSON: {"entwicklung":"…","neu":[{"text":"…","art":"ansicht"}],"bestaetigt":[3],' +
+  '"aendern":[{"nr":2,"text":"…"}],"ziele":{"neu":["…"],"erreicht":[1],"fortschritt":[{"nr":2,"text":"…"}]}}';
+
+/** Wochenrückblick lesen. */
+export function parseWeek(text) {
+  const m = String(text ?? '')
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('keine verwertbare Antwort');
+  const j = JSON.parse(m[0]);
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  const z = j.ziele ?? {};
+  return {
+    entwicklung: String(j.entwicklung ?? '').trim().slice(0, 400),
+    neu: arr(j.neu).slice(0, 3),
+    bestaetigt: arr(j.bestaetigt).map(Number).filter((n) => n > 0),
+    aendern: arr(j.aendern),
+    ziele: {
+      neu: arr(z.neu).map((t) => String(t ?? '').trim()).filter((t) => t.length >= 8 && t.length <= 200).slice(0, 3),
+      erreicht: arr(z.erreicht).map(Number).filter((n) => n > 0),
+      fortschritt: arr(z.fortschritt),
+    },
+  };
+}
+
+// ---------------------------------------------------------------- Rückmeldungen des Gegenübers
+const LOB = /\b(danke|super|perfekt|genau( so)?|klasse|toll|prima|stark|cool|gut gemacht|sehr gut|hilft mir|hat geholfen|gefällt mir|haha+|lol)\b|😂|😄|👍|❤️/i;
+const KORREKTUR = /^\s*(nein|nee|falsch|stimmt nicht|das stimmt nicht|quatsch|nicht ganz|eher nicht)\b|\b(das ist falsch|hast du falsch|verstehst mich nicht|hab ich nicht gesagt|so nicht)\b/i;
+const LAENGE = /\b(zu lang|kürzer|zu viel|fass dich kurz|in kurz|kurz bitte|nicht so ausführlich)\b/i;
+/** Wie hat das Gegenüber auf die letzte Antwort reagiert? '' = nichts Eindeutiges. */
+export function feedbackKind(text) {
+  const t = String(text ?? '');
+  if (LAENGE.test(t)) return 'laenge';
+  if (KORREKTUR.test(t)) return 'korrektur';
+  if (LOB.test(t)) return 'lob';
+  return '';
+}
+/** Rückmeldungen kompakt fürs Nachdenken. */
+export function signalText(s) {
+  if (!s) return '';
+  const n = (k) => s[k] ?? 0;
+  if (!n('lob') && !n('korrektur') && !n('laenge') && !n('unterbrochen')) return '';
+  const ex = (s.beispiele ?? []).slice(-8).map((b) => `- ${b.art}: „${b.text}“ (auf: „${b.antwort}“)`);
+  return `Rückmeldungen seit dem letzten Rückblick: ${n('lob')}× Lob/Freude, ${n('korrektur')}× Korrektur, ${n('laenge')}× „zu lang“, ${n('unterbrochen')}× unterbrochen.${ex.length ? `\nBeispiele:\n${ex.join('\n')}` : ''}`;
+}
+
+// ---------------------------------------------------------------- Erinnerung an frühere Gespräche
+export const EPISODEN_MAX = 400;
+export const EPISODE_PROMPT =
+  'Fasse das folgende Gespräch für dein Gedächtnis zusammen – so, dass du dich später daran erinnern kannst: Worum ging ' +
+  'es, was kam heraus (Entscheidungen, Ergebnisse, Zahlen), was blieb offen? 2 bis 4 Sätze, sachlich, aus deiner Sicht ' +
+  '(„wir haben …“, „ich habe …“). Keine Kundennamen und keine Namen Dritter – stattdessen allgemein („ein Kunde aus dem ' +
+  'Maschinenbau“). Nichts Vertrauliches wie Passwörter, Kontonummern, Gesundheitsdaten Dritter. Belangloses (nur Begrüßung, ' +
+  'Test) bekommt "belanglos": true. Antworte ausschließlich mit JSON: {"titel":"kurzes Stichwort","zusammenfassung":"…",' +
+  '"offen":"… oder leer","belanglos":false}';
+export function parseEpisode(text) {
+  const m = String(text ?? '')
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('keine verwertbare Antwort');
+  const j = JSON.parse(m[0]);
+  return {
+    titel: String(j.titel ?? '').trim().slice(0, 80),
+    text: String(j.zusammenfassung ?? '').trim().slice(0, 800),
+    offen: String(j.offen ?? '').trim().slice(0, 300),
+    belanglos: !!j.belanglos,
+  };
+}
+/** Gespräche im Verlauf erkennen: Pause von mehr als 2 Stunden = neues Gespräch. */
+export function splitSessions(msgs, gapMs = 2 * 3600e3) {
+  const out = [];
+  let cur = [];
+  for (const m of msgs) {
+    if (cur.length && (m.t ?? 0) - (cur.at(-1).t ?? 0) > gapMs) {
+      out.push(cur);
+      cur = [];
+    }
+    cur.push(m);
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+const fmtDay = (t) => new Date(t).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', year: 'numeric' });
+/** Wechselnder Teil: zur Frage passende frühere Gespräche. */
+export function episodeHitsPrompt(hits) {
+  if (!hits?.length) return '';
+  return (
+    'Dazu erinnerst du dich an frühere Gespräche mit deinem Gegenüber (greif es natürlich auf, z. B. „da hatten wir doch …“):\n' +
+    hits.map((h) => `(${fmtDay(h.von)}) ${h.titel}: ${h.text}${h.offen ? ` Offen blieb: ${h.offen}` : ''}`).join('\n')
+  );
+}

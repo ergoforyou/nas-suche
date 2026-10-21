@@ -11,7 +11,7 @@ const SELF_MAX = 40;
 const REFLEX_MAX = 20;
 
 // Teile einer Persona, die nicht als „Text“ zählen: eigene Regeln beim Zusammenführen bzw. gerätebezogen
-const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp']);
+const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'ziele', 'entwicklung', 'episoden', 'episodeUntil', 'signale', 'weekReviewAt', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp']);
 const newId = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 const norm = (x) => String(x ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -36,7 +36,7 @@ export function stamp(data, cache, { now = Date.now(), record = false, initial =
     });
   }
   for (const p of data.personas ?? []) {
-    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? []), ...(p.kanon ?? []), ...(p.gemeinsam ?? []), ...(p.tagebuch ?? [])]) e.id ??= newId();
+    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? []), ...(p.kanon ?? []), ...(p.gemeinsam ?? []), ...(p.tagebuch ?? []), ...(p.ziele ?? []), ...(p.entwicklung ?? []), ...(p.episoden ?? [])]) e.id ??= newId();
     const text = JSON.stringify(personaText(p));
     const av = JSON.stringify(p.avatar ?? null);
     const c = cache.get(p.id);
@@ -54,7 +54,7 @@ export function idsOf(data) {
   const ids = new Set();
   for (const p of data.personas ?? []) {
     ids.add(p.id);
-    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? []), ...(p.kanon ?? []), ...(p.gemeinsam ?? []), ...(p.tagebuch ?? [])]) if (e.id) ids.add(e.id);
+    for (const e of [...(p.memory ?? []), ...(p.selbst ?? []), ...(p.themen ?? []), ...(p.kanon ?? []), ...(p.gemeinsam ?? []), ...(p.tagebuch ?? []), ...(p.ziele ?? []), ...(p.entwicklung ?? []), ...(p.episoden ?? [])]) if (e.id) ids.add(e.id);
     for (const m of data.history?.[p.id] ?? []) if (m.id) ids.add(m.id);
   }
   for (const e of data.saved ?? []) if (e.id) ids.add(e.id);
@@ -158,7 +158,7 @@ export function mergeSync(a, b) {
         dead,
         max: SELF_MAX,
         same: (x, y) => norm(x.text) === norm(y.text),
-        keep: (e) => e.quelle === 'nutzer',
+        keep: (e) => e.quelle === 'nutzer' || !!e.pin || !!e.kern,
       }),
       // offene Themen: „schon angesprochen“ auf einem Gerät gilt für beide (neuerer Stand gewinnt)
       themen: mergeEntries(pa.themen, pb.themen, { dead, max: 20, same: (x, y) => norm(x.text) === norm(y.text) }),
@@ -167,6 +167,13 @@ export function mergeSync(a, b) {
       gemeinsam: mergeEntries(pa.gemeinsam, pb.gemeinsam, { dead, max: 40, same: (x, y) => norm(x.text) === norm(y.text) }),
       tagebuch: mergeEntries(pa.tagebuch, pb.tagebuch, { dead, max: 30, same: (x, y) => x.datum === y.datum }),
       stimmung: (pb.stimmung?.t ?? 0) > (pa.stimmung?.t ?? 0) ? pb.stimmung : pa.stimmung,
+      // Entwicklung: Ziele, Wochenrückblicke, Erinnerung an Gespräche (Rückmeldungen bleiben je Gerät)
+      ziele: mergeEntries(pa.ziele, pb.ziele, { dead, max: 13, same: (x, y) => norm(x.text) === norm(y.text) }),
+      entwicklung: mergeEntries(pa.entwicklung, pb.entwicklung, { dead, max: 26, same: (x, y) => x.datum === y.datum }),
+      episoden: mergeEntries(pa.episoden, pb.episoden, { dead, max: 400, same: (x, y) => x.von === y.von }),
+      episodeUntil: Math.max(pa.episodeUntil ?? 0, pb.episodeUntil ?? 0) || undefined,
+      weekReviewAt: Math.max(pa.weekReviewAt ?? 0, pb.weekReviewAt ?? 0) || undefined,
+      signale: pa.signale,
       reflexion: [...new Map([...(pa.reflexion ?? []), ...(pb.reflexion ?? [])].map((r) => [r.created, r])).values()]
         .sort((x, y) => x.created - y.created)
         .slice(-REFLEX_MAX),
