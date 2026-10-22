@@ -58,6 +58,7 @@ export function idsOf(data) {
     for (const m of data.history?.[p.id] ?? []) if (m.id) ids.add(m.id);
   }
   for (const e of data.saved ?? []) if (e.id) ids.add(e.id);
+  for (const e of data.erinnerungen ?? []) if (e.id) ids.add(e.id);
   return ids;
 }
 
@@ -83,6 +84,8 @@ export function snapshot(data, sync, { limit = HISTORY_MAX } = {}) {
     }),
     history: Object.fromEntries((data.personas ?? []).map((p) => [p.id, (data.history?.[p.id] ?? []).slice(-limit)])),
     saved: data.saved ?? [],
+    // eigene Erinnerungen (Privat): gestellt, angesagt, bestätigt oder verschoben – auf beiden Geräten derselbe Stand
+    erinnerungen: data.erinnerungen ?? [],
     deleted: { ...(sync?.deleted ?? {}) },
   };
 }
@@ -193,5 +196,7 @@ export function mergeSync(a, b) {
   }
   for (const id of Object.keys(history)) if (!alive.some((p) => p.id === id)) delete history[id];
   const saved = mergeEntries(a.saved, b.saved, { dead, max: 500, same: (x, y) => x.title === y.title });
-  return { personas: alive, history, saved, deleted, rename };
+  // Erinnerungen: neuerer Stand gewinnt (changed) – „erledigt“ auf einem Gerät gilt damit auch auf dem anderen
+  const erinnerungen = mergeEntries(a.erinnerungen, b.erinnerungen, { dead, max: 50 }).sort((x, y) => x.at - y.at);
+  return { personas: alive, history, saved, erinnerungen, deleted, rename };
 }

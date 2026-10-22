@@ -1325,6 +1325,18 @@ public class MainActivity extends BridgeActivity {
             KIReminder.store(MainActivity.this, json);
         }
 
+        /** Benachrichtigung einer Erinnerung wegnehmen (bestätigt). */
+        @JavascriptInterface
+        public void dismissReminder(String key) {
+            KIReminder.dismiss(MainActivity.this, key);
+        }
+
+        /** In der Benachrichtigung gedrückt, während die App zu war: [{"key","was","t"}]. */
+        @JavascriptInterface
+        public String takeReminderActions() {
+            return KIReminder.takeActions(MainActivity.this);
+        }
+
         @JavascriptInterface
         public boolean notifyAllowed() {
             return Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;

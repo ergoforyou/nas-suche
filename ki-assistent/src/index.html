@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="reminderBar" class="reminder-bar" role="alert" aria-live="polite" hidden></div>
   <header class="titlebar">
     <span class="title"><span id="titleName">KI-Assistent</span> <span id="titleVersion" class="version"></span></span>
     <button id="btnCost" class="cost-chip" hidden title="Geschätzte API-Kosten (Claude/OpenAI) heute · dieser Monat – Klick für Details"></button>
@@ -806,8 +807,9 @@
         </div>
         <p class="hint">Das Passwort bleibt verschlüsselt auf diesem Gerät (wie die API-Schlüssel) und wird nirgends angezeigt.
           Im eigenen Netz geht die Verbindung unverschlüsselt – für unterwegs Tailscale verwenden.</p>
-        <label class="check"><input id="nasAuto" type="checkbox" /> Automatisch abgleichen (beim Öffnen, beim Verlassen, alle 10 Minuten und nach Änderungen)</label>
-        <div class="row wrap"><button id="nasNow">🗄 Jetzt abgleichen</button></div>
+        <label class="check"><input id="nasAuto" type="checkbox" /> Automatisch abgleichen (beim Öffnen, beim Verlassen, alle 3 Minuten und gleich nach Änderungen wie neuen oder bestätigten Erinnerungen)</label>
+        <div class="row wrap"><button id="nasNow">🗄 Jetzt abgleichen</button><button id="nasBackups">↩ Sicherung zurückholen …</button></div>
+        <div id="nasBackupList" class="hint" hidden></div>
         <p id="nasState" class="hint"></p>
       </div>
       <div id="savedWrap">

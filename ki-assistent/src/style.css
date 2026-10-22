@@ -438,3 +438,53 @@ body.floating .stage { display: none; }
   text-overflow: ellipsis; }
 .audio-chip.bt { background: rgba(46, 155, 79, 0.85); }
 .pip .audio-chip { top: 6px; bottom: auto; right: 6px; font-size: 10px; padding: 1px 6px; }
+
+/* Fällige Erinnerungen: bleiben oben stehen, bis sie bestätigt sind (auch über der großen Figur) */
+.reminder-bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483000;
+  width: min(560px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+.reminder-row {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #fff4d6;
+  color: #3a2a00;
+  border: 2px solid #f0b429;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  animation: reminder-glow 2.4s ease-in-out infinite;
+}
+.reminder-text {
+  flex: 1;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.reminder-text small {
+  font-weight: 400;
+  opacity: 0.7;
+}
+.reminder-row button {
+  flex: none;
+  padding: 6px 10px;
+}
+@keyframes reminder-glow {
+  50% {
+    box-shadow: 0 4px 22px rgba(240, 180, 41, 0.75);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reminder-row {
+    animation: none;
+  }
+}

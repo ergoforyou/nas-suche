@@ -23,6 +23,8 @@ import org.json.JSONObject;
  */
 public class KIReminder extends BroadcastReceiver {
     static final String ACTION = "de.ergoforyou.kiassistent.ERINNERUNG";
+    static final String ACK = "de.ergoforyou.kiassistent.ERINNERUNG_ERLEDIGT";
+    static final String SNOOZE = "de.ergoforyou.kiassistent.ERINNERUNG_SPAETER";
     static final String CHANNEL = "erinnerungen";
     static final int MAX = 60;
 
@@ -74,9 +76,48 @@ public class KIReminder extends BroadcastReceiver {
         p.edit().putInt("anzahl", n).apply();
     }
 
+    /** Benachrichtigung zu einer Erinnerung entfernen (in der App oder auf dem anderen Gerät bestätigt). */
+    static void dismiss(Context c, String key) {
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (nm != null && key != null) nm.cancel(key.hashCode());
+    }
+
+    /** Was in der Benachrichtigung gedrückt wurde, solange die App zu war – die Oberfläche holt es beim Öffnen ab. */
+    static synchronized String takeActions(Context c) {
+        SharedPreferences p = prefs(c);
+        String s = p.getString("aktionen", "[]");
+        p.edit().putString("aktionen", "[]").apply();
+        return s;
+    }
+
+    static synchronized void noteAction(Context c, String key, String what) {
+        SharedPreferences p = prefs(c);
+        try {
+            JSONArray a = new JSONArray(p.getString("aktionen", "[]"));
+            a.put(new JSONObject().put("key", key).put("was", what).put("t", System.currentTimeMillis()));
+            p.edit().putString("aktionen", a.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
     @Override
     public void onReceive(Context c, Intent intent) {
-        if (!ACTION.equals(intent.getAction())) return;
+        String act = intent.getAction();
+        if (ACK.equals(act) || SNOOZE.equals(act)) {
+            String k = intent.getStringExtra("key");
+            if (k == null) return;
+            String what = ACK.equals(act) ? "erledigt" : "spaeter";
+            dismiss(c, k);
+            MainActivity a = MainActivity.current.get();
+            if (a != null && (a.resumed || KIConversationService.running)) {
+                try {
+                    a.pushEvent(new JSONObject().put("action", "reminder-ack").put("key", k).put("was", what));
+                    return;
+                } catch (Exception ignored) {}
+            }
+            noteAction(c, k, what);
+            return;
+        }
+        if (!ACTION.equals(act)) return;
         String key = intent.getStringExtra("key");
         String title = intent.getStringExtra("title");
         String text = intent.getStringExtra("text");
@@ -101,7 +142,10 @@ public class KIReminder extends BroadcastReceiver {
                 .setContentTitle(title)
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
-                .setAutoCancel(true)
+                // bleibt stehen, bis sie bestätigt wird (Erledigt / Später) – Antippen öffnet die App
+                .setAutoCancel(false)
+                .addAction(new Notification.Action.Builder((android.graphics.drawable.Icon) null, "✔ Erledigt", actionIntent(c, ACK, key)).build())
+                .addAction(new Notification.Action.Builder((android.graphics.drawable.Icon) null, "💤 10 Min", actionIntent(c, SNOOZE, key)).build())
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setContentIntent(PendingIntent.getActivity(c, key.hashCode(), open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
             if (Build.VERSION.SDK_INT < 26) b.setPriority(Notification.PRIORITY_HIGH).setDefaults(Notification.DEFAULT_ALL);
@@ -111,8 +155,13 @@ public class KIReminder extends BroadcastReceiver {
         MainActivity a = MainActivity.current.get();
         if (a != null && (a.resumed || KIConversationService.running)) {
             try {
-                a.pushEvent(new JSONObject().put("action", "reminder").put("title", title).put("text", text));
+                a.pushEvent(new JSONObject().put("action", "reminder").put("key", key).put("title", title).put("text", text));
             } catch (Exception ignored) {}
         }
+    }
+
+    static PendingIntent actionIntent(Context c, String action, String key) {
+        Intent it = new Intent(c, KIReminder.class).setAction(action).putExtra("key", key);
+        return PendingIntent.getBroadcast(c, (action + key).hashCode(), it, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }

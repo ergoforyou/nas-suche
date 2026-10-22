@@ -2527,6 +2527,88 @@ check(
   'NAS (Privat): Stand vom anderen Gerät übernommen, eigener Stand und Figur hochgeladen, Tagessicherung, gleichzeitiges Schreiben erkannt',
   JSON.stringify(nasRes),
 );
+// Beta 64 (Privat): fällige Erinnerung bleibt sichtbar bis bestätigt, wird abgeglichen; Rücksicherung von der NAS
+const b64 = await page.evaluate(async () => {
+  const app = window.__app;
+  const bar = document.getElementById('reminderBar');
+  const out = {};
+  const r = { id: 'r64', at: Date.now() - 2000, text: 'Wäsche aufhängen', created: Date.now() - 60e3, changed: Date.now() - 60e3, done: true };
+  app.state.erinnerungen = [r];
+  app.renderReminderBar();
+  out.shown = !bar.hidden && bar.textContent.includes('Wäsche aufhängen');
+  [...bar.querySelectorAll('button')].find((b) => b.textContent.includes('10 Min')).click();
+  out.snoozed = bar.hidden && r.at > Date.now() + 9 * 60e3 && !r.done;
+  r.at = Date.now() - 1000;
+  app.renderReminderBar();
+  out.again = !bar.hidden;
+  [...bar.querySelectorAll('button')].find((b) => b.textContent.includes('Erledigt')).click();
+  out.acked = bar.hidden && !!r.ack;
+  out.inSnap = app.syncSnapshot().erinnerungen?.some((x) => x.id === 'r64' && x.ack);
+  // NAS nachbilden (mit HEAD für die Sicherungsliste)
+  const files = new Map();
+  let n = 0;
+  const empty = new Uint8Array();
+  const enc = (o) => new TextEncoder().encode(JSON.stringify(o));
+  window.desktop.nasReq = async ({ method, path, body }) => {
+    const f = files.get(path);
+    if (method === 'GET' || method === 'HEAD') return f ? { status: 200, etag: f.etag, body: method === 'GET' ? f.body : empty } : { status: 404, etag: null, body: empty };
+    if (method === 'PUT') {
+      files.set(path, { etag: `"e${++n}"`, body: new Uint8Array(body) });
+      return { status: 201, etag: null, body: empty };
+    }
+    if (method === 'DELETE') files.delete(path);
+    return { status: 204, etag: null, body: empty };
+  };
+  app.state.busy = false;
+  // anderes Gerät: neue Erinnerung gestellt, unsere als erledigt bekannt
+  const other = app.syncSnapshot();
+  other.erinnerungen = [
+    { ...r, ack: Date.now(), changed: Date.now() + 10 },
+    { id: 'r64b', at: Date.now() - 500, text: 'Vom Handy: Blumen gießen', created: Date.now() - 1000, changed: Date.now() - 1000 },
+  ];
+  files.set('stand.json', { etag: '"x1"', body: enc({ typ: 'ki-assistent-stand', version: 1, area: 'privat', stand: other, figuren: {} }) });
+  await app.nasSync({ manual: true });
+  out.fromOther = app.state.erinnerungen.some((x) => x.id === 'r64b') && !bar.hidden && bar.textContent.includes('Blumen gießen');
+  app.ackReminder('e:r64b:' + app.state.erinnerungen.find((x) => x.id === 'r64b').at);
+  out.otherAcked = bar.hidden;
+  // Rücksicherung: Sicherung von gestern enthält „Aus der Sicherung“, heute kam „Neu nach der Sicherung“ dazu
+  const p = app.persona();
+  const day = new Date(Date.now() - 86400e3).toISOString().slice(0, 10);
+  const old = app.syncSnapshot();
+  old.personas.find((x) => x.id === p.id).memory = [{ id: 'bk1', text: 'Aus der Sicherung: Jens trinkt Tee.', created: 1 }];
+  files.set(`sicherung-${day}.json`, { etag: '"b1"', body: enc({ typ: 'ki-assistent-stand', version: 1, area: 'privat', stand: old }) });
+  p.memory = [...(p.memory ?? []), { id: 'nb1', text: 'Neu nach der Sicherung.', created: Date.now() }];
+  out.list = await app.nasListBackups();
+  const conf = window.confirm;
+  window.confirm = () => true;
+  await app.nasRestore(day);
+  window.confirm = conf;
+  const doc = JSON.parse(new TextDecoder().decode(files.get('stand.json').body));
+  const mem = app.persona().memory.map((m) => m.id);
+  out.restored = mem.includes('bk1') && !mem.includes('nb1');
+  out.safety = [...files.keys()].some((k) => k.startsWith('vor-ruecksicherung-'));
+  out.marked = !!doc.resetAt && !!doc.stand.deleted?.nb1 && doc.stand.personas.find((x) => x.id === p.id).memory.some((m) => m.id === 'bk1');
+  // das andere Gerät hat zurückgesichert: hier übernehmen statt zusammenführen
+  const reset = app.syncSnapshot();
+  reset.personas.find((x) => x.id === p.id).memory = [{ id: 'rs1', text: 'Stand nach Rücksicherung am anderen Gerät.', created: 2 }];
+  app.persona().memory.push({ id: 'loc1', text: 'Nur hier, nach der Rücksicherung dort.', created: Date.now() });
+  files.set('stand.json', { etag: '"r1"', body: enc({ typ: 'ki-assistent-stand', version: 1, area: 'privat', resetAt: Date.now() + 1000, stand: reset, figuren: doc.figuren }) });
+  await app.nasSync({ manual: true });
+  const mem2 = app.persona().memory.map((m) => m.id);
+  out.adopted = mem2.includes('rs1') && !mem2.includes('loc1') && !mem2.includes('bk1');
+  const doc2 = JSON.parse(new TextDecoder().decode(files.get('stand.json').body));
+  out.keepsMark = !!doc2.resetAt;
+  await app.nasSync({ manual: true });
+  app.persona().memory.push({ id: 'loc2', text: 'Danach wieder normal zusammengeführt.', created: Date.now() });
+  await app.nasSync({ manual: true });
+  out.mergesAfter = app.persona().memory.some((m) => m.id === 'loc2');
+  out.backupsUi = !!document.getElementById('nasBackups');
+  return out;
+});
+check(b64.shown && b64.snoozed && b64.again && b64.acked && b64.inSnap, 'Erinnerung bleibt oben stehen bis Erledigt/Später (ohne neue Ansage), Stand im Abgleich', JSON.stringify(b64));
+check(b64.fromOther && b64.otherAcked, 'Erinnerungen über die NAS abgeglichen: vom anderen Gerät gestellt und bestätigt', JSON.stringify(b64));
+check(b64.list?.length === 1 && b64.restored && b64.safety && b64.marked && b64.backupsUi, 'NAS-Rücksicherung: Liste, vorher gesichert, Stand zurückgeholt und für das andere Gerät markiert', JSON.stringify(b64));
+check(b64.adopted && b64.keepsMark && b64.mergesAfter, 'Rücksicherung vom anderen Gerät wird übernommen, danach wieder normal abgeglichen', JSON.stringify(b64));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

@@ -6376,6 +6376,7 @@ async function init() {
   state.history = data.history ?? {};
   state.saved = Array.isArray(data.wissen) ? data.wissen : [];
   state.erinnerungen = Array.isArray(data.erinnerungen) ? data.erinnerungen.filter((r) => r.at > Date.now() - 86400e3) : [];
+  setTimeout(renderReminderBar, 0);
   state.abgleich = data.abgleich ?? { base: [], deleted: {} };
   stampSync(state, syncCache, { record: true, initial: true });
   rebuildSaved();
@@ -7263,8 +7264,11 @@ function scheduleLocalReminders(items) {
       setTimeout(() => {
         shownReminders.add(it.key);
         desktop.officeNotify?.({ title: it.title, body: it.text, silent: !!state.dnd });
+        // eigene Erinnerungen sagt die Figur über die Erinnerungs-Runde an (nur einmal), Termine hier
+        if (it.key.startsWith('e:')) return renderReminderBar();
         fireEvent('reminder', 6000);
         status(`⏰ ${it.title}: ${it.text}`);
+        noteAlert(it);
         if (state.settings.speak && !state.dnd && !state.busy && !tts.speaking) tts.enqueue(`${it.title}: ${it.text}`);
       }, ms),
     );
@@ -7511,6 +7515,7 @@ async function handleIntents() {
   try {
     list = JSON.parse(dev()?.takeIntents?.() || '[]');
   } catch {}
+  takeReminderActions();
   for (const ev of list) {
     window.__app.lastIntent = ev.action;
     logEv('EREIGNIS', ev.action);
@@ -7562,9 +7567,17 @@ async function handleIntents() {
     } else if (ev.action === 'background-off') {
       setBgTalk(false);
     } else if (ev.action === 'reminder') {
+      // eigene Erinnerungen sagt die Erinnerungs-Runde an (nur einmal), Termine/Aufgaben hier – beide bleiben in der Leiste
+      if (String(ev.key ?? '').startsWith('e:')) {
+        renderReminderBar();
+        continue;
+      }
       fireEvent('reminder', 6000);
       status(`⏰ ${ev.title}: ${ev.text}`);
+      noteAlert(ev);
       if (state.settings.speak && !state.busy && !tts.speaking) tts.enqueue(`${ev.title}: ${ev.text}`);
+    } else if (ev.action === 'reminder-ack') {
+      ackReminder(ev.key, ev.was);
     } else if (ev.action === 'share') {
       await receiveShare(ev);
     }
@@ -7640,23 +7653,24 @@ const remInfo = (t) => {
 // den Google-Erinnerungen auf dem Gerät geplant (Benachrichtigung auch bei geschlossener App) und – läuft die App –
 // von der Figur in ihrer Stimme gesagt
 const ownReminders = () => (state.erinnerungen ??= []);
+const reminderKey = (r) => `e:${r.id}:${r.at}`;
 const ownReminderItems = () =>
   ownReminders()
-    .filter((r) => r.at > Date.now())
-    .map((r) => ({ key: `e:${r.id}`, at: r.at, title: `⏰ ${persona().name || 'KI-Assistent'}`, text: r.text }));
+    .filter((r) => r.at > Date.now() && !r.ack)
+    .map((r) => ({ key: reminderKey(r), at: r.at, title: `⏰ ${persona().name || 'KI-Assistent'}`, text: r.text }));
 function reminderTool(name, input) {
   const fmt = (t) => new Date(t).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   if (name === 'erinnerungen_verwalten') {
-    const list = ownReminders().filter((r) => r.at > Date.now() - 60e3);
+    const list = ownReminders().filter((r) => r.at > Date.now() - 60e3 || (!r.ack && r.at <= Date.now()));
     if (input?.aktion === 'loeschen') {
       const q = String(input?.text ?? '').toLowerCase().trim();
       const gone = q === 'alle' ? list : list.filter((r) => q && r.text.toLowerCase().includes(q));
       state.erinnerungen = ownReminders().filter((r) => !gone.includes(r));
-      save();
-      syncReminders();
+      for (const r of gone) dev()?.dismissReminder?.(reminderKey(r));
+      reminderChanged();
       return { geloescht: gone.map((r) => r.text) };
     }
-    return { erinnerungen: list.map((r) => ({ wann: fmt(r.at), text: r.text })) };
+    return { erinnerungen: list.map((r) => ({ wann: fmt(r.at), text: r.text, ...(r.at <= Date.now() ? { faellig: true, bestaetigt: !!r.ack } : {}) })) };
   }
   const text = String(input?.text ?? '').trim().slice(0, 200);
   if (!text) throw new Error('Woran soll ich erinnern?');
@@ -7664,26 +7678,128 @@ function reminderTool(name, input) {
   if (Number(input?.in_minuten) > 0) at = Date.now() + Number(input.in_minuten) * 60e3;
   else if (input?.zeitpunkt) at = Date.parse(String(input.zeitpunkt).slice(0, 16));
   if (!Number.isFinite(at) || at < Date.now() + 20e3) throw new Error('Wann? (in Minuten oder als Zeitpunkt in der Zukunft)');
-  ownReminders().push({ id: newId(), at, text, created: Date.now() });
+  ownReminders().push({ id: newId(), at, text, created: Date.now(), changed: Date.now() });
   state.erinnerungen = ownReminders().filter((r) => r.at > Date.now() - 86400e3).slice(-50);
-  save();
-  syncReminders();
+  reminderChanged();
   logEv('ERINNERUNG', `gestellt für ${fmt(at)}`);
   return { gestellt: true, wann: fmt(at), text };
 }
-// Läuft die App: fällige eigene Erinnerungen in ihrer Stimme sagen (die Benachrichtigung kommt zusätzlich vom Handy)
+/** Erinnerungen geändert: speichern, neu planen, Leiste nachziehen und gleich abgleichen (NAS / WLAN). */
+function reminderChanged() {
+  save();
+  syncReminders();
+  renderReminderBar();
+  nasSoon(3000);
+  autoSyncSoon(3000);
+}
+// Läuft die App: fällige eigene Erinnerungen einmal in ihrer Stimme sagen (die Benachrichtigung kommt zusätzlich vom
+// Handy) – danach bleiben sie still oben in der Leiste stehen, bis sie bestätigt sind
 setInterval(() => {
-  const due = ownReminders().filter((r) => !r.done && r.at <= Date.now() && Date.now() - r.at < 10 * 60e3);
+  const due = ownReminders().filter((r) => !r.done && !r.ack && r.at <= Date.now() && Date.now() - r.at < 10 * 60e3);
   for (const r of due) {
     r.done = true;
+    r.changed = Date.now();
     const p = persona();
     const line = `${p.language === 'en' ? 'Reminder' : 'Erinnerung'}: ${r.text}`;
     addBubble('note', `⏰ ${line}`);
     if (state.settings.speak && !state.dnd) tts.enqueue(line, { mood: 'freundlich', text: line, local: !navigator.onLine });
     fireEvent('greet', 2500);
   }
-  if (due.length) save();
+  if (due.length) {
+    save();
+    nasSoon(3000);
+    autoSyncSoon(3000);
+  }
+  renderReminderBar();
 }, 15e3);
+
+// ---- Leiste „fällige Erinnerungen“: bleibt sichtbar, bis Erledigt oder Später gedrückt ist (ohne erneute Ansage)
+// alerts: angekündigte Termine/Aufgaben aus Google (nur auf diesem Gerät; die eigenen Erinnerungen werden abgeglichen)
+const alerts = [];
+function noteAlert(it) {
+  if (!it?.key || it.key.startsWith('e:') || alerts.some((a) => a.key === it.key)) return;
+  alerts.push({ key: it.key, title: it.title, text: it.text, at: Date.now() });
+  if (alerts.length > 10) alerts.shift();
+  renderReminderBar();
+}
+function dueReminders() {
+  const now = Date.now();
+  const own = ownReminders()
+    .filter((r) => !r.ack && r.at <= now && now - r.at < 86400e3)
+    .map((r) => ({ key: reminderKey(r), id: r.id, at: r.at, text: r.text, own: true }));
+  return [...own, ...alerts.map((a) => ({ ...a, text: `${a.title}: ${a.text}` }))].sort((a, b) => a.at - b.at);
+}
+function renderReminderBar() {
+  const bar = document.getElementById('reminderBar');
+  if (!bar) return;
+  const list = PRIV || alerts.length ? dueReminders() : [];
+  bar.hidden = !list.length;
+  document.body.classList.toggle('has-reminders', !!list.length);
+  const sig = JSON.stringify(list.map((x) => x.key));
+  if (bar.dataset.sig === sig) return;
+  bar.dataset.sig = sig;
+  bar.replaceChildren(
+    ...list.map((x) => {
+      const row = document.createElement('div');
+      row.className = 'reminder-row';
+      const t = document.createElement('span');
+      t.className = 'reminder-text';
+      const hm = new Date(x.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      t.textContent = `⏰ ${x.text}`;
+      t.title = `fällig seit ${hm} Uhr`;
+      const when = document.createElement('small');
+      when.textContent = ` ${hm}`;
+      t.append(when);
+      const ok = document.createElement('button');
+      ok.textContent = '✔ Erledigt';
+      ok.onclick = () => ackReminder(x.key, 'erledigt');
+      row.append(t, ok);
+      if (x.own) {
+        const later = document.createElement('button');
+        later.textContent = '💤 10 Min';
+        later.title = 'In 10 Minuten noch einmal erinnern';
+        later.onclick = () => ackReminder(x.key, 'spaeter');
+        row.append(later);
+      }
+      return row;
+    }),
+  );
+}
+/** Erinnerung bestätigen (Leiste, Benachrichtigung am Handy oder anderes Gerät): erledigt oder 10 Minuten später. */
+function ackReminder(key, was = 'erledigt') {
+  dev()?.dismissReminder?.(key);
+  const ai = alerts.findIndex((a) => a.key === key);
+  if (ai >= 0) {
+    alerts.splice(ai, 1);
+    renderReminderBar();
+    return;
+  }
+  const id = String(key).split(':')[1];
+  const r = ownReminders().find((x) => x.id === id);
+  if (!r) return renderReminderBar();
+  if (was === 'spaeter') {
+    r.at = Date.now() + 10 * 60e3;
+    r.done = false;
+    delete r.ack;
+  } else r.ack = Date.now();
+  r.changed = Date.now();
+  logEv('ERINNERUNG', was);
+  reminderChanged();
+}
+/** Was in der Handy-Benachrichtigung gedrückt wurde, während die App zu war. */
+function takeReminderActions() {
+  let list = [];
+  try {
+    list = JSON.parse(dev()?.takeReminderActions?.() || '[]');
+  } catch {}
+  for (const a of list) ackReminder(a.key, a.was);
+}
+/** Nach einem Abgleich: auf dem anderen Gerät Bestätigtes hier aus den Benachrichtigungen nehmen. */
+function afterReminderSync() {
+  for (const r of ownReminders()) if (r.ack) dev()?.dismissReminder?.(reminderKey(r));
+  syncReminders();
+  renderReminderBar();
+}
 
 async function syncReminders() {
   const d = dev()?.setReminders ? dev() : OFFICE ? { setReminders: (j) => scheduleLocalReminders(JSON.parse(j)) } : null;
@@ -8487,6 +8603,7 @@ function applySync(m) {
   state.history = m.history;
   state.activeId = state.personas.some((p) => p.id === wasActive) ? wasActive : state.personas[0].id;
   state.saved = m.saved;
+  if (Array.isArray(m.erinnerungen)) state.erinnerungen = m.erinnerungen;
   saveSavedNow();
   rebuildSaved();
   state.abgleich.deleted = m.deleted;
@@ -8500,6 +8617,7 @@ function applySync(m) {
     output.setHistory(history());
   }
   renderMemory();
+  afterReminderSync();
 }
 
 /** Figur (Bilder, Videos, Posen) aus einem Persona-Paket übernehmen – Texte, Gedächtnis usw. bleiben. */
@@ -8693,7 +8811,13 @@ async function nasSync({ manual = false } = {}) {
         }
         if (doc.area && doc.area !== AREA) throw new Error('auf der NAS liegt ein Stand aus einem anderen Bereich');
       }
-      if (doc?.stand) syncMerge(doc.stand);
+      // auf einem Gerät zurückgesichert: diesen Stand übernehmen statt zusammenführen (sonst käme Neueres wieder)
+      if (doc?.stand && doc.resetAt && doc.resetAt > (cfg.resetSeen ?? 0)) {
+        adoptStand(doc.stand);
+        cfg.resetSeen = doc.resetAt;
+        logEv('NAS', 'Rücksicherung vom anderen Gerät übernommen');
+        status('🗄 Auf dem anderen Gerät wurde eine Sicherung zurückgeholt – dieser Stand gilt jetzt auch hier.');
+      } else if (doc?.stand) syncMerge(doc.stand);
       else {
         stampSync(state, syncCache);
         noteDeletions(state, state.abgleich);
@@ -8732,7 +8856,7 @@ async function nasSync({ manual = false } = {}) {
         delete figuren[id];
       }
       const body = new TextEncoder().encode(
-        JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), stand: syncSnapshot(state, state.abgleich), figuren }),
+        JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), ...(doc?.resetAt ? { resetAt: doc.resetAt } : {}), stand: syncSnapshot(state, state.abgleich), figuren }),
       );
       const cond = got.status === 200 && got.etag ? { 'If-Match': got.etag } : got.status === 404 ? { 'If-None-Match': '*' } : {};
       const put = await nasReq('PUT', 'stand.json', body, { 'Content-Type': 'application/json', ...cond });
@@ -8795,6 +8919,110 @@ $('nasPass').onchange = async (e) => {
   }
 };
 $('nasNow').onclick = () => nasSync({ manual: true });
+
+/**
+ * Einen Stand vollständig übernehmen (Rücksicherung): Texte, Verlauf, Wissen, Erinnerungen wie im Stand, Figuren
+ * bleiben. Ältere Nachrichten, die vor dem Stand liegen, bleiben hier erhalten (der Stand trägt nur die letzten 400).
+ */
+function adoptStand(stand) {
+  const keepOld = {};
+  for (const p of stand.personas ?? []) {
+    const first = (stand.history?.[p.id] ?? [])[0]?.t;
+    if (first) keepOld[p.id] = (state.history?.[p.id] ?? []).filter((m) => (m.t ?? 0) < first);
+  }
+  state.abgleich.base = [];
+  const m = mergeSync(stand, {});
+  for (const [id, old] of Object.entries(keepOld)) if (m.history[id]) m.history[id] = [...old, ...m.history[id]];
+  applySync(m);
+}
+const nasBody = (extra = {}) =>
+  new TextEncoder().encode(JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), stand: syncSnapshot(state, state.abgleich), ...extra }));
+/** Sicherungen der letzten 30 Tage auf der NAS suchen (HEAD je Tag – WebDAV-Listen kann das Handy nicht). */
+async function nasListBackups() {
+  const days = Array.from({ length: 31 }, (_, i) => new Date(Date.now() - i * 86400e3).toISOString().slice(0, 10));
+  const found = [];
+  for (let i = 0; i < days.length; i += 8) {
+    const res = await Promise.all(days.slice(i, i + 8).map((d) => nasReq('HEAD', `sicherung-${d}.json`).then((r) => (r.status === 200 ? d : null), () => null)));
+    found.push(...res.filter(Boolean));
+  }
+  return found;
+}
+$('nasBackups').onclick = async () => {
+  const box = $('nasBackupList');
+  if (!nasActive()) return status('NAS: erst Adresse, Benutzer und Passwort eintragen.');
+  box.hidden = false;
+  box.textContent = 'Suche Sicherungen auf der NAS …';
+  try {
+    const list = await nasListBackups();
+    if (!list.length) return void (box.textContent = 'Keine Sicherungen gefunden (die erste entsteht beim ersten Abgleich des Tages).');
+    box.replaceChildren(
+      ...list.map((d) => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const t = document.createElement('span');
+        t.style.flex = '1';
+        t.textContent = new Date(`${d}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+        const b = document.createElement('button');
+        b.textContent = '↩ Zurückholen';
+        b.onclick = () => nasRestore(d);
+        row.append(t, b);
+        return row;
+      }),
+    );
+  } catch (e) {
+    box.textContent = `NAS: ${e.message}`;
+  }
+};
+/** Sicherung eines Tages zurückholen: erst den jetzigen Stand auf der NAS sichern, dann übernehmen und für das andere Gerät markieren. */
+async function nasRestore(day) {
+  const label = new Date(`${day}T12:00:00`).toLocaleDateString('de-DE');
+  if (!confirm(`Sicherung vom ${label} zurückholen?\n\nPersonas, Verlauf, Gedächtnis, Wissen und Erinnerungen werden auf diesen Stand gesetzt – hier und beim nächsten Abgleich auch auf dem anderen Gerät. Der jetzige Stand wird vorher auf der NAS gesichert („vor-ruecksicherung-…“). Figuren bleiben.`)) return;
+  if (nasRunning) return status('NAS: gerade beschäftigt – gleich noch einmal.');
+  nasRunning = true;
+  const cfg = state.settings.nas;
+  try {
+    status('🗄 Sichere den jetzigen Stand …');
+    stampSync(state, syncCache);
+    noteDeletions(state, state.abgleich);
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+    const safe = await nasReq('PUT', `vor-ruecksicherung-${stamp}.json`, nasBody(), { 'Content-Type': 'application/json' });
+    if (![200, 201, 204].includes(safe.status)) throw new Error(nasError(safe.status));
+    status('🗄 Hole die Sicherung …');
+    const got = await nasReq('GET', `sicherung-${day}.json`);
+    if (got.status !== 200) throw new Error(nasError(got.status));
+    const doc = JSON.parse(new TextDecoder().decode(got.body));
+    if (!doc?.stand || (doc.area && doc.area !== AREA)) throw new Error('Sicherung passt nicht zu diesem Bereich');
+    const before = idsOf(state);
+    const stand = doc.stand;
+    const keep = idsOf(stand);
+    // was im Stand ist, lebt wieder; was es nur jetzt gibt, gilt als gelöscht (auch auf dem anderen Gerät)
+    stand.deleted = Object.fromEntries(Object.entries(stand.deleted ?? {}).filter(([id]) => !keep.has(id)));
+    const now = Date.now();
+    for (const id of before) if (!keep.has(id)) stand.deleted[id] = now;
+    adoptStand(stand);
+    // neuen Stand mit Markierung schreiben – das andere Gerät übernimmt ihn dann statt zusammenzuführen
+    const cur = await nasReq('GET', 'stand.json');
+    let figuren = {};
+    try {
+      if (cur.status === 200) figuren = JSON.parse(new TextDecoder().decode(cur.body)).figuren ?? {};
+    } catch {}
+    const put = await nasReq('PUT', 'stand.json', nasBody({ resetAt: now, figuren }), { 'Content-Type': 'application/json' });
+    if (![200, 201, 204].includes(put.status)) throw new Error(nasError(put.status));
+    cfg.resetSeen = now;
+    cfg.last = now;
+    save({ quiet: true });
+    applyPersona();
+    logEv('NAS', `Sicherung ${day} zurückgeholt`);
+    status(`🗄 Sicherung vom ${label} zurückgeholt. Das andere Gerät übernimmt sie beim nächsten Abgleich.`);
+    $('nasBackupList').hidden = true;
+  } catch (e) {
+    logEv('NAS', `Rücksicherung: ${e.message}`);
+    status(`NAS: ${e.message}`);
+  } finally {
+    nasRunning = false;
+    renderNasState();
+  }
+}
 
 // Gesperrt heißt: nichts sehen und nichts hören – Aktivierungswort, Live-Gespräch, Vorlesen und schwebende Figur
 // pausieren, bis mit Fingerabdruck/PIN entsperrt ist
@@ -8946,7 +9174,7 @@ function startAutoSync() {
   // NAS: beim Start, beim Zurückkehren/Verlassen und alle 10 Minuten (PC und Handy)
   renderNasState();
   setTimeout(() => nasSync().catch(() => {}), 8000);
-  setInterval(() => !document.hidden && nasSync().catch(() => {}), 10 * 60e3);
+  setInterval(() => !document.hidden && nasSync().catch(() => {}), 3 * 60e3);
   document.addEventListener('visibilitychange', () => nasSoon(document.hidden ? 500 : 1500));
   if (MOBILE) {
     setTimeout(() => autoSync().catch(() => {}), 5000);
@@ -9287,6 +9515,12 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  ackReminder,
+  renderReminderBar,
+  dueReminders,
+  adoptStand,
+  nasRestore,
+  nasListBackups,
   writeDiary: (o) => writeDiary(persona(), o),
   addKanon: (t) => addKanon(persona(), t),
   noteServedModel,
