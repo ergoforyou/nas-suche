@@ -413,6 +413,9 @@
         <label class="check"><input id="cInitiative" type="checkbox" /> 💬 Eigene Initiative <span class="hint">(höchstens zweimal am Tag
           meldet sich die Figur in einer Pause von selbst – zu ihrem Ziel, einem offenen Thema oder einem Gedanken aus dem Tagebuch;
           9–21 Uhr, nie im Fahrmodus)</span></label>
+        <label class="check"><input id="cRemGoogle" type="checkbox" /> 📅 Erinnerungen auch im Google-Kalender anbieten <span class="hint">(fragt
+          bei jeder neuen Erinnerung kurz nach; mit Ja trägt sie einen kurzen Termin mit Benachrichtigung ein – dann meldet sich
+          auch die Google-Kalender-App, selbst wenn der KI-Assistent ganz aus ist)</span></label>
       </div>
       <div id="budgetWrap" hidden>
         <h3>💲 Kostenbremse</h3>
@@ -799,14 +802,16 @@
           Einrichtung auf der NAS: im Paket-Zentrum „WebDAV Server“ installieren und HTTP (Port 5005) einschalten, in der
           File Station einen Ordner anlegen, z. B. „ki-assistent“ in deinem Benutzerordner (home). Adresse dann:
           <b>http://IP-der-NAS:5005/home/ki-assistent</b>. Auf PC und Handy dieselbe Adresse und denselben Benutzer eintragen.
-          Unterwegs: mit dem Tailscale-Paket die Tailscale-Adresse der NAS eintragen.</p>
-        <input id="nasUrl" type="text" placeholder="http://192.168.1.10:5005/home/ki-assistent" autocomplete="off" />
+          Unterwegs: mit dem Tailscale-Paket die Tailscale-Adresse der NAS eintragen – oder einfach über
+          <b>QuickConnect</b>: <b>https://DEINE-ID.quickconnect.to/home/ki-assistent</b> (geht zu Hause und unterwegs,
+          ohne WebDAV und ohne Portfreigabe; Benutzer ohne Zwei-Faktor-Anmeldung nehmen).</p>
+        <input id="nasUrl" type="text" placeholder="http://192.168.1.10:5005/home/ki-assistent oder https://ID.quickconnect.to/home/ki-assistent" autocomplete="off" />
         <div class="row">
           <input id="nasUser" type="text" placeholder="Benutzer der NAS" autocomplete="off" style="flex:1" />
           <input id="nasPass" type="password" placeholder="Passwort" autocomplete="new-password" style="flex:1" />
         </div>
         <p class="hint">Das Passwort bleibt verschlüsselt auf diesem Gerät (wie die API-Schlüssel) und wird nirgends angezeigt.
-          Im eigenen Netz geht die Verbindung unverschlüsselt – für unterwegs Tailscale verwenden.</p>
+          Im eigenen Netz geht die Verbindung unverschlüsselt – für unterwegs Tailscale oder QuickConnect (verschlüsselt) verwenden.</p>
         <label class="check"><input id="nasAuto" type="checkbox" /> Automatisch abgleichen (beim Öffnen, beim Verlassen, alle 3 Minuten und gleich nach Änderungen wie neuen oder bestätigten Erinnerungen)</label>
         <div class="row wrap"><button id="nasNow">🗄 Jetzt abgleichen</button><button id="nasBackups">↩ Sicherung zurückholen …</button></div>
         <div id="nasBackupList" class="hint" hidden></div>

@@ -459,8 +459,24 @@ ipcMain.handle('nas:setPassword', (_e, pw) => {
   return true;
 });
 ipcMain.handle('nas:hasPassword', () => AREA === 'privat' && !!readKeyFile().nas);
+const qcLib = require('./synology.js');
+// Netzzugriff für QuickConnect (File-Station-Schnittstelle); liefert auch die Adresse nach Weiterleitungen
+const quickConnect = qcLib.createQuickConnect({
+  request: async (method, url, headers, body) => {
+    const r = await fetch(url, { method, headers, body: body ? Buffer.from(body) : undefined, signal: AbortSignal.timeout(180000) });
+    return { status: r.status, url: r.url, body: new Uint8Array(await r.arrayBuffer()) };
+  },
+});
 ipcMain.handle('nas:req', async (_e, { base, user, method = 'GET', path: rel = '', body, headers = {} }) => {
   nasAllowed();
+  if (qcLib.parseQuickConnect(base)) {
+    try {
+      return await quickConnect.req({ address: base, user, password: getKey('nas') ?? '', method, path: rel, body, headers });
+    } catch (e) {
+      if (/^NAS|QuickConnect|Ordner|Die NAS|Bitte|nur Dateien/.test(e.message)) throw e;
+      throw new Error(`QuickConnect nicht erreichbar (${e.cause?.code ?? e.message})`);
+    }
+  }
   const root = new URL(String(base).endsWith('/') ? base : `${base}/`);
   if (!/^https?:$/.test(root.protocol)) throw new Error('Adresse muss mit http:// oder https:// beginnen');
   const url = new URL(String(rel).replace(/^\/+/, ''), root);

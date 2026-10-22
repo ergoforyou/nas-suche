@@ -1257,6 +1257,7 @@ public class MainActivity extends BridgeActivity {
                     out.put("status", code);
                     String etag = c.getHeaderField("ETag");
                     if (etag != null) out.put("etag", etag);
+                    out.put("url", c.getURL().toString()); // nach Weiterleitungen (QuickConnect → Server der Region)
                     out.put("body", android.util.Base64.encodeToString(buf.toByteArray(), android.util.Base64.NO_WRAP));
                 } catch (Exception e) {
                     try {

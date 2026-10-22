@@ -2609,6 +2609,21 @@ check(b64.shown && b64.snoozed && b64.again && b64.acked && b64.inSnap, 'Erinner
 check(b64.fromOther && b64.otherAcked, 'Erinnerungen über die NAS abgeglichen: vom anderen Gerät gestellt und bestätigt', JSON.stringify(b64));
 check(b64.list?.length === 1 && b64.restored && b64.safety && b64.marked && b64.backupsUi, 'NAS-Rücksicherung: Liste, vorher gesichert, Stand zurückgeholt und für das andere Gerät markiert', JSON.stringify(b64));
 check(b64.adopted && b64.keepsMark && b64.mergesAfter, 'Rücksicherung vom anderen Gerät wird übernommen, danach wieder normal abgeglichen', JSON.stringify(b64));
+// Beta 65: Erinnerung auf Wunsch auch im Google-Kalender anbieten (nur nach Rückfrage)
+const b65 = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = { g: app.state.google, s: app.state.settings.reminderGoogle };
+  app.state.google = { connected: true };
+  app.state.settings.reminderGoogle = true;
+  const on = await app.runAppTool('erinnerung_setzen', { text: 'Paket abholen', in_minuten: 30 });
+  app.state.settings.reminderGoogle = false;
+  const off = await app.runAppTool('erinnerung_setzen', { text: 'Blumen gießen', in_minuten: 40 });
+  await app.runAppTool('erinnerungen_verwalten', { aktion: 'loeschen', text: 'alle' });
+  app.state.google = keep.g;
+  app.state.settings.reminderGoogle = keep.s;
+  return { on: on.google_angebot ?? '', off: off.google_angebot ?? '', box: !!document.getElementById('cRemGoogle') };
+});
+check(/⏰ Paket abholen/.test(b65.on) && /Nur bei Ja/.test(b65.on) && !b65.off && b65.box, 'Erinnerung: Google-Kalender nur angeboten, wenn eingeschaltet (Rückfrage)', JSON.stringify(b65));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

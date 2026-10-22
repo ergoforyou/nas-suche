@@ -11,6 +11,7 @@ import cloud from '../../cloud.js';
 import googleLib from '../../google.js';
 import wetter from '../../wetter.js';
 import nachrichten from '../../nachrichten.js';
+import synology from '../../synology.js';
 import verkehr from '../../verkehr.js';
 
 const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI, appTools, mergeTools } = cloud;
@@ -36,6 +37,26 @@ window.__kiHttpDone = (id, r) => {
   httpWaiters.get(id)?.(r);
   httpWaiters.delete(id);
 };
+/** Anfrage über Android selbst (nicht aus der WebView): { status, etag, url, error, body: Uint8Array }. */
+async function nativeHttp(method, url, headers, body) {
+  const id = Math.random().toString(36).slice(2);
+  const r = await new Promise((resolve) => {
+    httpWaiters.set(id, resolve);
+    window.KIDevice.httpStart(id, method, url, JSON.stringify(headers ?? {}), body ? toBase64(body) : '');
+  });
+  const bin = atob(r.body || '');
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return { status: r.status, etag: r.etag || null, url: r.url || url, error: r.error, body: out };
+}
+// QuickConnect (File-Station-Schnittstelle) über dieselben Android-Anfragen
+const quickConnect = synology.createQuickConnect({
+  request: async (method, url, headers, body) => {
+    const r = await nativeHttp(method, url, headers, body);
+    if (r.error) throw new Error(`QuickConnect nicht erreichbar (${r.error})`);
+    return r;
+  },
+});
 function toBase64(bytes) {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
@@ -227,22 +248,17 @@ const api = {
   nasReq: async ({ base, user, method = 'GET', path = '', body, headers = {} }) => {
     if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');
     if (!window.KIDevice?.httpStart) throw new Error('NAS-Zugriff braucht die Android-App');
+    const pw = (await getKeys()).nas ?? '';
+    if (synology.parseQuickConnect(base)) return quickConnect.req({ address: base, user, password: pw, method, path, body, headers });
     const root = new URL(String(base).endsWith('/') ? base : `${base}/`);
     if (!/^https?:$/.test(root.protocol)) throw new Error('Adresse muss mit http:// oder https:// beginnen');
     const url = new URL(String(path).replace(/^\/+/, ''), root).href;
-    const pw = (await getKeys()).nas ?? '';
     const auth = `Basic ${toBase64(new TextEncoder().encode(`${user ?? ''}:${pw}`))}`;
-    const id = Math.random().toString(36).slice(2);
-    const r = await new Promise((resolve) => {
-      httpWaiters.set(id, resolve);
-      window.KIDevice.httpStart(id, method, url, JSON.stringify({ Authorization: auth, ...headers }), body ? toBase64(body) : '');
-    });
+    const r = await nativeHttp(method, url, { Authorization: auth, ...headers }, body);
     if (r.error) throw new Error(`NAS nicht erreichbar (${r.error})`);
-    const bin = atob(r.body || '');
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return { status: r.status, etag: r.etag || null, body: out };
+    return { status: r.status, etag: r.etag, body: r.body };
   },
+
   setKey: async (provider, key) => {
     const k = await getKeys();
     const clean = String(key ?? '').trim();

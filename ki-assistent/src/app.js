@@ -1751,6 +1751,7 @@ function renderTopics() {
   $('cMorning').checked = state.settings.morningBrief !== false;
   $('cEvening').checked = state.settings.eveningBrief !== false;
   $('cInitiative').checked = state.settings.initiative !== false;
+  $('cRemGoogle').checked = !!state.settings.reminderGoogle;
   $('privRounds').hidden = !PRIV;
   renderBudget();
   $('cThink').checked = state.settings.thinkSounds !== false;
@@ -1801,6 +1802,10 @@ $('cEvening').onchange = (e) => {
 };
 $('cInitiative').onchange = (e) => {
   state.settings.initiative = e.target.checked;
+  save();
+};
+$('cRemGoogle').onchange = (e) => {
+  state.settings.reminderGoogle = e.target.checked;
   save();
 };
 $('cMorning').onchange = (e) => {
@@ -7682,7 +7687,14 @@ function reminderTool(name, input) {
   state.erinnerungen = ownReminders().filter((r) => r.at > Date.now() - 86400e3).slice(-50);
   reminderChanged();
   logEv('ERINNERUNG', `gestellt für ${fmt(at)}`);
-  return { gestellt: true, wann: fmt(at), text };
+  // auf Wunsch zusätzlich im Google-Kalender – nur nach Rückfrage (Schreiben in den Kalender braucht ein Ja)
+  const local = new Date(at - new Date(at).getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
+  const google = state.settings.reminderGoogle && state.google?.connected
+    ? {
+        google_angebot: `Frag kurz, ob du die Erinnerung auch in den Google-Kalender eintragen sollst (dann meldet sie sich auch, wenn die App aus ist). Nur bei Ja: kalender_termin_anlegen mit titel „⏰ ${text}“, beginn ${local}, dauer_minuten 5, erinnerung_minuten 0.`,
+      }
+    : {};
+  return { gestellt: true, wann: fmt(at), text, ...google };
 }
 /** Erinnerungen geändert: speichern, neu planen, Leiste nachziehen und gleich abgleichen (NAS / WLAN). */
 function reminderChanged() {
@@ -7824,7 +7836,8 @@ async function syncReminders() {
   const at = (date, h) => new Date(`${date}T${String(h).padStart(2, '0')}:00:00`).getTime();
   const items = [];
   for (const e of up.termine ?? []) {
-    if (!e.beginn) continue;
+    // im Kalender eingetragene eigene Erinnerungen („⏰ …“) plant die App schon selbst
+    if (!e.beginn || String(e.titel ?? '').startsWith('⏰')) continue;
     if (e.beginn.length > 10) {
       const t = Date.parse(e.beginn);
       items.push({ key: `t:${e.id}:${t}`, at: t - lead * 60e3, title: `Termin in ${lead} Minuten`, text: `${e.titel} um ${hm(t)} Uhr${e.ort ? ` – ${e.ort}` : ''}` });
