@@ -118,6 +118,8 @@ const PERMS = [
   'android.permission.BLUETOOTH_CONNECT',
   // Beta: schwebende Figur über anderen Apps (muss in den Android-Einstellungen erlaubt werden)
   'android.permission.SYSTEM_ALERT_WINDOW',
+  // Privat: Wecker/Timer auf Zuruf (Uhr-App des Handys)
+  'com.android.alarm.permission.SET_ALARM',
   'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   // Privat: Bildschirm fragen (ein Bildschirmfoto nach Android-Freigabe)
   'android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION',
@@ -195,6 +197,33 @@ if (!xml.includes('KIConversationService')) {
         </receiver>
 `;
   xml = xml.replace('</application>', `${parts}    </application>`);
+}
+// Handy-Aktionen (Privat): installierte Apps finden und öffnen, Navigation, Claude/WhatsApp übergeben (ab Android 11
+// nötig, damit diese Apps sichtbar sind)
+if (!xml.includes('<queries>')) {
+  const queries = `
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="google.navigation" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <package android:name="com.anthropic.claude" />
+        <package android:name="com.whatsapp" />
+    </queries>
+`;
+  xml = xml.replace('<application', `${queries}    <application`);
 }
 fs.writeFileSync(manifest, xml);
 // eigene MainActivity (Bild-im-Bild, Schlüssel, Speichern, Teilen …) und weitere Android-Teile

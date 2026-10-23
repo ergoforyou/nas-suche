@@ -2674,6 +2674,66 @@ const b66 = await page.evaluate(async () => {
 check(b66.f1 === 'c1' && b66.f2 === 'c1' && b66.f3 === 'c2' && b66.none === null, 'Videos auf Kommando: Video per Name oder Stichwort gefunden', JSON.stringify(b66));
 check(b66.ctx && b66.unknown?.gefunden === false && b66.unknown.vorhanden?.length === 2, 'Videos auf Kommando: Namen im Zusammenhang, unbekanntes Video → Auswahl', JSON.stringify(b66));
 check(b66.res === 'Geburtstag am See' && b66.shown && b66.state && b66.closed && b66.rows === 2 && b66.wrap, 'Videos auf Kommando: spielt auf der Bühne, ✕ beendet', JSON.stringify(b66));
+// Beta 67 (Privat): Figur hört während des Videos mit; Handy-Steuerung auf Zuruf
+const b67 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const out = {};
+  // Testvideo (länger, damit es während der Prüfung läuft)
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 32;
+  const g = cv.getContext('2d');
+  const rec = new MediaRecorder(cv.captureStream(15), { mimeType: 'video/webm' });
+  const parts = [];
+  rec.ondataavailable = (e) => parts.push(e.data);
+  rec.start();
+  for (let i = 0; i < 40; i++) {
+    g.fillStyle = `hsl(${i * 9},80%,50%)`;
+    g.fillRect(0, 0, 32, 32);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await new Promise((r) => ((rec.onstop = r), rec.stop()));
+  const url = URL.createObjectURL(new Blob(parts, { type: 'video/webm' }));
+  const keep = p.avatar.clips;
+  p.avatar.clips = [{ id: 'k1', name: 'Konzert', info: '', video: url }];
+  app.state.busy = false;
+  await app.runAppTool('video_abspielen', { name: 'Konzert' });
+  for (let i = 0; i < 40 && !document.querySelector('.clip-player'); i++) await new Promise((res) => setTimeout(res, 100));
+  const v = () => document.querySelector('.clip-player video');
+  await new Promise((r) => setTimeout(r, 300));
+  out.cmdPause = app.clipCommand('Pause.') && v()?.paused;
+  out.cmdOn = app.clipCommand('weiter') && (await new Promise((r) => setTimeout(r, 300)), !v()?.paused);
+  out.other = app.clipCommand('Wie heißt die Band?');
+  // Frage während des Videos: anhalten, nach der Antwort weiter
+  app.clipHoldForAnswer();
+  out.heldPaused = v()?.paused;
+  await new Promise((r) => setTimeout(r, 2400));
+  out.resumed = v() && !v().paused;
+  out.stop = app.clipCommand('Stopp!') && !document.querySelector('.clip-player');
+  p.avatar.clips = keep;
+  // Handy-Steuerung über die Android-Brücke (nachgebildet)
+  const had = window.KIDevice;
+  const calls = [];
+  window.KIDevice = {
+    ...(had ?? {}),
+    deviceAction: (j) => {
+      const a = JSON.parse(j);
+      calls.push(a);
+      return JSON.stringify(a.app === 'Gibtsnicht' ? { fehler: 'Keine App „Gibtsnicht“ gefunden' } : { ok: true, erledigt: `${a.aktion} erledigt` });
+    },
+  };
+  out.open = (await app.runAppTool('handy_steuern', { aktion: 'app_oeffnen', app: 'Spotify' })).erledigt;
+  out.err = await app.runAppTool('handy_steuern', { aktion: 'app_oeffnen', app: 'Gibtsnicht' }).then(() => '', (e) => e.message);
+  await app.send('An Claude: Fass mir die Notizen von heute zusammen');
+  out.claude = calls.find((c) => c.aktion === 'an_claude')?.text;
+  out.note = [...document.querySelectorAll('.msg.note')].some((n) => /Claude-App übergeben/.test(n.textContent));
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  return out;
+});
+check(b67.cmdPause && b67.cmdOn && !b67.other && b67.stop, 'Video: Figur hört mit – Pause, weiter, Stopp per Zuruf', JSON.stringify(b67));
+check(b67.heldPaused && b67.resumed, 'Video: Frage hält das Video an, nach der Antwort läuft es weiter', JSON.stringify(b67));
+check(b67.open === 'app_oeffnen erledigt' && /Gibtsnicht/.test(b67.err) && b67.claude === 'Fass mir die Notizen von heute zusammen' && b67.note, 'Handy steuern: App öffnen, Fehler verständlich, „An Claude:“ an die Claude-App', JSON.stringify(b67));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

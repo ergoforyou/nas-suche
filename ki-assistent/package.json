@@ -1,7 +1,7 @@
 {
   "name": "ki-assistent",
   "productName": "KI-Assistent",
-  "version": "1.26.0-beta.66",
+  "version": "1.26.0-beta.67",
   "description": "Lokaler Desktop-Assistent mit Avatar, Spracherkennung und Sprachausgabe für LM Studio",
   "main": "main.js",
   "author": "ergoforyou",
@@ -12,7 +12,7 @@
     "dist": "node build.mjs && electron-builder --win portable nsis",
     "dist:mac": "node build.mjs && electron-builder --mac dmg",
     "dist:linux": "node build.mjs && electron-builder --linux AppImage",
-    "test": "node test/smoke.mjs && node test/bild2vrm.mjs && node test/cutout.mjs && node test/google.mjs && node test/synology.mjs"
+    "test": "node test/smoke.mjs && node test/bild2vrm.mjs && node test/cutout.mjs && node test/google.mjs && node test/synology.mjs && node test/apptools.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.2",

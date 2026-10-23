@@ -109,6 +109,42 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'handy_steuern',
+    privatOnly: true,
+    mobileOnly: true, // nur in der Android-App
+    description:
+      'Führt auf dem Handy etwas aus, wenn dein Gegenüber darum bittet: App öffnen („Öffne Spotify“), Navigation ' +
+      'starten, Karte, Webseite, Wecker oder Timer in der Uhr-App, Musik steuern (play/pause/weiter/zurück), ' +
+      'Lautstärke, Taschenlampe, Einstellungen (WLAN, Bluetooth, Ton, Akku …), Kamera, Text an die Claude-App übergeben ' +
+      '(an_claude, wie am PC), teilen. Anruf (anrufen), SMS und WhatsApp werden nur VORBEREITET – gewählt bzw. gesendet ' +
+      'wird erst, wenn dein Gegenüber selbst tippt; sag das in einem kurzen Satz. Nummern nur, wenn genannt (kein ' +
+      'Adressbuch). Für eigene Erinnerungen weiter erinnerung_setzen nehmen. Sprich nicht über das Werkzeug.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        aktion: {
+          type: 'string',
+          enum: ['app_oeffnen', 'apps', 'navigation', 'karte', 'webseite', 'wecker', 'timer', 'musik', 'lautstaerke', 'taschenlampe', 'einstellungen', 'kamera', 'an_claude', 'teilen', 'anrufen', 'sms', 'whatsapp'],
+        },
+        app: { type: 'string', description: 'app_oeffnen: Name der App' },
+        ziel: { type: 'string', description: 'navigation/karte: Adresse oder Ort' },
+        modus: { type: 'string', description: 'navigation: auto, zu_fuss, rad' },
+        url: { type: 'string', description: 'webseite' },
+        nummer: { type: 'string', description: 'anrufen/sms/whatsapp: Telefonnummer (falls genannt)' },
+        text: { type: 'string', description: 'an_claude/teilen/sms/whatsapp: der Text; wecker/timer: Beschriftung' },
+        stunde: { type: 'integer', description: 'wecker: Stunde 0–23' },
+        minute: { type: 'integer', description: 'wecker: Minute 0–59' },
+        sekunden: { type: 'integer', description: 'timer: Dauer in Sekunden' },
+        befehl: { type: 'string', description: 'musik: play, pause, weiter, zurueck' },
+        wert: { type: 'integer', description: 'lautstaerke: 0–100 (oder richtung)' },
+        richtung: { type: 'string', description: 'lautstaerke: lauter / leiser' },
+        an: { type: 'boolean', description: 'taschenlampe: an (true) oder aus (false)' },
+        bereich: { type: 'string', description: 'einstellungen: wlan, bluetooth, ton, akku, standort, display, nicht stören' },
+      },
+      required: ['aktion'],
+    },
+  },
+  {
     name: 'erinnerung_setzen',
     privatOnly: true,
     description:
@@ -193,6 +229,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   verkehr: '🚗 Schaue nach dem Verkehr …',
   erinnerung_setzen: '⏰ Stelle die Erinnerung …',
   video_abspielen: '🎬 Hole das Video …',
+  handy_steuern: '📱 Mache das auf dem Handy …',
   erinnerungen_verwalten: '⏰ Schaue in die Erinnerungen …',
   nachrichten: '📰 Schaue in die Nachrichten …',
 };

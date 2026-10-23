@@ -324,6 +324,8 @@ public class MainActivity extends BridgeActivity {
                         if (k != null && k.getAction() == KeyEvent.ACTION_DOWN && k.getRepeatCount() == 0) {
                             int c = k.getKeyCode();
                             if (c == KeyEvent.KEYCODE_HEADSETHOOK || c == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || c == KeyEvent.KEYCODE_MEDIA_PLAY || c == KeyEvent.KEYCODE_MEDIA_PAUSE) {
+                                // Medientaste kam von uns selbst (Figur steuert die Musik): nicht als Sprechtaste nehmen
+                                if (android.os.SystemClock.uptimeMillis() < KIActions.selfKeyUntil) return false;
                                 // spielt gerade eine andere App (YouTube, Musik) und läuft bei uns kein Gespräch: Taste
                                 // durchreichen – sonst greift die App bei jedem Play/Pause (oder beim Einsetzen der
                                 // Ohrhörer) nach dem Kopfhörer und reißt den Ton der anderen App weg
@@ -1324,6 +1326,20 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void setReminders(String json) {
             KIReminder.store(MainActivity.this, json);
+        }
+
+        /** Handy-Aktion auf Zuruf (KIActions): {"aktion": …} → {"ok":true,"erledigt":…} oder {"fehler":…}. */
+        @JavascriptInterface
+        public String deviceAction(String json) {
+            try {
+                return KIActions.run(MainActivity.this, new JSONObject(json)).toString();
+            } catch (Exception e) {
+                try {
+                    return new JSONObject().put("fehler", String.valueOf(e.getMessage())).toString();
+                } catch (Exception ignored) {
+                    return "{\"fehler\":\"unbekannt\"}";
+                }
+            }
         }
 
         /** Benachrichtigung einer Erinnerung wegnehmen (bestätigt). */

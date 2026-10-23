@@ -1083,6 +1083,18 @@ async function send(text) {
   const toClaude = CLAUDE_HANDOFF && !pendingAttachments.length && text.match(CLAUDE_RE);
   // „Schick das an Claude“ ohne eigenen Text: das Sprachmodell stellt die Aufgabe aus dem Gespräch zusammen (Werkzeug)
   if (toClaude && (toClaude[1].trim() || !appToolsActive())) return handoffClaude(toClaude[1], text);
+  // Handy (Privat): „An Claude: …“ geht an die Claude-App des Handys (dort abschicken)
+  const toClaudePhone = MOBILE && PRIV && !pendingAttachments.length && dev()?.deviceAction ? text.match(CLAUDE_RE) : null;
+  if (toClaudePhone?.[1]?.trim()) {
+    addBubble('user', text);
+    try {
+      phoneAction({ aktion: 'an_claude', text: toClaudePhone[1].trim() });
+      addBubble('note', '✳ An die Claude-App übergeben – dort abschicken.');
+    } catch (e) {
+      addBubble('error', e.message);
+    }
+    return;
+  }
   // Privat: „Merk dir …“ bzw. Notiz über 📝 – ohne Sprachmodell direkt notieren
   if (PRIV && text && !pendingAttachments.length && (state.noteMode || NOTE_RE.test(text))) {
     const note = state.noteMode ? text : text.match(NOTE_RE)[1];
@@ -3031,16 +3043,19 @@ async function listenOnce({ handsFree = false } = {}) {
     const live = handsFree && liveBargeIn();
     const p = stt.listen({
       waitForSpeech: handsFree,
-      threshold: () => state.settings.sensitivity * (live && tts.speaking && !tts.held ? 2.5 : 1),
+      // läuft ein Video mit Ton: ebenso strenger (sein Ton soll nicht als Sprache gelten)
+      threshold: () => state.settings.sensitivity * ((live && tts.speaking && !tts.held) || clipLoud() ? 2.5 : 1),
       // während der Avatar spricht keine Absenkung der Schwelle (sonst unterbricht ihn sein eigenes Echo)
-      adaptive: () => !(live && tts.speaking && !tts.held),
+      adaptive: () => !((live && tts.speaking && !tts.held) || clipLoud()),
       // im Live-Gespräch sinkt die Schwelle höchstens auf die Hälfte (sonst lösen leise Hintergrundgeräusche aus)
       minThreshold: () => (handsFree ? state.settings.sensitivity * 0.5 : 0.003),
       // im Freihand-Modus mindestens ~⅓ s Stimme, damit Tastenklicks und Räuspern nichts auslösen
-      startMs: () => (!handsFree ? 0 : tts.speaking ? 350 : 300),
+      startMs: () => (!handsFree ? 0 : tts.speaking || clipLoud() ? 350 : 300),
       silenceMs: handsFree ? state.settings.livePauseMs : 1100,
       onSpeechStart: () => {
         duringSpeech = tts.speaking || Date.now() - (state.lastSpeakEnd ?? 0) < 1000;
+        // Video läuft: leiser stellen, solange gesprochen wird
+        clipDuck(true);
         // nach einer Pause angesprochen: die Figur wendet sich zu (Anlass „zuwenden“)
         if (!tts.speaking && !state.busy && Date.now() - (state.lastExchange ?? 0) > 15000) fireEvent('turn', 2500);
         state.lastExchange = Date.now();
@@ -3086,6 +3101,9 @@ async function listenOnce({ handsFree = false } = {}) {
       if (why) return overheard(text, why);
     }
     if (handsFree && duringSpeech && isEcho(text)) return;
+    // läuft ein Video: kurze Befehle (Stopp, Pause, weiter) gleich hier, sonst anhalten und nach der Antwort weiter
+    if (clipPlaying && clipCommand(text)) return;
+    if (clipPlaying) clipHoldForAnswer();
     if (held) {
       held = false;
       interrupted = true;
@@ -3105,6 +3123,7 @@ async function listenOnce({ handsFree = false } = {}) {
       tts.release();
       logEv('STT', 'Geräusch während der Antwort – weitergesprochen');
     }
+    if (clipPlaying && !clipPlaying.resumeAfter) clipDuck(false);
     state.micActive = false;
     updateBadge();
     maybeListenHandsFree();
@@ -3115,8 +3134,7 @@ function maybeListenHandsFree(tries = 0) {
   if (!state.settings.handsFree) return;
   setTimeout(() => {
     // Live-Gespräch hört auch zu, während der Avatar denkt oder spricht
-    // während ein Video läuft, nicht zuhören (sonst hielte das Live-Gespräch den Ton des Videos für Sprache)
-    const free = (liveBargeIn() || (!state.busy && !tts.speaking)) && !clipPlaying;
+    const free = liveBargeIn() || (!state.busy && !tts.speaking);
     // wartet gerade das Aktivierungswort aufs Mikrofon: freigeben, dann zuhören
     if (state.settings.handsFree && free && state.wakeListening && tries < 10) {
       stt.cancel();
@@ -6795,6 +6813,7 @@ async function runAppTool(name, input) {
 }
 async function runAppToolInner(name, input) {
   if (name === 'video_abspielen') return clipTool(input);
+  if (name === 'handy_steuern') return phoneAction(input);
   if (name === 'wissen_speichern') {
     // beim Streamen kann eine lange Eingabe unvollständig ankommen: klar melden, statt Leeres zu speichern
     if (!String(input?.titel ?? '').trim() || !String(input?.inhalt ?? '').trim()) throw new Error('titel oder inhalt fehlt – bitte vollständig erneut aufrufen');
@@ -6931,7 +6950,7 @@ function appKnowledge() {
   if (MOBILE)
     lines.push(
       'Handy: Live-Gespräch 📞, Nur-Figur-Ansicht ⛶, schwebende Figur über anderen Apps (antippen = sprechen/stoppen, lange drücken = Menü), ' +
-        'Aktivierungswort (⚙ → Handy), automatischer Abgleich mit dem PC im WLAN (Personas, Chatverlauf, Gedächtnis, Selbstbild, Wissen; einmal per QR-Code koppeln, gleicher Bereich); im Bereich Privat außerdem Notizen („Merk dir … bis Samstag“) und Fahrmodus.',
+        'Aktivierungswort (⚙ → Handy), automatischer Abgleich mit dem PC im WLAN (Personas, Chatverlauf, Gedächtnis, Selbstbild, Wissen; einmal per QR-Code koppeln, gleicher Bereich); im Bereich Privat außerdem Notizen („Merk dir … bis Samstag“), Fahrmodus, Videos auf Kommando und Handy-Steuerung (Apps öffnen, Navigation, Wecker/Timer, Musik, Lautstärke, Taschenlampe, Einstellungen, „An Claude: …“ an die Claude-App; Anrufe und Nachrichten nur vorbereitet – gesendet wird per Tippen).',
     );
   else
     lines.push(
@@ -7370,8 +7389,6 @@ function playClip(c) {
   box.append(v, cap, close);
   $('stage').append(box);
   clipPlaying = { box, v, clip: c };
-  // läuft gerade das Live-Gespräch: Zuhören beenden, bis das Video vorbei ist
-  if (state.micActive && !state.wakeListening) stt.cancel();
   v.onended = () => stopClip();
   v.onerror = () => {
     status('🎬 Das Video lässt sich nicht abspielen (Format?).');
@@ -7389,6 +7406,51 @@ function playClip(c) {
   });
   logEv('VIDEO', c.name);
 }
+/** Läuft ein Video gerade hörbar? (dann hört das Mikrofon strenger hin) */
+const clipLoud = () => !!clipPlaying && !clipPlaying.v.paused && !clipPlaying.v.muted;
+function clipDuck(on) {
+  if (clipPlaying) clipPlaying.v.volume = on ? 0.2 : 1;
+}
+/** Kurze Befehle während eines Videos – true = erledigt (geht nicht an die KI). */
+function clipCommand(text) {
+  const t = clipNorm(text);
+  const v = clipPlaying.v;
+  if (/^(stopp?|halt|aus|ende|beenden|schluss|hoer auf|video (aus|stopp?|beenden))$/.test(t)) {
+    stopClip();
+    return true;
+  }
+  if (/^(pause|anhalten|video anhalten|warte)$/.test(t)) {
+    v.pause();
+    clipDuck(false);
+    return true;
+  }
+  if (/^(weiter|weiterspielen|fortsetzen|play|spiel weiter)$/.test(t)) {
+    clipDuck(false);
+    v.play().catch(() => {});
+    return true;
+  }
+  return false;
+}
+/** Jemand sagt etwas während des Videos: anhalten, die Figur antwortet, danach läuft es weiter. */
+function clipHoldForAnswer() {
+  const cur = clipPlaying;
+  if (!cur || cur.v.paused) return;
+  cur.v.pause();
+  cur.resumeAfter = true;
+  const started = Date.now();
+  const tick = () => {
+    if (clipPlaying !== cur || !cur.resumeAfter) return;
+    // erst weiter, wenn die Antwort fertig ist (spätestens nach 2 Minuten aufgeben)
+    if (state.busy || tts.speaking || state.micActive || Date.now() - started < 1500) {
+      if (Date.now() - started < 120e3) setTimeout(tick, 400);
+      return;
+    }
+    cur.resumeAfter = false;
+    clipDuck(false);
+    cur.v.play().catch(() => {});
+  };
+  setTimeout(tick, 400);
+}
 function stopClip() {
   if (!clipPlaying) return;
   const { box, v } = clipPlaying;
@@ -7398,6 +7460,17 @@ function stopClip() {
   v.load();
   box.remove();
   maybeListenHandsFree();
+}
+/** Handy-Aktion auf Zuruf (nur Android, Privat): Apps, Navigation, Wecker, Musik, Lautstärke, Lampe, Übergabe an Claude … */
+function phoneAction(input) {
+  if (!PRIV) throw new Error('Handy steuern gibt es im Bereich Privat.');
+  const d = dev();
+  if (!d?.deviceAction) throw new Error('Das geht nur in der Android-App.');
+  const r = JSON.parse(d.deviceAction(JSON.stringify(input ?? {})) || '{}');
+  if (r.fehler) throw new Error(r.fehler);
+  logEv('HANDY', `${input?.aktion}: ${r.erledigt ?? 'ok'}`);
+  if (input?.aktion !== 'apps') fireEvent('success', 2000);
+  return r;
 }
 function renderClipList() {
   const wrap = document.getElementById('clipWrap');
@@ -9479,7 +9552,7 @@ async function startRealtime() {
             type: 'session.update',
             session: {
               type: 'realtime',
-              tools: appToolsLib.APP_TOOLS.filter((d) => !(MOBILE && d.desktopOnly) && !(d.privatOnly && !PRIV)).map((d) => ({ type: 'function', name: d.name, description: d.description, parameters: d.input_schema })),
+              tools: appToolsLib.APP_TOOLS.filter((d) => !(MOBILE && d.desktopOnly) && !(!MOBILE && d.mobileOnly) && !(d.privatOnly && !PRIV)).map((d) => ({ type: 'function', name: d.name, description: d.description, parameters: d.input_schema })),
               tool_choice: 'auto',
             },
           }),
@@ -9720,6 +9793,9 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  clipCommand: (t) => (clipPlaying ? clipCommand(t) : false),
+  clipHoldForAnswer,
+  phoneAction,
   findClip,
   clipTool,
   renderClipList,
