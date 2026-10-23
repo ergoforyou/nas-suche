@@ -95,6 +95,20 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'video_abspielen',
+    privatOnly: true,
+    description:
+      'Spielt eines deiner Videos mit Ton auf der Bühne ab, wenn dein Gegenüber darum bittet („Spiel mir das Video vom ' +
+      'Geburtstag“, „Zeig mal den Tanz“). Welche Videos es gibt, steht im Zusammenhang unter „Deine Videos“. name: der ' +
+      'Name oder ein Stichwort daraus. Das Video startet, sobald du fertig gesprochen hast – kündige es höchstens mit ' +
+      'einem kurzen Satz an und sprich nicht über das Werkzeug.',
+    input_schema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Name des Videos oder Stichwort' } },
+      required: ['name'],
+    },
+  },
+  {
     name: 'erinnerung_setzen',
     privatOnly: true,
     description:
@@ -178,6 +192,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   gespraeche_suchen: '💭 Erinnere mich …',
   verkehr: '🚗 Schaue nach dem Verkehr …',
   erinnerung_setzen: '⏰ Stelle die Erinnerung …',
+  video_abspielen: '🎬 Hole das Video …',
   erinnerungen_verwalten: '⏰ Schaue in die Erinnerungen …',
   nachrichten: '📰 Schaue in die Nachrichten …',
 };

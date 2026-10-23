@@ -285,6 +285,17 @@
       </div>
       <p class="hint edit-info" id="editInfo"></p>
 
+      <div id="clipWrap" hidden>
+        <h3>🎬 Videos auf Kommando <span class="beta-badge">Privat</span></h3>
+        <p class="hint">Bis zu 5 Videos mit Ton (MP4/WebM), die die Figur auf Zuruf auf der Bühne abspielt – z. B. „Spiel mir
+          das Video vom Geburtstag“. Gib jedem einen Namen, unter dem du es ansprichst. Antippen hält an, ✕ oder „Stopp“
+          beendet. Die Videos bleiben auf dem Gerät und wandern mit der Persona-Datei (Export) und dem Abgleich der Figur
+          mit; an die KI geht nur der Name.</p>
+        <div id="clipList" class="clip-list"></div>
+        <div class="row wrap"><button id="clipAdd">＋ Video hinzufügen</button></div>
+        <input id="clipFile" type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden />
+      </div>
+
       <h3>Hintergrund entfernen (freistellen)</h3>
       <p class="hint">Passiert beim Hochladen automatisch: Einfarbige Hintergründe (z. B. weiße Wand) werden per
         Farbe entfernt, normale Fotos per lokaler KI (einmaliger Download ~25 MB). Bilder mit transparentem

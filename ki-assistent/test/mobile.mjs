@@ -2624,6 +2624,56 @@ const b65 = await page.evaluate(async () => {
   return { on: on.google_angebot ?? '', off: off.google_angebot ?? '', box: !!document.getElementById('cRemGoogle') };
 });
 check(/⏰ Paket abholen/.test(b65.on) && /Nur bei Ja/.test(b65.on) && !b65.off && b65.box, 'Erinnerung: Google-Kalender nur angeboten, wenn eingeschaltet (Rückfrage)', JSON.stringify(b65));
+// Beta 66 (Privat): Videos auf Kommando – gespeichert bei der Figur, auf Zuruf mit Ton abgespielt
+const b66 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  // kleines Testvideo im Browser erzeugen
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const rec = new MediaRecorder(cv.captureStream(15), { mimeType: 'video/webm' });
+  const parts = [];
+  rec.ondataavailable = (e) => parts.push(e.data);
+  rec.start();
+  for (let i = 0; i < 10; i++) {
+    g.fillStyle = `hsl(${i * 30},80%,50%)`;
+    g.fillRect(0, 0, 64, 64);
+    await new Promise((r) => setTimeout(r, 70));
+  }
+  await new Promise((r) => ((rec.onstop = r), rec.stop()));
+  const url = URL.createObjectURL(new Blob(parts, { type: 'video/webm' }));
+  const keep = p.avatar.clips;
+  p.avatar.clips = [
+    { id: 'c1', name: 'Geburtstag am See', info: 'Feier mit der Familie 2024', video: url },
+    { id: 'c2', name: 'Tanz', info: 'kleiner Tanz im Büro', video: url },
+  ];
+  const out = {};
+  out.f1 = app.findClip('das Video vom Geburtstag')?.id;
+  out.f2 = app.findClip('Familie')?.id;
+  out.f3 = app.findClip('zeig mal den Tanz')?.id;
+  out.none = app.findClip('Urlaub in Rom')?.id ?? null;
+  out.ctx = JSON.stringify(app.buildMessages()).includes('Geburtstag am See');
+  out.unknown = await app.runAppTool('video_abspielen', { name: 'Urlaub in Rom' });
+  app.state.busy = false;
+  const r = await app.runAppTool('video_abspielen', { name: 'Geburtstag' });
+  out.res = r.spielt;
+  for (let i = 0; i < 40 && !document.querySelector('.clip-player'); i++) await new Promise((res) => setTimeout(res, 100));
+  const box = document.querySelector('#stage .clip-player');
+  out.shown = !!box && box.querySelector('video')?.src === url && /Geburtstag/.test(box.textContent);
+  out.state = app.clipState().playing;
+  box?.querySelector('.clip-close')?.click();
+  out.closed = !document.querySelector('.clip-player') && !app.clipState().playing;
+  // Liste in den Einstellungen
+  app.renderClipList();
+  out.rows = document.querySelectorAll('#clipList .clip-row').length;
+  out.wrap = !document.getElementById('clipWrap').hidden;
+  p.avatar.clips = keep;
+  return out;
+});
+check(b66.f1 === 'c1' && b66.f2 === 'c1' && b66.f3 === 'c2' && b66.none === null, 'Videos auf Kommando: Video per Name oder Stichwort gefunden', JSON.stringify(b66));
+check(b66.ctx && b66.unknown?.gefunden === false && b66.unknown.vorhanden?.length === 2, 'Videos auf Kommando: Namen im Zusammenhang, unbekanntes Video → Auswahl', JSON.stringify(b66));
+check(b66.res === 'Geburtstag am See' && b66.shown && b66.state && b66.closed && b66.rows === 2 && b66.wrap, 'Videos auf Kommando: spielt auf der Bühne, ✕ beendet', JSON.stringify(b66));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

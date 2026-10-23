@@ -908,6 +908,7 @@ function buildMessages() {
   if (state.episodeHits?.length) ctx.push(episodeHitsPrompt(state.episodeHits));
   // Rollenanker direkt vor der aktuellen Frage (wirkt gegen Abdriften in langen Gesprächen)
   if (p.selbstOn !== false) ctx.push(stimmungPrompt(p.stimmung));
+  if (PRIV && clipsOf(p).length) ctx.push(clipsPrompt(p));
   if (p.immersion !== false) ctx.push(r.anchor(p.name || 'Max'));
   if (state.topicsNow?.length) ctx.push(topicsPrompt(state.topicsNow, p.language === 'en' ? 'en' : 'de'));
   const sys = parts.filter(Boolean).join('\n\n');
@@ -2844,6 +2845,8 @@ function setBusyUi(busy) {
 }
 
 function stopAll() {
+  stopClip();
+  clipQueued = null;
   if (state.currentChatId) desktop.abortChat(state.currentChatId);
   tts.stop();
   stt.cancel();
@@ -3112,7 +3115,8 @@ function maybeListenHandsFree(tries = 0) {
   if (!state.settings.handsFree) return;
   setTimeout(() => {
     // Live-Gespräch hört auch zu, während der Avatar denkt oder spricht
-    const free = liveBargeIn() || (!state.busy && !tts.speaking);
+    // während ein Video läuft, nicht zuhören (sonst hielte das Live-Gespräch den Ton des Videos für Sprache)
+    const free = (liveBargeIn() || (!state.busy && !tts.speaking)) && !clipPlaying;
     // wartet gerade das Aktivierungswort aufs Mikrofon: freigeben, dann zuhören
     if (state.settings.handsFree && free && state.wakeListening && tries < 10) {
       stt.cancel();
@@ -3181,6 +3185,7 @@ function progressStatus(label) {
 
 /** Spricht die Figur (oder arbeitet sie noch), verstummt sie; sonst sprechen bzw. Zuhören beenden. */
 function talkOrStop() {
+  if (clipPlaying) return stopClip();
   if (tts.speaking || state.busy) stopAll();
   else toggleMic();
 }
@@ -5183,6 +5188,7 @@ function previewEdited() {
 }
 
 function renderPoseList() {
+  renderClipList();
   const list = $('poseList');
   if (!list) return;
   const poses = (persona().avatar.poses ??= []);
@@ -6788,6 +6794,7 @@ async function runAppTool(name, input) {
   }
 }
 async function runAppToolInner(name, input) {
+  if (name === 'video_abspielen') return clipTool(input);
   if (name === 'wissen_speichern') {
     // beim Streamen kann eine lange Eingabe unvollständig ankommen: klar melden, statt Leeres zu speichern
     if (!String(input?.titel ?? '').trim() || !String(input?.inhalt ?? '').trim()) throw new Error('titel oder inhalt fehlt – bitte vollständig erneut aufrufen');
@@ -7279,6 +7286,191 @@ function scheduleLocalReminders(items) {
     );
   }
 }
+
+// ---- Videos auf Kommando (Privat): einige Videos der Persona (mit Ton), die die Figur auf Zuruf auf der Bühne
+// abspielt. Sie liegen bei der Figur (gehen mit Export und Abgleich der Figur mit); an die KI gehen nur die Namen.
+const CLIP_MAX = 5;
+const CLIP_BIG = 80 * 1024 * 1024; // größer: nicht über die NAS (Figuren-Grenze)
+const clipsOf = (p = persona()) => (p.avatar?.clips ?? []).filter((c) => c?.video);
+const clipNorm = (s) =>
+  String(s ?? '')
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+/** Video zu einem Namen oder Stichwort: genau, enthalten, sonst die meisten gemeinsamen Wörter (Name zählt doppelt). */
+function findClip(q, list = clipsOf()) {
+  const n = clipNorm(q).replace(/\b(das|den|die|dem|video|clip|film|vom|von|mit|mir|mal|bitte)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!n) return list.length === 1 ? list[0] : null;
+  const exact = list.find((c) => clipNorm(c.name) === n) ?? list.find((c) => clipNorm(c.name).includes(n) || (clipNorm(c.name) && n.includes(clipNorm(c.name))));
+  if (exact) return exact;
+  const words = n.split(' ').filter((w) => w.length > 2);
+  let best = null;
+  let score = 0;
+  for (const c of list) {
+    const name = clipNorm(c.name);
+    const info = clipNorm(c.info);
+    const sc = words.reduce((a, w) => a + (name.includes(w) ? 2 : info.includes(w) ? 1 : 0), 0);
+    if (sc > score) [best, score] = [c, sc];
+  }
+  return best;
+}
+function clipsPrompt(p) {
+  const en = p.language === 'en';
+  const list = clipsOf(p).map((c) => `- ${c.name}${c.info ? ` (${c.info})` : ''}`).join('\n');
+  return en ? `Your videos (play with video_abspielen when asked):\n${list}` : `Deine Videos (mit video_abspielen zeigen, wenn dein Gegenüber danach fragt):\n${list}`;
+}
+let clipPlaying = null;
+let clipQueued = null;
+function clipTool(input) {
+  if (!PRIV) throw new Error('Videos auf Kommando gibt es im Bereich Privat.');
+  const list = clipsOf();
+  if (!list.length) return { hinweis: 'Diese Persona hat noch keine Videos (Figur → 🎬 Videos auf Kommando).' };
+  const c = findClip(input?.name, list);
+  if (!c) return { gefunden: false, vorhanden: list.map((x) => x.name) };
+  queueClip(c);
+  return { spielt: c.name, hinweis: 'Das Video startet, sobald du fertig gesprochen hast.' };
+}
+/** Erst abspielen, wenn die Figur fertig gesprochen hat (höchstens 30 s warten). */
+function queueClip(c) {
+  clipQueued = { clip: c, at: Date.now() };
+  setTimeout(tickClip, 300);
+}
+function tickClip() {
+  if (!clipQueued) return;
+  if ((tts.speaking || state.busy) && Date.now() - clipQueued.at < 30000) return void setTimeout(tickClip, 250);
+  const c = clipQueued.clip;
+  clipQueued = null;
+  playClip(c);
+}
+function playClip(c) {
+  stopClip();
+  const box = document.createElement('div');
+  box.className = 'clip-player';
+  const v = document.createElement('video');
+  v.src = c.video;
+  v.playsInline = true;
+  v.preload = 'auto';
+  const cap = document.createElement('div');
+  cap.className = 'clip-cap';
+  cap.textContent = `🎬 ${c.name}`;
+  const close = document.createElement('button');
+  close.className = 'clip-close';
+  close.textContent = '✕';
+  close.title = 'Video beenden';
+  close.onclick = (e) => {
+    e.stopPropagation();
+    stopClip();
+  };
+  // Antippen: anhalten / weiter
+  box.onclick = () => (v.paused ? v.play().catch(() => {}) : v.pause());
+  box.append(v, cap, close);
+  $('stage').append(box);
+  clipPlaying = { box, v, clip: c };
+  // läuft gerade das Live-Gespräch: Zuhören beenden, bis das Video vorbei ist
+  if (state.micActive && !state.wakeListening) stt.cancel();
+  v.onended = () => stopClip();
+  v.onerror = () => {
+    status('🎬 Das Video lässt sich nicht abspielen (Format?).');
+    stopClip();
+  };
+  v.play().catch(() => {
+    // ohne Tippen erlaubt der Browser manchmal keinen Ton: stumm starten, Antippen schaltet den Ton ein
+    v.muted = true;
+    v.play().catch(() => {});
+    box.onclick = () => {
+      v.muted = false;
+      box.onclick = () => (v.paused ? v.play().catch(() => {}) : v.pause());
+    };
+    status('🎬 Zum Einschalten des Tons auf das Video tippen.');
+  });
+  logEv('VIDEO', c.name);
+}
+function stopClip() {
+  if (!clipPlaying) return;
+  const { box, v } = clipPlaying;
+  clipPlaying = null;
+  v.pause();
+  v.removeAttribute('src');
+  v.load();
+  box.remove();
+  maybeListenHandsFree();
+}
+function renderClipList() {
+  const wrap = document.getElementById('clipWrap');
+  if (!wrap) return;
+  wrap.hidden = !PRIV;
+  if (!PRIV) return;
+  const clips = (persona().avatar.clips ??= []);
+  const list = $('clipList');
+  list.replaceChildren(
+    ...clips.map((c) => {
+      const row = document.createElement('div');
+      row.className = 'clip-row';
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.value = c.name ?? '';
+      name.placeholder = 'Name, z. B. Geburtstag am See';
+      name.onchange = () => {
+        c.name = name.value.trim() || 'Video';
+        save();
+      };
+      const info = document.createElement('input');
+      info.type = 'text';
+      info.value = c.info ?? '';
+      info.placeholder = 'Worum geht es? (optional, hilft beim Finden)';
+      info.onchange = () => {
+        c.info = info.value.trim().slice(0, 120);
+        save();
+      };
+      const play = document.createElement('button');
+      play.textContent = '▶';
+      play.title = 'Abspielen';
+      play.onclick = () => playClip(c);
+      const del = document.createElement('button');
+      del.textContent = '🗑';
+      del.title = 'Video entfernen';
+      del.onclick = () => {
+        if (!confirm(`Video „${c.name}“ entfernen?`)) return;
+        const av = persona().avatar;
+        av.clips = (av.clips ?? []).filter((x) => x !== c);
+        const used = (av.poses ?? []).some((x) => x.video === c.video) || av.clips.some((x) => x.video === c.video);
+        if (!used) desktop.deleteMedia?.(c.video);
+        save();
+        renderClipList();
+      };
+      row.append(name, info, play, del);
+      return row;
+    }),
+  );
+  $('clipAdd').disabled = clips.length >= CLIP_MAX;
+}
+$('clipAdd').onclick = () => $('clipFile').click();
+$('clipFile').onchange = async (e) => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  const clips = (persona().avatar.clips ??= []);
+  if (clips.length >= CLIP_MAX) return status(`Höchstens ${CLIP_MAX} Videos je Persona.`);
+  try {
+    status('🎬 Übernehme das Video …');
+    const ext = (f.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+    const url = await desktop.saveMedia(new Uint8Array(await f.arrayBuffer()), ext);
+    clips.push({ id: newId(), name: f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 60) || 'Video', info: '', video: url });
+    save();
+    renderClipList();
+    status(
+      f.size > CLIP_BIG
+        ? '🎬 Video übernommen. Hinweis: über 80 MB – die Figur wird dann nicht mehr über die NAS übertragen (Export/WLAN geht).'
+        : '🎬 Video übernommen – gib ihm einen Namen, unter dem du es ansprichst.',
+    );
+  } catch (err) {
+    status(`Video: ${err.message}`);
+  }
+};
 
 // ---- Tagesbriefing: einmal am Tag zur eingestellten Zeit (oder auf Knopfdruck)
 const BRIEFING_PROMPT =
@@ -9528,6 +9720,11 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  findClip,
+  clipTool,
+  renderClipList,
+  stopClip,
+  clipState: () => ({ playing: clipPlaying?.clip?.name ?? null, queued: clipQueued?.clip?.name ?? null }),
   ackReminder,
   renderReminderBar,
   dueReminders,

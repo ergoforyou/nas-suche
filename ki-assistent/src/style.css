@@ -488,3 +488,58 @@ body.floating .stage { display: none; }
     animation: none;
   }
 }
+
+/* Videos auf Kommando: spielt über der Figur auf der Bühne */
+.clip-player {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.clip-player video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.clip-cap {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  pointer-events: none;
+}
+.clip-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.clip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.clip-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.clip-row input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
