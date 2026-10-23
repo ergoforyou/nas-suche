@@ -56,9 +56,10 @@ Die Vorschau zeigt das Ergebnis so, wie es exportiert wird („Hintergrund: Wie 
 festlegen und mit der Toleranz einstellen, was verschwindet. Bei einer weißen Wand bleibt mit „Nur vom Bildrand aus
 entfernen“ ein weißes Hemd erhalten.
 
-**Transparenz prüfen:** Der Windows-Mediaplayer, „Filme & TV“ und VLC zeigen bei WebM keine Transparenz an. Dort sieht man
-den alten Hintergrund. Nach einem transparenten Export deshalb auf **„Mit Transparenz ansehen“** klicken: Das öffnet das
-Video in Edge.
+**Transparenz prüfen:** Der Windows-Mediaplayer, „Filme & TV“ und VLC können bei WebM keine Transparenz anzeigen. Dort
+erscheint die Figur auf **Schwarz**, genau wie bei den Videos aus dem KI-Assistenten: Durchsichtige Bereiche werden schwarz
+gespeichert. Browser (Edge, Chrome) und der KI-Assistent zeigen sie transparent. Nach dem Export prüft man das mit
+**„Mit Transparenz ansehen“**.
 
 **Export (Strg+E)**
 

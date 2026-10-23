@@ -1149,9 +1149,9 @@ class MainWindow(QMainWindow):
         b_view = None
         if path.lower().endswith(".webm") and self.transparent_out():
             box.setInformativeText(
-                "Hinweis: Windows-Mediaplayer, „Filme & TV“ und VLC zeigen keine Transparenz – "
-                "dort sieht man den alten Hintergrund. Zum Prüfen „Mit Transparenz ansehen“ "
-                "nutzen (öffnet Edge/Chrome auf Schachbrett).")
+                "Hinweis: Windows-Mediaplayer, „Filme & TV“ und VLC können keine Transparenz – "
+                "dort erscheint die Figur auf Schwarz (wie beim KI-Assistenten). Browser und der "
+                "KI-Assistent zeigen sie transparent. Zum Prüfen „Mit Transparenz ansehen“ nutzen.")
             b_view = box.addButton("Mit Transparenz ansehen", QMessageBox.ButtonRole.ActionRole)
         b_folder = box.addButton("Ordner öffnen", QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Ok)

@@ -573,6 +573,8 @@ class Processor:
         out[..., 3] = np.round(alpha * 255.0)
         return out
 
+    WEAK = 0.3  # Hysterese-Untergrenze fuer die saubere Kante
+
     def _clean_alpha(self, alpha: np.ndarray) -> np.ndarray:
         """Saubere Kante ohne Aura.
 
@@ -585,13 +587,13 @@ class Processor:
         """
         s, sc = self.s, self.px_scale
         h, w = alpha.shape
-        # Hysterese: sichere Teile (> 50 %) plus alles Schwaechere (> 20 %),
+        # Hysterese: sichere Teile (> 50 %) plus alles Schwaechere (> 30 %),
         # das daran haengt. Bewegte, unscharfe Haende/Fuesse liegen oft unter
         # 50 % und wuerden sonst abgeschnitten; lose Flecken bleiben draussen.
         strong = alpha > 0.5
         if not strong.any():
             return np.zeros_like(alpha)
-        n, labels = cv2.connectedComponents((alpha > 0.2).astype(np.uint8), connectivity=8)
+        n, labels = cv2.connectedComponents((alpha > self.WEAK).astype(np.uint8), connectivity=8)
         keep = np.zeros(n, bool)
         keep[np.unique(labels[strong])] = True
         keep[0] = False
@@ -680,24 +682,28 @@ class Processor:
         return np.clip(alpha, 0.0, 1.0).astype(np.float32)
 
 
-def bleed_colors(rgba: np.ndarray) -> np.ndarray:
-    """Farben der Figur in die durchsichtigen Pixel hinein fortsetzen.
+def bleed_colors(rgba: np.ndarray, matte=(0, 0, 0)) -> np.ndarray:
+    """Farben in den durchsichtigen Pixeln fuer die Kodierung festlegen.
 
-    Unsichtbar, verhindert aber, dass VP9/H.264 (Farbe nur in halber
-    Aufloesung) die alte Hintergrundfarbe in die Kantenpixel mischt –
-    sonst entsteht ein farbiger Saum um die Figur.
+    Wie im KI-Assistenten (Aufnahme einer geleerten Zeichenflaeche): alles,
+    was durchsichtig ist, wird SCHWARZ gespeichert. Player ohne Transparenz
+    (Windows-Mediaplayer, VLC) zeigen die Figur dann auf sauberem Schwarz –
+    nicht auf dem alten Hintergrund (das war die "Aura").
 
-    Nur in einem schmalen Streifen direkt an der Figur; weiter aussen bleibt
-    der Original-Hintergrund stehen. Sonst zeigen Player ohne Transparenz
-    (Windows-Mediaplayer, VLC) rundherum eine Flaeche in Hautfarbe (rosa).
+    Nur ein ganz schmaler Streifen direkt an der Figur bekommt die Farbe der
+    Figur, damit VP9 (Farbe in halber Aufloesung) die Kantenpixel nicht
+    entfaerbt. Fuer Browser ist das unsichtbar.
     """
     a = rgba[..., 3].astype(np.float32) / 255.0
     h, w = a.shape
-    band = max(4, int(round(max(h, w) / 300)))
+    out = rgba.copy()
+    clear_all = a < 0.02
+    out[..., :3][clear_all] = matte
+    band = max(2, int(round(max(h, w) / 600)))
     ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * band + 1, 2 * band + 1))
-    clear = (a < 0.02) & (cv2.dilate((a >= 0.02).astype(np.uint8), ker) > 0)
+    clear = clear_all & (cv2.dilate((a >= 0.02).astype(np.uint8), ker) > 0)
     if not clear.any():
-        return rgba
+        return out
     # Push-Pull-Pyramide: vormultiplizierte Farbe + Alpha halbieren, bis alles
     # gedeckt ist, dann von grob nach fein die Luecken auffuellen. Laufzeit O(n).
     pm = rgba[..., :3].astype(np.float32) * a[..., None]
@@ -715,7 +721,6 @@ def bleed_colors(rgba: np.ndarray) -> np.ndarray:
             wgt = np.clip(q / 0.02, 0.0, 1.0)[..., None]
             c = c * wgt + up * (1.0 - wgt)
         color = c
-    out = rgba.copy()
     out[..., :3][clear] = np.clip(np.round(color[clear]), 0, 255).astype(np.uint8)
     return out
 
