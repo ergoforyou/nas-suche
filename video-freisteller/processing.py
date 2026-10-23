@@ -26,11 +26,17 @@ import numpy as np
 
 APP_NAME = "VideoFreisteller"
 RVM_BASE = "https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/"
-# "schnell" ist in der EXE enthalten, "hoch" wird bei Bedarf einmalig geladen.
-RVM_MODELS = {
-    "schnell": "rvm_mobilenetv3_fp32.onnx",   # ~15 MB
-    "hoch": "rvm_resnet50_fp32.onnx",         # ~100 MB, feinere Kanten
+BIREF_BASE = "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/"
+# Alle Modelle sind in der EXE enthalten; fehlt eines, wird es einmalig geladen.
+MODELS = {
+    # Qualitaet: (Dateiname, Download-URL)
+    "schnell": ("rvm_mobilenetv3_fp32.onnx", RVM_BASE + "rvm_mobilenetv3_fp32.onnx"),  # ~15 MB
+    "hoch": ("rvm_resnet50_fp32.onnx", RVM_BASE + "rvm_resnet50_fp32.onnx"),          # ~100 MB
+    # BiRefNet lite (MIT) – wie im KI-Assistenten; sehr genaue Figur, langsam ohne Grafikkarte
+    "birefnet": ("birefnet_lite.onnx",
+                 BIREF_BASE + "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"),      # ~225 MB
 }
+MODEL_SIZES = {"schnell": "15 MB", "hoch": "100 MB", "birefnet": "225 MB"}
 
 # Unter Windows kein Konsolenfenster fuer ffmpeg aufpoppen lassen.
 _NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -72,7 +78,7 @@ def find_tool(name: str) -> str:
 
 
 def find_model(quality: str = "schnell") -> Path | None:
-    name = RVM_MODELS.get(quality, RVM_MODELS["schnell"])
+    name = MODELS.get(quality, MODELS["schnell"])[0]
     for base in _base_dirs() + [user_data_dir()]:
         cand = base / "models" / name
         if cand.is_file():
@@ -81,11 +87,11 @@ def find_model(quality: str = "schnell") -> Path | None:
 
 
 def download_model(quality: str = "schnell", progress=None) -> Path:
-    name = RVM_MODELS.get(quality, RVM_MODELS["schnell"])
+    name, url = MODELS.get(quality, MODELS["schnell"])
     target = user_data_dir() / "models" / name
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".part")
-    with urllib.request.urlopen(RVM_BASE + name, timeout=60) as resp, \
+    with urllib.request.urlopen(url, timeout=60) as resp, \
             open(tmp, "wb") as fh:
         total = int(resp.headers.get("Content-Length") or 0)
         done = 0
@@ -197,7 +203,7 @@ class KeySettings:
     despill: float = 0.8                 # Farbsaum entfernen 0..1
     unmix: bool = True                   # Kantenfarben vom Hintergrund entmischen
     from_edge: bool = False              # nur vom Bildrand aus zusammenhaengende Flaechen
-    ai_quality: str = "hoch"             # "hoch" (ResNet50) | "schnell" (MobileNet)
+    ai_quality: str = "hoch"             # "birefnet" | "hoch" (RVM ResNet50) | "schnell" (RVM MobileNet)
     ai_detail: float = 1.0               # 0.5..2 – Aufloesung des KI-Netzes
     ai_edge_colors: bool = True          # Kantenfarben aus KI-Vordergrund
     use_gpu: bool = True
@@ -357,16 +363,15 @@ def border_color(rgb_u8: np.ndarray) -> tuple:
     return tuple(int(round(c)) for c in edge[keys == best].mean(axis=0))
 
 
-class AIMatter:
-    """Robust Video Matting (rekurrent, daher zeitlich stabil)."""
+class _OnnxModel:
+    """Gemeinsame Sitzungslogik: Grafikkarte (CUDA/DirectML) wenn moeglich, sonst CPU."""
 
-    def __init__(self, s: KeySettings, model_path: Path):
+    def _open(self, model_path: Path, use_gpu: bool):
         import onnxruntime as ort
 
-        self.s = s
         self.model_path = model_path
         providers = ["CPUExecutionProvider"]
-        if s.use_gpu:
+        if use_gpu:
             avail = ort.get_available_providers()
             for p in ("CUDAExecutionProvider", "DmlExecutionProvider"):
                 if p in avail:
@@ -377,7 +382,6 @@ class AIMatter:
         except Exception:
             self.sess = self._session(["CPUExecutionProvider"])
         self.provider = self.sess.get_providers()[0]
-        self.reset()
 
     def _session(self, providers):
         import onnxruntime as ort
@@ -389,6 +393,26 @@ class AIMatter:
             opts.enable_mem_pattern = False
             opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         return ort.InferenceSession(str(self.model_path), opts, providers=providers)
+
+    def _run(self, feed):
+        try:
+            return self.sess.run(None, feed)
+        except Exception:
+            if self.provider == "CPUExecutionProvider":
+                raise
+            # Grafikkarte macht Probleme -> dauerhaft auf CPU weiterrechnen
+            self.sess = self._session(["CPUExecutionProvider"])
+            self.provider = "CPUExecutionProvider"
+            return self.sess.run(None, feed)
+
+
+class AIMatter(_OnnxModel):
+    """Robust Video Matting (rekurrent, daher zeitlich stabil)."""
+
+    def __init__(self, s: KeySettings, model_path: Path):
+        self.s = s
+        self._open(model_path, s.use_gpu)
+        self.reset()
 
     def reset(self):
         z = np.zeros((1, 1, 1, 1), np.float32)
@@ -405,15 +429,7 @@ class AIMatter:
         for _ in range(1 + warmup):
             feed = {"src": src, "r1i": self.rec[0], "r2i": self.rec[1],
                     "r3i": self.rec[2], "r4i": self.rec[3], "downsample_ratio": ratio}
-            try:
-                fgr, pha, *self.rec = self.sess.run(None, feed)
-            except Exception:
-                if self.provider == "CPUExecutionProvider":
-                    raise
-                # Grafikkarte macht Probleme -> dauerhaft auf CPU weiterrechnen
-                self.sess = self._session(["CPUExecutionProvider"])
-                self.provider = "CPUExecutionProvider"
-                fgr, pha, *self.rec = self.sess.run(None, feed)
+            fgr, pha, *self.rec = self._run(feed)
         alpha = pha[0, 0]
         rgb = src[0].transpose(1, 2, 0)
         if self.s.ai_edge_colors:
@@ -424,38 +440,124 @@ class AIMatter:
         return np.clip(rgb, 0, 1), alpha.astype(np.float32)
 
 
+class BiRefMatter(_OnnxModel):
+    """BiRefNet lite – dasselbe Modell wie im KI-Assistenten.
+
+    Erkennt die Hauptfigur sehr genau (Haende, Fuesse, Luecken zwischen Armen
+    und Beinen). Arbeitet Bild fuer Bild mit 1024x1024 Pixeln; ohne
+    Grafikkarte entsprechend langsam.
+
+    Optional prueft das Personen-Modell (RVM) mit: Teile, die BiRefNet fuer
+    wichtig haelt, die aber gar nicht zu einer Person gehoeren (z. B. eine
+    Lampe im Hintergrund), werden entfernt.
+    """
+
+    SIZE = 1024
+    MEAN = np.array([0.485, 0.456, 0.406], np.float32)
+    STD = np.array([0.229, 0.224, 0.225], np.float32)
+
+    def __init__(self, s: KeySettings, model_path: Path, person_model: Path | None = None):
+        self.s = s
+        self._open(model_path, s.use_gpu)
+        self.person = AIMatter(s, person_model) if person_model else None
+        self.reset()
+
+    def reset(self):
+        if self.person is not None:
+            self.person.reset()
+
+    def __call__(self, rgb_u8: np.ndarray, warmup: int = 0):
+        h, w = rgb_u8.shape[:2]
+        x = cv2.resize(rgb_u8, (self.SIZE, self.SIZE), interpolation=cv2.INTER_AREA)
+        x = (x.astype(np.float32) / 255.0 - self.MEAN) / self.STD
+        logits = self._run({"input_image": x.transpose(2, 0, 1)[None]})[0][0, 0]
+        a = 1.0 / (1.0 + np.exp(-logits))
+        alpha = cv2.resize(a.astype(np.float32), (w, h), interpolation=cv2.INTER_CUBIC)
+        alpha = np.clip(alpha, 0.0, 1.0)
+        if self.person is not None:
+            self.person.s = self.s
+            _, p = self.person(rgb_u8, warmup=warmup)
+            alpha = _keep_person_parts(alpha, p)
+        return rgb_u8.astype(np.float32) / 255.0, alpha.astype(np.float32)
+
+
+def _keep_person_parts(alpha: np.ndarray, person: np.ndarray) -> np.ndarray:
+    """Nur zusammenhaengende Teile behalten, die mit einer Person ueberlappen."""
+    m = (alpha > 0.3).astype(np.uint8)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    if n <= 1:
+        return alpha
+    h, w = alpha.shape
+    r = max(3, int(round(max(h, w) / 100)))
+    pm = cv2.dilate((person > 0.4).astype(np.uint8),
+                    cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1)))
+    overlap = np.bincount(labels.ravel(), weights=pm.ravel().astype(np.float64), minlength=n)
+    area = stats[:, cv2.CC_STAT_AREA].astype(np.float64)
+    keep = overlap / np.maximum(area, 1) >= 0.25
+    # Bruchstuecke weiterer Personen am Bildrand (z. B. ein einzelnes Bein) weglassen
+    keep &= area >= area[1:].max() * 0.06
+    keep[0] = True
+    if not keep[1:].any():
+        return alpha  # Personen-Modell sieht niemanden -> BiRefNet vertrauen
+    drop = ~keep[labels]
+    # weiche Raender der entfernten Teile ebenfalls entfernen
+    drop = cv2.dilate(drop.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    drop &= pm == 0
+    return np.where(drop, 0.0, alpha).astype(np.float32)
+
+
+def make_matter(s: KeySettings):
+    """Passendes KI-Modell fuer die Einstellungen laden (oder None, falls nicht vorhanden)."""
+    path = find_model(s.ai_quality)
+    if path is None:
+        return None
+    if s.ai_quality == "birefnet":
+        return BiRefMatter(s, path, person_model=find_model("hoch"))
+    return AIMatter(s, path)
+
+
 class Processor:
     """Wendet Freistellung + Kantennachbearbeitung an und liefert RGBA uint8."""
 
     def __init__(self, s: KeySettings, model_path: Path | None = None,
-                 px_scale: float = 1.0, matter: "AIMatter | None" = None):
+                 px_scale: float = 1.0, matter=None, raw_cache: dict | None = None):
         self.s = s
         self.px_scale = px_scale
+        # Zwischenspeicher fuer KI-Ergebnisse (Vorschau): Kanten-Regler aendern
+        # nur die Nachbearbeitung, das Modell muss nicht neu rechnen.
+        self.raw_cache = raw_cache
         if s.mode == "chroma":
             self.keyer = ChromaKeyer(s)
         elif s.mode == "ai":
             if matter is not None:
                 matter.s = s
                 self.keyer = matter
-            elif model_path is None:
-                raise RuntimeError("KI-Modell nicht gefunden.")
             else:
-                self.keyer = AIMatter(s, model_path)
+                self.keyer = make_matter(s)
+                if self.keyer is None:
+                    raise RuntimeError("KI-Modell nicht gefunden.")
         else:
             self.keyer = None
         self.prev_alpha = None
 
     def reset(self):
         self.prev_alpha = None
-        if isinstance(self.keyer, AIMatter):
+        if isinstance(self.keyer, (AIMatter, BiRefMatter)):
             self.keyer.reset()
 
-    def __call__(self, rgb_u8: np.ndarray, warmup: int = 0) -> np.ndarray:
+    def __call__(self, rgb_u8: np.ndarray, warmup: int = 0, key=None) -> np.ndarray:
         if self.keyer is None:
             a = np.full(rgb_u8.shape[:2] + (1,), 255, np.uint8)
             return np.concatenate([rgb_u8, a], axis=-1)
-        if isinstance(self.keyer, AIMatter):
-            rgb, alpha = self.keyer(rgb_u8, warmup=warmup)
+        if isinstance(self.keyer, (AIMatter, BiRefMatter)):
+            if key is not None and self.raw_cache is not None and key in self.raw_cache:
+                rgb, alpha = self.raw_cache[key]
+            else:
+                rgb, alpha = self.keyer(rgb_u8, warmup=warmup)
+                if key is not None and self.raw_cache is not None:
+                    while len(self.raw_cache) >= 40:
+                        self.raw_cache.pop(next(iter(self.raw_cache)))
+                    self.raw_cache[key] = (rgb, alpha)
         else:
             rgb, alpha = self.keyer(rgb_u8)
         if self.s.edge_mode == "sauber":
@@ -483,9 +585,17 @@ class Processor:
         """
         s, sc = self.s, self.px_scale
         h, w = alpha.shape
-        m = (alpha > 0.5).astype(np.uint8)
-        if not m.any():
+        # Hysterese: sichere Teile (> 50 %) plus alles Schwaechere (> 20 %),
+        # das daran haengt. Bewegte, unscharfe Haende/Fuesse liegen oft unter
+        # 50 % und wuerden sonst abgeschnitten; lose Flecken bleiben draussen.
+        strong = alpha > 0.5
+        if not strong.any():
             return np.zeros_like(alpha)
+        n, labels = cv2.connectedComponents((alpha > 0.2).astype(np.uint8), connectivity=8)
+        keep = np.zeros(n, bool)
+        keep[np.unique(labels[strong])] = True
+        keep[0] = False
+        m = keep[labels].astype(np.uint8)
         # Kleine Flecken im Hintergrund entfernen (Figur-Teile bleiben)
         n, labels, stats, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
         if n > 2:

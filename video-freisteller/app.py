@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import sys
 import traceback
 from pathlib import Path
@@ -226,6 +227,8 @@ class MainWindow(QMainWindow):
         self.frame_idx = 0
         self.cur_rgb: np.ndarray | None = None
         self.matters: dict = {}
+        self.raw_cache: dict = {}
+        self.speed_seen: dict = {}
         self.processor: P.Processor | None = None
         self.proc_dirty = True
         self.last_processed_idx = -10
@@ -345,6 +348,20 @@ class MainWindow(QMainWindow):
         # Ergebnis: Hintergrund + Kante (das Wichtigste, bewusst schlicht)
         g_out = QGroupBox("Ergebnis")
         fo = QFormLayout(g_out)
+        self.cb_aiq = QComboBox()
+        self.cb_aiq.addItem("Standard – schnell", "hoch")
+        self.cb_aiq.addItem("Maximal – wie im KI-Assistenten (BiRefNet)", "birefnet")
+        self.cb_aiq.addItem("Sehr schnell – ungenauer", "schnell")
+        self.cb_aiq.setToolTip(
+            "Maximal: erkennt die Hauptperson samt Händen, Füßen und Gegenständen in der Hand am "
+            "genauesten, Hintergrund-Personen bleiben weg. Ohne Grafikkarte aber deutlich langsamer.")
+        self.cb_aiq.currentIndexChanged.connect(self._aiq_changed)
+        self.lbl_aiq = QLabel("Erkennung:")
+        fo.addRow(self.lbl_aiq, self.cb_aiq)
+        self.lbl_speed = QLabel("")
+        self.lbl_speed.setStyleSheet("color:#888")
+        self.lbl_speed.setWordWrap(True)
+        fo.addRow(self.lbl_speed)
         self.cb_outbg = QComboBox()
         self.cb_outbg.addItem("Weiß", "weiss")
         self.cb_outbg.addItem("Transparent (WebM/MOV)", "transparent")
@@ -379,11 +396,6 @@ class MainWindow(QMainWindow):
         # KI
         self.g_ai = QGroupBox("KI-Freistellung (lokal berechnet)")
         fa = QFormLayout(self.g_ai)
-        self.cb_aiq = QComboBox()
-        self.cb_aiq.addItem("Genau (ResNet50, empfohlen)", "hoch")
-        self.cb_aiq.addItem("Schnell (MobileNet, verliert eher Hände/Füße)", "schnell")
-        self.cb_aiq.currentIndexChanged.connect(self._aiq_changed)
-        fa.addRow("Modell:", self.cb_aiq)
         self.s_detail = slider_row(0.5, 2.5, 1.0, 0.1, 2, "×")
         self.s_detail.setToolTip("Empfohlen: 1,0. Niedriger = Figur wird sicherer erkannt, aber die Kante "
                                  "wird verwaschen (Aura). Höher = feinere Haare, aber unsichere Stellen "
@@ -643,6 +655,8 @@ class MainWindow(QMainWindow):
         adv = self.ck_adv.isChecked()
         clean = self.cb_edgemode.currentData() == "sauber"
         self.g_ai.setVisible(mode == "ai" and adv)
+        for wdg in (self.cb_aiq, self.lbl_aiq, self.lbl_speed):
+            wdg.setVisible(mode == "ai")
         self.g_chroma.setVisible(mode == "chroma")
         self.g_edge.setVisible(mode != "none" and not clean)
         for wdg in (self.cb_edgemode, self.s_inset, self.s_esoft, self.lbl_inset, self.lbl_esoft):
@@ -762,14 +776,16 @@ class MainWindow(QMainWindow):
     def _ensure_model(self, quality) -> bool:
         if P.find_model(quality):
             return True
-        size = "~100 MB" if quality == "hoch" else "~15 MB"
+        size = P.MODEL_SIZES.get(quality, "")
         if QMessageBox.question(
                 self, "KI-Modell laden",
-                f"Das KI-Modell „{quality}“ ({size}) ist noch nicht vorhanden.\n"
+                f"Das KI-Modell „{self.cb_aiq.itemText(max(0, self.cb_aiq.findData(quality)))}“ "
+                f"(~{size}) ist noch nicht vorhanden.\n"
                 "Jetzt einmalig herunterladen? Danach wird alles lokal berechnet.") != \
                 QMessageBox.StandardButton.Yes:
-            if quality == "hoch":
-                self.cb_aiq.setCurrentIndex(self.cb_aiq.findData("schnell"))
+            fallback = "hoch" if quality == "birefnet" else "schnell"
+            if quality != "schnell":
+                self.cb_aiq.setCurrentIndex(self.cb_aiq.findData(fallback))
             return False
         dlg = QProgressDialog("KI-Modell wird geladen…", None, 0, 100, self)
         dlg.setWindowModality(Qt.WindowModality.WindowModal)
@@ -792,14 +808,14 @@ class MainWindow(QMainWindow):
     def _matter(self, s: P.KeySettings):
         key = (s.ai_quality, s.use_gpu)
         if key not in self.matters:
-            path = P.find_model(s.ai_quality)
-            if path is None:
-                return None
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                self.matters[key] = P.AIMatter(s, path)
+                matter = P.make_matter(s)
             finally:
                 QApplication.restoreOverrideCursor()
+            if matter is None:
+                return None
+            self.matters[key] = matter
             prov = self.matters[key].provider.replace("ExecutionProvider", "")
             self.lbl_provider.setText(
                 f"Rechnet auf: {'Grafikkarte (' + prov + ')' if prov != 'CPU' else 'Prozessor (CPU)'}")
@@ -834,6 +850,7 @@ class MainWindow(QMainWindow):
         if self.reader:
             self.reader.close()
         self.info = info
+        self.raw_cache.clear()
         self.reader = P.FrameReader(path)
         self.qs.setValue("last_dir", str(Path(path).parent))
         self.lbl_file.setText(f"{Path(path).name}   {info.width}×{info.height}, "
@@ -979,14 +996,29 @@ class MainWindow(QMainWindow):
                 if s.mode == "ai" and matter is None:
                     self.preview.set_image(to_qimage(rgb))
                     return
-                self.processor = P.Processor(s, px_scale=sc, matter=matter)
+                self.processor = P.Processor(s, px_scale=sc, matter=matter,
+                                             raw_cache=self.raw_cache)
                 self.proc_dirty = False
                 self.last_processed_idx = -10
             sequential = (self.frame_idx == self.last_processed_idx + 1
                           and self.play_timer.isActive())
             if not sequential:
                 self.processor.reset()
-            rgba = self.processor(rgb, warmup=0 if sequential else 3)
+            key = None
+            if s.mode == "ai" and not sequential:
+                key = (self.frame_idx, s.ai_quality, round(s.ai_detail, 2), s.use_gpu,
+                       s.ai_edge_colors, rgb.shape)
+            cached = key is not None and key in self.raw_cache
+            if not cached and s.mode == "ai":
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            t0 = time.perf_counter()
+            try:
+                rgba = self.processor(rgb, warmup=0 if sequential else 3, key=key)
+            finally:
+                if not cached and s.mode == "ai":
+                    QApplication.restoreOverrideCursor()
+            if not cached and s.mode == "ai" and not sequential:
+                self._update_speed(time.perf_counter() - t0, s, rgb.shape)
             self.last_processed_idx = self.frame_idx
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
@@ -1006,6 +1038,30 @@ class MainWindow(QMainWindow):
                 out[:, :half] = rgb[:, :half]
                 out[:, half - 1:half + 1] = (240, 70, 70)
         self.preview.set_image(to_qimage(out))
+
+    def _update_speed(self, dt, s, shape):
+        """Grobe Zeitschaetzung fuer den Export anzeigen (aus der Vorschau-Rechnung)."""
+        if not self.info:
+            return
+        # Vorschau rechnet mit Aufwaermen (4 Durchlaeufe beim RVM, 1 beim BiRefNet)
+        runs = 1 if s.ai_quality == "birefnet" else 4
+        per = dt / runs
+        # Die allererste Rechnung eines Modells dauert laenger (Einrichten) -> beste Messung nehmen
+        mkey = (s.ai_quality, s.use_gpu)
+        first = mkey not in self.speed_seen
+        self.speed_seen[mkey] = per = min(per, self.speed_seen.get(mkey, per))
+        if s.ai_quality != "birefnet":
+            # RVM rechnet in voller Aufloesung etwas laenger
+            per *= max(1.0, (self.info.width * self.info.height) / (shape[0] * shape[1])) ** 0.5
+        frames = sum(b - a for a, b in self.export_segments()) * self.info.fps_float
+        total = per * frames
+        prov = self.matters.get((s.ai_quality, s.use_gpu))
+        where = "Grafikkarte" if prov and prov.provider != "CPUExecutionProvider" else "Prozessor"
+        mins = total / 60
+        dur = f"{mins:.0f} min" if mins >= 1.5 else f"{total:.0f} s"
+        hint = " (erste Messung – beim nächsten Bild genauer)" if first else ""
+        self.lbl_speed.setText(f"Rechnet auf: {where} · ca. {per:.1f} s pro Bild · "
+                               f"Export des Bereichs ca. {dur}{hint}")
 
     def _preview_bg(self, h, w):
         name = self.cb_bg.currentText()

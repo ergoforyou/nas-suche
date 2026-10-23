@@ -43,13 +43,15 @@ jobs:
           foreach ($m in "rvm_mobilenetv3_fp32.onnx", "rvm_resnet50_fp32.onnx") {
             Invoke-WebRequest "https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/$m" -OutFile "models/$m"
           }
+          # BiRefNet lite (MIT) – dasselbe Modell wie im KI-Assistenten
+          Invoke-WebRequest "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx" -OutFile "models/birefnet_lite.onnx"
           ./ffmpeg/ffmpeg.exe -hide_banner -encoders | Select-String "libvpx-vp9|prores_ks|libx264|libopus"
 
       - name: Selbsttest (Export mit Freistellung)
         run: |
           ./ffmpeg/ffmpeg.exe -loglevel error -y -f lavfi -i "color=c=0x00B140:s=320x240:d=2" -f lavfi -i "testsrc2=s=120x90:d=2" -f lavfi -i "sine=d=2" -filter_complex "[0][1]overlay=40:60" -shortest selftest.mp4
           $env:PATH = "$PWD\ffmpeg;$env:PATH"
-          python -c "import processing as P; from pathlib import Path; i=P.probe('selftest.mp4'); [P.export(P.ExportJob(i, f'selftest_{m}.webm', [(0.2,1.5)], P.KeySettings(mode=m)), P.find_model('hoch')) for m in ('chroma','ai')]; print(P.probe('selftest_ai.webm'))"
+          python -c "import processing as P; i=P.probe('selftest.mp4'); [P.export(P.ExportJob(i, f'selftest_{m}.webm', [(0.2,1.5)], P.KeySettings(mode=m))) for m in ('chroma','ai')]; P.export(P.ExportJob(i, 'selftest_biref.mp4', [(0.2,0.4)], P.KeySettings(mode='ai', ai_quality='birefnet'), fmt='mp4', transparent=False)); print(P.probe('selftest_ai.webm'), P.probe('selftest_biref.mp4'))"
 
       - name: EXE bauen
         run: |

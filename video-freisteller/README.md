@@ -34,6 +34,14 @@ berechnet, nichts wird hochgeladen.
 Die Vorschau zeigt das Ergebnis so, wie es exportiert wird („Hintergrund: Wie Export“).
 
 **Ergebnis-Einstellungen**
+- **Erkennung:**
+  - *Standard – schnell:* Video-KI (Robust Video Matting). Rechnet schnell und flimmerfrei, erkennt aber alle Personen
+    im Bild und schneidet Gegenstände in der Hand eher ab.
+  - *Maximal – wie im KI-Assistenten (BiRefNet):* dasselbe Modell wie im KI-Assistenten. Erkennt die Hauptperson samt
+    Händen, Füßen und Gegenständen in der Hand am genauesten, Personen im Hintergrund bleiben weg. Ohne Grafikkarte ist es
+    deutlich langsamer (mehrere Sekunden pro Bild). Unter der Auswahl steht nach dem ersten Vorschaubild, wie lange der
+    Export ungefähr dauert.
+  - *Sehr schnell:* nur für schwache Rechner.
 - **Hintergrund:** *Weiß* (Standard), *Transparent* (WebM/MOV, z. B. für den KI-Assistenten) oder *Eigene Farbe*.
 - **Kante „Sauber“** (Standard): Die Kante ist klar und liegt vollständig auf der Person. Es bleibt kein halbdurchsichtiger
   Rand mit Resten des alten Hintergrunds, also **keine Aura**. Feine, abstehende Haarspitzen werden dabei etwas
@@ -79,6 +87,7 @@ ersten Start automatisch geladen. Die EXE baut der GitHub-Workflow `.github/work
 ## Lizenzen
 
 - Robust Video Matting (Modell): GPL-3.0, https://github.com/PeterL1n/RobustVideoMatting
+- BiRefNet (Modell): MIT, https://github.com/ZhengPeng7/BiRefNet
 - ffmpeg (BtbN-Build): GPL
 - PySide6/Qt: LGPL
 
