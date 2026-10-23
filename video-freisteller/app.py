@@ -263,7 +263,7 @@ class MainWindow(QMainWindow):
         top.addWidget(self.cb_view)
         top.addWidget(QLabel("Hintergrund:"))
         self.cb_bg = QComboBox()
-        self.cb_bg.addItems(["Schachbrett", "Schwarz", "Weiß", "Grau", "Grün", "Eigenes Bild…"])
+        self.cb_bg.addItems(["Wie Export", "Schachbrett", "Schwarz", "Weiß", "Grau", "Grün", "Eigenes Bild…"])
         self.cb_bg.currentIndexChanged.connect(self._bg_changed)
         top.addWidget(self.cb_bg)
         lv.addLayout(top)
@@ -341,6 +341,40 @@ class MainWindow(QMainWindow):
         self.cb_mode.currentIndexChanged.connect(self._mode_changed)
         fm.addRow(self.cb_mode)
         pv.addWidget(g_mode)
+
+        # Ergebnis: Hintergrund + Kante (das Wichtigste, bewusst schlicht)
+        g_out = QGroupBox("Ergebnis")
+        fo = QFormLayout(g_out)
+        self.cb_outbg = QComboBox()
+        self.cb_outbg.addItem("Weiß", "weiss")
+        self.cb_outbg.addItem("Transparent (WebM/MOV)", "transparent")
+        self.cb_outbg.addItem("Eigene Farbe", "farbe")
+        self.cb_outbg.currentIndexChanged.connect(self._outbg_changed)
+        orow = QHBoxLayout()
+        orow.addWidget(self.cb_outbg, 1)
+        self.b_outcolor = QPushButton()
+        self.b_outcolor.setFixedWidth(60)
+        self.b_outcolor.clicked.connect(self._choose_outcolor)
+        orow.addWidget(self.b_outcolor)
+        fo.addRow("Hintergrund:", orow)
+        self.cb_edgemode = QComboBox()
+        self.cb_edgemode.addItem("Sauber – keine Aura (empfohlen)", "sauber")
+        self.cb_edgemode.addItem("Fein – weiche Haare, kann Saum zeigen", "fein")
+        self.cb_edgemode.currentIndexChanged.connect(self._edgemode_changed)
+        fo.addRow("Kante:", self.cb_edgemode)
+        self.s_inset = slider_row(0.0, 5.0, 1.0, 0.5, 1, " px")
+        self.s_inset.setToolTip("Setzt die Kante etwas nach innen. Höher, falls am Rand noch "
+                                "ein Streifen vom alten Hintergrund zu sehen ist.")
+        self.lbl_inset = QLabel("Kante nach innen:")
+        fo.addRow(self.lbl_inset, self.s_inset)
+        self.s_esoft = slider_row(0.0, 3.0, 1.0, 0.25, 2, " px")
+        self.s_esoft.setToolTip("0 = harte Kante, höher = weicher Übergang (nur nach innen).")
+        self.lbl_esoft = QLabel("Kantenweichheit:")
+        fo.addRow(self.lbl_esoft, self.s_esoft)
+        self.ck_adv = QCheckBox("Erweiterte Einstellungen anzeigen")
+        self.ck_adv.toggled.connect(self._mode_changed)
+        fo.addRow(self.ck_adv)
+        pv.addWidget(g_out)
 
         # KI
         self.g_ai = QGroupBox("KI-Freistellung (lokal berechnet)")
@@ -437,9 +471,6 @@ class MainWindow(QMainWindow):
         g_exp = QGroupBox("Export")
         fx = QFormLayout(g_exp)
         self.cb_fmt = QComboBox()
-        for k, v in P.FORMATS.items():
-            self.cb_fmt.addItem(v, k)
-        self.cb_fmt.currentIndexChanged.connect(self._fmt_changed)
         fx.addRow("Format:", self.cb_fmt)
         self.cb_q = QComboBox()
         self.cb_q.addItem("Hoch", "hoch")
@@ -453,10 +484,6 @@ class MainWindow(QMainWindow):
         fx.addRow("Größe (Höhe max.):", self.cb_size)
         self.ck_audio = QCheckBox("Ton mitnehmen")
         fx.addRow(self.ck_audio)
-        self.b_mp4bg = QPushButton()
-        self.b_mp4bg.clicked.connect(self._choose_mp4bg)
-        self.lbl_mp4bg = QLabel("Hintergrund für MP4:")
-        fx.addRow(self.lbl_mp4bg, self.b_mp4bg)
         self.b_export = QPushButton("Exportieren…")
         self.b_export.setMinimumHeight(38)
         self.b_export.setStyleSheet("font-weight:bold;font-size:14px;")
@@ -491,7 +518,7 @@ class MainWindow(QMainWindow):
         splitter.setSizes([960, 480])
 
         # Alle Regler aktualisieren die Vorschau
-        for w in (self.s_dehalo, self.s_detail, self.s_tol, self.s_soft, self.s_despill, self.s_choke,
+        for w in (self.s_inset, self.s_esoft, self.s_dehalo, self.s_detail, self.s_tol, self.s_soft, self.s_despill, self.s_choke,
                   self.s_feather, self.s_lo, self.s_hi):
             w.spin.valueChanged.connect(self.settings_changed)
         for c in (self.ck_edgecol, self.ck_gpu, self.ck_unmix, self.ck_edge, self.ck_refine):
@@ -508,7 +535,7 @@ class MainWindow(QMainWindow):
             QShortcut(QKeySequence(key), self, activated=fn)
 
         self.key_color = (0, 177, 64)
-        self.mp4_bg = (255, 255, 255)
+        self.out_color = (255, 255, 255)
         self.custom_bg: np.ndarray | None = None
 
     # -------------------------------------------------------- Einstellungen
@@ -531,6 +558,9 @@ class MainWindow(QMainWindow):
             dehalo=self.s_dehalo.spin.value(),
             alpha_low=self.s_lo.spin.value(),
             alpha_high=self.s_hi.spin.value(),
+            edge_mode=self.cb_edgemode.currentData(),
+            edge_inset=self.s_inset.spin.value(),
+            edge_soft=self.s_esoft.spin.value(),
         )
 
     def _apply_settings(self, s: P.KeySettings):
@@ -551,6 +581,9 @@ class MainWindow(QMainWindow):
         self.s_dehalo.spin.setValue(s.dehalo)
         self.s_lo.spin.setValue(s.alpha_low)
         self.s_hi.spin.setValue(s.alpha_high)
+        self.cb_edgemode.setCurrentIndex(max(0, self.cb_edgemode.findData(s.edge_mode)))
+        self.s_inset.spin.setValue(s.edge_inset)
+        self.s_esoft.spin.setValue(s.edge_soft)
 
     def _load_settings(self):
         try:
@@ -561,26 +594,32 @@ class MainWindow(QMainWindow):
             # Ab Version 2: genaues Modell als Standard, Detailstufe 1,0
             s.ai_quality, s.ai_detail = "hoch", 1.0
             self.qs.setValue("settings_version", 2)
-        self._apply_settings(s)
         exp = {}
         try:
             exp = json.loads(self.qs.value("export", "{}"))
         except Exception:  # noqa: BLE001
             pass
-        self.cb_fmt.setCurrentIndex(max(0, self.cb_fmt.findData(exp.get("fmt", "webm"))))
+        if int(self.qs.value("settings_version", 1)) < 3:
+            # Ab Version 3: saubere Kante (keine Aura) und weißer Hintergrund als Standard
+            s.edge_mode, s.edge_inset, s.edge_soft = "sauber", 1.0, 1.0
+            exp.update(background="weiss", fmt="mp4")
+            self.qs.setValue("settings_version", 3)
+        self._apply_settings(s)
+        self._set_outcolor(tuple(exp.get("color", (255, 255, 255))))
+        self.cb_outbg.setCurrentIndex(max(0, self.cb_outbg.findData(exp.get("background", "weiss"))))
+        self._outbg_changed()
+        self.cb_fmt.setCurrentIndex(max(0, self.cb_fmt.findData(exp.get("fmt", "mp4"))))
         self.cb_q.setCurrentIndex(max(0, self.cb_q.findData(exp.get("quality", "hoch"))))
         self.cb_size.setCurrentIndex(max(0, self.cb_size.findData(exp.get("max_height", 0))))
         self.ck_audio.setChecked(exp.get("audio", True))
-        self._set_mp4bg(tuple(exp.get("bg", (255, 255, 255))))
         self._mode_changed()
-        self._fmt_changed()
 
     def _save_settings(self):
         self.qs.setValue("key", json.dumps(self.current_settings().to_dict()))
         self.qs.setValue("export", json.dumps({
             "fmt": self.cb_fmt.currentData(), "quality": self.cb_q.currentData(),
             "max_height": self.cb_size.currentData(), "audio": self.ck_audio.isChecked(),
-            "bg": list(self.mp4_bg),
+            "background": self.cb_outbg.currentData(), "color": list(self.out_color),
         }))
 
     def closeEvent(self, e):
@@ -601,9 +640,15 @@ class MainWindow(QMainWindow):
 
     def _mode_changed(self, *_):
         mode = self.cb_mode.currentData()
-        self.g_ai.setVisible(mode == "ai")
+        adv = self.ck_adv.isChecked()
+        clean = self.cb_edgemode.currentData() == "sauber"
+        self.g_ai.setVisible(mode == "ai" and adv)
         self.g_chroma.setVisible(mode == "chroma")
-        self.g_edge.setVisible(mode != "none")
+        self.g_edge.setVisible(mode != "none" and not clean)
+        for wdg in (self.cb_edgemode, self.s_inset, self.s_esoft, self.lbl_inset, self.lbl_esoft):
+            wdg.setEnabled(mode != "none")
+        for wdg in (self.s_inset, self.s_esoft, self.lbl_inset, self.lbl_esoft):
+            wdg.setVisible(clean)
         if mode != "chroma":
             self.b_pick.setChecked(False)
         if mode == "ai":
@@ -615,10 +660,32 @@ class MainWindow(QMainWindow):
             self._ensure_model(self.cb_aiq.currentData())
         self.settings_changed()
 
-    def _fmt_changed(self, *_):
-        is_mp4 = self.cb_fmt.currentData() == "mp4"
-        self.lbl_mp4bg.setVisible(is_mp4)
-        self.b_mp4bg.setVisible(is_mp4)
+    def _edgemode_changed(self, *_):
+        self._mode_changed()
+
+    def transparent_out(self) -> bool:
+        return self.cb_outbg.currentData() == "transparent"
+
+    def export_bg_color(self):
+        return (255, 255, 255) if self.cb_outbg.currentData() == "weiss" else self.out_color
+
+    def _outbg_changed(self, *_):
+        """Formatliste passend zum Hintergrund: Transparenz nur mit WebM/MOV."""
+        keep = self.cb_fmt.currentData()
+        self.cb_fmt.blockSignals(True)
+        self.cb_fmt.clear()
+        if self.transparent_out():
+            self.cb_fmt.addItem("WebM (VP9, mit Transparenz)", "webm")
+            self.cb_fmt.addItem("MOV ProRes 4444 (mit Transparenz, für Schnittprogramme)", "mov")
+        else:
+            self.cb_fmt.addItem("MP4 (H.264, läuft überall)", "mp4")
+            self.cb_fmt.addItem("WebM (VP9)", "webm")
+            self.cb_fmt.addItem("MOV ProRes (für Schnittprogramme)", "mov")
+        idx = self.cb_fmt.findData(keep)
+        self.cb_fmt.setCurrentIndex(max(0, idx))
+        self.cb_fmt.blockSignals(False)
+        self.b_outcolor.setVisible(self.cb_outbg.currentData() == "farbe")
+        self.schedule_render()
 
     def _reset_edges(self):
         d = P.KeySettings()
@@ -641,15 +708,16 @@ class MainWindow(QMainWindow):
         if c.isValid():
             self._set_key_color((c.red(), c.green(), c.blue()))
 
-    def _set_mp4bg(self, c):
-        self.mp4_bg = tuple(int(x) for x in c)
-        self.b_mp4bg.setStyleSheet(
-            f"background-color: rgb{self.mp4_bg}; border:1px solid #555; min-height:20px;")
+    def _set_outcolor(self, c):
+        self.out_color = tuple(int(x) for x in c)
+        self.b_outcolor.setStyleSheet(
+            f"background-color: rgb{self.out_color}; border:1px solid #555; min-height:20px;")
 
-    def _choose_mp4bg(self):
-        c = QColorDialog.getColor(QColor(*self.mp4_bg), self, "Hintergrund für MP4")
+    def _choose_outcolor(self):
+        c = QColorDialog.getColor(QColor(*self.out_color), self, "Hintergrundfarbe")
         if c.isValid():
-            self._set_mp4bg((c.red(), c.green(), c.blue()))
+            self._set_outcolor((c.red(), c.green(), c.blue()))
+            self.schedule_render()
 
     def _quick_color(self, c, white):
         # Weiße Wand: nur zusammenhängend vom Rand aus, sonst verschwinden helle Stellen im Motiv
@@ -952,6 +1020,8 @@ class MainWindow(QMainWindow):
         if name.startswith("Eigenes") and self.custom_bg is not None:
             import cv2
             return cv2.resize(self.custom_bg, (w, h), interpolation=cv2.INTER_AREA)
+        if name == "Wie Export" and not self.transparent_out():
+            return self.export_bg_color()
         return P.checkerboard(h, w)
 
     # ------------------------------------------------------------- Export
@@ -987,7 +1057,8 @@ class MainWindow(QMainWindow):
         job = P.ExportJob(
             info=self.info, out_path=out, segments=self.export_segments(), settings=s,
             fmt=fmt, quality=self.cb_q.currentData(), max_height=self.cb_size.currentData(),
-            audio=self.ck_audio.isChecked(), bg_color=self.mp4_bg,
+            audio=self.ck_audio.isChecked(), bg_color=self.export_bg_color(),
+            transparent=self.transparent_out(),
         )
         self.stop()
         self.export_thread = ExportThread(job, model)
@@ -1020,7 +1091,7 @@ class MainWindow(QMainWindow):
         box.setWindowTitle("Export fertig")
         box.setText(f"Gespeichert:\n{path}")
         b_view = None
-        if path.lower().endswith(".webm"):
+        if path.lower().endswith(".webm") and self.transparent_out():
             box.setInformativeText(
                 "Hinweis: Windows-Mediaplayer, „Filme & TV“ und VLC zeigen keine Transparenz – "
                 "dort sieht man den alten Hintergrund. Zum Prüfen „Mit Transparenz ansehen“ "

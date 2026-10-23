@@ -1,7 +1,8 @@
 # Video-Freisteller
 
-Kleines Windows-Programm, mit dem man Videos **schneiden** und den **Hintergrund freistellen** kann.
-Der Export erfolgt als **WebM mit Transparenz**. Alles wird lokal auf dem eigenen Rechner berechnet, nichts wird hochgeladen.
+Kleines Windows-Programm, mit dem man Videos **schneiden** und die Person **freistellen** kann. Standardmäßig landet sie
+**auf weißem Hintergrund (MP4)**, auf Wunsch auch transparent (WebM/MOV). Alles wird lokal auf dem eigenen Rechner
+berechnet, nichts wird hochgeladen.
 
 ## Installation
 
@@ -25,53 +26,44 @@ Der Export erfolgt als **WebM mit Transparenz**. Alles wird lokal auf dem eigene
   Reihenfolge aneinandergehängt. Ein Doppelklick auf einen Listeneintrag springt zu diesem Bereich.
 - Der Ton wird automatisch passend mitgeschnitten.
 
-**Freistellen**
+**Freistellen – in drei Schritten**
+1. Video öffnen. Die KI erkennt die Person automatisch.
+2. Rechts unter „Ergebnis“ ist schon alles passend eingestellt: Hintergrund **Weiß**, Kante **Sauber – keine Aura**.
+3. „Exportieren…“ klicken. Es entsteht eine MP4-Datei mit weißem Hintergrund.
 
-| Modus | Wofür |
-|---|---|
-| **KI – Person automatisch** (empfohlen) | Personen vor beliebigem Hintergrund, ohne Green-Screen. Arbeitet mit „Robust Video Matting“: weiche Haarkanten und kein Flackern zwischen den Bildern. |
-| **Farbe** | Green-Screen, Blue-Screen oder **weißer Hintergrund**. Die Farbe mit der Pipette direkt im Bild anklicken. |
-| **Nicht freistellen** | Nur schneiden bzw. umwandeln. |
+Die Vorschau zeigt das Ergebnis so, wie es exportiert wird („Hintergrund: Wie Export“).
 
-- **KI-Modell:** „Genau“ (ResNet50) ist der Standard. Es erfasst Hände und Füße zuverlässig und ist kaum langsamer als „Schnell“ (MobileNet). Beide Modelle sind eingebaut.
-- **Detailstufe:** 1,0 lassen. Niedriger macht die Kante verwaschen (Aura um die Figur). Höher bringt feinere Haare, dafür können unsichere Stellen wie Hände oder Füße wegfallen.
-- **Toleranz / Weicher Übergang** (Farbe): Die Toleranz legt fest, was komplett verschwindet. Der weiche Übergang bestimmt, wie breit die Abstufung zur vollen Deckung ist (fein graduierte Kante).
-- **Auto (Bildrand):** übernimmt die häufigste Farbe am Bildrand als Hintergrundfarbe, wie im KI-Assistenten.
-- **Nur vom Bildrand aus entfernen** (wird bei „Weiß“ automatisch eingeschaltet): Es verschwindet nur Hintergrund, der mit dem
-  Rand verbunden ist. Ein weißes Hemd vor weißer Wand bleibt also erhalten. Große, gleichmäßige Lücken, z. B. zwischen Arm
-  und Körper, werden trotzdem entfernt.
-- **Farbsaum entfernen / Kantenfarben entmischen:** entfernt grünen Schimmer bzw. hellen Saum an Haaren und Kanten.
-- **Kanten feinjustieren** (gilt für beide Verfahren):
-  - *An Bilddetails anpassen:* Die Kante folgt feinen Strukturen im Bild.
-  - *Aura entfernen* (Standard 0,4): entfernt den hellen oder farbigen Schleier um die Figur. Bei Bedarf höher stellen.
-    Bei sehr feinen, abstehenden Haaren eher niedriger.
-  - *Schrumpfen/Erweitern:* in Pixeln.
-  - *Weichzeichnen:* macht die Kante weicher.
-  - *Alpha-Schwarz-/Weißpunkt:* Schleier wegnehmen bzw. fast deckende Stellen ganz deckend machen.
-- **Ansicht „Maske (Alpha)“:** Weiß ist deckend, Schwarz transparent, Grau halbtransparent. Damit lässt sich die Abstufung am besten beurteilen.
-- **Ansicht „Vorher | Nachher“** zeigt den direkten Vergleich. Als Hintergrund für die Vorschau gehen Schachbrett, Farben oder ein eigenes Bild.
+**Ergebnis-Einstellungen**
+- **Hintergrund:** *Weiß* (Standard), *Transparent* (WebM/MOV, z. B. für den KI-Assistenten) oder *Eigene Farbe*.
+- **Kante „Sauber“** (Standard): Die Kante ist klar und liegt vollständig auf der Person. Es bleibt kein halbdurchsichtiger
+  Rand mit Resten des alten Hintergrunds, also **keine Aura**. Feine, abstehende Haarspitzen werden dabei etwas
+  vereinfacht.
+  - *Kante nach innen* (Standard 1 px): höher stellen, falls am Rand noch ein dünner Streifen vom alten Hintergrund zu sehen ist.
+  - *Kantenweichheit* (Standard 1 px): 0 ergibt eine harte Kante, höhere Werte einen weicheren Übergang. Der Übergang
+    liegt immer nur nach innen.
+- **Kante „Fein“**: die weiche Original-Kante der KI mit allen Haaren. Sie kann aber einen Saum zeigen. Nur für Spezialfälle.
+- **Erweiterte Einstellungen anzeigen:** KI-Modell, Detailstufe, Grafikkarte. Bei Kante „Fein“ kommen weitere Regler dazu.
 
-**Wenn eine „Aura“ oder ein Saum um die Figur bleibt**
-1. „Aura entfernen“ auf 0,6 bis 0,8 stellen.
-2. „Kante schrumpfen“ auf 1 bis 2 px stellen.
-3. In der Ansicht „Maske (Alpha)“ prüfen, ob um die Figur noch ein grauer Hof zu sehen ist. Wenn ja, den Alpha-Schwarzpunkt
-   etwas anheben (z. B. 0,1).
-4. Bei KI: „Kantenfarben bereinigen“ eingeschaltet lassen. Bei Farbe: „Kantenfarben entmischen“ eingeschaltet lassen.
+**Modus „Farbe“** (Green-Screen oder einfarbige Wand): Hintergrundfarbe per Pipette, „Auto (Bildrand)“ oder Schnellwahl
+festlegen und mit der Toleranz einstellen, was verschwindet. Bei einer weißen Wand bleibt mit „Nur vom Bildrand aus
+entfernen“ ein weißes Hemd erhalten.
 
 **Transparenz prüfen:** Der Windows-Mediaplayer, „Filme & TV“ und VLC zeigen bei WebM keine Transparenz an. Dort sieht man
-den alten Hintergrund. Nach dem Export deshalb auf **„Mit Transparenz ansehen“** klicken: Das öffnet das Video in Edge auf
-Schachbrett, Schwarz, Weiß usw.
+den alten Hintergrund. Nach einem transparenten Export deshalb auf **„Mit Transparenz ansehen“** klicken: Das öffnet das
+Video in Edge.
 
 **Export (Strg+E)**
 
+Welche Formate angeboten werden, hängt vom gewählten Hintergrund ab:
+
 | Format | Transparenz | Hinweis |
 |---|---|---|
-| WebM (VP9) | ja | für Web und Browser. Im KI-Assistenten als Avatar-Video direkt nutzbar (Freistellen: „Video ist schon freigestellt“). |
-| MOV ProRes 4444 | ja | für Premiere, DaVinci Resolve, Final Cut |
-| MP4 (H.264) | nein | MP4 kann technisch keine Transparenz. Der Hintergrund wird mit einer wählbaren Farbe gefüllt. |
+| WebM (VP9) | ja, bei „Transparent“ | für Web und Browser. Im KI-Assistenten als Avatar-Video direkt nutzbar (Freistellen: „Video ist schon freigestellt“). |
+| MOV ProRes 4444 | ja, bei „Transparent“ | für Premiere, DaVinci Resolve, Final Cut |
+| MP4 (H.264) | nein | Standard mit weißem Hintergrund, läuft auf jedem Gerät. |
 
 Die Grafikkarte wird über DirectML genutzt, wenn eine vorhanden ist (NVIDIA, AMD oder Intel). Sonst rechnet der Prozessor.
-Im KI-Bereich steht, worauf gerade gerechnet wird.
+Unter „Erweiterte Einstellungen“ steht, worauf gerade gerechnet wird.
 
 ## Entwicklung
 

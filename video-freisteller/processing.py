@@ -205,6 +205,9 @@ class KeySettings:
     feather: float = 0.0                 # px Weichzeichnung der Kante
     refine: bool = True                  # Kanten an Bilddetails anpassen
     dehalo: float = 0.4                  # Aura/Schleier um die Figur entfernen 0..1
+    edge_mode: str = "sauber"            # "sauber" (keine Aura) | "fein" (weiche KI-Kante)
+    edge_inset: float = 1.0              # px – Kante nach innen setzen (nur "sauber")
+    edge_soft: float = 1.0               # px – Breite der Kantenglaettung (nur "sauber")
     alpha_low: float = 0.0               # Alpha-Schwarzpunkt 0..1
     alpha_high: float = 1.0              # Alpha-Weisspunkt 0..1
 
@@ -440,8 +443,10 @@ class Processor:
                 self.keyer = AIMatter(s, model_path)
         else:
             self.keyer = None
+        self.prev_alpha = None
 
     def reset(self):
+        self.prev_alpha = None
         if isinstance(self.keyer, AIMatter):
             self.keyer.reset()
 
@@ -453,11 +458,68 @@ class Processor:
             rgb, alpha = self.keyer(rgb_u8, warmup=warmup)
         else:
             rgb, alpha = self.keyer(rgb_u8)
-        alpha = self._post_alpha(alpha, rgb_u8)
+        if self.s.edge_mode == "sauber":
+            # leichte zeitliche Glaettung gegen Kantenflimmern
+            if self.prev_alpha is not None and self.prev_alpha.shape == alpha.shape:
+                alpha = 0.7 * alpha + 0.3 * self.prev_alpha
+            self.prev_alpha = alpha
+            alpha = self._clean_alpha(alpha)
+        else:
+            alpha = self._post_alpha(alpha, rgb_u8)
         out = np.empty(rgb_u8.shape[:2] + (4,), np.uint8)
         out[..., :3] = np.round(rgb * 255.0)
         out[..., 3] = np.round(alpha * 255.0)
         return out
+
+    def _clean_alpha(self, alpha: np.ndarray) -> np.ndarray:
+        """Saubere Kante ohne Aura.
+
+        Die KI liefert am Rand einen breiten, halbdurchsichtigen Uebergang, in
+        dem noch Farbe des alten Hintergrunds steckt – das ist die "Aura".
+        Hier wird stattdessen eine klare Figur bestimmt (Deckung > 50 %),
+        von Flecken und Loechern befreit, geglaettet und um einen Hauch nach
+        innen gesetzt. Der weiche Uebergang liegt komplett INNERHALB dieser
+        Kontur – ausserhalb ist alles 100 % Hintergrund.
+        """
+        s, sc = self.s, self.px_scale
+        h, w = alpha.shape
+        m = (alpha > 0.5).astype(np.uint8)
+        if not m.any():
+            return np.zeros_like(alpha)
+        # Kleine Flecken im Hintergrund entfernen (Figur-Teile bleiben)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+        if n > 2:
+            areas = stats[1:, cv2.CC_STAT_AREA]
+            min_area = max(30 * sc * sc, areas.max() * 0.01)
+            keep = np.concatenate([[False], areas >= min_area])
+            m = keep[labels].astype(np.uint8)
+        # Kleine Loecher in der Figur schliessen (grosse Luecken, z. B. zwischen
+        # Arm und Koerper, bleiben Hintergrund)
+        inv = (1 - m).astype(np.uint8)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(inv, connectivity=4)
+        if n > 2:
+            border = np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))
+            small = stats[:, cv2.CC_STAT_AREA] < h * w * 0.0005
+            small[border] = False
+            small[0] = False
+            m[small[labels]] = 1
+        # Kontur glaetten (Treppen/Zacken weg)
+        sig = max(0.6, 1.2 * sc)
+        mf = cv2.GaussianBlur(m.astype(np.float32), (0, 0), sig)
+        m = (mf > 0.5).astype(np.uint8)
+        # nach innen setzen
+        inset = s.edge_inset * sc
+        if inset >= 0.5:
+            k = int(round(inset)) * 2 + 1
+            m = cv2.erode(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+        # weicher Uebergang nur nach innen: aussen bleibt 0
+        soft = s.edge_soft * sc
+        if soft >= 0.25:
+            b = cv2.GaussianBlur(m.astype(np.float32), (0, 0), soft)
+            a = np.clip(2.0 * b - 1.0, 0.0, 1.0)
+        else:
+            a = m.astype(np.float32)
+        return a.astype(np.float32)
 
     @staticmethod
     def _dehalo(alpha: np.ndarray, strength: float, sc: float) -> np.ndarray:
@@ -592,7 +654,8 @@ class ExportJob:
     quality: str = "mittel"
     max_height: int = 0                 # 0 = Originalgroesse
     audio: bool = True
-    bg_color: tuple = (255, 255, 255)   # fuer MP4 (keine Transparenz)
+    bg_color: tuple = (255, 255, 255)   # Hintergrund, wenn nicht transparent
+    transparent: bool = True            # Transparenz behalten (nur WebM/MOV)
 
 
 class Cancelled(Exception):
@@ -669,7 +732,7 @@ def export(job: ExportJob, model_path: Path | None = None,
         _export_plain(ffmpeg, job, segs, total, w, h, use_audio, progress, is_cancelled)
         return
 
-    alpha_out = job.fmt in ("webm", "mov")
+    alpha_out = job.transparent and job.fmt in ("webm", "mov")
     proc = Processor(s, model_path, px_scale=h / job.info.height * 1.0)
 
     enc = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
