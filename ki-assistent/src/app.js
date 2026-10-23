@@ -216,7 +216,7 @@ const DEFAULT_SETTINGS = {
   moodTags: true, // Mimik: das Sprachmodell markiert seine Stimmung, die Figur zeigt sie
   googleUse: true, // Google Kalender & Aufgaben im Gespräch (sobald verbunden)
   googleClientId: '',
-  livePauseMs: 800, // so lange Stille, bis mein Satz als fertig gilt
+  livePauseMs: 1200, // so lange Stille, bis mein Satz als fertig gilt
   alwaysOnTop: false,
   stageHeight: null,
   floating: false,
@@ -435,6 +435,9 @@ const tts = new SpeechOutput({
     avatarState.speaking = on;
     if (!on) state.lastSpeakEnd = Date.now();
     if (on) showTiming();
+    // ohne „Dazwischenreden“ wurde nur während des Nachdenkens zugehört: beginnt die Antwort und spricht gerade
+    // niemand, Zuhören beenden (sonst hörte das Mikrofon die eigene Stimme)
+    if (on && !liveBargeIn() && stt.listening && !state.hearing && !state.wakeListening && !state.longTalk && !state.carry) stt.cancel();
     updateBadge();
     if (!on) maybeListenHandsFree();
   },
@@ -1108,6 +1111,7 @@ async function send(text) {
   cancelLearning();
   state.ttsErrorShown = false;
   state.busy = true;
+  state.lastSendAt = Date.now();
   setBusyUi(true);
 
   const attachments = pendingAttachments;
@@ -3038,6 +3042,7 @@ async function listenOnce({ handsFree = false } = {}) {
   let interrupted = false;
   let held = false; // Antwort angehalten, weil jemand dazwischenzureden scheint – abgebrochen wird erst bei echten Worten
   let duringSpeech = false; // begann ich zu sprechen, während der Avatar redete?
+  let holdGuard = null;
   try {
     // Während der Avatar spricht, muss es lauter und länger sein (sonst unterbricht er sich durch sein Echo selbst)
     const live = handsFree && liveBargeIn();
@@ -3051,9 +3056,9 @@ async function listenOnce({ handsFree = false } = {}) {
       minThreshold: () => (handsFree ? state.settings.sensitivity * 0.5 : 0.003),
       // im Freihand-Modus mindestens ~⅓ s Stimme, damit Tastenklicks und Räuspern nichts auslösen
       startMs: () => (!handsFree ? 0 : tts.speaking || clipLoud() || mediaLoud() ? 350 : 300),
-      // Pause bis „fertig“: wer länger spricht, darf länger überlegen (nach 8 s +0,5 s, nach 18 s +1,5 s);
+      // Pause bis „fertig“: wer länger spricht, darf länger überlegen (nach 5 s +0,5 s, ab 11,5 s +1,5 s);
       // beim langen Erzählen deutlich mehr
-      silenceMs: (spoken) => (state.longTalk ? 3500 : handsFree ? state.settings.livePauseMs : 1100) + Math.min(1500, Math.max(0, spoken - 3000) * 0.1),
+      silenceMs: (spoken) => (state.longTalk ? 3500 : handsFree ? state.settings.livePauseMs : 1100) + Math.min(1500, Math.max(0, spoken - 1500) * 0.15),
       maxMs: () => (state.longTalk ? 300000 : 120000),
       onSpeechStart: () => {
         duringSpeech = tts.speaking || Date.now() - (state.lastSpeakEnd ?? 0) < 1000;
@@ -3073,9 +3078,15 @@ async function listenOnce({ handsFree = false } = {}) {
         }
         // nicht gleich abbrechen: Knacken, Fahrgeräusche oder das eigene Echo sollen keine Antwort verschlucken.
         // Die Stimme pausiert nur; abgebrochen wird erst, wenn wirklich Worte erkannt wurden.
-        if (live && (tts.speaking || state.busy)) {
+        // spricht man weiter, während die Figur noch nachdenkt (Satz war nur kurz unterbrochen), gilt das als
+        // Fortsetzung – auch ohne „Dazwischenreden“: Antwort anhalten, nachher beides als EINE Frage schicken
+        const continuing = handsFree && state.busy && !tts.speaking && Date.now() - (state.lastSendAt ?? 0) < 12000;
+        if ((live && (tts.speaking || state.busy)) || continuing) {
           held = true;
           tts.hold();
+          // kommt die Antwort erst jetzt an, auch sie anhalten, bis klar ist, ob wirklich gesprochen wird
+          clearInterval(holdGuard);
+          holdGuard = setInterval(() => held && tts.speaking && !tts.held && tts.hold(), 200);
           status('Ich höre zu …');
         }
       },
@@ -3180,6 +3191,7 @@ async function listenOnce({ handsFree = false } = {}) {
     if (state.settings.handsFree) setHandsFree(false);
   } finally {
     // war es doch nur ein Geräusch: die angehaltene Antwort läuft einfach weiter
+    clearInterval(holdGuard);
     if (held) {
       tts.release();
       logEv('STT', 'Geräusch während der Antwort – weitergesprochen');
@@ -3246,7 +3258,9 @@ function maybeListenHandsFree(tries = 0) {
   setTimeout(() => {
     // Live-Gespräch hört auch zu, während der Avatar denkt oder spricht
     // während eines Telefonats nicht zuhören (Mikrofon gehört dem Gespräch)
-    const free = (liveBargeIn() || (!state.busy && !tts.speaking)) && !state.inCall;
+    // auch, solange die Figur über die gerade gestellte Frage nachdenkt: so kommt ein Weitersprechen noch dazu
+    const thinking = state.busy && !tts.speaking && Date.now() - (state.lastSendAt ?? 0) < 12000;
+    const free = (liveBargeIn() || (!state.busy && !tts.speaking) || thinking) && !state.inCall;
     // wartet gerade das Aktivierungswort aufs Mikrofon: freigeben, dann zuhören
     if (state.settings.handsFree && free && state.wakeListening && tries < 10) {
       stt.cancel();
@@ -6497,6 +6511,11 @@ async function refreshModels() {
 async function init() {
   const data = (await desktop.loadData()) ?? {};
   state.settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
+  // Beta 69: die alte Grundeinstellung 0,8 s riss längere Sätze ab – einmalig auf 1,2 s
+  if (!state.settings.pauseV2) {
+    if (state.settings.livePauseMs === 800) state.settings.livePauseMs = 1200;
+    state.settings.pauseV2 = true;
+  }
   stt.setDevice(state.settings.micId || '');
   if (!['german', 'english'].includes(state.settings.sttLang)) state.settings.sttLang = 'persona';
   // Ältere Installationen einmalig umstellen: Cloud-Erkennung (Cloud-Ausgabe) und genaueres lokales Modell
@@ -9724,6 +9743,14 @@ async function startRealtime() {
               tools: appToolsLib.APP_TOOLS.filter((d) => !(MOBILE && d.desktopOnly) && !(!MOBILE && d.mobileOnly) && !(d.privatOnly && !PRIV)).map((d) => ({ type: 'function', name: d.name, description: d.description, parameters: d.input_schema })),
               tool_choice: 'auto',
             },
+          }),
+        );
+        // Satzende erkennen am Sinn statt an jeder kurzen Pause („low“ = lässt ausreden) – eigene Nachricht, damit die
+        // Werkzeuge oben bleiben, falls der Dienst diese Einstellung einmal ablehnt
+        dc.send(
+          JSON.stringify({
+            type: 'session.update',
+            session: { type: 'realtime', audio: { input: { turn_detection: { type: 'semantic_vad', eagerness: state.settings.livePauseMs <= 600 ? 'medium' : 'low' } } } },
           }),
         );
       } catch {}

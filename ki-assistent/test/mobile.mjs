@@ -2769,6 +2769,8 @@ const b68 = await page.evaluate(async () => {
 check(b68.unf.join() === 'true,true,false,false,true' && b68.long.every(Boolean) && !b68.notLong, 'Spracheingabe: unfertige Sätze erkannt, „Hör mir länger zu“ startet langes Erzählen', JSON.stringify(b68));
 check(b68.inCall && b68.noListen && b68.after, 'Telefonat: Figur hält inne und macht danach weiter', JSON.stringify(b68));
 check(b68.yt.video === 'abcDEF12345' && /Entspannungsmusik/.test(b68.yt.laeuft) && b68.yt.weitere === 1 && b68.mediaPause && !b68.mediaOther, 'YouTube: passendes Video gesucht und abgespielt, Pause per Zuruf', JSON.stringify(b68));
+const b69 = await page.evaluate(() => ({ pause: window.__app.state.settings.livePauseMs, v2: window.__app.state.settings.pauseV2, opt: [...document.querySelectorAll('#sLivePause option')].map((o) => o.value).join() }));
+check(b69.pause >= 1200 && b69.v2 && b69.opt === '600,800,1200,2000', 'Spracheingabe: Grundeinstellung 1,2 s (alte 0,8 s umgestellt), Stufen bis 2 s', JSON.stringify(b69));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);
