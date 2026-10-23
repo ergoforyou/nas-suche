@@ -1,0 +1,7970 @@
+{
+  "id": "5cc15f60-b6ea-4bb8-a946-2f15cafb408b",
+  "revision": 0,
+  "last_node_id": 124,
+  "last_link_id": 229,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        440,
+        560
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6,
+            18
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "start.png",
+        "image"
+      ],
+      "title": "Startbild Szene 1 (Ctrl+B = ohne)"
+    },
+    {
+      "id": 2,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        470,
+        0
+      ],
+      "size": [
+        700,
+        560
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            3,
+            36,
+            74,
+            112,
+            150,
+            188
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "Geschichte (Deutsch reicht): Zwei Freunde machen ein Picknick auf einer sonnigen Wiese am Waldrand. Sie packen den Korb aus, essen, lachen und genießen den Nachmittag. Ruhige, freundliche Stimmung."
+      ],
+      "title": "GESCHICHTE – Idee in eigenen Worten (für alle Szenen)",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 3,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        1190,
+        0
+      ],
+      "size": [
+        700,
+        560
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            7,
+            40,
+            78,
+            116,
+            154,
+            192
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "You write prompts for the MiniMax H3 video model. You receive the overall story idea, an instruction for the current scene (it may be in German) and an image that is the exact first frame of this scene.\nWrite the prompt for exactly this one scene in English, 80 to 130 words, in this order:\nSCENE: the location, light and background exactly as visible in the image.\nPEOPLE: every visible person with position (left/right/center), hair and clothing exactly as in the image.\nACTION: one or two calm, continuous actions that continue directly from the moment shown in the image. Only the people move.\nAudio: ambience and sounds; dialogue only if the instruction asks for it, in quotes and in the requested language.\nRules: never describe camera movement, zoom, cuts, close-ups, details or new viewpoints. Do not invent new people, objects or locations that are not in the image unless the instruction asks for them. No timestamps, no lists, no other headings. Output only the prompt text."
+      ],
+      "title": "Regeln für das Sprachmodell (System-Prompt, normal nicht ändern)"
+    },
+    {
+      "id": 4,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        1910,
+        0
+      ],
+      "size": [
+        520,
+        560
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            8,
+            41,
+            79,
+            117,
+            155,
+            193
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "CAMERA (fixed, never changes): single continuous shot, one take, no cuts, no scene changes. Locked-off static camera on a tripod at eye level, wide shot, 35mm lens. The camera does not move, does not zoom in or out, does not pan, tilt or dolly. The framing, camera angle, distance and background stay exactly identical to image 1 for the entire clip. No close-ups, no detail shots, no new viewpoints.\nThe scene opens exactly on image 1."
+      ],
+      "title": "KAMERA-BLOCK – vor jede Szene",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 5,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        2450,
+        0
+      ],
+      "size": [
+        420,
+        560
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            12,
+            45,
+            83,
+            121,
+            159,
+            197
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveStringMultiline"
+      },
+      "widgets_values": [
+        "Camera, framing, zoom level and background remain exactly the same as at the start: static locked-off wide shot, no zoom, no camera movement, no cuts. Only the people move."
+      ],
+      "title": "KAMERA-REGEL – ans Ende jeder Szene",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 6,
+      "type": "CLIPLoader",
+      "pos": [
+        2890,
+        0
+      ],
+      "size": [
+        400,
+        110
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip_name",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "clip_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            4,
+            37,
+            75,
+            113,
+            151,
+            189
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "gemma4_e4b_it_fp8_scaled.safetensors",
+        "stable_diffusion",
+        "default"
+      ],
+      "title": "Sprachmodell Gemma 4 E4B (text_encoders)",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 7,
+      "type": "UNETLoader",
+      "pos": [
+        -520,
+        760
+      ],
+      "size": [
+        400,
+        90
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "unet_name",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "unet_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "default"
+      ]
+    },
+    {
+      "id": 8,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        -520,
+        890
+      ],
+      "size": [
+        400,
+        90
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "name": "lora_name",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "lora_name"
+          }
+        },
+        {
+          "name": "strength_model",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "strength_model"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            2,
+            21,
+            54,
+            92,
+            130,
+            168,
+            206
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        1
+      ],
+      "title": "Turbo-LoRA 8 Schritte (Ctrl+B = aus)",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 9,
+      "type": "CLIPLoader",
+      "pos": [
+        -520,
+        1020
+      ],
+      "size": [
+        400,
+        110
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip_name",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "clip_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            14,
+            47,
+            85,
+            123,
+            161,
+            199
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax",
+        "default"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "VAELoader",
+      "pos": [
+        -520,
+        1170
+      ],
+      "size": [
+        400,
+        60
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae_name",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "vae_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            15,
+            29,
+            48,
+            62,
+            86,
+            100,
+            124,
+            138,
+            162,
+            176,
+            200,
+            214
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_video_vae_int8_convrot.safetensors"
+      ],
+      "title": "Video-VAE"
+    },
+    {
+      "id": 11,
+      "type": "VAELoader",
+      "pos": [
+        -520,
+        1270
+      ],
+      "size": [
+        400,
+        60
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae_name",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "vae_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            31,
+            64,
+            102,
+            140,
+            178,
+            216
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ],
+      "title": "Audio-VAE"
+    },
+    {
+      "id": 12,
+      "type": "KSamplerSelect",
+      "pos": [
+        -520,
+        1370
+      ],
+      "size": [
+        300,
+        60
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            25,
+            58,
+            96,
+            134,
+            172,
+            210
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "res_multistep"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "BasicScheduler",
+      "pos": [
+        -520,
+        1470
+      ],
+      "size": [
+        300,
+        110
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 2
+        },
+        {
+          "name": "steps",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "steps"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            26,
+            59,
+            97,
+            135,
+            173,
+            211
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        8,
+        1
+      ],
+      "title": "Schritte (Turbo: 8 · ohne Turbo: 20)"
+    },
+    {
+      "id": 14,
+      "type": "RandomNoise",
+      "pos": [
+        -520,
+        1620
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise_seed",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "noise_seed"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            23,
+            56,
+            94,
+            132,
+            170,
+            208
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        42,
+        "fixed"
+      ],
+      "title": "Seed"
+    },
+    {
+      "id": 15,
+      "type": "ResolutionSelector",
+      "pos": [
+        -520,
+        1760
+      ],
+      "size": [
+        440,
+        330
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            16,
+            49,
+            87,
+            125,
+            163,
+            201
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            17,
+            50,
+            88,
+            126,
+            164,
+            202
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ResolutionSelector"
+      },
+      "widgets_values": [
+        "16:9 (Widescreen)",
+        0.4,
+        32
+      ],
+      "title": "Format: Hoch-/Querformat wählen (Vorschau zeigt Größe)",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 16,
+      "type": "StringConcatenate",
+      "pos": [
+        0,
+        820
+      ],
+      "size": [
+        520,
+        200
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 3,
+          "widget": {
+            "name": "string_a"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "Szene 1: Der Mann streckt die Arme hoch, die Frau dreht sich zu ihm um.",
+        "\n\n"
+      ],
+      "title": "Szene 1: kurz beschreiben, was passiert (Deutsch)"
+    },
+    {
+      "id": 17,
+      "type": "TextGenerate",
+      "pos": [
+        0,
+        1040
+      ],
+      "size": [
+        520,
+        330
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 4
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 5,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6,
+          "shape": 7
+        },
+        {
+          "name": "video",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": 7,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            9,
+            10
+          ]
+        },
+        {
+          "name": "thinking",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        400,
+        "on",
+        0.6,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        0,
+        0,
+        false,
+        true
+      ],
+      "title": "KI schreibt Prompt Szene 1 (sieht das Startbild)",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 18,
+      "type": "PreviewAny",
+      "pos": [
+        0,
+        1380
+      ],
+      "size": [
+        520,
+        110
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 10
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        null,
+        null,
+        null
+      ],
+      "title": "Geschriebener Prompt"
+    },
+    {
+      "id": 19,
+      "type": "StringConcatenate",
+      "pos": [
+        0,
+        1510
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 8,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 9,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "Kamera-Block + KI-Prompt"
+    },
+    {
+      "id": 20,
+      "type": "StringConcatenate",
+      "pos": [
+        0,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 11,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 12,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 21,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        0,
+        1600
+      ],
+      "size": [
+        520,
+        440
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 14
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 15
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 18,
+          "shape": 7
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 13,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 16,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 17,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 20,
+          "widget": {
+            "name": "length"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            22
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            27
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ImageToVideo"
+      },
+      "widgets_values": [
+        "",
+        1344,
+        768,
+        121
+      ],
+      "title": "Szene 1"
+    },
+    {
+      "id": 22,
+      "type": "PrimitiveFloat",
+      "pos": [
+        0,
+        2050
+      ],
+      "size": [
+        260,
+        60
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            19
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        8
+      ],
+      "title": "Dauer Szene 1 (s)"
+    },
+    {
+      "id": 23,
+      "type": "ComfyMathExpression",
+      "pos": [
+        280,
+        2050
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 19
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            20
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      ],
+      "title": "Sekunden → Frames"
+    },
+    {
+      "id": 24,
+      "type": "BasicGuider",
+      "pos": [
+        0,
+        2150
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 21
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            24
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 25,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        0,
+        2230
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 23
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 24
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 25
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 26
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            28,
+            30
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 26,
+      "type": "VAEDecode",
+      "pos": [
+        280,
+        2230
+      ],
+      "size": [
+        220,
+        50
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 28
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 29
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            32,
+            35,
+            69
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 27,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        280,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 30
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 31
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            33,
+            71
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeAudio"
+      },
+      "title": "Ton Szene 1",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 28,
+      "type": "CreateVideo",
+      "pos": [
+        0,
+        2370
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 32
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 33,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            34
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Szene 1 als Einzelvideo"
+    },
+    {
+      "id": 29,
+      "type": "SaveVideo",
+      "pos": [
+        0,
+        2490
+      ],
+      "size": [
+        520,
+        380
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 34
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_szene_1",
+        "auto",
+        "auto"
+      ],
+      "title": "Szene 1 (einzeln)"
+    },
+    {
+      "id": 30,
+      "type": "ImageFromBatch",
+      "pos": [
+        580,
+        700
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            39,
+            51
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        -1,
+        1
+      ],
+      "title": "Letztes Bild Szene 1 → Start",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 31,
+      "type": "StringConcatenate",
+      "pos": [
+        580,
+        820
+      ],
+      "size": [
+        520,
+        200
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 36,
+          "widget": {
+            "name": "string_a"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            38
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "Szene 2: Beide bücken sich zum Picknickkorb und nehmen Brot und Äpfel heraus.",
+        "\n\n"
+      ],
+      "title": "Szene 2: kurz beschreiben, was passiert (Deutsch)"
+    },
+    {
+      "id": 32,
+      "type": "TextGenerate",
+      "pos": [
+        580,
+        1040
+      ],
+      "size": [
+        520,
+        330
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 37
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 38,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 39,
+          "shape": 7
+        },
+        {
+          "name": "video",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": 40,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            42,
+            43
+          ]
+        },
+        {
+          "name": "thinking",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        400,
+        "on",
+        0.6,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        1,
+        0,
+        false,
+        true
+      ],
+      "title": "KI schreibt Prompt Szene 2 (sieht das Startbild)",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 33,
+      "type": "PreviewAny",
+      "pos": [
+        580,
+        1380
+      ],
+      "size": [
+        520,
+        110
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 43
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        null,
+        null,
+        null
+      ],
+      "title": "Geschriebener Prompt"
+    },
+    {
+      "id": 34,
+      "type": "StringConcatenate",
+      "pos": [
+        580,
+        1510
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 41,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 42,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            44
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "Kamera-Block + KI-Prompt"
+    },
+    {
+      "id": 35,
+      "type": "StringConcatenate",
+      "pos": [
+        580,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 44,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 45,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            46
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 36,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        580,
+        1600
+      ],
+      "size": [
+        520,
+        440
+      ],
+      "flags": {},
+      "order": 35,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 47
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 48
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 51,
+          "shape": 7
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 46,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 49,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 50,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 53,
+          "widget": {
+            "name": "length"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            55
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            60
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ImageToVideo"
+      },
+      "widgets_values": [
+        "",
+        1344,
+        768,
+        121
+      ],
+      "title": "Szene 2"
+    },
+    {
+      "id": 37,
+      "type": "PrimitiveFloat",
+      "pos": [
+        580,
+        2050
+      ],
+      "size": [
+        260,
+        60
+      ],
+      "flags": {},
+      "order": 36,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            52
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        8
+      ],
+      "title": "Dauer Szene 2 (s)"
+    },
+    {
+      "id": 38,
+      "type": "ComfyMathExpression",
+      "pos": [
+        860,
+        2050
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 37,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 52
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            53
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      ],
+      "title": "Sekunden → Frames"
+    },
+    {
+      "id": 39,
+      "type": "BasicGuider",
+      "pos": [
+        580,
+        2150
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 38,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 54
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 55
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            57
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 40,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        580,
+        2230
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 39,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 56
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 57
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 58
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 59
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 60
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            61,
+            63
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 41,
+      "type": "VAEDecode",
+      "pos": [
+        860,
+        2230
+      ],
+      "size": [
+        220,
+        50
+      ],
+      "flags": {},
+      "order": 40,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 61
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 62
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            65,
+            68,
+            73
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 42,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        860,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 41,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 63
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 64
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            66,
+            72
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeAudio"
+      },
+      "title": "Ton Szene 2",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 43,
+      "type": "CreateVideo",
+      "pos": [
+        580,
+        2370
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 42,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 65
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 66,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            67
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Szene 2 als Einzelvideo"
+    },
+    {
+      "id": 44,
+      "type": "SaveVideo",
+      "pos": [
+        580,
+        2490
+      ],
+      "size": [
+        520,
+        380
+      ],
+      "flags": {},
+      "order": 43,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 67
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_szene_2",
+        "auto",
+        "auto"
+      ],
+      "title": "Szene 2 (einzeln)"
+    },
+    {
+      "id": 45,
+      "type": "ImageFromBatch",
+      "pos": [
+        860,
+        2370
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 44,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 68
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            70
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        1,
+        4096
+      ],
+      "title": "Doppeltes Übergangsbild weg"
+    },
+    {
+      "id": 46,
+      "type": "ImageBatch",
+      "pos": [
+        860,
+        2410
+      ],
+      "size": [
+        240,
+        70
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 45,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 69
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 70
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            107
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      },
+      "title": "+ Szene 2 (Bild)"
+    },
+    {
+      "id": 47,
+      "type": "AudioConcat",
+      "pos": [
+        860,
+        2450
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 46,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio1",
+          "type": "AUDIO",
+          "link": 71
+        },
+        {
+          "name": "audio2",
+          "type": "AUDIO",
+          "link": 72
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            109
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AudioConcat"
+      },
+      "widgets_values": [
+        "after"
+      ],
+      "title": "+ Szene 2 (Ton)",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 48,
+      "type": "ImageFromBatch",
+      "pos": [
+        1160,
+        700
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "flags": {},
+      "order": 47,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 73
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            77,
+            89
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        -1,
+        1
+      ],
+      "title": "Letztes Bild Szene 2 → Start",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 49,
+      "type": "StringConcatenate",
+      "pos": [
+        1160,
+        820
+      ],
+      "size": [
+        520,
+        200
+      ],
+      "flags": {},
+      "order": 48,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 74,
+          "widget": {
+            "name": "string_a"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            76
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "Szene 3: Sie breiten die Decke aus und setzen sich.",
+        "\n\n"
+      ],
+      "title": "Szene 3: kurz beschreiben, was passiert (Deutsch)"
+    },
+    {
+      "id": 50,
+      "type": "TextGenerate",
+      "pos": [
+        1160,
+        1040
+      ],
+      "size": [
+        520,
+        330
+      ],
+      "flags": {},
+      "order": 49,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 75
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 76,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 77,
+          "shape": 7
+        },
+        {
+          "name": "video",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": 78,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            80,
+            81
+          ]
+        },
+        {
+          "name": "thinking",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        400,
+        "on",
+        0.6,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        2,
+        0,
+        false,
+        true
+      ],
+      "title": "KI schreibt Prompt Szene 3 (sieht das Startbild)",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 51,
+      "type": "PreviewAny",
+      "pos": [
+        1160,
+        1380
+      ],
+      "size": [
+        520,
+        110
+      ],
+      "flags": {},
+      "order": 50,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 81
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        null,
+        null,
+        null
+      ],
+      "title": "Geschriebener Prompt"
+    },
+    {
+      "id": 52,
+      "type": "StringConcatenate",
+      "pos": [
+        1160,
+        1510
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 51,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 79,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 80,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            82
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "Kamera-Block + KI-Prompt"
+    },
+    {
+      "id": 53,
+      "type": "StringConcatenate",
+      "pos": [
+        1160,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 52,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 82,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 83,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            84
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 54,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        1160,
+        1600
+      ],
+      "size": [
+        520,
+        440
+      ],
+      "flags": {},
+      "order": 53,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 85
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 86
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 89,
+          "shape": 7
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 84,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 87,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 88,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 91,
+          "widget": {
+            "name": "length"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            93
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            98
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ImageToVideo"
+      },
+      "widgets_values": [
+        "",
+        1344,
+        768,
+        121
+      ],
+      "title": "Szene 3"
+    },
+    {
+      "id": 55,
+      "type": "PrimitiveFloat",
+      "pos": [
+        1160,
+        2050
+      ],
+      "size": [
+        260,
+        60
+      ],
+      "flags": {},
+      "order": 54,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            90
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        8
+      ],
+      "title": "Dauer Szene 3 (s)"
+    },
+    {
+      "id": 56,
+      "type": "ComfyMathExpression",
+      "pos": [
+        1440,
+        2050
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 55,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 90
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            91
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      ],
+      "title": "Sekunden → Frames"
+    },
+    {
+      "id": 57,
+      "type": "BasicGuider",
+      "pos": [
+        1160,
+        2150
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 56,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 92
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 93
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            95
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 58,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        1160,
+        2230
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 57,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 94
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 95
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 96
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 97
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 98
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            99,
+            101
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 59,
+      "type": "VAEDecode",
+      "pos": [
+        1440,
+        2230
+      ],
+      "size": [
+        220,
+        50
+      ],
+      "flags": {},
+      "order": 58,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 99
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 100
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            103,
+            106,
+            111
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 60,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        1440,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 59,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 101
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 102
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            104,
+            110
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeAudio"
+      },
+      "title": "Ton Szene 3",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 61,
+      "type": "CreateVideo",
+      "pos": [
+        1160,
+        2370
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 60,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 103
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 104,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            105
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Szene 3 als Einzelvideo"
+    },
+    {
+      "id": 62,
+      "type": "SaveVideo",
+      "pos": [
+        1160,
+        2490
+      ],
+      "size": [
+        520,
+        380
+      ],
+      "flags": {},
+      "order": 61,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 105
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_szene_3",
+        "auto",
+        "auto"
+      ],
+      "title": "Szene 3 (einzeln)"
+    },
+    {
+      "id": 63,
+      "type": "ImageFromBatch",
+      "pos": [
+        1440,
+        2370
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 62,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 106
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            108
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        1,
+        4096
+      ],
+      "title": "Doppeltes Übergangsbild weg"
+    },
+    {
+      "id": 64,
+      "type": "ImageBatch",
+      "pos": [
+        1440,
+        2410
+      ],
+      "size": [
+        240,
+        70
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 63,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 107
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 108
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            145
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      },
+      "title": "+ Szene 3 (Bild)"
+    },
+    {
+      "id": 65,
+      "type": "AudioConcat",
+      "pos": [
+        1440,
+        2450
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 64,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio1",
+          "type": "AUDIO",
+          "link": 109
+        },
+        {
+          "name": "audio2",
+          "type": "AUDIO",
+          "link": 110
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            147
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AudioConcat"
+      },
+      "widgets_values": [
+        "after"
+      ],
+      "title": "+ Szene 3 (Ton)",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 66,
+      "type": "ImageFromBatch",
+      "pos": [
+        1740,
+        700
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "flags": {},
+      "order": 65,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 111
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            115,
+            127
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        -1,
+        1
+      ],
+      "title": "Letztes Bild Szene 3 → Start",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 67,
+      "type": "StringConcatenate",
+      "pos": [
+        1740,
+        820
+      ],
+      "size": [
+        520,
+        200
+      ],
+      "flags": {},
+      "order": 66,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 112,
+          "widget": {
+            "name": "string_a"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            114
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "Szene 4: Sie essen und unterhalten sich, die Frau lacht.",
+        "\n\n"
+      ],
+      "title": "Szene 4: kurz beschreiben, was passiert (Deutsch)"
+    },
+    {
+      "id": 68,
+      "type": "TextGenerate",
+      "pos": [
+        1740,
+        1040
+      ],
+      "size": [
+        520,
+        330
+      ],
+      "flags": {},
+      "order": 67,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 113
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 114,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 115,
+          "shape": 7
+        },
+        {
+          "name": "video",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": 116,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            118,
+            119
+          ]
+        },
+        {
+          "name": "thinking",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        400,
+        "on",
+        0.6,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        3,
+        0,
+        false,
+        true
+      ],
+      "title": "KI schreibt Prompt Szene 4 (sieht das Startbild)",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 69,
+      "type": "PreviewAny",
+      "pos": [
+        1740,
+        1380
+      ],
+      "size": [
+        520,
+        110
+      ],
+      "flags": {},
+      "order": 68,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 119
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        null,
+        null,
+        null
+      ],
+      "title": "Geschriebener Prompt"
+    },
+    {
+      "id": 70,
+      "type": "StringConcatenate",
+      "pos": [
+        1740,
+        1510
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 69,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 117,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 118,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            120
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "Kamera-Block + KI-Prompt"
+    },
+    {
+      "id": 71,
+      "type": "StringConcatenate",
+      "pos": [
+        1740,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 70,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 120,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 121,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            122
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 72,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        1740,
+        1600
+      ],
+      "size": [
+        520,
+        440
+      ],
+      "flags": {},
+      "order": 71,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 123
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 124
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 127,
+          "shape": 7
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 122,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 125,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 126,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 129,
+          "widget": {
+            "name": "length"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            131
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            136
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ImageToVideo"
+      },
+      "widgets_values": [
+        "",
+        1344,
+        768,
+        121
+      ],
+      "title": "Szene 4"
+    },
+    {
+      "id": 73,
+      "type": "PrimitiveFloat",
+      "pos": [
+        1740,
+        2050
+      ],
+      "size": [
+        260,
+        60
+      ],
+      "flags": {},
+      "order": 72,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            128
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        8
+      ],
+      "title": "Dauer Szene 4 (s)"
+    },
+    {
+      "id": 74,
+      "type": "ComfyMathExpression",
+      "pos": [
+        2020,
+        2050
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 73,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 128
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            129
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      ],
+      "title": "Sekunden → Frames"
+    },
+    {
+      "id": 75,
+      "type": "BasicGuider",
+      "pos": [
+        1740,
+        2150
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 74,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 130
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 131
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            133
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 76,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        1740,
+        2230
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 75,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 132
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 133
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 134
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 135
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 136
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            137,
+            139
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 77,
+      "type": "VAEDecode",
+      "pos": [
+        2020,
+        2230
+      ],
+      "size": [
+        220,
+        50
+      ],
+      "flags": {},
+      "order": 76,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 137
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 138
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            141,
+            144,
+            149
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 78,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        2020,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 77,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 139
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 140
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            142,
+            148
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeAudio"
+      },
+      "title": "Ton Szene 4",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 79,
+      "type": "CreateVideo",
+      "pos": [
+        1740,
+        2370
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 78,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 141
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 142,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            143
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Szene 4 als Einzelvideo"
+    },
+    {
+      "id": 80,
+      "type": "SaveVideo",
+      "pos": [
+        1740,
+        2490
+      ],
+      "size": [
+        520,
+        380
+      ],
+      "flags": {},
+      "order": 79,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 143
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_szene_4",
+        "auto",
+        "auto"
+      ],
+      "title": "Szene 4 (einzeln)"
+    },
+    {
+      "id": 81,
+      "type": "ImageFromBatch",
+      "pos": [
+        2020,
+        2370
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 80,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 144
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            146
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        1,
+        4096
+      ],
+      "title": "Doppeltes Übergangsbild weg"
+    },
+    {
+      "id": 82,
+      "type": "ImageBatch",
+      "pos": [
+        2020,
+        2410
+      ],
+      "size": [
+        240,
+        70
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 81,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 145
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 146
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            183
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      },
+      "title": "+ Szene 4 (Bild)"
+    },
+    {
+      "id": 83,
+      "type": "AudioConcat",
+      "pos": [
+        2020,
+        2450
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 82,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio1",
+          "type": "AUDIO",
+          "link": 147
+        },
+        {
+          "name": "audio2",
+          "type": "AUDIO",
+          "link": 148
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            185
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AudioConcat"
+      },
+      "widgets_values": [
+        "after"
+      ],
+      "title": "+ Szene 4 (Ton)",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 84,
+      "type": "ImageFromBatch",
+      "pos": [
+        2320,
+        700
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "flags": {},
+      "order": 83,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 149
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            153,
+            165
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        -1,
+        1
+      ],
+      "title": "Letztes Bild Szene 4 → Start",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 85,
+      "type": "StringConcatenate",
+      "pos": [
+        2320,
+        820
+      ],
+      "size": [
+        520,
+        200
+      ],
+      "flags": {},
+      "order": 84,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 150,
+          "widget": {
+            "name": "string_a"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            152
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "Szene 5: Der Mann schenkt zwei Gläser ein, sie stoßen an.",
+        "\n\n"
+      ],
+      "title": "Szene 5: kurz beschreiben, was passiert (Deutsch)"
+    },
+    {
+      "id": 86,
+      "type": "TextGenerate",
+      "pos": [
+        2320,
+        1040
+      ],
+      "size": [
+        520,
+        330
+      ],
+      "flags": {},
+      "order": 85,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 151
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 152,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 153,
+          "shape": 7
+        },
+        {
+          "name": "video",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": 154,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            156,
+            157
+          ]
+        },
+        {
+          "name": "thinking",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        400,
+        "on",
+        0.6,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        4,
+        0,
+        false,
+        true
+      ],
+      "title": "KI schreibt Prompt Szene 5 (sieht das Startbild)",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 87,
+      "type": "PreviewAny",
+      "pos": [
+        2320,
+        1380
+      ],
+      "size": [
+        520,
+        110
+      ],
+      "flags": {},
+      "order": 86,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 157
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        null,
+        null,
+        null
+      ],
+      "title": "Geschriebener Prompt"
+    },
+    {
+      "id": 88,
+      "type": "StringConcatenate",
+      "pos": [
+        2320,
+        1510
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 87,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 155,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 156,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            158
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "Kamera-Block + KI-Prompt"
+    },
+    {
+      "id": 89,
+      "type": "StringConcatenate",
+      "pos": [
+        2320,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 88,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 158,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 159,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            160
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 90,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        2320,
+        1600
+      ],
+      "size": [
+        520,
+        440
+      ],
+      "flags": {},
+      "order": 89,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 161
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 162
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 165,
+          "shape": 7
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 160,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 163,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 164,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 167,
+          "widget": {
+            "name": "length"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            169
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            174
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ImageToVideo"
+      },
+      "widgets_values": [
+        "",
+        1344,
+        768,
+        121
+      ],
+      "title": "Szene 5"
+    },
+    {
+      "id": 91,
+      "type": "PrimitiveFloat",
+      "pos": [
+        2320,
+        2050
+      ],
+      "size": [
+        260,
+        60
+      ],
+      "flags": {},
+      "order": 90,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            166
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        8
+      ],
+      "title": "Dauer Szene 5 (s)"
+    },
+    {
+      "id": 92,
+      "type": "ComfyMathExpression",
+      "pos": [
+        2600,
+        2050
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 91,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 166
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            167
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      ],
+      "title": "Sekunden → Frames"
+    },
+    {
+      "id": 93,
+      "type": "BasicGuider",
+      "pos": [
+        2320,
+        2150
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 92,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 168
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 169
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            171
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 94,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        2320,
+        2230
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 93,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 170
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 171
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 172
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 173
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 174
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            175,
+            177
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 95,
+      "type": "VAEDecode",
+      "pos": [
+        2600,
+        2230
+      ],
+      "size": [
+        220,
+        50
+      ],
+      "flags": {},
+      "order": 94,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 175
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 176
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            179,
+            182,
+            187
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 96,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        2600,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 95,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 177
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 178
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            180,
+            186
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeAudio"
+      },
+      "title": "Ton Szene 5",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 97,
+      "type": "CreateVideo",
+      "pos": [
+        2320,
+        2370
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 96,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 179
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 180,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            181
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Szene 5 als Einzelvideo"
+    },
+    {
+      "id": 98,
+      "type": "SaveVideo",
+      "pos": [
+        2320,
+        2490
+      ],
+      "size": [
+        520,
+        380
+      ],
+      "flags": {},
+      "order": 97,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 181
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_szene_5",
+        "auto",
+        "auto"
+      ],
+      "title": "Szene 5 (einzeln)"
+    },
+    {
+      "id": 99,
+      "type": "ImageFromBatch",
+      "pos": [
+        2600,
+        2370
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 98,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 182
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            184
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        1,
+        4096
+      ],
+      "title": "Doppeltes Übergangsbild weg"
+    },
+    {
+      "id": 100,
+      "type": "ImageBatch",
+      "pos": [
+        2600,
+        2410
+      ],
+      "size": [
+        240,
+        70
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 99,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 183
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 184
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            221
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      },
+      "title": "+ Szene 5 (Bild)"
+    },
+    {
+      "id": 101,
+      "type": "AudioConcat",
+      "pos": [
+        2600,
+        2450
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 100,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio1",
+          "type": "AUDIO",
+          "link": 185
+        },
+        {
+          "name": "audio2",
+          "type": "AUDIO",
+          "link": 186
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            223
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AudioConcat"
+      },
+      "widgets_values": [
+        "after"
+      ],
+      "title": "+ Szene 5 (Ton)",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 102,
+      "type": "ImageFromBatch",
+      "pos": [
+        2900,
+        700
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "flags": {},
+      "order": 101,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 187
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            191,
+            203
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        -1,
+        1
+      ],
+      "title": "Letztes Bild Szene 5 → Start",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 103,
+      "type": "StringConcatenate",
+      "pos": [
+        2900,
+        820
+      ],
+      "size": [
+        520,
+        200
+      ],
+      "flags": {},
+      "order": 102,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 188,
+          "widget": {
+            "name": "string_a"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            190
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "Szene 6: Beide lehnen sich zurück und schauen in die Landschaft, ruhiges Ende.",
+        "\n\n"
+      ],
+      "title": "Szene 6: kurz beschreiben, was passiert (Deutsch)"
+    },
+    {
+      "id": 104,
+      "type": "TextGenerate",
+      "pos": [
+        2900,
+        1040
+      ],
+      "size": [
+        520,
+        330
+      ],
+      "flags": {},
+      "order": 103,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 189
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 190,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 191,
+          "shape": 7
+        },
+        {
+          "name": "video",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "link": 192,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            194,
+            195
+          ]
+        },
+        {
+          "name": "thinking",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        400,
+        "on",
+        0.6,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        5,
+        0,
+        false,
+        true
+      ],
+      "title": "KI schreibt Prompt Szene 6 (sieht das Startbild)",
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 105,
+      "type": "PreviewAny",
+      "pos": [
+        2900,
+        1380
+      ],
+      "size": [
+        520,
+        110
+      ],
+      "flags": {},
+      "order": 104,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 195
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        null,
+        null,
+        null
+      ],
+      "title": "Geschriebener Prompt"
+    },
+    {
+      "id": 106,
+      "type": "StringConcatenate",
+      "pos": [
+        2900,
+        1510
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 105,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 193,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 194,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            196
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "Kamera-Block + KI-Prompt"
+    },
+    {
+      "id": 107,
+      "type": "StringConcatenate",
+      "pos": [
+        2900,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 106,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 196,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 197,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            198
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 108,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        2900,
+        1600
+      ],
+      "size": [
+        520,
+        440
+      ],
+      "flags": {},
+      "order": 107,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 199
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 200
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 203,
+          "shape": 7
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 198,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 201,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 202,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 205,
+          "widget": {
+            "name": "length"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            207
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            212
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3ImageToVideo"
+      },
+      "widgets_values": [
+        "",
+        1344,
+        768,
+        121
+      ],
+      "title": "Szene 6"
+    },
+    {
+      "id": 109,
+      "type": "PrimitiveFloat",
+      "pos": [
+        2900,
+        2050
+      ],
+      "size": [
+        260,
+        60
+      ],
+      "flags": {},
+      "order": 108,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            204
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        8
+      ],
+      "title": "Dauer Szene 6 (s)"
+    },
+    {
+      "id": 110,
+      "type": "ComfyMathExpression",
+      "pos": [
+        3180,
+        2050
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 109,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 204
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            205
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      ],
+      "title": "Sekunden → Frames"
+    },
+    {
+      "id": 111,
+      "type": "BasicGuider",
+      "pos": [
+        2900,
+        2150
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 110,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 206
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 207
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            209
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      }
+    },
+    {
+      "id": 112,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        2900,
+        2230
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 111,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 208
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 209
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 210
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 211
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 212
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            213,
+            215
+          ]
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      }
+    },
+    {
+      "id": 113,
+      "type": "VAEDecode",
+      "pos": [
+        3180,
+        2230
+      ],
+      "size": [
+        220,
+        50
+      ],
+      "flags": {},
+      "order": 112,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 213
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 214
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            217,
+            220
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 114,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        3180,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 113,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 215
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 216
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            218,
+            224
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeAudio"
+      },
+      "title": "Ton Szene 6",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 115,
+      "type": "CreateVideo",
+      "pos": [
+        2900,
+        2370
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 114,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 217
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 218,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            219
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Szene 6 als Einzelvideo"
+    },
+    {
+      "id": 116,
+      "type": "SaveVideo",
+      "pos": [
+        2900,
+        2490
+      ],
+      "size": [
+        520,
+        380
+      ],
+      "flags": {},
+      "order": 115,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 219
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_szene_6",
+        "auto",
+        "auto"
+      ],
+      "title": "Szene 6 (einzeln)"
+    },
+    {
+      "id": 117,
+      "type": "ImageFromBatch",
+      "pos": [
+        3180,
+        2370
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 116,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 220
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            222
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        1,
+        4096
+      ],
+      "title": "Doppeltes Übergangsbild weg"
+    },
+    {
+      "id": 118,
+      "type": "ImageBatch",
+      "pos": [
+        3180,
+        2410
+      ],
+      "size": [
+        240,
+        70
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 117,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 221
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 222
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            225,
+            228
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      },
+      "title": "+ Szene 6 (Bild)"
+    },
+    {
+      "id": 119,
+      "type": "AudioConcat",
+      "pos": [
+        3180,
+        2450
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 118,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio1",
+          "type": "AUDIO",
+          "link": 223
+        },
+        {
+          "name": "audio2",
+          "type": "AUDIO",
+          "link": 224
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            226
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AudioConcat"
+      },
+      "widgets_values": [
+        "after"
+      ],
+      "title": "+ Szene 6 (Ton)",
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 120,
+      "type": "CreateVideo",
+      "pos": [
+        3500,
+        760
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 119,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 225
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 226,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            227
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Gesamtvideo mit Ton"
+    },
+    {
+      "id": 121,
+      "type": "SaveVideo",
+      "pos": [
+        3500,
+        900
+      ],
+      "size": [
+        620,
+        480
+      ],
+      "flags": {},
+      "order": 120,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 227
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_geschichte",
+        "auto",
+        "auto"
+      ],
+      "title": "Gesamtvideo mit Ton"
+    },
+    {
+      "id": 122,
+      "type": "CreateVideo",
+      "pos": [
+        3500,
+        1420
+      ],
+      "size": [
+        280,
+        100
+      ],
+      "flags": {},
+      "order": 121,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 228
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            229
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ],
+      "title": "Gesamtvideo ohne Ton"
+    },
+    {
+      "id": 123,
+      "type": "SaveVideo",
+      "pos": [
+        3500,
+        1560
+      ],
+      "size": [
+        620,
+        480
+      ],
+      "flags": {},
+      "order": 122,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 229
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/H3_geschichte_stumm",
+        "auto",
+        "auto"
+      ],
+      "title": "Gesamtvideo ohne Ton"
+    },
+    {
+      "id": 124,
+      "type": "MarkdownNote",
+      "pos": [
+        4180,
+        680
+      ],
+      "size": [
+        660,
+        1500
+      ],
+      "flags": {},
+      "order": 123,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "# H3 lokal – Geschichte mit KI-Regie (6 Szenen)\n\n**Prinzip:** Für jede Szene schaut sich ein lokales Sprachmodell (Gemma 4 E4B) das **Startbild dieser Szene** an und schreibt daraus den H3-Prompt – passend zu deiner Geschichte und deiner Kurznotiz. Das letzte Bild jeder Szene wird automatisch das Startbild der nächsten. Alles läuft mit **einem Klick auf Queue**.\n\n## Einstellen\n1. **Startbild** laden.\n2. **GESCHICHTE** (grün oben): die Idee in eigenen Worten, Deutsch ist ok.\n3. Pro Szene: **eine Zeile**, was passieren soll (Deutsch ok). Die KI macht daraus einen englischen H3-Prompt.\n4. **Dauer** pro Szene, **Format** links. **Queue.**\n5. Unter jeder KI-Node zeigt „Geschriebener Prompt“, was die KI geschrieben hat.\n\nKamera-Block und Kamera-Regel werden automatisch vor und hinter jeden KI-Prompt gesetzt (feste Einstellung, kein Zoom).\n\n## Länge\n6 × 8 s = 48 s (voreingestellt) · 6 × 10 s = 60 s. Pro Szene 5–10 s empfohlen, max. ~15 s.\nWeniger Szenen: Gruppen **von hinten** mit `Ctrl+B` abschalten (erst 6, dann 5 …).\n\n## Ausgabe\n- `H3_geschichte` = Gesamtvideo mit Ton, `H3_geschichte_stumm` = ohne Ton.\n- Jede Szene zusätzlich einzeln (`H3_szene_1` …) – gut zum Nachschneiden.\n\n## Gut zu wissen\n- Szenen laufen nacheinander; Abbruch → beim nächsten Queue geht es ab der abgebrochenen Szene weiter.\n- Änderst du Szene 4, werden 4–6 neu gerechnet, 1–3 bleiben.\n- Kleine Abweichungen summieren sich über die Kette. Finale ohne Turbo (`Ctrl+B` auf LoRA, Schritte 20).\n- RAM: 60 s bei 1344×768 ≈ 18 GB für das Gesamtvideo.\n\n## Sprachmodell\n- Datei: `gemma4_e4b_it_fp8_scaled.safetensors` → `models/text_encoders/`\n- ComfyUI lagert das Sprachmodell automatisch aus, sobald H3 den Grafikspeicher braucht – kein extra Programm nötig.\n- Prompt gefällt nicht? Notiz der Szene ändern oder im KI-Node den `seed` ändern → neuer Text.\n"
+      ],
+      "title": "Anleitung"
+    }
+  ],
+  "links": [
+    [
+      1,
+      7,
+      0,
+      8,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      8,
+      0,
+      13,
+      0,
+      "MODEL"
+    ],
+    [
+      3,
+      2,
+      0,
+      16,
+      0,
+      "STRING"
+    ],
+    [
+      4,
+      6,
+      0,
+      17,
+      0,
+      "CLIP"
+    ],
+    [
+      5,
+      16,
+      0,
+      17,
+      1,
+      "STRING"
+    ],
+    [
+      6,
+      1,
+      0,
+      17,
+      2,
+      "IMAGE"
+    ],
+    [
+      7,
+      3,
+      0,
+      17,
+      5,
+      "STRING"
+    ],
+    [
+      8,
+      4,
+      0,
+      19,
+      0,
+      "STRING"
+    ],
+    [
+      9,
+      17,
+      0,
+      19,
+      1,
+      "STRING"
+    ],
+    [
+      10,
+      17,
+      0,
+      18,
+      0,
+      "STRING"
+    ],
+    [
+      11,
+      19,
+      0,
+      20,
+      0,
+      "STRING"
+    ],
+    [
+      12,
+      5,
+      0,
+      20,
+      1,
+      "STRING"
+    ],
+    [
+      13,
+      20,
+      0,
+      21,
+      4,
+      "STRING"
+    ],
+    [
+      14,
+      9,
+      0,
+      21,
+      0,
+      "CLIP"
+    ],
+    [
+      15,
+      10,
+      0,
+      21,
+      1,
+      "VAE"
+    ],
+    [
+      16,
+      15,
+      0,
+      21,
+      5,
+      "INT"
+    ],
+    [
+      17,
+      15,
+      1,
+      21,
+      6,
+      "INT"
+    ],
+    [
+      18,
+      1,
+      0,
+      21,
+      2,
+      "IMAGE"
+    ],
+    [
+      19,
+      22,
+      0,
+      23,
+      0,
+      "FLOAT"
+    ],
+    [
+      20,
+      23,
+      1,
+      21,
+      7,
+      "INT"
+    ],
+    [
+      21,
+      8,
+      0,
+      24,
+      0,
+      "MODEL"
+    ],
+    [
+      22,
+      21,
+      0,
+      24,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      23,
+      14,
+      0,
+      25,
+      0,
+      "NOISE"
+    ],
+    [
+      24,
+      24,
+      0,
+      25,
+      1,
+      "GUIDER"
+    ],
+    [
+      25,
+      12,
+      0,
+      25,
+      2,
+      "SAMPLER"
+    ],
+    [
+      26,
+      13,
+      0,
+      25,
+      3,
+      "SIGMAS"
+    ],
+    [
+      27,
+      21,
+      1,
+      25,
+      4,
+      "LATENT"
+    ],
+    [
+      28,
+      25,
+      0,
+      26,
+      0,
+      "LATENT"
+    ],
+    [
+      29,
+      10,
+      0,
+      26,
+      1,
+      "VAE"
+    ],
+    [
+      30,
+      25,
+      0,
+      27,
+      0,
+      "LATENT"
+    ],
+    [
+      31,
+      11,
+      0,
+      27,
+      1,
+      "VAE"
+    ],
+    [
+      32,
+      26,
+      0,
+      28,
+      0,
+      "IMAGE"
+    ],
+    [
+      33,
+      27,
+      0,
+      28,
+      1,
+      "AUDIO"
+    ],
+    [
+      34,
+      28,
+      0,
+      29,
+      0,
+      "VIDEO"
+    ],
+    [
+      35,
+      26,
+      0,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      36,
+      2,
+      0,
+      31,
+      0,
+      "STRING"
+    ],
+    [
+      37,
+      6,
+      0,
+      32,
+      0,
+      "CLIP"
+    ],
+    [
+      38,
+      31,
+      0,
+      32,
+      1,
+      "STRING"
+    ],
+    [
+      39,
+      30,
+      0,
+      32,
+      2,
+      "IMAGE"
+    ],
+    [
+      40,
+      3,
+      0,
+      32,
+      5,
+      "STRING"
+    ],
+    [
+      41,
+      4,
+      0,
+      34,
+      0,
+      "STRING"
+    ],
+    [
+      42,
+      32,
+      0,
+      34,
+      1,
+      "STRING"
+    ],
+    [
+      43,
+      32,
+      0,
+      33,
+      0,
+      "STRING"
+    ],
+    [
+      44,
+      34,
+      0,
+      35,
+      0,
+      "STRING"
+    ],
+    [
+      45,
+      5,
+      0,
+      35,
+      1,
+      "STRING"
+    ],
+    [
+      46,
+      35,
+      0,
+      36,
+      4,
+      "STRING"
+    ],
+    [
+      47,
+      9,
+      0,
+      36,
+      0,
+      "CLIP"
+    ],
+    [
+      48,
+      10,
+      0,
+      36,
+      1,
+      "VAE"
+    ],
+    [
+      49,
+      15,
+      0,
+      36,
+      5,
+      "INT"
+    ],
+    [
+      50,
+      15,
+      1,
+      36,
+      6,
+      "INT"
+    ],
+    [
+      51,
+      30,
+      0,
+      36,
+      2,
+      "IMAGE"
+    ],
+    [
+      52,
+      37,
+      0,
+      38,
+      0,
+      "FLOAT"
+    ],
+    [
+      53,
+      38,
+      1,
+      36,
+      7,
+      "INT"
+    ],
+    [
+      54,
+      8,
+      0,
+      39,
+      0,
+      "MODEL"
+    ],
+    [
+      55,
+      36,
+      0,
+      39,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      56,
+      14,
+      0,
+      40,
+      0,
+      "NOISE"
+    ],
+    [
+      57,
+      39,
+      0,
+      40,
+      1,
+      "GUIDER"
+    ],
+    [
+      58,
+      12,
+      0,
+      40,
+      2,
+      "SAMPLER"
+    ],
+    [
+      59,
+      13,
+      0,
+      40,
+      3,
+      "SIGMAS"
+    ],
+    [
+      60,
+      36,
+      1,
+      40,
+      4,
+      "LATENT"
+    ],
+    [
+      61,
+      40,
+      0,
+      41,
+      0,
+      "LATENT"
+    ],
+    [
+      62,
+      10,
+      0,
+      41,
+      1,
+      "VAE"
+    ],
+    [
+      63,
+      40,
+      0,
+      42,
+      0,
+      "LATENT"
+    ],
+    [
+      64,
+      11,
+      0,
+      42,
+      1,
+      "VAE"
+    ],
+    [
+      65,
+      41,
+      0,
+      43,
+      0,
+      "IMAGE"
+    ],
+    [
+      66,
+      42,
+      0,
+      43,
+      1,
+      "AUDIO"
+    ],
+    [
+      67,
+      43,
+      0,
+      44,
+      0,
+      "VIDEO"
+    ],
+    [
+      68,
+      41,
+      0,
+      45,
+      0,
+      "IMAGE"
+    ],
+    [
+      69,
+      26,
+      0,
+      46,
+      0,
+      "IMAGE"
+    ],
+    [
+      70,
+      45,
+      0,
+      46,
+      1,
+      "IMAGE"
+    ],
+    [
+      71,
+      27,
+      0,
+      47,
+      0,
+      "AUDIO"
+    ],
+    [
+      72,
+      42,
+      0,
+      47,
+      1,
+      "AUDIO"
+    ],
+    [
+      73,
+      41,
+      0,
+      48,
+      0,
+      "IMAGE"
+    ],
+    [
+      74,
+      2,
+      0,
+      49,
+      0,
+      "STRING"
+    ],
+    [
+      75,
+      6,
+      0,
+      50,
+      0,
+      "CLIP"
+    ],
+    [
+      76,
+      49,
+      0,
+      50,
+      1,
+      "STRING"
+    ],
+    [
+      77,
+      48,
+      0,
+      50,
+      2,
+      "IMAGE"
+    ],
+    [
+      78,
+      3,
+      0,
+      50,
+      5,
+      "STRING"
+    ],
+    [
+      79,
+      4,
+      0,
+      52,
+      0,
+      "STRING"
+    ],
+    [
+      80,
+      50,
+      0,
+      52,
+      1,
+      "STRING"
+    ],
+    [
+      81,
+      50,
+      0,
+      51,
+      0,
+      "STRING"
+    ],
+    [
+      82,
+      52,
+      0,
+      53,
+      0,
+      "STRING"
+    ],
+    [
+      83,
+      5,
+      0,
+      53,
+      1,
+      "STRING"
+    ],
+    [
+      84,
+      53,
+      0,
+      54,
+      4,
+      "STRING"
+    ],
+    [
+      85,
+      9,
+      0,
+      54,
+      0,
+      "CLIP"
+    ],
+    [
+      86,
+      10,
+      0,
+      54,
+      1,
+      "VAE"
+    ],
+    [
+      87,
+      15,
+      0,
+      54,
+      5,
+      "INT"
+    ],
+    [
+      88,
+      15,
+      1,
+      54,
+      6,
+      "INT"
+    ],
+    [
+      89,
+      48,
+      0,
+      54,
+      2,
+      "IMAGE"
+    ],
+    [
+      90,
+      55,
+      0,
+      56,
+      0,
+      "FLOAT"
+    ],
+    [
+      91,
+      56,
+      1,
+      54,
+      7,
+      "INT"
+    ],
+    [
+      92,
+      8,
+      0,
+      57,
+      0,
+      "MODEL"
+    ],
+    [
+      93,
+      54,
+      0,
+      57,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      94,
+      14,
+      0,
+      58,
+      0,
+      "NOISE"
+    ],
+    [
+      95,
+      57,
+      0,
+      58,
+      1,
+      "GUIDER"
+    ],
+    [
+      96,
+      12,
+      0,
+      58,
+      2,
+      "SAMPLER"
+    ],
+    [
+      97,
+      13,
+      0,
+      58,
+      3,
+      "SIGMAS"
+    ],
+    [
+      98,
+      54,
+      1,
+      58,
+      4,
+      "LATENT"
+    ],
+    [
+      99,
+      58,
+      0,
+      59,
+      0,
+      "LATENT"
+    ],
+    [
+      100,
+      10,
+      0,
+      59,
+      1,
+      "VAE"
+    ],
+    [
+      101,
+      58,
+      0,
+      60,
+      0,
+      "LATENT"
+    ],
+    [
+      102,
+      11,
+      0,
+      60,
+      1,
+      "VAE"
+    ],
+    [
+      103,
+      59,
+      0,
+      61,
+      0,
+      "IMAGE"
+    ],
+    [
+      104,
+      60,
+      0,
+      61,
+      1,
+      "AUDIO"
+    ],
+    [
+      105,
+      61,
+      0,
+      62,
+      0,
+      "VIDEO"
+    ],
+    [
+      106,
+      59,
+      0,
+      63,
+      0,
+      "IMAGE"
+    ],
+    [
+      107,
+      46,
+      0,
+      64,
+      0,
+      "IMAGE"
+    ],
+    [
+      108,
+      63,
+      0,
+      64,
+      1,
+      "IMAGE"
+    ],
+    [
+      109,
+      47,
+      0,
+      65,
+      0,
+      "AUDIO"
+    ],
+    [
+      110,
+      60,
+      0,
+      65,
+      1,
+      "AUDIO"
+    ],
+    [
+      111,
+      59,
+      0,
+      66,
+      0,
+      "IMAGE"
+    ],
+    [
+      112,
+      2,
+      0,
+      67,
+      0,
+      "STRING"
+    ],
+    [
+      113,
+      6,
+      0,
+      68,
+      0,
+      "CLIP"
+    ],
+    [
+      114,
+      67,
+      0,
+      68,
+      1,
+      "STRING"
+    ],
+    [
+      115,
+      66,
+      0,
+      68,
+      2,
+      "IMAGE"
+    ],
+    [
+      116,
+      3,
+      0,
+      68,
+      5,
+      "STRING"
+    ],
+    [
+      117,
+      4,
+      0,
+      70,
+      0,
+      "STRING"
+    ],
+    [
+      118,
+      68,
+      0,
+      70,
+      1,
+      "STRING"
+    ],
+    [
+      119,
+      68,
+      0,
+      69,
+      0,
+      "STRING"
+    ],
+    [
+      120,
+      70,
+      0,
+      71,
+      0,
+      "STRING"
+    ],
+    [
+      121,
+      5,
+      0,
+      71,
+      1,
+      "STRING"
+    ],
+    [
+      122,
+      71,
+      0,
+      72,
+      4,
+      "STRING"
+    ],
+    [
+      123,
+      9,
+      0,
+      72,
+      0,
+      "CLIP"
+    ],
+    [
+      124,
+      10,
+      0,
+      72,
+      1,
+      "VAE"
+    ],
+    [
+      125,
+      15,
+      0,
+      72,
+      5,
+      "INT"
+    ],
+    [
+      126,
+      15,
+      1,
+      72,
+      6,
+      "INT"
+    ],
+    [
+      127,
+      66,
+      0,
+      72,
+      2,
+      "IMAGE"
+    ],
+    [
+      128,
+      73,
+      0,
+      74,
+      0,
+      "FLOAT"
+    ],
+    [
+      129,
+      74,
+      1,
+      72,
+      7,
+      "INT"
+    ],
+    [
+      130,
+      8,
+      0,
+      75,
+      0,
+      "MODEL"
+    ],
+    [
+      131,
+      72,
+      0,
+      75,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      132,
+      14,
+      0,
+      76,
+      0,
+      "NOISE"
+    ],
+    [
+      133,
+      75,
+      0,
+      76,
+      1,
+      "GUIDER"
+    ],
+    [
+      134,
+      12,
+      0,
+      76,
+      2,
+      "SAMPLER"
+    ],
+    [
+      135,
+      13,
+      0,
+      76,
+      3,
+      "SIGMAS"
+    ],
+    [
+      136,
+      72,
+      1,
+      76,
+      4,
+      "LATENT"
+    ],
+    [
+      137,
+      76,
+      0,
+      77,
+      0,
+      "LATENT"
+    ],
+    [
+      138,
+      10,
+      0,
+      77,
+      1,
+      "VAE"
+    ],
+    [
+      139,
+      76,
+      0,
+      78,
+      0,
+      "LATENT"
+    ],
+    [
+      140,
+      11,
+      0,
+      78,
+      1,
+      "VAE"
+    ],
+    [
+      141,
+      77,
+      0,
+      79,
+      0,
+      "IMAGE"
+    ],
+    [
+      142,
+      78,
+      0,
+      79,
+      1,
+      "AUDIO"
+    ],
+    [
+      143,
+      79,
+      0,
+      80,
+      0,
+      "VIDEO"
+    ],
+    [
+      144,
+      77,
+      0,
+      81,
+      0,
+      "IMAGE"
+    ],
+    [
+      145,
+      64,
+      0,
+      82,
+      0,
+      "IMAGE"
+    ],
+    [
+      146,
+      81,
+      0,
+      82,
+      1,
+      "IMAGE"
+    ],
+    [
+      147,
+      65,
+      0,
+      83,
+      0,
+      "AUDIO"
+    ],
+    [
+      148,
+      78,
+      0,
+      83,
+      1,
+      "AUDIO"
+    ],
+    [
+      149,
+      77,
+      0,
+      84,
+      0,
+      "IMAGE"
+    ],
+    [
+      150,
+      2,
+      0,
+      85,
+      0,
+      "STRING"
+    ],
+    [
+      151,
+      6,
+      0,
+      86,
+      0,
+      "CLIP"
+    ],
+    [
+      152,
+      85,
+      0,
+      86,
+      1,
+      "STRING"
+    ],
+    [
+      153,
+      84,
+      0,
+      86,
+      2,
+      "IMAGE"
+    ],
+    [
+      154,
+      3,
+      0,
+      86,
+      5,
+      "STRING"
+    ],
+    [
+      155,
+      4,
+      0,
+      88,
+      0,
+      "STRING"
+    ],
+    [
+      156,
+      86,
+      0,
+      88,
+      1,
+      "STRING"
+    ],
+    [
+      157,
+      86,
+      0,
+      87,
+      0,
+      "STRING"
+    ],
+    [
+      158,
+      88,
+      0,
+      89,
+      0,
+      "STRING"
+    ],
+    [
+      159,
+      5,
+      0,
+      89,
+      1,
+      "STRING"
+    ],
+    [
+      160,
+      89,
+      0,
+      90,
+      4,
+      "STRING"
+    ],
+    [
+      161,
+      9,
+      0,
+      90,
+      0,
+      "CLIP"
+    ],
+    [
+      162,
+      10,
+      0,
+      90,
+      1,
+      "VAE"
+    ],
+    [
+      163,
+      15,
+      0,
+      90,
+      5,
+      "INT"
+    ],
+    [
+      164,
+      15,
+      1,
+      90,
+      6,
+      "INT"
+    ],
+    [
+      165,
+      84,
+      0,
+      90,
+      2,
+      "IMAGE"
+    ],
+    [
+      166,
+      91,
+      0,
+      92,
+      0,
+      "FLOAT"
+    ],
+    [
+      167,
+      92,
+      1,
+      90,
+      7,
+      "INT"
+    ],
+    [
+      168,
+      8,
+      0,
+      93,
+      0,
+      "MODEL"
+    ],
+    [
+      169,
+      90,
+      0,
+      93,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      170,
+      14,
+      0,
+      94,
+      0,
+      "NOISE"
+    ],
+    [
+      171,
+      93,
+      0,
+      94,
+      1,
+      "GUIDER"
+    ],
+    [
+      172,
+      12,
+      0,
+      94,
+      2,
+      "SAMPLER"
+    ],
+    [
+      173,
+      13,
+      0,
+      94,
+      3,
+      "SIGMAS"
+    ],
+    [
+      174,
+      90,
+      1,
+      94,
+      4,
+      "LATENT"
+    ],
+    [
+      175,
+      94,
+      0,
+      95,
+      0,
+      "LATENT"
+    ],
+    [
+      176,
+      10,
+      0,
+      95,
+      1,
+      "VAE"
+    ],
+    [
+      177,
+      94,
+      0,
+      96,
+      0,
+      "LATENT"
+    ],
+    [
+      178,
+      11,
+      0,
+      96,
+      1,
+      "VAE"
+    ],
+    [
+      179,
+      95,
+      0,
+      97,
+      0,
+      "IMAGE"
+    ],
+    [
+      180,
+      96,
+      0,
+      97,
+      1,
+      "AUDIO"
+    ],
+    [
+      181,
+      97,
+      0,
+      98,
+      0,
+      "VIDEO"
+    ],
+    [
+      182,
+      95,
+      0,
+      99,
+      0,
+      "IMAGE"
+    ],
+    [
+      183,
+      82,
+      0,
+      100,
+      0,
+      "IMAGE"
+    ],
+    [
+      184,
+      99,
+      0,
+      100,
+      1,
+      "IMAGE"
+    ],
+    [
+      185,
+      83,
+      0,
+      101,
+      0,
+      "AUDIO"
+    ],
+    [
+      186,
+      96,
+      0,
+      101,
+      1,
+      "AUDIO"
+    ],
+    [
+      187,
+      95,
+      0,
+      102,
+      0,
+      "IMAGE"
+    ],
+    [
+      188,
+      2,
+      0,
+      103,
+      0,
+      "STRING"
+    ],
+    [
+      189,
+      6,
+      0,
+      104,
+      0,
+      "CLIP"
+    ],
+    [
+      190,
+      103,
+      0,
+      104,
+      1,
+      "STRING"
+    ],
+    [
+      191,
+      102,
+      0,
+      104,
+      2,
+      "IMAGE"
+    ],
+    [
+      192,
+      3,
+      0,
+      104,
+      5,
+      "STRING"
+    ],
+    [
+      193,
+      4,
+      0,
+      106,
+      0,
+      "STRING"
+    ],
+    [
+      194,
+      104,
+      0,
+      106,
+      1,
+      "STRING"
+    ],
+    [
+      195,
+      104,
+      0,
+      105,
+      0,
+      "STRING"
+    ],
+    [
+      196,
+      106,
+      0,
+      107,
+      0,
+      "STRING"
+    ],
+    [
+      197,
+      5,
+      0,
+      107,
+      1,
+      "STRING"
+    ],
+    [
+      198,
+      107,
+      0,
+      108,
+      4,
+      "STRING"
+    ],
+    [
+      199,
+      9,
+      0,
+      108,
+      0,
+      "CLIP"
+    ],
+    [
+      200,
+      10,
+      0,
+      108,
+      1,
+      "VAE"
+    ],
+    [
+      201,
+      15,
+      0,
+      108,
+      5,
+      "INT"
+    ],
+    [
+      202,
+      15,
+      1,
+      108,
+      6,
+      "INT"
+    ],
+    [
+      203,
+      102,
+      0,
+      108,
+      2,
+      "IMAGE"
+    ],
+    [
+      204,
+      109,
+      0,
+      110,
+      0,
+      "FLOAT"
+    ],
+    [
+      205,
+      110,
+      1,
+      108,
+      7,
+      "INT"
+    ],
+    [
+      206,
+      8,
+      0,
+      111,
+      0,
+      "MODEL"
+    ],
+    [
+      207,
+      108,
+      0,
+      111,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      208,
+      14,
+      0,
+      112,
+      0,
+      "NOISE"
+    ],
+    [
+      209,
+      111,
+      0,
+      112,
+      1,
+      "GUIDER"
+    ],
+    [
+      210,
+      12,
+      0,
+      112,
+      2,
+      "SAMPLER"
+    ],
+    [
+      211,
+      13,
+      0,
+      112,
+      3,
+      "SIGMAS"
+    ],
+    [
+      212,
+      108,
+      1,
+      112,
+      4,
+      "LATENT"
+    ],
+    [
+      213,
+      112,
+      0,
+      113,
+      0,
+      "LATENT"
+    ],
+    [
+      214,
+      10,
+      0,
+      113,
+      1,
+      "VAE"
+    ],
+    [
+      215,
+      112,
+      0,
+      114,
+      0,
+      "LATENT"
+    ],
+    [
+      216,
+      11,
+      0,
+      114,
+      1,
+      "VAE"
+    ],
+    [
+      217,
+      113,
+      0,
+      115,
+      0,
+      "IMAGE"
+    ],
+    [
+      218,
+      114,
+      0,
+      115,
+      1,
+      "AUDIO"
+    ],
+    [
+      219,
+      115,
+      0,
+      116,
+      0,
+      "VIDEO"
+    ],
+    [
+      220,
+      113,
+      0,
+      117,
+      0,
+      "IMAGE"
+    ],
+    [
+      221,
+      100,
+      0,
+      118,
+      0,
+      "IMAGE"
+    ],
+    [
+      222,
+      117,
+      0,
+      118,
+      1,
+      "IMAGE"
+    ],
+    [
+      223,
+      101,
+      0,
+      119,
+      0,
+      "AUDIO"
+    ],
+    [
+      224,
+      114,
+      0,
+      119,
+      1,
+      "AUDIO"
+    ],
+    [
+      225,
+      118,
+      0,
+      120,
+      0,
+      "IMAGE"
+    ],
+    [
+      226,
+      119,
+      0,
+      120,
+      1,
+      "AUDIO"
+    ],
+    [
+      227,
+      120,
+      0,
+      121,
+      0,
+      "VIDEO"
+    ],
+    [
+      228,
+      118,
+      0,
+      122,
+      0,
+      "IMAGE"
+    ],
+    [
+      229,
+      122,
+      0,
+      123,
+      0,
+      "VIDEO"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Start · Geschichte · Regeln · Sprachmodell",
+      "bounding": [
+        -20,
+        -80,
+        3330,
+        680
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Modelle · Turbo · Seed · Format (alle Szenen)",
+      "bounding": [
+        -540,
+        680,
+        500,
+        1460
+      ],
+      "color": "#8A8",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Szene 1",
+      "bounding": [
+        -20,
+        680,
+        560,
+        2220
+      ],
+      "color": "#444",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Szene 2",
+      "bounding": [
+        560,
+        680,
+        560,
+        2220
+      ],
+      "color": "#444",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Szene 3",
+      "bounding": [
+        1140,
+        680,
+        560,
+        2220
+      ],
+      "color": "#444",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Szene 4  (nicht gebraucht? Gruppe Ctrl+B – immer von hinten)",
+      "bounding": [
+        1720,
+        680,
+        560,
+        2220
+      ],
+      "color": "#b58b2a",
+      "font_size": 18,
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Szene 5  (nicht gebraucht? Gruppe Ctrl+B – immer von hinten)",
+      "bounding": [
+        2300,
+        680,
+        560,
+        2220
+      ],
+      "color": "#b58b2a",
+      "font_size": 18,
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "Szene 6  (nicht gebraucht? Gruppe Ctrl+B – immer von hinten)",
+      "bounding": [
+        2880,
+        680,
+        560,
+        2220
+      ],
+      "color": "#b58b2a",
+      "font_size": 18,
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "Ausgabe",
+      "bounding": [
+        3480,
+        680,
+        660,
+        1440
+      ],
+      "color": "#8A8",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.55,
+      "offset": [
+        900,
+        300
+      ]
+    },
+    "frontendVersion": "1.49.6"
+  },
+  "version": 0.4
+}
