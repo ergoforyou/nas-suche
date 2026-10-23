@@ -153,7 +153,7 @@ export class SpeechInput {
    * Sprechen eine Pause erkannt wurde oder stop() aufgerufen wird.
    * waitForSpeech: true = erst aufnehmen, wenn jemand spricht (Freihand-Modus).
    */
-  // threshold und startMs dürfen Funktionen sein (Live-Gespräch: strenger, solange der Avatar spricht).
+  // threshold, startMs und maxMs dürfen Funktionen sein, silenceMs ebenfalls (bekommt die bisherige Dauer) (Live-Gespräch: strenger, solange der Avatar spricht).
   // startMs: so lange muss es laut sein, bis es als Sprechen gilt. onSpeechStart: Beginn des Sprechens.
   async listen({ waitForSpeech = false, silenceMs = 1100, threshold = 0.015, maxMs = 30000, startMs = 0, adaptive = true, minThreshold = 0.003, onSpeechStart, aec = true } = {}) {
     await this.ensureMic(aec);
@@ -249,7 +249,10 @@ export class SpeechInput {
     } else {
       r.silentFor += ms;
     }
-    if ((r.heardSpeech && r.silentFor > r.silenceMs) || r.total > r.maxMs) this.finish();
+    // Pause bis zum Ende darf mitwachsen: wer länger spricht, darf auch länger überlegen (silenceMs als Funktion
+    // bekommt die bisherige Sprechdauer in ms)
+    const silence = typeof r.silenceMs === 'function' ? r.silenceMs(r.total) : r.silenceMs;
+    if ((r.heardSpeech && r.silentFor > silence) || r.total > value(r.maxMs)) this.finish();
   }
 
   finish() {

@@ -100,6 +100,25 @@ public class KIActions {
                 return torch(a, in.optBoolean("an", true));
             case "einstellungen":
                 return start(a, new Intent(settingsAction(in.optString("bereich"))), "Einstellungen geöffnet");
+            case "youtube": {
+                // mit Video-Kennung: gleich abspielen; sonst die Suche in der YouTube-App
+                String id = in.optString("video").replaceAll("[^A-Za-z0-9_-]", "");
+                if (!id.isEmpty()) {
+                    Intent yt = new Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:" + id)).setPackage("com.google.android.youtube");
+                    if (yt.resolveActivity(a.getPackageManager()) == null) yt = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + id));
+                    return start(a, yt, "Video läuft auf YouTube");
+                }
+                String q = in.optString("suche");
+                Intent s = new Intent(Intent.ACTION_SEARCH).setPackage("com.google.android.youtube").putExtra("query", q);
+                if (s.resolveActivity(a.getPackageManager()) == null) s = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q)));
+                return start(a, s, "YouTube-Suche geöffnet");
+            }
+            case "spotify": {
+                String q = in.optString("suche");
+                Intent sp = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:" + Uri.encode(q)));
+                if (sp.resolveActivity(a.getPackageManager()) == null) sp = new Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/search/" + Uri.encode(q)));
+                return start(a, sp, "Spotify-Suche geöffnet");
+            }
             case "kamera":
                 return start(a, new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA), "Kamera geöffnet");
             default:

@@ -12,6 +12,7 @@ import googleLib from '../../google.js';
 import wetter from '../../wetter.js';
 import nachrichten from '../../nachrichten.js';
 import synology from '../../synology.js';
+import youtube from '../../youtube.js';
 import verkehr from '../../verkehr.js';
 
 const { chatAnthropic, chatOpenAI, friendlyCloudError, transcribeOpenAI, appTools, mergeTools } = cloud;
@@ -158,8 +159,8 @@ async function googleHttp({ method, url, headers = {}, body }) {
   return { status: r.status, data: out };
 }
 /** fetch-ähnlich, aber nativ (Nachrichten-Feeds erlauben keine Abrufe aus der WebView). */
-async function nativeGet(url) {
-  const r = await CapacitorHttp.request({ method: 'GET', url, responseType: 'text', connectTimeout: 15000, readTimeout: 15000 });
+async function nativeGet(url, headers) {
+  const r = await CapacitorHttp.request({ method: 'GET', url, headers, responseType: 'text', connectTimeout: 15000, readTimeout: 15000 });
   const text = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
   return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => text, json: async () => (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) };
 }
@@ -244,6 +245,8 @@ const api = {
   weather: (o) => wetter.weather(o, { fetchFn: nativeGet }),
   news: (o) => nachrichten.news(o, { fetchFn: nativeGet }),
   traffic: (o) => verkehr.traffic(o, { fetchFn: nativeGet }),
+  // YouTube-Suche (Privat): nur der Suchbegriff geht hinaus
+  youtubeSearch: (q) => youtube.search(q, { fetchFn: nativeGet }),
   nasHasPassword: async () => AREA === 'privat' && !!(await getKeys()).nas,
   nasReq: async ({ base, user, method = 'GET', path = '', body, headers = {} }) => {
     if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');

@@ -1088,7 +1088,7 @@ async function send(text) {
   if (toClaudePhone?.[1]?.trim()) {
     addBubble('user', text);
     try {
-      phoneAction({ aktion: 'an_claude', text: toClaudePhone[1].trim() });
+      await phoneAction({ aktion: 'an_claude', text: toClaudePhone[1].trim() });
       addBubble('note', '✳ An die Claude-App übergeben – dort abschicken.');
     } catch (e) {
       addBubble('error', e.message);
@@ -3033,7 +3033,7 @@ async function transcribeWithFallback(audio, { withConfidence = false } = {}) {
 }
 
 async function listenOnce({ handsFree = false } = {}) {
-  if (state.micActive) return;
+  if (state.micActive || state.inCall) return;
   state.micActive = true;
   let interrupted = false;
   let held = false; // Antwort angehalten, weil jemand dazwischenzureden scheint – abgebrochen wird erst bei echten Worten
@@ -3044,16 +3044,24 @@ async function listenOnce({ handsFree = false } = {}) {
     const p = stt.listen({
       waitForSpeech: handsFree,
       // läuft ein Video mit Ton: ebenso strenger (sein Ton soll nicht als Sprache gelten)
-      threshold: () => state.settings.sensitivity * ((live && tts.speaking && !tts.held) || clipLoud() ? 2.5 : 1),
+      threshold: () => state.settings.sensitivity * ((live && tts.speaking && !tts.held) || clipLoud() || mediaLoud() ? 2.5 : 1),
       // während der Avatar spricht keine Absenkung der Schwelle (sonst unterbricht ihn sein eigenes Echo)
-      adaptive: () => !((live && tts.speaking && !tts.held) || clipLoud()),
+      adaptive: () => !((live && tts.speaking && !tts.held) || clipLoud() || mediaLoud()),
       // im Live-Gespräch sinkt die Schwelle höchstens auf die Hälfte (sonst lösen leise Hintergrundgeräusche aus)
       minThreshold: () => (handsFree ? state.settings.sensitivity * 0.5 : 0.003),
       // im Freihand-Modus mindestens ~⅓ s Stimme, damit Tastenklicks und Räuspern nichts auslösen
-      startMs: () => (!handsFree ? 0 : tts.speaking || clipLoud() ? 350 : 300),
-      silenceMs: handsFree ? state.settings.livePauseMs : 1100,
+      startMs: () => (!handsFree ? 0 : tts.speaking || clipLoud() || mediaLoud() ? 350 : 300),
+      // Pause bis „fertig“: wer länger spricht, darf länger überlegen (nach 8 s +0,5 s, nach 18 s +1,5 s);
+      // beim langen Erzählen deutlich mehr
+      silenceMs: (spoken) => (state.longTalk ? 3500 : handsFree ? state.settings.livePauseMs : 1100) + Math.min(1500, Math.max(0, spoken - 3000) * 0.1),
+      maxMs: () => (state.longTalk ? 300000 : 120000),
       onSpeechStart: () => {
         duringSpeech = tts.speaking || Date.now() - (state.lastSpeakEnd ?? 0) < 1000;
+        // es geht weiter nach einem unfertigen Satz: nicht vorher abschicken
+        if (state.carry) {
+          clearTimeout(state.carry.timer);
+          state.carry.timer = setTimeout(state.carry.flush, 15000);
+        }
         // Video läuft: leiser stellen, solange gesprochen wird
         clipDuck(true);
         // nach einer Pause angesprochen: die Figur wendet sich zu (Anlass „zuwenden“)
@@ -3087,7 +3095,7 @@ async function listenOnce({ handsFree = false } = {}) {
     state.transcribing = true;
     updateBadge();
     const res = await transcribeWithFallback(audio, { withConfidence: handsFree });
-    const text = (typeof res === 'string' ? res : res?.text ?? '').trim();
+    let text = (typeof res === 'string' ? res : res?.text ?? '').trim();
     state.timing.heard = performance.now();
     status('');
     state.transcribing = false;
@@ -3104,6 +3112,59 @@ async function listenOnce({ handsFree = false } = {}) {
     // läuft ein Video: kurze Befehle (Stopp, Pause, weiter) gleich hier, sonst anhalten und nach der Antwort weiter
     if (clipPlaying && clipCommand(text)) return;
     if (clipPlaying) clipHoldForAnswer();
+    // spielt eine andere App (z. B. YouTube): Stopp/Pause/weiter direkt, sonst anhalten und nach der Antwort weiter
+    else if (mediaLoud() || state.mediaHold) {
+      if (await mediaCommand(text)) return;
+      mediaHoldForAnswer();
+    }
+    // Fortsetzung eines unfertigen Satzes: vorne anhängen
+    if (state.carry) {
+      clearTimeout(state.carry.timer);
+      text = `${state.carry.text} ${text}`;
+      state.carry = null;
+    }
+    const again = () => !handsFree && setTimeout(() => !state.micActive && listenOnce(), 150);
+    // erzählt weiter: eine angehaltene Antwort der Figur jetzt wirklich abbrechen
+    if (held && (state.longTalk || LONG_START_RE.test(text) || unfinished(text))) {
+      held = false;
+      interrupt();
+    }
+    // langes Erzählen / Diktat: Abschnitte sammeln, bis „fertig“ (oder Mikrofon antippen)
+    if (state.longTalk) {
+      const lt = state.longTalk;
+      const done = lt.finish || LONG_DONE_RE.test(text);
+      const part = text.replace(LONG_DONE_RE, '').trim();
+      if (part) lt.parts.push(part);
+      if (!done) {
+        status(`📝 Ich höre weiter zu (${lt.parts.length} Abschnitt${lt.parts.length === 1 ? '' : 'e'}) – sag „fertig“, wenn du fertig bist.`);
+        again();
+        return;
+      }
+      state.longTalk = null;
+      text = lt.parts.join(' ');
+      status('');
+      if (!text) return;
+    } else if (LONG_START_RE.test(text)) {
+      state.longTalk = { parts: [], finish: false };
+      addBubble('note', '🎙 Ich höre dir jetzt länger zu – erzähl in Ruhe, Pausen sind kein Problem. Sag „fertig“, wenn du fertig bist (oder tippe aufs Mikrofon).');
+      fireEvent('ack', 1500);
+      again();
+      return;
+    } else if (unfinished(text)) {
+      // Satz klingt unfertig („… und“, „… weil“): noch kurz weiter zuhören und das Nächste anhängen
+      const pending = text;
+      const flush = () => {
+        if (state.carry?.text !== pending) return;
+        state.carry = null;
+        if (!handsFree && stt.listening) stt.cancel();
+        send(pending);
+      };
+      state.carry = { text: pending, flush, timer: setTimeout(flush, 3500) };
+      status('… ich höre noch zu');
+      logEv('STT', 'Satz unfertig – höre weiter');
+      again();
+      return;
+    }
     if (held) {
       held = false;
       interrupted = true;
@@ -3130,11 +3191,62 @@ async function listenOnce({ handsFree = false } = {}) {
   }
 }
 
+// Spracheingabe: unfertige Sätze, langes Erzählen
+// endet mit einem Bindewort/Artikel o. Ä. (ohne Fragezeichen): da kommt noch etwas
+const TRAIL_RE = /\b(und|oder|aber|weil|dass|daß|also|denn|sondern|wenn|ob|damit|bzw|beziehungsweise|sowie|der|die|das|den|dem|des|ein|eine|einen|einem|einer|zum|zur|mit|für|von|vom|in|im|an|am|auf|bei|nach|zu|aus|über|ich|wir|du|er|sie|es|ist|sind|bin|habe|hat|haben|wird|werden|noch|dann|wie|was|wo|mein|meine|dein|deine)$/i;
+function unfinished(text) {
+  const t = String(text ?? '').trim();
+  if (!t || /\?\s*$/.test(t) || t.split(/\s+/).length < 2) return false;
+  if (/(,|…|\.\.\.|-)\s*$/.test(t)) return true;
+  return TRAIL_RE.test(t.replace(/[.!]+\s*$/, ''));
+}
+const LONG_START_RE =
+  /^(hör mir (mal |jetzt )?(etwas |ein bisschen |mal )?(länger |genau |in ruhe )?zu|ich (möchte|will|muss) (dir )?(mal )?(etwas|was|einiges|eine sache) (länger |ausführlich |genauer )?(erzählen|erklären|diktieren|schildern|beschreiben)|(langes )?diktat( starten| bitte)?|ich diktiere( dir)?( jetzt)?( mal)?( was| etwas)?)[.!]?$/i;
+const LONG_DONE_RE = /[\s,]*\b(fertig|ende|das war'?s|das wär'?s|schluss|abschicken|over)[.!]*\s*$/i;
+
+// ---- Telefonate (Android): klingelt es oder läuft ein Gespräch, hält die Figur inne – Stimme pausiert (auch eine
+// Antwort, die gerade erst ankommt), Mikrofon frei, Video angehalten – und macht danach dort weiter
+let callGuard = null;
+window.__kiPhoneCall = (on) => phoneCall(!!on);
+function phoneCall(on) {
+  if (on === !!state.inCall) return;
+  state.inCall = on;
+  logEv('TELEFON', on ? 'Anruf – Figur pausiert' : 'Anruf vorbei – weiter');
+  if (on) {
+    state.callPaused = { clip: !!clipPlaying && !clipPlaying.v.paused };
+    if (state.callPaused.clip) clipPlaying.v.pause();
+    if (stt.listening) stt.cancel();
+    if (state.micActive && !state.transcribing) state.micActive = false;
+    clearInterval(callGuard);
+    const guard = () => tts.speaking && !tts.held && tts.hold();
+    guard();
+    callGuard = setInterval(guard, 300);
+    status('📞 Telefonat – ich warte, bis du fertig bist.');
+    updateBadge();
+    return;
+  }
+  clearInterval(callGuard);
+  callGuard = null;
+  const p = state.callPaused;
+  state.callPaused = null;
+  // kurz warten (Auflegen, Ton zurück auf Lautsprecher/Headset), dann weiter, wo sie war
+  setTimeout(() => {
+    if (state.inCall) return;
+    if (tts.held) tts.release();
+    if (p?.clip && clipPlaying) clipPlaying.v.play().catch(() => {});
+    status('');
+    updateBadge();
+    maybeListenHandsFree();
+    if (state.settings.wakeOn) wakeLoop();
+  }, 1500);
+}
+
 function maybeListenHandsFree(tries = 0) {
   if (!state.settings.handsFree) return;
   setTimeout(() => {
     // Live-Gespräch hört auch zu, während der Avatar denkt oder spricht
-    const free = liveBargeIn() || (!state.busy && !tts.speaking);
+    // während eines Telefonats nicht zuhören (Mikrofon gehört dem Gespräch)
+    const free = (liveBargeIn() || (!state.busy && !tts.speaking)) && !state.inCall;
     // wartet gerade das Aktivierungswort aufs Mikrofon: freigeben, dann zuhören
     if (state.settings.handsFree && free && state.wakeListening && tries < 10) {
       stt.cancel();
@@ -3214,7 +3326,11 @@ function toggleMic() {
     state.wakeListening = false;
     state.micActive = false;
   }
-  if (stt.listening) return stt.stop();
+  if (stt.listening) {
+    // langes Erzählen: Antippen heißt „fertig“
+    if (state.longTalk) state.longTalk.finish = true;
+    return stt.stop();
+  }
   if (state.micActive) return;
   tts.stop();
   listenOnce();
@@ -7406,6 +7522,50 @@ function playClip(c) {
   });
   logEv('VIDEO', c.name);
 }
+// ---- andere App spielt (YouTube, Musik – vom Handy gemeldet): strenger hinhören, beim Ansprechen kurz anhalten
+window.__kiMedia = (on) => {
+  if (!!on !== !!state.mediaActive) state.mediaSince = Date.now();
+  state.mediaActive = !!on;
+};
+// Android meldet auch den eigenen Ton (Stimme, Video): erst zählen, wenn es schon eine Weile spielt und die Figur
+// gerade nicht gesprochen hat
+const mediaLoud = () =>
+  MOBILE && !!state.mediaActive && !tts.speaking && !clipPlaying && Date.now() - (state.mediaSince ?? 0) > 2000 && Date.now() - (state.lastSpeakEnd ?? 0) > 2500;
+const mediaKey = (befehl) => {
+  try {
+    dev()?.deviceAction?.(JSON.stringify({ aktion: 'musik', befehl }));
+  } catch {}
+};
+async function mediaCommand(text) {
+  const t = clipNorm(text);
+  if (/^(stopp?|halt|aus|pause|anhalten|hoer auf|video (aus|stopp?|anhalten)|musik (aus|stopp?))$/.test(t)) {
+    if (state.mediaHold) state.mediaHold.resume = false;
+    mediaKey('pause');
+    return true;
+  }
+  if (/^(weiter|weiterspielen|fortsetzen|play|spiel weiter)$/.test(t)) {
+    if (state.mediaHold) state.mediaHold.resume = false;
+    mediaKey('play');
+    return true;
+  }
+  return false;
+}
+function mediaHoldForAnswer() {
+  if (state.mediaHold || !mediaLoud()) return;
+  const hold = { resume: true, at: Date.now() };
+  state.mediaHold = hold;
+  mediaKey('pause');
+  const tick = () => {
+    if (state.mediaHold !== hold) return;
+    if (state.busy || tts.speaking || state.micActive || Date.now() - hold.at < 1500) {
+      if (Date.now() - hold.at < 120e3) return void setTimeout(tick, 400);
+    }
+    state.mediaHold = null;
+    if (hold.resume) mediaKey('play');
+  };
+  setTimeout(tick, 400);
+}
+
 /** Läuft ein Video gerade hörbar? (dann hört das Mikrofon strenger hin) */
 const clipLoud = () => !!clipPlaying && !clipPlaying.v.paused && !clipPlaying.v.muted;
 function clipDuck(on) {
@@ -7462,14 +7622,23 @@ function stopClip() {
   maybeListenHandsFree();
 }
 /** Handy-Aktion auf Zuruf (nur Android, Privat): Apps, Navigation, Wecker, Musik, Lautstärke, Lampe, Übergabe an Claude … */
-function phoneAction(input) {
+async function phoneAction(input) {
   if (!PRIV) throw new Error('Handy steuern gibt es im Bereich Privat.');
   const d = dev();
   if (!d?.deviceAction) throw new Error('Das geht nur in der Android-App.');
+  // die Figur steuert selbst Musik/Video: dann nicht automatisch wieder starten
+  if (['musik', 'youtube', 'spotify'].includes(input?.aktion) && state.mediaHold) state.mediaHold.resume = false;
+  // YouTube: passendes Video selbst suchen und gleich abspielen (sonst bleibt es bei der Suche in der App)
+  let found = null;
+  if (input?.aktion === 'youtube' && input.suche && !input.video && desktop.youtubeSearch && !state.settings.offline) {
+    found = await desktop.youtubeSearch(input.suche).catch((e) => (logEv('YOUTUBE', e.message), []));
+    if (found?.length) input = { ...input, video: found[0].id };
+  }
   const r = JSON.parse(d.deviceAction(JSON.stringify(input ?? {})) || '{}');
   if (r.fehler) throw new Error(r.fehler);
   logEv('HANDY', `${input?.aktion}: ${r.erledigt ?? 'ok'}`);
   if (input?.aktion !== 'apps') fireEvent('success', 2000);
+  if (found?.length) return { ...r, laeuft: found[0], weitere: found.slice(1, 4) };
   return r;
 }
 function renderClipList() {
@@ -8475,7 +8644,7 @@ async function wakeLoopInner() {
   logEv('WACHWORT', `an („${wakeWord()}“)`);
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
   while (MOBILE && state.settings.wakeOn) {
-    if (state.locked || state.micActive || state.busy || tts.speaking || state.settings.handsFree || state.dnd || state.transcribing) {
+    if (state.inCall || state.locked || state.micActive || state.busy || tts.speaking || state.settings.handsFree || state.dnd || state.transcribing) {
       await pause(600);
       continue;
     }
@@ -9793,6 +9962,12 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  mediaCommand,
+  mediaHoldForAnswer,
+  phoneCall,
+  unfinished,
+  longTalk: () => state.longTalk,
+  LONG_START_RE,
   clipCommand: (t) => (clipPlaying ? clipCommand(t) : false),
   clipHoldForAnswer,
   phoneAction,

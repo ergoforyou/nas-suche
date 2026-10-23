@@ -113,7 +113,9 @@ const APP_TOOLS = [
     privatOnly: true,
     mobileOnly: true, // nur in der Android-App
     description:
-      'Führt auf dem Handy etwas aus, wenn dein Gegenüber darum bittet: App öffnen („Öffne Spotify“), Navigation ' +
+      'Führt auf dem Handy etwas aus, wenn dein Gegenüber darum bittet: App öffnen („Öffne Spotify“), ein passendes ' +
+      'YouTube-Video suchen und gleich abspielen (youtube mit suche – du bekommst Titel und weitere Treffer zurück und ' +
+      'nennst kurz, was läuft), Spotify-Suche, Navigation ' +
       'starten, Karte, Webseite, Wecker oder Timer in der Uhr-App, Musik steuern (play/pause/weiter/zurück), ' +
       'Lautstärke, Taschenlampe, Einstellungen (WLAN, Bluetooth, Ton, Akku …), Kamera, Text an die Claude-App übergeben ' +
       '(an_claude, wie am PC), teilen. Anruf (anrufen), SMS und WhatsApp werden nur VORBEREITET – gewählt bzw. gesendet ' +
@@ -124,9 +126,11 @@ const APP_TOOLS = [
       properties: {
         aktion: {
           type: 'string',
-          enum: ['app_oeffnen', 'apps', 'navigation', 'karte', 'webseite', 'wecker', 'timer', 'musik', 'lautstaerke', 'taschenlampe', 'einstellungen', 'kamera', 'an_claude', 'teilen', 'anrufen', 'sms', 'whatsapp'],
+          enum: ['app_oeffnen', 'apps', 'youtube', 'spotify', 'navigation', 'karte', 'webseite', 'wecker', 'timer', 'musik', 'lautstaerke', 'taschenlampe', 'einstellungen', 'kamera', 'an_claude', 'teilen', 'anrufen', 'sms', 'whatsapp'],
         },
         app: { type: 'string', description: 'app_oeffnen: Name der App' },
+        suche: { type: 'string', description: 'youtube/spotify: wonach gesucht werden soll (z. B. „Entspannungsmusik zum Arbeiten“)' },
+        video: { type: 'string', description: 'youtube: Kennung eines Videos aus einer früheren Suche (zum Abspielen eines bestimmten)' },
         ziel: { type: 'string', description: 'navigation/karte: Adresse oder Ort' },
         modus: { type: 'string', description: 'navigation: auto, zu_fuss, rad' },
         url: { type: 'string', description: 'webseite' },

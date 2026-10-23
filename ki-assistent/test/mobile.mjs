@@ -2734,6 +2734,41 @@ const b67 = await page.evaluate(async () => {
 check(b67.cmdPause && b67.cmdOn && !b67.other && b67.stop, 'Video: Figur hört mit – Pause, weiter, Stopp per Zuruf', JSON.stringify(b67));
 check(b67.heldPaused && b67.resumed, 'Video: Frage hält das Video an, nach der Antwort läuft es weiter', JSON.stringify(b67));
 check(b67.open === 'app_oeffnen erledigt' && /Gibtsnicht/.test(b67.err) && b67.claude === 'Fass mir die Notizen von heute zusammen' && b67.note, 'Handy steuern: App öffnen, Fehler verständlich, „An Claude:“ an die Claude-App', JSON.stringify(b67));
+// Beta 68 (Privat): Telefonat pausiert die Figur, YouTube suchen und abspielen, längere Spracheingaben
+const b68 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  // längere Sätze: unfertig erkennen, langes Erzählen starten
+  out.unf = [app.unfinished('Ich wollte dir noch sagen, dass'), app.unfinished('Kannst du mir helfen und'), app.unfinished('Das war ein schöner Tag.'), app.unfinished('Wie spät ist es?'), app.unfinished('Ich habe Hunger,')];
+  out.long = ['Hör mir mal länger zu', 'Ich möchte dir etwas ausführlich erzählen.', 'Diktat starten'].map((t) => app.LONG_START_RE.test(t));
+  out.notLong = app.LONG_START_RE.test('Hör mir zu, wie wird das Wetter morgen in Hannover?');
+  // Telefonat: Figur hält inne, hört nicht zu, danach weiter
+  window.__kiPhoneCall(true);
+  out.inCall = app.state.inCall === true;
+  await new Promise((r) => setTimeout(r, 50));
+  out.noListen = !app.state.micActive;
+  window.__kiPhoneCall(false);
+  await new Promise((r) => setTimeout(r, 1700));
+  out.after = app.state.inCall === false;
+  // YouTube: passendes Video suchen und in der YouTube-App abspielen (Brücke nachgebildet)
+  const had = window.KIDevice;
+  const calls = [];
+  window.KIDevice = { ...(had ?? {}), deviceAction: (j) => (calls.push(JSON.parse(j)), JSON.stringify({ ok: true, erledigt: 'Video läuft auf YouTube' })) };
+  const hadSearch = window.desktop.youtubeSearch;
+  window.desktop.youtubeSearch = async (q) => [{ id: 'abcDEF12345', titel: `Treffer für ${q}`, kanal: 'Kanal' }, { id: 'zzz', titel: 'Zweiter', kanal: 'K2' }];
+  const yt = await app.runAppTool('handy_steuern', { aktion: 'youtube', suche: 'Entspannungsmusik' });
+  out.yt = { video: calls.at(-1)?.video, laeuft: yt.laeuft?.titel, weitere: yt.weitere?.length };
+  // spielt eine andere App: „Pause“ direkt an die App, ohne die KI
+  out.mediaPause = await app.mediaCommand('Pause') && calls.at(-1)?.aktion === 'musik' && calls.at(-1)?.befehl === 'pause';
+  out.mediaOther = await app.mediaCommand('Wer singt das?');
+  window.desktop.youtubeSearch = hadSearch;
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  return out;
+});
+check(b68.unf.join() === 'true,true,false,false,true' && b68.long.every(Boolean) && !b68.notLong, 'Spracheingabe: unfertige Sätze erkannt, „Hör mir länger zu“ startet langes Erzählen', JSON.stringify(b68));
+check(b68.inCall && b68.noListen && b68.after, 'Telefonat: Figur hält inne und macht danach weiter', JSON.stringify(b68));
+check(b68.yt.video === 'abcDEF12345' && /Entspannungsmusik/.test(b68.yt.laeuft) && b68.yt.weitere === 1 && b68.mediaPause && !b68.mediaOther, 'YouTube: passendes Video gesucht und abgespielt, Pause per Zuruf', JSON.stringify(b68));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

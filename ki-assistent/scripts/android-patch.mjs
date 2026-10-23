@@ -216,11 +216,17 @@ if (!xml.includes('<queries>')) {
             <data android:scheme="geo" />
         </intent>
         <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="spotify" />
+        </intent>
+        <intent>
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="text/plain" />
         </intent>
         <package android:name="com.anthropic.claude" />
         <package android:name="com.whatsapp" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.spotify.music" />
     </queries>
 `;
   xml = xml.replace('<application', `${queries}    <application`);

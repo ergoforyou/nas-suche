@@ -396,6 +396,44 @@ public class MainActivity extends BridgeActivity {
     private boolean deviceWatch;
     private boolean callMode; // Telefonie-Modus selbst gesetzt (Auto/Headset wie bei einem Anruf)
 
+    // ---- Telefonate: klingelt es oder läuft ein Gespräch (Telefon, auch WhatsApp & Co.), meldet die App das der
+    // Oberfläche – die Figur hält dann inne (Stimme pausiert, Mikrofon frei) und macht danach weiter. Erkannt am
+    // Audio-Modus des Handys (ohne Telefon-Berechtigung); den eigenen Sprech-Modus zählt sie nicht mit.
+    private final android.os.Handler callHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    volatile boolean phoneCall;
+    private boolean otherMedia;
+    private final Runnable callWatch = new Runnable() {
+        @Override
+        public void run() {
+            checkPhoneCall();
+            callHandler.postDelayed(this, 1000);
+        }
+    };
+
+    void checkPhoneCall() {
+        try {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            int m = am.getMode();
+            boolean call = m == android.media.AudioManager.MODE_RINGTONE || m == android.media.AudioManager.MODE_IN_CALL
+                || (Build.VERSION.SDK_INT >= 30 && m == android.media.AudioManager.MODE_CALL_SCREENING)
+                || (m == android.media.AudioManager.MODE_IN_COMMUNICATION && !callMode && !voiceWanted);
+            // spielt eine andere App (YouTube, Musik)? Dann hört die Figur strenger hin und kann sie kurz anhalten
+            boolean media = am.isMusicActive();
+            if (media != otherMedia) {
+                otherMedia = media;
+                runJs("window.__kiMedia && window.__kiMedia(" + media + ")");
+            }
+            if (call == phoneCall) return;
+            phoneCall = call;
+            Log.i("KI-Assistent", "Telefonat " + (call ? "beginnt" : "vorbei") + " (Modus " + m + ")");
+            // direkt an die Oberfläche (nicht über die Ereignis-Liste: die wartet bei gesperrter App)
+            runJs("window.__kiPhoneCall && window.__kiPhoneCall(" + call + ")");
+        } catch (Exception e) {
+            Log.w("KI-Assistent", "Telefonat prüfen", e);
+        }
+    }
+
     /** Wie ein Anruf: Mikrofon und Ton laufen über das Bluetooth-Gerät, mit dessen Echo-Unterdrückung (Auto-Freisprechen). */
     private void setCallMode(android.media.AudioManager am, boolean on) {
         try {
@@ -472,7 +510,8 @@ public class MainActivity extends BridgeActivity {
                 am.stopBluetoothSco();
                 scoStarted = false;
             }
-            if (callMode || am.getMode() == android.media.AudioManager.MODE_IN_COMMUNICATION) am.setMode(android.media.AudioManager.MODE_NORMAL);
+            // läuft gerade ein Telefonat (auch WhatsApp & Co.), dessen Modus nicht anfassen
+            if (!phoneCall && (callMode || am.getMode() == android.media.AudioManager.MODE_IN_COMMUNICATION)) am.setMode(android.media.AudioManager.MODE_NORMAL);
             callMode = false;
         } catch (Exception e) {
             Log.w("KI-Assistent", "Audio zurücksetzen", e);
@@ -1910,6 +1949,7 @@ public class MainActivity extends BridgeActivity {
         bridge.getWebView().addJavascriptInterface(new Floater(), "KIFloat");
         current = new WeakReference<>(this);
         if (!getSharedPreferences("ki_auto", MODE_PRIVATE).getString("name", "").isEmpty()) registerCarReceiver();
+        callHandler.postDelayed(callWatch, 1500);
     }
 
     @Override
@@ -1943,6 +1983,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        callHandler.removeCallbacksAndMessages(null);
         // Telefonie-Modus nie hängen lassen (sonst bliebe das Auto im „Anruf“), Wächter abmelden
         shutdownAudio();
         if (carReceiver != null) {
