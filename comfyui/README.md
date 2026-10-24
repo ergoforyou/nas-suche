@@ -5,6 +5,7 @@
 | `minimax-h3-lokal-workflow.json` | **lokal** (Open Weights) | Start-/Endbild → Video mit Ton, Format + Dauer wählbar, Probelauf (Turbo-LoRA), lokaler Upscaler |
 | `minimax-h3-lokal-lang-4teile.json` | **lokal** | langes Video aus bis zu 4 Teilen (5 Schlüsselbilder), Ton abschaltbar, ohne Subgraph |
 | `minimax-h3-lokal-geschichte-kette.json` | **lokal** | fortlaufende Geschichte: 4 Szenen, letztes Bild jeder Szene = Startbild der nächsten, gemeinsamer Szenen-Block, Dauer pro Szene |
+| `minimax-h3-lokal-40s.json` | **lokal** | 40 s in einem Rutsch: 4 × 10 s Kette, 768p, 8er-Turbo, Farbabgleich an, Einzelszenen + Gesamtvideo |
 | `minimax-h3-lokal-geschichte-6szenen.json` | **lokal** | wie Geschichte-Kette, aber 6 Szenen (≈ 48–60 s), jede Szene zusätzlich einzeln gespeichert, Gesamtvideo mit und ohne Ton |
 | `minimax-h3-lokal-geschichte-ki-regie.json` | **lokal** | 6 Szenen + lokales Sprachmodell (Gemma 4 E4B): KI sieht das Startbild jeder Szene und schreibt den H3-Prompt aus Geschichte + Kurznotiz |
 | `minimax-h3-lokal-schnell-768p.json` | **lokal** | einfach & schnell: 768p, Turbo-LoRA 4 Schritte, Ton abschaltbar |
