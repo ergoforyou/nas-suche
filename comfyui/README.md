@@ -8,6 +8,7 @@
 | `minimax-h3-lokal-40s.json` | **lokal** | 40 s in einem Rutsch: 4 × 10 s Kette, 768p, 8er-Turbo, Farbabgleich an, Einzelszenen + Gesamtvideo |
 | `minimax-h3-lokal-geschichte-6szenen.json` | **lokal** | wie Geschichte-Kette, aber 6 Szenen (≈ 48–60 s), jede Szene zusätzlich einzeln gespeichert, Gesamtvideo mit und ohne Ton |
 | `minimax-h3-lokal-geschichte-ki-regie.json` | **lokal** | 6 Szenen + lokales Sprachmodell (Gemma 4 E4B): KI sieht das Startbild jeder Szene und schreibt den H3-Prompt aus Geschichte + Kurznotiz |
+| `minimax-h3-lokal-ki-regie-auto.json` | **lokal** | KI-Regie automatisch: eine Geschichte eingeben → KI plant die Szenen, schreibt jeden H3-Prompt (sieht das jeweilige Startbild) → Video in einem Durchlauf (3 Szenen ≈ 30 s, Szene 4 zuschaltbar) |
 | `minimax-h3-lokal-schnell-768p.json` | **lokal** | einfach & schnell: 768p, Turbo-LoRA 4 Schritte, Ton abschaltbar |
 | `minimax-h3-video-workflow.json` | über die Comfy-API (Credits) | dasselbe über die API-Nodes, inkl. „Regenerate to 2K“ |
 
