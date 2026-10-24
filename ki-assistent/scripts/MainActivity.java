@@ -1367,6 +1367,20 @@ public class MainActivity extends BridgeActivity {
             KIReminder.store(MainActivity.this, json);
         }
 
+        /** „Für später“-Notizen aus dem kleinen Eingabefenster abholen: [{"text","t"}]. */
+        @JavascriptInterface
+        public String takeQuickNotes() {
+            String s = KIQuickNote.take(MainActivity.this);
+            KIWidget.refresh(MainActivity.this);
+            return s;
+        }
+
+        /** Kopfzeile des Widgets: {"name","zwischen","offen"}. */
+        @JavascriptInterface
+        public void widgetInfo(String json) {
+            KIWidget.setInfo(MainActivity.this, json);
+        }
+
         /** Für „Läuft alles?“: ist eine Android-Berechtigung erteilt? (z. B. android.permission.READ_CONTACTS) */
         @JavascriptInterface
         public boolean hasPerm(String name) {

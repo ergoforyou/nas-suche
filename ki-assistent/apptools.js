@@ -221,6 +221,8 @@ const APP_TOOLS = [
         faellig: { type: 'string' },
         schritt_erledigt: { description: 'Schritt abhaken: Nummer (ab 1) oder ein Stück seines Texts' },
         schritte_neu: { type: 'array', items: { type: 'string' } },
+        verarbeitet: { type: 'boolean', description: 'Eintrag aus dem Zwischenspeicher ist bearbeitet (wird abgehakt)' },
+        loeschen: { type: 'boolean', description: 'Notiz löschen (nur nach Bestätigung)' },
         antwort: { type: 'string', description: 'Antwort deines Gegenübers auf eine Rückfrage zum Vorhaben' },
       },
     },

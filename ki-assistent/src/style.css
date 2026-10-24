@@ -564,3 +564,4 @@ body.dictating #input { outline: 2px solid var(--danger); }
 .health-row span { flex: 1; overflow-wrap: anywhere; }
 .health-row.bad { background: rgba(220, 60, 60, 0.12); }
 .health-row.warn { background: rgba(240, 180, 41, 0.12); }
+.zwischen-chip { flex: none; height: 32px; padding: 0 10px; border-radius: 16px; background: #2b4a7a; color: #dbe8ff; border: none; font-size: 13px; align-self: center; }

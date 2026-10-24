@@ -699,6 +699,9 @@ function applyPersona() {
   setTimeout(() => {
     renderBrain();
     applyBaseMood();
+    renderZwischenChip();
+    updateWidget();
+    importQuickNotes();
   }, 0);
   $('titleName').textContent = p.name || 'KI-Assistent';
   document.title = p.name || 'KI-Assistent';
@@ -1111,6 +1114,16 @@ async function send(text) {
     }
     return;
   }
+  // Privat: „Für später: …“ – nur in den Zwischenspeicher, die Figur antwortet nicht (abgearbeitet wird später)
+  if (PRIV && text && !pendingAttachments.length && LATER_RE.test(text)) {
+    const note = text.match(LATER_RE)[2].trim();
+    addZwischen(note, 'app');
+    addBubble('note', `📥 Für später abgelegt: ${note}`);
+    return;
+  }
+  // „Lass uns den Zwischenspeicher durchgehen“: die Figur bekommt die Einträge und geht sie mit dir durch
+  // (nur kurze Bitten – der daraus gebaute Auftrag enthält die Worte selbst und darf nicht wieder hier landen)
+  if (PRIV && text && text.length < 200 && ZWISCHEN_GO_RE.test(text) && zwischenItems().length) return processZwischen(text);
   // Privat: „Merk dir …“ bzw. Notiz über 📝 – ohne Sprachmodell direkt notieren
   if (PRIV && text && !pendingAttachments.length && (state.noteMode || NOTE_RE.test(text))) {
     const note = state.noteMode ? text : text.match(NOTE_RE)[1];
@@ -1481,6 +1494,8 @@ async function morningContext(p) {
   if (open.length) out.push(`Gestern offen geblieben:\n${open.map((e) => `- ${e.titel}: ${e.offen}`).join('\n')}`);
   const loops = PRIV ? openLoops(state.brain, 5) : [];
   if (loops.length) out.push(`Offene Punkte aus dem Second Brain:\n${loops.map((n) => `- ${n.titel}${n.faellig ? ` (fällig ${n.faellig})` : ''}`).join('\n')}`);
+  const zw = PRIV ? zwischenItems().length : 0;
+  if (zw) out.push(`Im Zwischenspeicher liegen ${zw} Notiz(en) für später – biete kurz an, sie gemeinsam durchzugehen.`);
   return out;
 }
 
@@ -7971,6 +7986,8 @@ function brainChanged() {
   save();
   renderBrain();
   renderNotes();
+  renderZwischenChip();
+  updateWidget();
   brainSortSoon();
 }
 function addBrainNote(f, who = 'nutzer') {
@@ -8000,6 +8017,7 @@ const noteView = (n, full = false) => ({
   ...(n.tags?.length ? { tags: n.tags } : {}),
   ...(n.offen ? { offen: !n.erledigt } : {}),
   ...(n.faellig ? { faellig: n.faellig } : {}),
+  ...(n.zwischen ? { zwischenspeicher: true } : {}),
   geaendert: new Date(n.changed).toLocaleDateString('de-DE'),
   ...(n.schritte?.length ? { schritte: n.schritte.map((x, i) => `${i + 1}. ${x.erledigt ? '✓' : x.wartet ? `wartet: ${x.wartet}` : 'offen'} – ${x.text}`) } : {}),
   text: full ? n.text : n.text.slice(0, 300),
@@ -8037,7 +8055,16 @@ async function brainTool(name, input = {}) {
   if (!n) throw new Error('Diese Notiz gibt es nicht (erst notizen_suchen).');
   if (name === 'notiz_lesen') return { ...book, ...noteView(n, true) };
   // notiz_aendern
+  if (input.loeschen === true) {
+    deleteBrainNote(n, who);
+    return { geloescht: true, titel: n.titel };
+  }
   const patch = {};
+  // aus dem Zwischenspeicher genommen: verarbeitet, einsortiert oder erledigt
+  if (n.zwischen && (input.verarbeitet === true || ordnerKey(input.ordner) || input.erledigt === true)) {
+    delete n.zwischen;
+    if (input.verarbeitet === true && !ordnerKey(input.ordner) && input.erledigt !== true) patch.erledigt = Date.now();
+  }
   if (input.titel) patch.titel = String(input.titel).slice(0, 140);
   if (input.text != null) patch.text = String(input.text).slice(0, 20000);
   if (input.text_anhaengen) patch.text = `${n.text}${n.text ? '\n\n' : ''}${String(input.text_anhaengen).slice(0, 8000)}`;
@@ -8100,7 +8127,7 @@ function brainSortSoon(ms = 60000) {
 async function sortInbox({ force = false } = {}) {
   if (!PRIV || state.settings.offline || (!force && (state.busy || budgetSaving()))) return 0;
   if (!force && Date.now() - (state.brainSortedAt ?? 0) < 10 * 60e3) return 0;
-  const todo = (state.brain ?? []).filter((n) => n.ordner === 'eingang' && !n.sortiert).slice(0, 15);
+  const todo = (state.brain ?? []).filter((n) => n.ordner === 'eingang' && !n.sortiert && !n.zwischen).slice(0, 15);
   if (!todo.length) return 0;
   state.brainSortedAt = Date.now();
   const projekte = [...new Set(state.brain.map((n) => n.projekt).filter(Boolean))].slice(0, 30);
@@ -8130,6 +8157,66 @@ async function sortInbox({ force = false } = {}) {
   renderBrain();
   return k;
 }
+// ---- Zwischenspeicher (Privat): nebenbei notieren – vom Widget („Für später“), per „Für später: …“ –, ohne dass die
+// Figur antwortet; später geht sie die Einträge mit dir durch (einsortieren, Erinnerung, Aufgabe, erledigt, löschen)
+const LATER_RE = /^\s*(für später|fuer spaeter|später|zwischenspeicher|merkzettel)\s*[:,–-]\s*(.+)$/is;
+const ZWISCHEN_GO_RE = /\b(zwischenspeicher|merkzettel|für später|notizen von unterwegs)\b.*\b(durchgehen|abarbeiten|anschauen|bearbeiten|besprechen|durchsehen)\b|\b(durchgehen|abarbeiten|besprechen)\b.*\b(zwischenspeicher|merkzettel)\b/i;
+const zwischenItems = () => (state.brain ?? []).filter((n) => n.zwischen && !n.erledigt);
+function addZwischen(text, quelle = 'app', t = Date.now()) {
+  const n = addBrainNote({ titel: String(text).split('\n')[0].slice(0, 80), text: String(text).slice(0, 4000), ordner: 'eingang', quelle: 'zwischenspeicher', sortiert: true, offen: false, created: t, changed: t });
+  n.zwischen = quelle;
+  save();
+  updateWidget();
+  renderZwischenChip();
+  return n;
+}
+/** Notizen aus dem kleinen Eingabefenster (Widget) übernehmen. */
+function importQuickNotes() {
+  let list = [];
+  try {
+    list = JSON.parse(dev()?.takeQuickNotes?.() || '[]');
+  } catch {}
+  for (const q of list) if (String(q?.text ?? '').trim()) addZwischen(q.text, 'widget', q.t || Date.now());
+  if (list.length) {
+    logEv('ZWISCHEN', `${list.length} vom Widget übernommen`);
+    status(`📥 ${list.length} Notiz${list.length > 1 ? 'en' : ''} für später übernommen – sag „Zwischenspeicher durchgehen“, wenn du Zeit hast.`);
+  }
+  return list.length;
+}
+/** Die Figur geht den Zwischenspeicher mit dir durch – Eintrag für Eintrag, mit Vorschlag, was daraus wird. */
+function processZwischen(said = '') {
+  const items = zwischenItems();
+  if (!items.length) {
+    addBubble('note', '📥 Im Zwischenspeicher liegt nichts.');
+    return;
+  }
+  const list = items.map((n, i) => `${i + 1}. [${n.id}] ${n.text.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n');
+  const ask =
+    `${said ? `${said}\n\n` : ''}Lass uns meinen Zwischenspeicher durchgehen (${items.length} Einträge, nebenbei notiert):\n${list}\n\n` +
+    'Geh sie mit mir nacheinander durch: Schlag zu jedem kurz vor, was daraus werden soll – Notiz einsortieren (Ordner, ' +
+    'Projekt), Erinnerung oder offener Punkt, etwas, das du für mich erledigst oder recherchierst, oder einfach erledigt/' +
+    'löschen – und frag mich, bevor du etwas tust. Erledigte Einträge mit notiz_aendern (verarbeitet: true bzw. loeschen: ' +
+    'true) aus dem Zwischenspeicher nehmen. Fang mit dem ersten an.';
+  logEv('ZWISCHEN', `durchgehen: ${items.length}`);
+  return send(ask);
+}
+function renderZwischenChip() {
+  const chip = document.getElementById('zwischenChip');
+  if (!chip) return;
+  const n = PRIV ? zwischenItems().length : 0;
+  chip.hidden = !n;
+  chip.textContent = `📥 ${n}`;
+  chip.title = `${n} Notiz${n === 1 ? '' : 'en'} für später – antippen zum Durchgehen mit der Figur`;
+}
+$('zwischenChip').onclick = () => !state.busy && processZwischen();
+/** Kopfzeile des Widgets: Name der Figur, Zwischenspeicher, offene Punkte. */
+function updateWidget() {
+  if (!MOBILE || !dev()?.widgetInfo) return;
+  try {
+    dev().widgetInfo(JSON.stringify({ name: persona().name || 'KI-Assistent', zwischen: PRIV ? zwischenItems().length : 0, offen: PRIV ? openLoops(state.brain ?? [], 99).filter((n) => !n.zwischen).length : 0 }));
+  } catch {}
+}
+
 // ---- Selbstständig (Privat): Tagesbegleiter, eigenes Notizbuch pflegen, an Vorhaben weiterarbeiten
 const heuteWichtig = () => (state.brain ?? []).filter((n) => n.tags?.includes('heute') && n.faellig === todayKey());
 async function captureTop3(text) {
@@ -8285,7 +8372,7 @@ function renderBrain() {
   const notes = notesOf(who);
   const chips = $('brainFolders');
   chips.replaceChildren(
-    ...[['', `Alle (${notes.length})`], ['offen', `⏳ Offen (${openLoops(notes, 999).length})`], ...Object.entries(ORDNER).map(([k, v]) => [k, `${v} (${notes.filter((n) => n.ordner === k).length})`])].map(([k, label]) => {
+    ...[['', `Alle (${notes.length})`], ...(who === 'nutzer' ? [['zwischen', `📥 Für später (${zwischenItems().length})`]] : []), ['offen', `⏳ Offen (${openLoops(notes, 999).length})`], ...Object.entries(ORDNER).map(([k, v]) => [k, `${v} (${notes.filter((n) => n.ordner === k).length})`])].map(([k, label]) => {
       const b = document.createElement('button');
       b.textContent = label;
       b.className = 'chip' + (brainFilter.ordner === k ? ' active' : '');
@@ -8297,7 +8384,7 @@ function renderBrain() {
     }),
   );
   const q = brainFilter.q.trim();
-  let list = brainFilter.ordner === 'offen' ? openLoops(notes, 999) : notes.filter((n) => !brainFilter.ordner || n.ordner === brainFilter.ordner);
+  let list = brainFilter.ordner === 'offen' ? openLoops(notes, 999) : brainFilter.ordner === 'zwischen' ? zwischenItems() : notes.filter((n) => !brainFilter.ordner || n.ordner === brainFilter.ordner);
   if (q) {
     const ids = new Set(brainSearch(q, 50, {}, who).map((n) => n.id));
     list = list.filter((n) => ids.has(n.id) || n.titel.toLowerCase().includes(q.toLowerCase()));
@@ -8865,9 +8952,20 @@ async function handleIntents() {
     list = JSON.parse(dev()?.takeIntents?.() || '[]');
   } catch {}
   takeReminderActions();
+  importQuickNotes();
   for (const ev of list) {
     window.__app.lastIntent = ev.action;
     logEv('EREIGNIS', ev.action);
+    if (ev.action === 'quicknote') {
+      importQuickNotes();
+      continue;
+    }
+    if (ev.action === 'zwischen') {
+      $('drawer').hidden = true;
+      importQuickNotes();
+      if (PRIV && !state.busy) processZwischen();
+      continue;
+    }
     if (ev.action === 'dictate') {
       // Widget / Kachel / Verknüpfung „Diktat“
       $('drawer').hidden = true;
@@ -10915,6 +11013,12 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  addZwischen,
+  importQuickNotes,
+  processZwischen,
+  zwischenItems,
+  LATER_RE,
+  ZWISCHEN_GO_RE,
   healthChecks,
   renderHealth,
   autoBackup,

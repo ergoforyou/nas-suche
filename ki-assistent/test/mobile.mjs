@@ -3044,6 +3044,45 @@ const b76 = await page.evaluate(async () => {
 check(b76.health && b76.fix, '„Läuft alles?“: Ampel je Punkt, Knopf behebt (Benachrichtigungen erlauben)', JSON.stringify(b76));
 check(b76.backup && b76.list, 'Sicherung auf dem Gerät: speichern, vorher sichern, zurückholen, Liste', JSON.stringify(b76));
 check(b76.mood && b76.moodOff, 'Tagesstimmung wirkt auf Gesicht und Posen (abschaltbar)', JSON.stringify(b76));
+// Beta 77 (Privat): Zwischenspeicher – nebenbei notieren (Widget, „Für später: …“), später mit der Figur durchgehen
+const reqBefore77 = claudeRequests.length;
+const b77 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const before = app.zwischenItems().length;
+  await app.send('Für später: Reifen zum Händler bringen');
+  out.capture = app.zwischenItems().length === before + 1 && [...document.querySelectorAll('.msg.note')].some((n) => /Für später abgelegt: Reifen/.test(n.textContent));
+  const had = window.KIDevice;
+  let q = JSON.stringify([{ text: 'Idee: Hochbeet im Garten', t: Date.now() - 60000 }, { text: 'Anna wegen Samstag fragen', t: Date.now() }]);
+  const info = [];
+  window.KIDevice = { ...(had ?? {}), takeQuickNotes: () => ((q = '[]'), q === '[]' ? JSON.stringify([{ text: 'Idee: Hochbeet im Garten', t: Date.now() - 60000 }, { text: 'Anna wegen Samstag fragen', t: Date.now() }]) : '[]'), widgetInfo: (j) => info.push(JSON.parse(j)) };
+  out.imported = app.importQuickNotes();
+  window.KIDevice.takeQuickNotes = () => '[]';
+  out.items = app.zwischenItems().map((n) => n.text);
+  out.widget = info.at(-1)?.zwischen === app.zwischenItems().length;
+  out.chip = !document.getElementById('zwischenChip').hidden && /📥 3/.test(document.getElementById('zwischenChip').textContent);
+  out.go = app.ZWISCHEN_GO_RE.test('Lass uns den Zwischenspeicher durchgehen') && !app.ZWISCHEN_GO_RE.test('Wie wird das Wetter?');
+  out.sorted = !app.zwischenItems().some((n) => !n.sortiert);
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  return out;
+});
+b77.noLlm = claudeRequests.length === reqBefore77;
+claudeQueue.push(sayText('Fangen wir an: „Reifen zum Händler bringen“ – soll ich dir dafür eine Erinnerung für Samstag stellen?'));
+b77.process = await page.evaluate(async () => {
+  const app = window.__app;
+  app.send('Lass uns den Zwischenspeicher durchgehen');
+  for (let i = 0; i < 80 && (app.state.busy || i < 3); i++) await new Promise((r) => setTimeout(r, 100));
+  const first = app.zwischenItems()[0];
+  await app.runAppTool('notiz_aendern', { id: first.id, verarbeitet: true });
+  const del = app.zwischenItems().find((n) => /Hochbeet/.test(n.text));
+  await app.runAppTool('notiz_aendern', { id: del.id, ordner: 'projekte' });
+  return { left: app.zwischenItems().length, firstDone: !!app.brainState().find((n) => n.id === first.id)?.erledigt, moved: app.brainState().find((n) => n.id === del.id)?.ordner };
+});
+const lastUser77 = JSON.stringify(claudeRequests.at(-1)?.messages?.at(-1) ?? "");
+b77.prompt = /Zwischenspeicher durchgehen \(3 Einträge/.test(lastUser77) && /Hochbeet/.test(lastUser77);
+check(b77.capture && b77.noLlm && b77.imported === 2 && b77.widget && b77.chip && b77.go && b77.sorted, 'Zwischenspeicher: „Für später: …“ ohne Antwort, Widget-Notizen übernommen, Zähler im Widget und an der Eingabe', JSON.stringify(b77));
+check(b77.prompt && b77.process.left === 1 && b77.process.firstDone && b77.process.moved === 'projekte', 'Zwischenspeicher mit der Figur durchgehen: Einträge abhaken oder einsortieren', JSON.stringify(b77));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

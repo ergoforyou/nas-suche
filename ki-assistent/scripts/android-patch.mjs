@@ -8,9 +8,9 @@ const BASE = 'de.ergoforyou.kiassistent';
 const kanalFile = new URL('../kanal.json', import.meta.url);
 const BETA = fs.existsSync(kanalFile) && JSON.parse(fs.readFileSync(kanalFile, 'utf8')).kanal === 'beta';
 const APP = BETA ? `${BASE}.beta` : BASE;
-const shortcut = (id, label, action, icon = '@drawable/ic_ki_mic') => `
+const shortcut = (id, label, action, icon = '@drawable/ic_ki_mic', cls = 'MainActivity') => `
     <shortcut android:shortcutId="${id}" android:enabled="true" android:icon="${icon}" android:shortcutShortLabel="@string/${label}">
-        <intent android:action="android.intent.action.VIEW" android:targetPackage="${APP}" android:targetClass="${BASE}.MainActivity">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="${APP}" android:targetClass="${BASE}.${cls}">
             <extra android:name="ki_action" android:value="${action}" />
         </intent>
     </shortcut>`;
@@ -47,43 +47,93 @@ const RESOURCES = {
 `,
   'drawable/ki_widget_bg.xml': `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#E61E2430" />
-    <corners android:radius="24dp" />
+    <solid android:color="#EB161B25" />
+    <stroke android:width="1dp" android:color="#33FFFFFF" />
+    <corners android:radius="26dp" />
 </shape>
 `,
   'layout/ki_widget.xml': `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent"
-    android:layout_height="match_parent" android:orientation="horizontal" android:gravity="center"
-    android:background="@drawable/ki_widget_bg" android:padding="6dp">
-    <LinearLayout android:id="@+id/ki_widget_talk" android:layout_width="0dp" android:layout_height="match_parent"
-        android:layout_weight="1" android:orientation="horizontal" android:gravity="center">
-        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:src="@mipmap/ic_launcher_round"
-            android:contentDescription="@string/ki_widget" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp"
-            android:text="@string/ki_sc_talk" android:textColor="#FFFFFF" android:textSize="16sp" />
+    android:layout_height="match_parent" android:orientation="vertical" android:background="@drawable/ki_widget_bg"
+    android:padding="10dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
+        android:gravity="center_vertical">
+        <LinearLayout android:id="@+id/ki_widget_head" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:layout_width="34dp" android:layout_height="34dp" android:src="@mipmap/ic_launcher_round"
+                android:contentDescription="@string/ki_widget" />
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical"
+                android:layout_marginStart="8dp">
+                <TextView android:id="@+id/ki_widget_name" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="KI-Assistent" android:textColor="#FFFFFF" android:textSize="15sp" android:textStyle="bold"
+                    android:maxLines="1" />
+                <TextView android:id="@+id/ki_widget_status" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Bereit – tippen zum Sprechen" android:textColor="#9FB0C8" android:textSize="12sp" android:maxLines="1" />
+            </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/ki_widget_live" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:background="@drawable/ki_widget_pill" android:paddingStart="12dp" android:paddingEnd="12dp"
+            android:paddingTop="5dp" android:paddingBottom="5dp" android:text="@string/ki_sc_live_short"
+            android:textColor="#BFD8FF" android:textSize="13sp" />
     </LinearLayout>
-    <TextView android:id="@+id/ki_widget_live" android:layout_width="wrap_content" android:layout_height="match_parent"
-        android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp"
-        android:text="@string/ki_sc_live_short" android:textColor="#9FC3FF" android:textSize="15sp" />
-    <TextView android:id="@+id/ki_widget_note" android:layout_width="wrap_content" android:layout_height="match_parent"
-        android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp"
-        android:text="@string/ki_sc_note_short" android:textColor="#FFD27F" android:textSize="15sp" />
-    <TextView android:id="@+id/ki_widget_dict" android:layout_width="wrap_content" android:layout_height="match_parent"
-        android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp"
-        android:text="@string/ki_sc_dict_short" android:textColor="#FF9F9F" android:textSize="15sp" />
-    <TextView android:id="@+id/ki_widget_open" android:layout_width="wrap_content" android:layout_height="match_parent"
-        android:gravity="center" android:paddingStart="8dp" android:paddingEnd="12dp"
-        android:text="@string/ki_sc_open_short" android:textColor="#B6F0B6" android:textSize="15sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:layout_marginTop="8dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/ki_widget_talk" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center" android:layout_margin="3dp"
+            android:background="@drawable/ki_widget_btn">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🎤"
+                android:textSize="20sp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sprechen"
+                android:textColor="#D7DEEA" android:textSize="11sp" android:layout_marginTop="2dp" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/ki_widget_dict" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center" android:layout_margin="3dp"
+            android:background="@drawable/ki_widget_btn">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="✍"
+                android:textSize="20sp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Diktat"
+                android:textColor="#D7DEEA" android:textSize="11sp" android:layout_marginTop="2dp" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/ki_widget_quick" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center" android:layout_margin="3dp"
+            android:background="@drawable/ki_widget_btn">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📥"
+                android:textSize="20sp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Für später"
+                android:textColor="#D7DEEA" android:textSize="11sp" android:layout_marginTop="2dp" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/ki_widget_open" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center" android:layout_margin="3dp"
+            android:background="@drawable/ki_widget_btn">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="⏳"
+                android:textSize="20sp" />
+            <TextView android:id="@+id/ki_widget_open_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Offen"
+                android:textColor="#D7DEEA" android:textSize="11sp" android:layout_marginTop="2dp" />
+        </LinearLayout>
+    </LinearLayout>
 </LinearLayout>
 `,
+  'drawable/ki_widget_btn.xml': `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#2A3344" />
+    <corners android:radius="16dp" />
+</shape>
+`,
+  'drawable/ki_widget_pill.xml': `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#2B4A7A" />
+    <corners android:radius="14dp" />
+</shape>
+`,
   'xml/ki_widget_info.xml': `<?xml version="1.0" encoding="utf-8"?>
-<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" android:minWidth="220dp"
-    android:minHeight="50dp" android:targetCellWidth="3" android:targetCellHeight="1" android:updatePeriodMillis="0"
-    android:initialLayout="@layout/ki_widget" android:resizeMode="horizontal" android:widgetCategory="home_screen"
-    android:description="@string/ki_widget" />
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" android:minWidth="250dp"
+    android:minHeight="110dp" android:targetCellWidth="4" android:targetCellHeight="2" android:updatePeriodMillis="0"
+    android:minResizeWidth="180dp" android:minResizeHeight="100dp"
+    android:initialLayout="@layout/ki_widget" android:previewLayout="@layout/ki_widget"
+    android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen" android:description="@string/ki_widget" />
 `,
   'xml/ki_shortcuts.xml': `<?xml version="1.0" encoding="utf-8"?>
-<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">${shortcut('sprechen', 'ki_sc_talk', 'listen')}${shortcut('live', 'ki_sc_live', 'live')}${shortcut('notiz', 'ki_sc_note', 'note')}${shortcut('diktat', 'ki_sc_dict', 'dictate')}${shortcut('offen', 'ki_sc_open', 'offen')}
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">${shortcut('sprechen', 'ki_sc_talk', 'listen')}${shortcut('live', 'ki_sc_live', 'live')}${shortcut('spaeter', 'ki_sc_later', 'later', '@drawable/ic_ki_mic', 'KIQuickNote')}${shortcut('diktat', 'ki_sc_dict', 'dictate')}${shortcut('offen', 'ki_sc_open', 'offen')}
 </shortcuts>
 `,
   'values/ki_strings.xml': `<?xml version="1.0" encoding="utf-8"?>
@@ -96,6 +146,7 @@ const RESOURCES = {
     <string name="ki_sc_note_short">📝</string>
     <string name="ki_sc_note">Notiz</string>
     <string name="ki_sc_dict">Diktat</string>
+    <string name="ki_sc_later">Für später</string>
     <string name="ki_sc_dict_short">✍ Diktat</string>
     <string name="ki_sc_open">Was ist offen?</string>
     <string name="ki_sc_open_short">⏳</string>
@@ -190,6 +241,9 @@ if (!xml.includes('KIConversationService')) {
             </intent-filter>
         </service>
         <receiver android:name=".KIReminder" android:exported="false" />
+        <activity android:name=".KIQuickNote" android:exported="true" android:excludeFromRecents="true"
+            android:taskAffinity="" android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
         <receiver android:name=".KIBoot" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
