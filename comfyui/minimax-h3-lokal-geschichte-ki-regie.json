@@ -1,8 +1,8 @@
 {
-  "id": "5cc15f60-b6ea-4bb8-a946-2f15cafb408b",
+  "id": "ee57c904-ebbe-47b5-8a23-769acb536c62",
   "revision": 0,
-  "last_node_id": 124,
-  "last_link_id": 229,
+  "last_node_id": 125,
+  "last_link_id": 235,
   "nodes": [
     {
       "id": 1,
@@ -25,7 +25,12 @@
           "type": "IMAGE",
           "links": [
             6,
-            18
+            18,
+            37,
+            75,
+            113,
+            151,
+            189
           ]
         },
         {
@@ -64,11 +69,11 @@
           "type": "STRING",
           "links": [
             3,
-            36,
-            74,
-            112,
-            150,
-            188
+            38,
+            76,
+            114,
+            152,
+            190
           ]
         }
       ],
@@ -103,11 +108,11 @@
           "type": "STRING",
           "links": [
             7,
-            40,
-            78,
-            116,
-            154,
-            192
+            42,
+            80,
+            118,
+            156,
+            194
           ]
         }
       ],
@@ -140,11 +145,11 @@
           "type": "STRING",
           "links": [
             8,
-            41,
-            79,
-            117,
-            155,
-            193
+            43,
+            81,
+            119,
+            157,
+            195
           ]
         }
       ],
@@ -179,11 +184,11 @@
           "type": "STRING",
           "links": [
             12,
-            45,
-            83,
-            121,
-            159,
-            197
+            47,
+            85,
+            123,
+            161,
+            199
           ]
         }
       ],
@@ -227,11 +232,11 @@
           "type": "CLIP",
           "links": [
             4,
-            37,
-            75,
-            113,
-            151,
-            189
+            39,
+            77,
+            115,
+            153,
+            191
           ]
         }
       ],
@@ -332,11 +337,11 @@
           "links": [
             2,
             21,
-            54,
-            92,
-            130,
-            168,
-            206
+            56,
+            94,
+            132,
+            170,
+            208
           ]
         }
       ],
@@ -381,11 +386,11 @@
           "type": "CLIP",
           "links": [
             14,
-            47,
-            85,
-            123,
-            161,
-            199
+            49,
+            87,
+            125,
+            163,
+            201
           ]
         }
       ],
@@ -429,16 +434,16 @@
           "links": [
             15,
             29,
-            48,
-            62,
-            86,
-            100,
-            124,
-            138,
-            162,
-            176,
-            200,
-            214
+            50,
+            64,
+            88,
+            102,
+            126,
+            140,
+            164,
+            178,
+            202,
+            216
           ]
         }
       ],
@@ -480,11 +485,11 @@
           "type": "VAE",
           "links": [
             31,
-            64,
-            102,
-            140,
-            178,
-            216
+            66,
+            104,
+            142,
+            180,
+            218
           ]
         }
       ],
@@ -517,11 +522,11 @@
           "type": "SAMPLER",
           "links": [
             25,
-            58,
-            96,
-            134,
-            172,
-            210
+            60,
+            98,
+            136,
+            174,
+            212
           ]
         }
       ],
@@ -567,11 +572,11 @@
           "type": "SIGMAS",
           "links": [
             26,
-            59,
-            97,
-            135,
-            173,
-            211
+            61,
+            99,
+            137,
+            175,
+            213
           ]
         }
       ],
@@ -615,11 +620,11 @@
           "type": "NOISE",
           "links": [
             23,
-            56,
-            94,
-            132,
-            170,
-            208
+            58,
+            96,
+            134,
+            172,
+            210
           ]
         }
       ],
@@ -653,11 +658,11 @@
           "type": "INT",
           "links": [
             16,
-            49,
-            87,
-            125,
-            163,
-            201
+            51,
+            89,
+            127,
+            165,
+            203
           ]
         },
         {
@@ -665,11 +670,11 @@
           "type": "INT",
           "links": [
             17,
-            50,
-            88,
-            126,
-            164,
-            202
+            52,
+            90,
+            128,
+            166,
+            204
           ]
         }
       ],
@@ -1272,7 +1277,7 @@
           "links": [
             32,
             35,
-            69
+            225
           ]
         }
       ],
@@ -1425,8 +1430,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            39,
-            51
+            36
           ]
         }
       ],
@@ -1443,6 +1447,56 @@
     },
     {
       "id": 31,
+      "type": "ColorTransfer",
+      "pos": [
+        860,
+        700
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 30,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "image_target",
+          "type": "IMAGE",
+          "link": 36
+        },
+        {
+          "name": "image_ref",
+          "type": "IMAGE",
+          "link": 37
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            41,
+            53
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ColorTransfer"
+      },
+      "widgets_values": [
+        "reinhard_lab",
+        "per_frame",
+        1.0
+      ],
+      "title": "Farbe ans Startbild angleichen (Ctrl+B = an/aus)",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 32,
       "type": "StringConcatenate",
       "pos": [
         580,
@@ -1453,13 +1507,13 @@
         200
       ],
       "flags": {},
-      "order": 30,
+      "order": 31,
       "mode": 0,
       "inputs": [
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 36,
+          "link": 38,
           "widget": {
             "name": "string_a"
           }
@@ -1470,7 +1524,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            38
+            40
           ]
         }
       ],
@@ -1485,7 +1539,7 @@
       "title": "Szene 2: kurz beschreiben, was passiert (Deutsch)"
     },
     {
-      "id": 32,
+      "id": 33,
       "type": "TextGenerate",
       "pos": [
         580,
@@ -1496,18 +1550,18 @@
         330
       ],
       "flags": {},
-      "order": 31,
+      "order": 32,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 37
+          "link": 39
         },
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 38,
+          "link": 40,
           "widget": {
             "name": "prompt"
           }
@@ -1515,7 +1569,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 39,
+          "link": 41,
           "shape": 7
         },
         {
@@ -1533,7 +1587,7 @@
         {
           "name": "system_prompt",
           "type": "STRING",
-          "link": 40,
+          "link": 42,
           "shape": 7
         }
       ],
@@ -1542,8 +1596,8 @@
           "name": "generated_text",
           "type": "STRING",
           "links": [
-            42,
-            43
+            44,
+            45
           ]
         },
         {
@@ -1574,7 +1628,7 @@
       "bgcolor": "#533"
     },
     {
-      "id": 33,
+      "id": 34,
       "type": "PreviewAny",
       "pos": [
         580,
@@ -1585,13 +1639,13 @@
         110
       ],
       "flags": {},
-      "order": 32,
+      "order": 33,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 43
+          "link": 45
         }
       ],
       "outputs": [],
@@ -1604,64 +1658,11 @@
       "title": "Geschriebener Prompt"
     },
     {
-      "id": 34,
-      "type": "StringConcatenate",
-      "pos": [
-        580,
-        1510
-      ],
-      "size": [
-        520,
-        120
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 33,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 41,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": 42,
-          "widget": {
-            "name": "string_b"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            44
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        "\n"
-      ],
-      "title": "Kamera-Block + KI-Prompt"
-    },
-    {
       "id": 35,
       "type": "StringConcatenate",
       "pos": [
         580,
-        1550
+        1510
       ],
       "size": [
         520,
@@ -1676,7 +1677,7 @@
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 44,
+          "link": 43,
           "widget": {
             "name": "string_a"
           }
@@ -1684,7 +1685,7 @@
         {
           "name": "string_b",
           "type": "STRING",
-          "link": 45,
+          "link": 44,
           "widget": {
             "name": "string_b"
           }
@@ -1707,10 +1708,63 @@
         "",
         "\n"
       ],
-      "title": "+ Kamera-Regel"
+      "title": "Kamera-Block + KI-Prompt"
     },
     {
       "id": 36,
+      "type": "StringConcatenate",
+      "pos": [
+        580,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 35,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 46,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 47,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 37,
       "type": "MiniMaxH3ImageToVideo",
       "pos": [
         580,
@@ -1721,23 +1775,23 @@
         440
       ],
       "flags": {},
-      "order": 35,
+      "order": 36,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 47
+          "link": 49
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 48
+          "link": 50
         },
         {
           "name": "first_frame",
           "type": "IMAGE",
-          "link": 51,
+          "link": 53,
           "shape": 7
         },
         {
@@ -1749,7 +1803,7 @@
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 46,
+          "link": 48,
           "widget": {
             "name": "prompt"
           }
@@ -1757,7 +1811,7 @@
         {
           "name": "width",
           "type": "INT",
-          "link": 49,
+          "link": 51,
           "widget": {
             "name": "width"
           }
@@ -1765,7 +1819,7 @@
         {
           "name": "height",
           "type": "INT",
-          "link": 50,
+          "link": 52,
           "widget": {
             "name": "height"
           }
@@ -1773,7 +1827,7 @@
         {
           "name": "length",
           "type": "INT",
-          "link": 53,
+          "link": 55,
           "widget": {
             "name": "length"
           }
@@ -1784,14 +1838,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            55
+            57
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            60
+            62
           ]
         }
       ],
@@ -1807,7 +1861,7 @@
       "title": "Szene 2"
     },
     {
-      "id": 37,
+      "id": 38,
       "type": "PrimitiveFloat",
       "pos": [
         580,
@@ -1818,7 +1872,7 @@
         60
       ],
       "flags": {},
-      "order": 36,
+      "order": 37,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1826,7 +1880,7 @@
           "name": "FLOAT",
           "type": "FLOAT",
           "links": [
-            52
+            54
           ]
         }
       ],
@@ -1839,7 +1893,7 @@
       "title": "Dauer Szene 2 (s)"
     },
     {
-      "id": 38,
+      "id": 39,
       "type": "ComfyMathExpression",
       "pos": [
         860,
@@ -1852,14 +1906,14 @@
       "flags": {
         "collapsed": true
       },
-      "order": 37,
+      "order": 38,
       "mode": 0,
       "inputs": [
         {
           "label": "a",
           "name": "values.a",
           "type": "FLOAT,INT,BOOLEAN",
-          "link": 52
+          "link": 54
         },
         {
           "label": "b",
@@ -1879,7 +1933,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            53
+            55
           ]
         },
         {
@@ -1897,7 +1951,7 @@
       "title": "Sekunden → Frames"
     },
     {
-      "id": 39,
+      "id": 40,
       "type": "BasicGuider",
       "pos": [
         580,
@@ -1908,18 +1962,18 @@
         50
       ],
       "flags": {},
-      "order": 38,
+      "order": 39,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 54
+          "link": 56
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 55
+          "link": 57
         }
       ],
       "outputs": [
@@ -1927,7 +1981,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            57
+            59
           ]
         }
       ],
@@ -1936,7 +1990,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 41,
       "type": "SamplerCustomAdvanced",
       "pos": [
         580,
@@ -1947,33 +2001,33 @@
         110
       ],
       "flags": {},
-      "order": 39,
+      "order": 40,
       "mode": 0,
       "inputs": [
         {
           "name": "noise",
           "type": "NOISE",
-          "link": 56
+          "link": 58
         },
         {
           "name": "guider",
           "type": "GUIDER",
-          "link": 57
+          "link": 59
         },
         {
           "name": "sampler",
           "type": "SAMPLER",
-          "link": 58
+          "link": 60
         },
         {
           "name": "sigmas",
           "type": "SIGMAS",
-          "link": 59
+          "link": 61
         },
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 60
+          "link": 62
         }
       ],
       "outputs": [
@@ -1981,8 +2035,8 @@
           "name": "output",
           "type": "LATENT",
           "links": [
-            61,
-            63
+            63,
+            65
           ]
         },
         {
@@ -1996,7 +2050,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 42,
       "type": "VAEDecode",
       "pos": [
         860,
@@ -2004,48 +2058,6 @@
       ],
       "size": [
         220,
-        50
-      ],
-      "flags": {},
-      "order": 40,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 61
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 62
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            65,
-            68,
-            73
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAEDecode"
-      },
-      "title": "Bild dekodieren"
-    },
-    {
-      "id": 42,
-      "type": "VAEDecodeAudio",
-      "pos": [
-        860,
-        2300
-      ],
-      "size": [
-        240,
         50
       ],
       "flags": {},
@@ -2065,10 +2077,52 @@
       ],
       "outputs": [
         {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            67,
+            70,
+            73
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 43,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        860,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 42,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 65
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 66
+        }
+      ],
+      "outputs": [
+        {
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            66,
+            68,
             72
           ]
         }
@@ -2081,7 +2135,7 @@
       "bgcolor": "#335"
     },
     {
-      "id": 43,
+      "id": 44,
       "type": "CreateVideo",
       "pos": [
         580,
@@ -2092,18 +2146,18 @@
         100
       ],
       "flags": {},
-      "order": 42,
+      "order": 43,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 65
+          "link": 67
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 66,
+          "link": 68,
           "shape": 7
         }
       ],
@@ -2112,7 +2166,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            67
+            69
           ]
         }
       ],
@@ -2126,7 +2180,7 @@
       "title": "Szene 2 als Einzelvideo"
     },
     {
-      "id": 44,
+      "id": 45,
       "type": "SaveVideo",
       "pos": [
         580,
@@ -2137,13 +2191,13 @@
         380
       ],
       "flags": {},
-      "order": 43,
+      "order": 44,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 67
+          "link": 69
         }
       ],
       "outputs": [],
@@ -2156,7 +2210,7 @@
       "title": "Szene 2 (einzeln)"
     },
     {
-      "id": 45,
+      "id": 46,
       "type": "ImageFromBatch",
       "pos": [
         860,
@@ -2169,13 +2223,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 44,
+      "order": 45,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 68
+          "link": 70
         }
       ],
       "outputs": [
@@ -2183,7 +2237,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            70
+            226
           ]
         }
       ],
@@ -2195,48 +2249,6 @@
         4096
       ],
       "title": "Doppeltes Übergangsbild weg"
-    },
-    {
-      "id": 46,
-      "type": "ImageBatch",
-      "pos": [
-        860,
-        2410
-      ],
-      "size": [
-        240,
-        70
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 45,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 69
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 70
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            107
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageBatch"
-      },
-      "title": "+ Szene 2 (Bild)"
     },
     {
       "id": 47,
@@ -2311,8 +2323,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            77,
-            89
+            74
           ]
         }
       ],
@@ -2329,6 +2340,56 @@
     },
     {
       "id": 49,
+      "type": "ColorTransfer",
+      "pos": [
+        1440,
+        700
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 48,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "image_target",
+          "type": "IMAGE",
+          "link": 74
+        },
+        {
+          "name": "image_ref",
+          "type": "IMAGE",
+          "link": 75
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            79,
+            91
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ColorTransfer"
+      },
+      "widgets_values": [
+        "reinhard_lab",
+        "per_frame",
+        1.0
+      ],
+      "title": "Farbe ans Startbild angleichen (Ctrl+B = an/aus)",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 50,
       "type": "StringConcatenate",
       "pos": [
         1160,
@@ -2339,13 +2400,13 @@
         200
       ],
       "flags": {},
-      "order": 48,
+      "order": 49,
       "mode": 0,
       "inputs": [
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 74,
+          "link": 76,
           "widget": {
             "name": "string_a"
           }
@@ -2356,7 +2417,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            76
+            78
           ]
         }
       ],
@@ -2371,7 +2432,7 @@
       "title": "Szene 3: kurz beschreiben, was passiert (Deutsch)"
     },
     {
-      "id": 50,
+      "id": 51,
       "type": "TextGenerate",
       "pos": [
         1160,
@@ -2382,18 +2443,18 @@
         330
       ],
       "flags": {},
-      "order": 49,
+      "order": 50,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 75
+          "link": 77
         },
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 76,
+          "link": 78,
           "widget": {
             "name": "prompt"
           }
@@ -2401,7 +2462,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 77,
+          "link": 79,
           "shape": 7
         },
         {
@@ -2419,7 +2480,7 @@
         {
           "name": "system_prompt",
           "type": "STRING",
-          "link": 78,
+          "link": 80,
           "shape": 7
         }
       ],
@@ -2428,8 +2489,8 @@
           "name": "generated_text",
           "type": "STRING",
           "links": [
-            80,
-            81
+            82,
+            83
           ]
         },
         {
@@ -2460,7 +2521,7 @@
       "bgcolor": "#533"
     },
     {
-      "id": 51,
+      "id": 52,
       "type": "PreviewAny",
       "pos": [
         1160,
@@ -2471,13 +2532,13 @@
         110
       ],
       "flags": {},
-      "order": 50,
+      "order": 51,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 81
+          "link": 83
         }
       ],
       "outputs": [],
@@ -2490,64 +2551,11 @@
       "title": "Geschriebener Prompt"
     },
     {
-      "id": 52,
-      "type": "StringConcatenate",
-      "pos": [
-        1160,
-        1510
-      ],
-      "size": [
-        520,
-        120
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 51,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 79,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": 80,
-          "widget": {
-            "name": "string_b"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            82
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        "\n"
-      ],
-      "title": "Kamera-Block + KI-Prompt"
-    },
-    {
       "id": 53,
       "type": "StringConcatenate",
       "pos": [
         1160,
-        1550
+        1510
       ],
       "size": [
         520,
@@ -2562,7 +2570,7 @@
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 82,
+          "link": 81,
           "widget": {
             "name": "string_a"
           }
@@ -2570,7 +2578,7 @@
         {
           "name": "string_b",
           "type": "STRING",
-          "link": 83,
+          "link": 82,
           "widget": {
             "name": "string_b"
           }
@@ -2593,10 +2601,63 @@
         "",
         "\n"
       ],
-      "title": "+ Kamera-Regel"
+      "title": "Kamera-Block + KI-Prompt"
     },
     {
       "id": 54,
+      "type": "StringConcatenate",
+      "pos": [
+        1160,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 53,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 84,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 85,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            86
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 55,
       "type": "MiniMaxH3ImageToVideo",
       "pos": [
         1160,
@@ -2607,23 +2668,23 @@
         440
       ],
       "flags": {},
-      "order": 53,
+      "order": 54,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 85
+          "link": 87
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 86
+          "link": 88
         },
         {
           "name": "first_frame",
           "type": "IMAGE",
-          "link": 89,
+          "link": 91,
           "shape": 7
         },
         {
@@ -2635,7 +2696,7 @@
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 84,
+          "link": 86,
           "widget": {
             "name": "prompt"
           }
@@ -2643,7 +2704,7 @@
         {
           "name": "width",
           "type": "INT",
-          "link": 87,
+          "link": 89,
           "widget": {
             "name": "width"
           }
@@ -2651,7 +2712,7 @@
         {
           "name": "height",
           "type": "INT",
-          "link": 88,
+          "link": 90,
           "widget": {
             "name": "height"
           }
@@ -2659,7 +2720,7 @@
         {
           "name": "length",
           "type": "INT",
-          "link": 91,
+          "link": 93,
           "widget": {
             "name": "length"
           }
@@ -2670,14 +2731,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            93
+            95
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            98
+            100
           ]
         }
       ],
@@ -2693,7 +2754,7 @@
       "title": "Szene 3"
     },
     {
-      "id": 55,
+      "id": 56,
       "type": "PrimitiveFloat",
       "pos": [
         1160,
@@ -2704,7 +2765,7 @@
         60
       ],
       "flags": {},
-      "order": 54,
+      "order": 55,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2712,7 +2773,7 @@
           "name": "FLOAT",
           "type": "FLOAT",
           "links": [
-            90
+            92
           ]
         }
       ],
@@ -2725,7 +2786,7 @@
       "title": "Dauer Szene 3 (s)"
     },
     {
-      "id": 56,
+      "id": 57,
       "type": "ComfyMathExpression",
       "pos": [
         1440,
@@ -2738,14 +2799,14 @@
       "flags": {
         "collapsed": true
       },
-      "order": 55,
+      "order": 56,
       "mode": 0,
       "inputs": [
         {
           "label": "a",
           "name": "values.a",
           "type": "FLOAT,INT,BOOLEAN",
-          "link": 90
+          "link": 92
         },
         {
           "label": "b",
@@ -2765,7 +2826,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            91
+            93
           ]
         },
         {
@@ -2783,7 +2844,7 @@
       "title": "Sekunden → Frames"
     },
     {
-      "id": 57,
+      "id": 58,
       "type": "BasicGuider",
       "pos": [
         1160,
@@ -2794,18 +2855,18 @@
         50
       ],
       "flags": {},
-      "order": 56,
+      "order": 57,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 92
+          "link": 94
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 93
+          "link": 95
         }
       ],
       "outputs": [
@@ -2813,7 +2874,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            95
+            97
           ]
         }
       ],
@@ -2822,7 +2883,7 @@
       }
     },
     {
-      "id": 58,
+      "id": 59,
       "type": "SamplerCustomAdvanced",
       "pos": [
         1160,
@@ -2833,33 +2894,33 @@
         110
       ],
       "flags": {},
-      "order": 57,
+      "order": 58,
       "mode": 0,
       "inputs": [
         {
           "name": "noise",
           "type": "NOISE",
-          "link": 94
+          "link": 96
         },
         {
           "name": "guider",
           "type": "GUIDER",
-          "link": 95
+          "link": 97
         },
         {
           "name": "sampler",
           "type": "SAMPLER",
-          "link": 96
+          "link": 98
         },
         {
           "name": "sigmas",
           "type": "SIGMAS",
-          "link": 97
+          "link": 99
         },
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 98
+          "link": 100
         }
       ],
       "outputs": [
@@ -2867,8 +2928,8 @@
           "name": "output",
           "type": "LATENT",
           "links": [
-            99,
-            101
+            101,
+            103
           ]
         },
         {
@@ -2882,7 +2943,7 @@
       }
     },
     {
-      "id": 59,
+      "id": 60,
       "type": "VAEDecode",
       "pos": [
         1440,
@@ -2890,48 +2951,6 @@
       ],
       "size": [
         220,
-        50
-      ],
-      "flags": {},
-      "order": 58,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 99
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 100
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            103,
-            106,
-            111
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAEDecode"
-      },
-      "title": "Bild dekodieren"
-    },
-    {
-      "id": 60,
-      "type": "VAEDecodeAudio",
-      "pos": [
-        1440,
-        2300
-      ],
-      "size": [
-        240,
         50
       ],
       "flags": {},
@@ -2951,10 +2970,52 @@
       ],
       "outputs": [
         {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            105,
+            108,
+            111
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 61,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        1440,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 60,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 103
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 104
+        }
+      ],
+      "outputs": [
+        {
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            104,
+            106,
             110
           ]
         }
@@ -2967,7 +3028,7 @@
       "bgcolor": "#335"
     },
     {
-      "id": 61,
+      "id": 62,
       "type": "CreateVideo",
       "pos": [
         1160,
@@ -2978,18 +3039,18 @@
         100
       ],
       "flags": {},
-      "order": 60,
+      "order": 61,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 103
+          "link": 105
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 104,
+          "link": 106,
           "shape": 7
         }
       ],
@@ -2998,7 +3059,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            105
+            107
           ]
         }
       ],
@@ -3012,7 +3073,7 @@
       "title": "Szene 3 als Einzelvideo"
     },
     {
-      "id": 62,
+      "id": 63,
       "type": "SaveVideo",
       "pos": [
         1160,
@@ -3023,13 +3084,13 @@
         380
       ],
       "flags": {},
-      "order": 61,
+      "order": 62,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 105
+          "link": 107
         }
       ],
       "outputs": [],
@@ -3042,7 +3103,7 @@
       "title": "Szene 3 (einzeln)"
     },
     {
-      "id": 63,
+      "id": 64,
       "type": "ImageFromBatch",
       "pos": [
         1440,
@@ -3055,13 +3116,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 62,
+      "order": 63,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 106
+          "link": 108
         }
       ],
       "outputs": [
@@ -3069,7 +3130,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            108
+            227
           ]
         }
       ],
@@ -3081,48 +3142,6 @@
         4096
       ],
       "title": "Doppeltes Übergangsbild weg"
-    },
-    {
-      "id": 64,
-      "type": "ImageBatch",
-      "pos": [
-        1440,
-        2410
-      ],
-      "size": [
-        240,
-        70
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 63,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 107
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 108
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            145
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageBatch"
-      },
-      "title": "+ Szene 3 (Bild)"
     },
     {
       "id": 65,
@@ -3197,8 +3216,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            115,
-            127
+            112
           ]
         }
       ],
@@ -3215,6 +3233,56 @@
     },
     {
       "id": 67,
+      "type": "ColorTransfer",
+      "pos": [
+        2020,
+        700
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 66,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "image_target",
+          "type": "IMAGE",
+          "link": 112
+        },
+        {
+          "name": "image_ref",
+          "type": "IMAGE",
+          "link": 113
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            117,
+            129
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ColorTransfer"
+      },
+      "widgets_values": [
+        "reinhard_lab",
+        "per_frame",
+        1.0
+      ],
+      "title": "Farbe ans Startbild angleichen (Ctrl+B = an/aus)",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 68,
       "type": "StringConcatenate",
       "pos": [
         1740,
@@ -3225,13 +3293,13 @@
         200
       ],
       "flags": {},
-      "order": 66,
+      "order": 67,
       "mode": 0,
       "inputs": [
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 112,
+          "link": 114,
           "widget": {
             "name": "string_a"
           }
@@ -3242,7 +3310,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            114
+            116
           ]
         }
       ],
@@ -3257,7 +3325,7 @@
       "title": "Szene 4: kurz beschreiben, was passiert (Deutsch)"
     },
     {
-      "id": 68,
+      "id": 69,
       "type": "TextGenerate",
       "pos": [
         1740,
@@ -3268,18 +3336,18 @@
         330
       ],
       "flags": {},
-      "order": 67,
+      "order": 68,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 113
+          "link": 115
         },
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 114,
+          "link": 116,
           "widget": {
             "name": "prompt"
           }
@@ -3287,7 +3355,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 115,
+          "link": 117,
           "shape": 7
         },
         {
@@ -3305,7 +3373,7 @@
         {
           "name": "system_prompt",
           "type": "STRING",
-          "link": 116,
+          "link": 118,
           "shape": 7
         }
       ],
@@ -3314,8 +3382,8 @@
           "name": "generated_text",
           "type": "STRING",
           "links": [
-            118,
-            119
+            120,
+            121
           ]
         },
         {
@@ -3346,7 +3414,7 @@
       "bgcolor": "#533"
     },
     {
-      "id": 69,
+      "id": 70,
       "type": "PreviewAny",
       "pos": [
         1740,
@@ -3357,13 +3425,13 @@
         110
       ],
       "flags": {},
-      "order": 68,
+      "order": 69,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 119
+          "link": 121
         }
       ],
       "outputs": [],
@@ -3376,64 +3444,11 @@
       "title": "Geschriebener Prompt"
     },
     {
-      "id": 70,
-      "type": "StringConcatenate",
-      "pos": [
-        1740,
-        1510
-      ],
-      "size": [
-        520,
-        120
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 69,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 117,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": 118,
-          "widget": {
-            "name": "string_b"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            120
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        "\n"
-      ],
-      "title": "Kamera-Block + KI-Prompt"
-    },
-    {
       "id": 71,
       "type": "StringConcatenate",
       "pos": [
         1740,
-        1550
+        1510
       ],
       "size": [
         520,
@@ -3448,7 +3463,7 @@
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 120,
+          "link": 119,
           "widget": {
             "name": "string_a"
           }
@@ -3456,7 +3471,7 @@
         {
           "name": "string_b",
           "type": "STRING",
-          "link": 121,
+          "link": 120,
           "widget": {
             "name": "string_b"
           }
@@ -3479,10 +3494,63 @@
         "",
         "\n"
       ],
-      "title": "+ Kamera-Regel"
+      "title": "Kamera-Block + KI-Prompt"
     },
     {
       "id": 72,
+      "type": "StringConcatenate",
+      "pos": [
+        1740,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 71,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 122,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 123,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            124
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 73,
       "type": "MiniMaxH3ImageToVideo",
       "pos": [
         1740,
@@ -3493,23 +3561,23 @@
         440
       ],
       "flags": {},
-      "order": 71,
+      "order": 72,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 123
+          "link": 125
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 124
+          "link": 126
         },
         {
           "name": "first_frame",
           "type": "IMAGE",
-          "link": 127,
+          "link": 129,
           "shape": 7
         },
         {
@@ -3521,7 +3589,7 @@
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 122,
+          "link": 124,
           "widget": {
             "name": "prompt"
           }
@@ -3529,7 +3597,7 @@
         {
           "name": "width",
           "type": "INT",
-          "link": 125,
+          "link": 127,
           "widget": {
             "name": "width"
           }
@@ -3537,7 +3605,7 @@
         {
           "name": "height",
           "type": "INT",
-          "link": 126,
+          "link": 128,
           "widget": {
             "name": "height"
           }
@@ -3545,7 +3613,7 @@
         {
           "name": "length",
           "type": "INT",
-          "link": 129,
+          "link": 131,
           "widget": {
             "name": "length"
           }
@@ -3556,14 +3624,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            131
+            133
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            136
+            138
           ]
         }
       ],
@@ -3579,7 +3647,7 @@
       "title": "Szene 4"
     },
     {
-      "id": 73,
+      "id": 74,
       "type": "PrimitiveFloat",
       "pos": [
         1740,
@@ -3590,7 +3658,7 @@
         60
       ],
       "flags": {},
-      "order": 72,
+      "order": 73,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3598,7 +3666,7 @@
           "name": "FLOAT",
           "type": "FLOAT",
           "links": [
-            128
+            130
           ]
         }
       ],
@@ -3611,7 +3679,7 @@
       "title": "Dauer Szene 4 (s)"
     },
     {
-      "id": 74,
+      "id": 75,
       "type": "ComfyMathExpression",
       "pos": [
         2020,
@@ -3624,14 +3692,14 @@
       "flags": {
         "collapsed": true
       },
-      "order": 73,
+      "order": 74,
       "mode": 0,
       "inputs": [
         {
           "label": "a",
           "name": "values.a",
           "type": "FLOAT,INT,BOOLEAN",
-          "link": 128
+          "link": 130
         },
         {
           "label": "b",
@@ -3651,7 +3719,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            129
+            131
           ]
         },
         {
@@ -3669,7 +3737,7 @@
       "title": "Sekunden → Frames"
     },
     {
-      "id": 75,
+      "id": 76,
       "type": "BasicGuider",
       "pos": [
         1740,
@@ -3680,18 +3748,18 @@
         50
       ],
       "flags": {},
-      "order": 74,
+      "order": 75,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 130
+          "link": 132
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 131
+          "link": 133
         }
       ],
       "outputs": [
@@ -3699,7 +3767,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            133
+            135
           ]
         }
       ],
@@ -3708,7 +3776,7 @@
       }
     },
     {
-      "id": 76,
+      "id": 77,
       "type": "SamplerCustomAdvanced",
       "pos": [
         1740,
@@ -3719,33 +3787,33 @@
         110
       ],
       "flags": {},
-      "order": 75,
+      "order": 76,
       "mode": 0,
       "inputs": [
         {
           "name": "noise",
           "type": "NOISE",
-          "link": 132
+          "link": 134
         },
         {
           "name": "guider",
           "type": "GUIDER",
-          "link": 133
+          "link": 135
         },
         {
           "name": "sampler",
           "type": "SAMPLER",
-          "link": 134
+          "link": 136
         },
         {
           "name": "sigmas",
           "type": "SIGMAS",
-          "link": 135
+          "link": 137
         },
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 136
+          "link": 138
         }
       ],
       "outputs": [
@@ -3753,8 +3821,8 @@
           "name": "output",
           "type": "LATENT",
           "links": [
-            137,
-            139
+            139,
+            141
           ]
         },
         {
@@ -3768,7 +3836,7 @@
       }
     },
     {
-      "id": 77,
+      "id": 78,
       "type": "VAEDecode",
       "pos": [
         2020,
@@ -3776,48 +3844,6 @@
       ],
       "size": [
         220,
-        50
-      ],
-      "flags": {},
-      "order": 76,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 137
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 138
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            141,
-            144,
-            149
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAEDecode"
-      },
-      "title": "Bild dekodieren"
-    },
-    {
-      "id": 78,
-      "type": "VAEDecodeAudio",
-      "pos": [
-        2020,
-        2300
-      ],
-      "size": [
-        240,
         50
       ],
       "flags": {},
@@ -3837,10 +3863,52 @@
       ],
       "outputs": [
         {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            143,
+            146,
+            149
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 79,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        2020,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 78,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 141
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 142
+        }
+      ],
+      "outputs": [
+        {
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            142,
+            144,
             148
           ]
         }
@@ -3853,7 +3921,7 @@
       "bgcolor": "#335"
     },
     {
-      "id": 79,
+      "id": 80,
       "type": "CreateVideo",
       "pos": [
         1740,
@@ -3864,18 +3932,18 @@
         100
       ],
       "flags": {},
-      "order": 78,
+      "order": 79,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 141
+          "link": 143
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 142,
+          "link": 144,
           "shape": 7
         }
       ],
@@ -3884,7 +3952,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            143
+            145
           ]
         }
       ],
@@ -3898,7 +3966,7 @@
       "title": "Szene 4 als Einzelvideo"
     },
     {
-      "id": 80,
+      "id": 81,
       "type": "SaveVideo",
       "pos": [
         1740,
@@ -3909,13 +3977,13 @@
         380
       ],
       "flags": {},
-      "order": 79,
+      "order": 80,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 143
+          "link": 145
         }
       ],
       "outputs": [],
@@ -3928,7 +3996,7 @@
       "title": "Szene 4 (einzeln)"
     },
     {
-      "id": 81,
+      "id": 82,
       "type": "ImageFromBatch",
       "pos": [
         2020,
@@ -3941,13 +4009,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 80,
+      "order": 81,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 144
+          "link": 146
         }
       ],
       "outputs": [
@@ -3955,7 +4023,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            146
+            228
           ]
         }
       ],
@@ -3967,48 +4035,6 @@
         4096
       ],
       "title": "Doppeltes Übergangsbild weg"
-    },
-    {
-      "id": 82,
-      "type": "ImageBatch",
-      "pos": [
-        2020,
-        2410
-      ],
-      "size": [
-        240,
-        70
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 81,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 145
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 146
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            183
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageBatch"
-      },
-      "title": "+ Szene 4 (Bild)"
     },
     {
       "id": 83,
@@ -4083,8 +4109,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            153,
-            165
+            150
           ]
         }
       ],
@@ -4101,6 +4126,56 @@
     },
     {
       "id": 85,
+      "type": "ColorTransfer",
+      "pos": [
+        2600,
+        700
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 84,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "image_target",
+          "type": "IMAGE",
+          "link": 150
+        },
+        {
+          "name": "image_ref",
+          "type": "IMAGE",
+          "link": 151
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            155,
+            167
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ColorTransfer"
+      },
+      "widgets_values": [
+        "reinhard_lab",
+        "per_frame",
+        1.0
+      ],
+      "title": "Farbe ans Startbild angleichen (Ctrl+B = an/aus)",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 86,
       "type": "StringConcatenate",
       "pos": [
         2320,
@@ -4111,13 +4186,13 @@
         200
       ],
       "flags": {},
-      "order": 84,
+      "order": 85,
       "mode": 0,
       "inputs": [
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 150,
+          "link": 152,
           "widget": {
             "name": "string_a"
           }
@@ -4128,7 +4203,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            152
+            154
           ]
         }
       ],
@@ -4143,7 +4218,7 @@
       "title": "Szene 5: kurz beschreiben, was passiert (Deutsch)"
     },
     {
-      "id": 86,
+      "id": 87,
       "type": "TextGenerate",
       "pos": [
         2320,
@@ -4154,18 +4229,18 @@
         330
       ],
       "flags": {},
-      "order": 85,
+      "order": 86,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 151
+          "link": 153
         },
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 152,
+          "link": 154,
           "widget": {
             "name": "prompt"
           }
@@ -4173,7 +4248,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 153,
+          "link": 155,
           "shape": 7
         },
         {
@@ -4191,7 +4266,7 @@
         {
           "name": "system_prompt",
           "type": "STRING",
-          "link": 154,
+          "link": 156,
           "shape": 7
         }
       ],
@@ -4200,8 +4275,8 @@
           "name": "generated_text",
           "type": "STRING",
           "links": [
-            156,
-            157
+            158,
+            159
           ]
         },
         {
@@ -4232,7 +4307,7 @@
       "bgcolor": "#533"
     },
     {
-      "id": 87,
+      "id": 88,
       "type": "PreviewAny",
       "pos": [
         2320,
@@ -4243,13 +4318,13 @@
         110
       ],
       "flags": {},
-      "order": 86,
+      "order": 87,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 157
+          "link": 159
         }
       ],
       "outputs": [],
@@ -4262,64 +4337,11 @@
       "title": "Geschriebener Prompt"
     },
     {
-      "id": 88,
-      "type": "StringConcatenate",
-      "pos": [
-        2320,
-        1510
-      ],
-      "size": [
-        520,
-        120
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 87,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 155,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": 156,
-          "widget": {
-            "name": "string_b"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            158
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        "\n"
-      ],
-      "title": "Kamera-Block + KI-Prompt"
-    },
-    {
       "id": 89,
       "type": "StringConcatenate",
       "pos": [
         2320,
-        1550
+        1510
       ],
       "size": [
         520,
@@ -4334,7 +4356,7 @@
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 158,
+          "link": 157,
           "widget": {
             "name": "string_a"
           }
@@ -4342,7 +4364,7 @@
         {
           "name": "string_b",
           "type": "STRING",
-          "link": 159,
+          "link": 158,
           "widget": {
             "name": "string_b"
           }
@@ -4365,10 +4387,63 @@
         "",
         "\n"
       ],
-      "title": "+ Kamera-Regel"
+      "title": "Kamera-Block + KI-Prompt"
     },
     {
       "id": 90,
+      "type": "StringConcatenate",
+      "pos": [
+        2320,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 89,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 160,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 161,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            162
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 91,
       "type": "MiniMaxH3ImageToVideo",
       "pos": [
         2320,
@@ -4379,23 +4454,23 @@
         440
       ],
       "flags": {},
-      "order": 89,
+      "order": 90,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 161
+          "link": 163
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 162
+          "link": 164
         },
         {
           "name": "first_frame",
           "type": "IMAGE",
-          "link": 165,
+          "link": 167,
           "shape": 7
         },
         {
@@ -4407,7 +4482,7 @@
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 160,
+          "link": 162,
           "widget": {
             "name": "prompt"
           }
@@ -4415,7 +4490,7 @@
         {
           "name": "width",
           "type": "INT",
-          "link": 163,
+          "link": 165,
           "widget": {
             "name": "width"
           }
@@ -4423,7 +4498,7 @@
         {
           "name": "height",
           "type": "INT",
-          "link": 164,
+          "link": 166,
           "widget": {
             "name": "height"
           }
@@ -4431,7 +4506,7 @@
         {
           "name": "length",
           "type": "INT",
-          "link": 167,
+          "link": 169,
           "widget": {
             "name": "length"
           }
@@ -4442,14 +4517,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            169
+            171
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            174
+            176
           ]
         }
       ],
@@ -4465,7 +4540,7 @@
       "title": "Szene 5"
     },
     {
-      "id": 91,
+      "id": 92,
       "type": "PrimitiveFloat",
       "pos": [
         2320,
@@ -4476,7 +4551,7 @@
         60
       ],
       "flags": {},
-      "order": 90,
+      "order": 91,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -4484,7 +4559,7 @@
           "name": "FLOAT",
           "type": "FLOAT",
           "links": [
-            166
+            168
           ]
         }
       ],
@@ -4497,7 +4572,7 @@
       "title": "Dauer Szene 5 (s)"
     },
     {
-      "id": 92,
+      "id": 93,
       "type": "ComfyMathExpression",
       "pos": [
         2600,
@@ -4510,14 +4585,14 @@
       "flags": {
         "collapsed": true
       },
-      "order": 91,
+      "order": 92,
       "mode": 0,
       "inputs": [
         {
           "label": "a",
           "name": "values.a",
           "type": "FLOAT,INT,BOOLEAN",
-          "link": 166
+          "link": 168
         },
         {
           "label": "b",
@@ -4537,7 +4612,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            167
+            169
           ]
         },
         {
@@ -4555,7 +4630,7 @@
       "title": "Sekunden → Frames"
     },
     {
-      "id": 93,
+      "id": 94,
       "type": "BasicGuider",
       "pos": [
         2320,
@@ -4566,18 +4641,18 @@
         50
       ],
       "flags": {},
-      "order": 92,
+      "order": 93,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 168
+          "link": 170
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 169
+          "link": 171
         }
       ],
       "outputs": [
@@ -4585,7 +4660,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            171
+            173
           ]
         }
       ],
@@ -4594,7 +4669,7 @@
       }
     },
     {
-      "id": 94,
+      "id": 95,
       "type": "SamplerCustomAdvanced",
       "pos": [
         2320,
@@ -4605,33 +4680,33 @@
         110
       ],
       "flags": {},
-      "order": 93,
+      "order": 94,
       "mode": 0,
       "inputs": [
         {
           "name": "noise",
           "type": "NOISE",
-          "link": 170
+          "link": 172
         },
         {
           "name": "guider",
           "type": "GUIDER",
-          "link": 171
+          "link": 173
         },
         {
           "name": "sampler",
           "type": "SAMPLER",
-          "link": 172
+          "link": 174
         },
         {
           "name": "sigmas",
           "type": "SIGMAS",
-          "link": 173
+          "link": 175
         },
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 174
+          "link": 176
         }
       ],
       "outputs": [
@@ -4639,8 +4714,8 @@
           "name": "output",
           "type": "LATENT",
           "links": [
-            175,
-            177
+            177,
+            179
           ]
         },
         {
@@ -4654,7 +4729,7 @@
       }
     },
     {
-      "id": 95,
+      "id": 96,
       "type": "VAEDecode",
       "pos": [
         2600,
@@ -4662,48 +4737,6 @@
       ],
       "size": [
         220,
-        50
-      ],
-      "flags": {},
-      "order": 94,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 175
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 176
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            179,
-            182,
-            187
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAEDecode"
-      },
-      "title": "Bild dekodieren"
-    },
-    {
-      "id": 96,
-      "type": "VAEDecodeAudio",
-      "pos": [
-        2600,
-        2300
-      ],
-      "size": [
-        240,
         50
       ],
       "flags": {},
@@ -4723,10 +4756,52 @@
       ],
       "outputs": [
         {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            181,
+            184,
+            187
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 97,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        2600,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 96,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 179
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 180
+        }
+      ],
+      "outputs": [
+        {
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            180,
+            182,
             186
           ]
         }
@@ -4739,7 +4814,7 @@
       "bgcolor": "#335"
     },
     {
-      "id": 97,
+      "id": 98,
       "type": "CreateVideo",
       "pos": [
         2320,
@@ -4750,18 +4825,18 @@
         100
       ],
       "flags": {},
-      "order": 96,
+      "order": 97,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 179
+          "link": 181
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 180,
+          "link": 182,
           "shape": 7
         }
       ],
@@ -4770,7 +4845,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            181
+            183
           ]
         }
       ],
@@ -4784,7 +4859,7 @@
       "title": "Szene 5 als Einzelvideo"
     },
     {
-      "id": 98,
+      "id": 99,
       "type": "SaveVideo",
       "pos": [
         2320,
@@ -4795,13 +4870,13 @@
         380
       ],
       "flags": {},
-      "order": 97,
+      "order": 98,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 181
+          "link": 183
         }
       ],
       "outputs": [],
@@ -4814,7 +4889,7 @@
       "title": "Szene 5 (einzeln)"
     },
     {
-      "id": 99,
+      "id": 100,
       "type": "ImageFromBatch",
       "pos": [
         2600,
@@ -4827,13 +4902,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 98,
+      "order": 99,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 182
+          "link": 184
         }
       ],
       "outputs": [
@@ -4841,7 +4916,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            184
+            229
           ]
         }
       ],
@@ -4853,48 +4928,6 @@
         4096
       ],
       "title": "Doppeltes Übergangsbild weg"
-    },
-    {
-      "id": 100,
-      "type": "ImageBatch",
-      "pos": [
-        2600,
-        2410
-      ],
-      "size": [
-        240,
-        70
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 99,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 183
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 184
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            221
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageBatch"
-      },
-      "title": "+ Szene 5 (Bild)"
     },
     {
       "id": 101,
@@ -4969,8 +5002,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            191,
-            203
+            188
           ]
         }
       ],
@@ -4987,6 +5019,56 @@
     },
     {
       "id": 103,
+      "type": "ColorTransfer",
+      "pos": [
+        3180,
+        700
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 102,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "image_target",
+          "type": "IMAGE",
+          "link": 188
+        },
+        {
+          "name": "image_ref",
+          "type": "IMAGE",
+          "link": 189
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            193,
+            205
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ColorTransfer"
+      },
+      "widgets_values": [
+        "reinhard_lab",
+        "per_frame",
+        1.0
+      ],
+      "title": "Farbe ans Startbild angleichen (Ctrl+B = an/aus)",
+      "color": "#2a5",
+      "bgcolor": "#274"
+    },
+    {
+      "id": 104,
       "type": "StringConcatenate",
       "pos": [
         2900,
@@ -4997,13 +5079,13 @@
         200
       ],
       "flags": {},
-      "order": 102,
+      "order": 103,
       "mode": 0,
       "inputs": [
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 188,
+          "link": 190,
           "widget": {
             "name": "string_a"
           }
@@ -5014,7 +5096,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            190
+            192
           ]
         }
       ],
@@ -5029,7 +5111,7 @@
       "title": "Szene 6: kurz beschreiben, was passiert (Deutsch)"
     },
     {
-      "id": 104,
+      "id": 105,
       "type": "TextGenerate",
       "pos": [
         2900,
@@ -5040,18 +5122,18 @@
         330
       ],
       "flags": {},
-      "order": 103,
+      "order": 104,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 189
+          "link": 191
         },
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 190,
+          "link": 192,
           "widget": {
             "name": "prompt"
           }
@@ -5059,7 +5141,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 191,
+          "link": 193,
           "shape": 7
         },
         {
@@ -5077,7 +5159,7 @@
         {
           "name": "system_prompt",
           "type": "STRING",
-          "link": 192,
+          "link": 194,
           "shape": 7
         }
       ],
@@ -5086,8 +5168,8 @@
           "name": "generated_text",
           "type": "STRING",
           "links": [
-            194,
-            195
+            196,
+            197
           ]
         },
         {
@@ -5118,7 +5200,7 @@
       "bgcolor": "#533"
     },
     {
-      "id": 105,
+      "id": 106,
       "type": "PreviewAny",
       "pos": [
         2900,
@@ -5129,13 +5211,13 @@
         110
       ],
       "flags": {},
-      "order": 104,
+      "order": 105,
       "mode": 0,
       "inputs": [
         {
           "name": "source",
           "type": "*",
-          "link": 195
+          "link": 197
         }
       ],
       "outputs": [],
@@ -5148,64 +5230,11 @@
       "title": "Geschriebener Prompt"
     },
     {
-      "id": 106,
-      "type": "StringConcatenate",
-      "pos": [
-        2900,
-        1510
-      ],
-      "size": [
-        520,
-        120
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 105,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 193,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": 194,
-          "widget": {
-            "name": "string_b"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            196
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        "\n"
-      ],
-      "title": "Kamera-Block + KI-Prompt"
-    },
-    {
       "id": 107,
       "type": "StringConcatenate",
       "pos": [
         2900,
-        1550
+        1510
       ],
       "size": [
         520,
@@ -5220,7 +5249,7 @@
         {
           "name": "string_a",
           "type": "STRING",
-          "link": 196,
+          "link": 195,
           "widget": {
             "name": "string_a"
           }
@@ -5228,7 +5257,7 @@
         {
           "name": "string_b",
           "type": "STRING",
-          "link": 197,
+          "link": 196,
           "widget": {
             "name": "string_b"
           }
@@ -5251,10 +5280,63 @@
         "",
         "\n"
       ],
-      "title": "+ Kamera-Regel"
+      "title": "Kamera-Block + KI-Prompt"
     },
     {
       "id": 108,
+      "type": "StringConcatenate",
+      "pos": [
+        2900,
+        1550
+      ],
+      "size": [
+        520,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 107,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": 198,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 199,
+          "widget": {
+            "name": "string_b"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            200
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "\n"
+      ],
+      "title": "+ Kamera-Regel"
+    },
+    {
+      "id": 109,
       "type": "MiniMaxH3ImageToVideo",
       "pos": [
         2900,
@@ -5265,23 +5347,23 @@
         440
       ],
       "flags": {},
-      "order": 107,
+      "order": 108,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 199
+          "link": 201
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 200
+          "link": 202
         },
         {
           "name": "first_frame",
           "type": "IMAGE",
-          "link": 203,
+          "link": 205,
           "shape": 7
         },
         {
@@ -5293,7 +5375,7 @@
         {
           "name": "prompt",
           "type": "STRING",
-          "link": 198,
+          "link": 200,
           "widget": {
             "name": "prompt"
           }
@@ -5301,7 +5383,7 @@
         {
           "name": "width",
           "type": "INT",
-          "link": 201,
+          "link": 203,
           "widget": {
             "name": "width"
           }
@@ -5309,7 +5391,7 @@
         {
           "name": "height",
           "type": "INT",
-          "link": 202,
+          "link": 204,
           "widget": {
             "name": "height"
           }
@@ -5317,7 +5399,7 @@
         {
           "name": "length",
           "type": "INT",
-          "link": 205,
+          "link": 207,
           "widget": {
             "name": "length"
           }
@@ -5328,14 +5410,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            207
+            209
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            212
+            214
           ]
         }
       ],
@@ -5351,7 +5433,7 @@
       "title": "Szene 6"
     },
     {
-      "id": 109,
+      "id": 110,
       "type": "PrimitiveFloat",
       "pos": [
         2900,
@@ -5362,7 +5444,7 @@
         60
       ],
       "flags": {},
-      "order": 108,
+      "order": 109,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5370,7 +5452,7 @@
           "name": "FLOAT",
           "type": "FLOAT",
           "links": [
-            204
+            206
           ]
         }
       ],
@@ -5383,7 +5465,7 @@
       "title": "Dauer Szene 6 (s)"
     },
     {
-      "id": 110,
+      "id": 111,
       "type": "ComfyMathExpression",
       "pos": [
         3180,
@@ -5396,14 +5478,14 @@
       "flags": {
         "collapsed": true
       },
-      "order": 109,
+      "order": 110,
       "mode": 0,
       "inputs": [
         {
           "label": "a",
           "name": "values.a",
           "type": "FLOAT,INT,BOOLEAN",
-          "link": 204
+          "link": 206
         },
         {
           "label": "b",
@@ -5423,7 +5505,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            205
+            207
           ]
         },
         {
@@ -5441,7 +5523,7 @@
       "title": "Sekunden → Frames"
     },
     {
-      "id": 111,
+      "id": 112,
       "type": "BasicGuider",
       "pos": [
         2900,
@@ -5452,18 +5534,18 @@
         50
       ],
       "flags": {},
-      "order": 110,
+      "order": 111,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 206
+          "link": 208
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 207
+          "link": 209
         }
       ],
       "outputs": [
@@ -5471,7 +5553,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            209
+            211
           ]
         }
       ],
@@ -5480,7 +5562,7 @@
       }
     },
     {
-      "id": 112,
+      "id": 113,
       "type": "SamplerCustomAdvanced",
       "pos": [
         2900,
@@ -5491,33 +5573,33 @@
         110
       ],
       "flags": {},
-      "order": 111,
+      "order": 112,
       "mode": 0,
       "inputs": [
         {
           "name": "noise",
           "type": "NOISE",
-          "link": 208
+          "link": 210
         },
         {
           "name": "guider",
           "type": "GUIDER",
-          "link": 209
+          "link": 211
         },
         {
           "name": "sampler",
           "type": "SAMPLER",
-          "link": 210
+          "link": 212
         },
         {
           "name": "sigmas",
           "type": "SIGMAS",
-          "link": 211
+          "link": 213
         },
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 212
+          "link": 214
         }
       ],
       "outputs": [
@@ -5525,8 +5607,8 @@
           "name": "output",
           "type": "LATENT",
           "links": [
-            213,
-            215
+            215,
+            217
           ]
         },
         {
@@ -5540,7 +5622,7 @@
       }
     },
     {
-      "id": 113,
+      "id": 114,
       "type": "VAEDecode",
       "pos": [
         3180,
@@ -5548,47 +5630,6 @@
       ],
       "size": [
         220,
-        50
-      ],
-      "flags": {},
-      "order": 112,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 213
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 214
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            217,
-            220
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAEDecode"
-      },
-      "title": "Bild dekodieren"
-    },
-    {
-      "id": 114,
-      "type": "VAEDecodeAudio",
-      "pos": [
-        3180,
-        2300
-      ],
-      "size": [
-        240,
         50
       ],
       "flags": {},
@@ -5608,10 +5649,51 @@
       ],
       "outputs": [
         {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            219,
+            222
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "Bild dekodieren"
+    },
+    {
+      "id": 115,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        3180,
+        2300
+      ],
+      "size": [
+        240,
+        50
+      ],
+      "flags": {},
+      "order": 114,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 217
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 218
+        }
+      ],
+      "outputs": [
+        {
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            218,
+            220,
             224
           ]
         }
@@ -5624,7 +5706,7 @@
       "bgcolor": "#335"
     },
     {
-      "id": 115,
+      "id": 116,
       "type": "CreateVideo",
       "pos": [
         2900,
@@ -5635,18 +5717,18 @@
         100
       ],
       "flags": {},
-      "order": 114,
+      "order": 115,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 217
+          "link": 219
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 218,
+          "link": 220,
           "shape": 7
         }
       ],
@@ -5655,7 +5737,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            219
+            221
           ]
         }
       ],
@@ -5669,7 +5751,7 @@
       "title": "Szene 6 als Einzelvideo"
     },
     {
-      "id": 116,
+      "id": 117,
       "type": "SaveVideo",
       "pos": [
         2900,
@@ -5680,13 +5762,13 @@
         380
       ],
       "flags": {},
-      "order": 115,
+      "order": 116,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 219
+          "link": 221
         }
       ],
       "outputs": [],
@@ -5699,7 +5781,7 @@
       "title": "Szene 6 (einzeln)"
     },
     {
-      "id": 117,
+      "id": 118,
       "type": "ImageFromBatch",
       "pos": [
         3180,
@@ -5712,13 +5794,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 116,
+      "order": 117,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 220
+          "link": 222
         }
       ],
       "outputs": [
@@ -5726,7 +5808,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            222
+            230
           ]
         }
       ],
@@ -5738,49 +5820,6 @@
         4096
       ],
       "title": "Doppeltes Übergangsbild weg"
-    },
-    {
-      "id": 118,
-      "type": "ImageBatch",
-      "pos": [
-        3180,
-        2410
-      ],
-      "size": [
-        240,
-        70
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 117,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 221
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 222
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            225,
-            228
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageBatch"
-      },
-      "title": "+ Szene 6 (Bild)"
     },
     {
       "id": 119,
@@ -5815,7 +5854,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            226
+            232
           ]
         }
       ],
@@ -5831,6 +5870,85 @@
     },
     {
       "id": 120,
+      "type": "BatchImagesNode",
+      "pos": [
+        3820,
+        760
+      ],
+      "size": [
+        300,
+        222
+      ],
+      "flags": {},
+      "order": 119,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "image0",
+          "name": "images.image0",
+          "type": "IMAGE",
+          "link": 225
+        },
+        {
+          "label": "image1",
+          "name": "images.image1",
+          "type": "IMAGE",
+          "link": 226,
+          "shape": 7
+        },
+        {
+          "label": "image2",
+          "name": "images.image2",
+          "type": "IMAGE",
+          "link": 227,
+          "shape": 7
+        },
+        {
+          "label": "image3",
+          "name": "images.image3",
+          "type": "IMAGE",
+          "link": 228,
+          "shape": 7
+        },
+        {
+          "label": "image4",
+          "name": "images.image4",
+          "type": "IMAGE",
+          "link": 229,
+          "shape": 7
+        },
+        {
+          "label": "image5",
+          "name": "images.image5",
+          "type": "IMAGE",
+          "link": 230,
+          "shape": 7
+        },
+        {
+          "label": "image6",
+          "name": "images.image6",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            231,
+            234
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BatchImagesNode"
+      },
+      "title": "Alle Szenen aneinanderhängen (Bild)"
+    },
+    {
+      "id": 121,
       "type": "CreateVideo",
       "pos": [
         3500,
@@ -5841,18 +5959,18 @@
         100
       ],
       "flags": {},
-      "order": 119,
+      "order": 120,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 225
+          "link": 231
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 226,
+          "link": 232,
           "shape": 7
         }
       ],
@@ -5861,7 +5979,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            227
+            233
           ]
         }
       ],
@@ -5875,24 +5993,24 @@
       "title": "Gesamtvideo mit Ton"
     },
     {
-      "id": 121,
+      "id": 122,
       "type": "SaveVideo",
       "pos": [
         3500,
-        900
+        1010
       ],
       "size": [
         620,
         480
       ],
       "flags": {},
-      "order": 120,
+      "order": 121,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 227
+          "link": 233
         }
       ],
       "outputs": [],
@@ -5905,24 +6023,24 @@
       "title": "Gesamtvideo mit Ton"
     },
     {
-      "id": 122,
+      "id": 123,
       "type": "CreateVideo",
       "pos": [
         3500,
-        1420
+        1520
       ],
       "size": [
         280,
         100
       ],
       "flags": {},
-      "order": 121,
+      "order": 122,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 228
+          "link": 234
         },
         {
           "name": "audio",
@@ -5936,7 +6054,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            229
+            235
           ]
         }
       ],
@@ -5950,24 +6068,24 @@
       "title": "Gesamtvideo ohne Ton"
     },
     {
-      "id": 123,
+      "id": 124,
       "type": "SaveVideo",
       "pos": [
         3500,
-        1560
+        1660
       ],
       "size": [
         620,
         480
       ],
       "flags": {},
-      "order": 122,
+      "order": 123,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 229
+          "link": 235
         }
       ],
       "outputs": [],
@@ -5980,7 +6098,7 @@
       "title": "Gesamtvideo ohne Ton"
     },
     {
-      "id": 124,
+      "id": 125,
       "type": "MarkdownNote",
       "pos": [
         4180,
@@ -5991,13 +6109,13 @@
         1500
       ],
       "flags": {},
-      "order": 123,
+      "order": 124,
       "mode": 0,
       "inputs": [],
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "# H3 lokal – Geschichte mit KI-Regie (6 Szenen)\n\n**Prinzip:** Für jede Szene schaut sich ein lokales Sprachmodell (Gemma 4 E4B) das **Startbild dieser Szene** an und schreibt daraus den H3-Prompt – passend zu deiner Geschichte und deiner Kurznotiz. Das letzte Bild jeder Szene wird automatisch das Startbild der nächsten. Alles läuft mit **einem Klick auf Queue**.\n\n## Einstellen\n1. **Startbild** laden.\n2. **GESCHICHTE** (grün oben): die Idee in eigenen Worten, Deutsch ist ok.\n3. Pro Szene: **eine Zeile**, was passieren soll (Deutsch ok). Die KI macht daraus einen englischen H3-Prompt.\n4. **Dauer** pro Szene, **Format** links. **Queue.**\n5. Unter jeder KI-Node zeigt „Geschriebener Prompt“, was die KI geschrieben hat.\n\nKamera-Block und Kamera-Regel werden automatisch vor und hinter jeden KI-Prompt gesetzt (feste Einstellung, kein Zoom).\n\n## Länge\n6 × 8 s = 48 s (voreingestellt) · 6 × 10 s = 60 s. Pro Szene 5–10 s empfohlen, max. ~15 s.\nWeniger Szenen: Gruppen **von hinten** mit `Ctrl+B` abschalten (erst 6, dann 5 …).\n\n## Ausgabe\n- `H3_geschichte` = Gesamtvideo mit Ton, `H3_geschichte_stumm` = ohne Ton.\n- Jede Szene zusätzlich einzeln (`H3_szene_1` …) – gut zum Nachschneiden.\n\n## Gut zu wissen\n- Szenen laufen nacheinander; Abbruch → beim nächsten Queue geht es ab der abgebrochenen Szene weiter.\n- Änderst du Szene 4, werden 4–6 neu gerechnet, 1–3 bleiben.\n- Kleine Abweichungen summieren sich über die Kette. Finale ohne Turbo (`Ctrl+B` auf LoRA, Schritte 20).\n- RAM: 60 s bei 1344×768 ≈ 18 GB für das Gesamtvideo.\n\n## Sprachmodell\n- Datei: `gemma4_e4b_it_fp8_scaled.safetensors` → `models/text_encoders/`\n- ComfyUI lagert das Sprachmodell automatisch aus, sobald H3 den Grafikspeicher braucht – kein extra Programm nötig.\n- Prompt gefällt nicht? Notiz der Szene ändern oder im KI-Node den `seed` ändern → neuer Text.\n"
+        "# H3 lokal – Geschichte mit KI-Regie (6 Szenen)\n\n**Prinzip:** Für jede Szene schaut sich ein lokales Sprachmodell (Gemma 4 E4B) das **Startbild dieser Szene** an und schreibt daraus den H3-Prompt – passend zu deiner Geschichte und deiner Kurznotiz. Das letzte Bild jeder Szene wird automatisch das Startbild der nächsten. Alles läuft mit **einem Klick auf Queue**.\n\n## Einstellen\n1. **Startbild** laden.\n2. **GESCHICHTE** (grün oben): die Idee in eigenen Worten, Deutsch ist ok.\n3. Pro Szene: **eine Zeile**, was passieren soll (Deutsch ok). Die KI macht daraus einen englischen H3-Prompt.\n4. **Dauer** pro Szene, **Format** links. **Queue.**\n5. Unter jeder KI-Node zeigt „Geschriebener Prompt“, was die KI geschrieben hat.\n\nKamera-Block und Kamera-Regel werden automatisch vor und hinter jeden KI-Prompt gesetzt (feste Einstellung, kein Zoom).\n\n## Länge\n6 × 8 s = 48 s (voreingestellt) · 6 × 10 s = 60 s. Pro Szene 5–10 s empfohlen, max. ~15 s.\nWeniger Szenen: Gruppen **von hinten** mit `Ctrl+B` abschalten (erst 6, dann 5 …).\n\n## Qualität über die Kette\nJede Szene startet mit dem letzten Bild der vorigen – Unschärfe und Farbstich werden mitgenommen und summieren sich. Dagegen:\n1. **Final in 0.98 MP (768p)** rechnen – bei 0.4 MP wird das Übergangsbild schnell matschig.\n2. **Mehr Schritte:** Turbo-LoRA aus + 20 Schritte (oder mind. 8er-Turbo statt 4er).\n3. **Farbe angleichen:** grüner Node „Farbe ans Startbild angleichen“ in jeder Szene (ab Szene 2) mit `Ctrl+B` einschalten – gleicht Farbdrift ans Startbild an. Bei gewolltem Lichtwechsel aus lassen.\n4. **Ruhiges Szenenende:** Handlung so beschreiben, dass die Szene ruhig endet (keine schnelle Bewegung im letzten Bild → weniger Bewegungsunschärfe).\n5. Kette kurz halten bzw. nach 3–4 Szenen ein echtes, scharfes Bild als neues Startbild nehmen.\n\n## Ausgabe\n- `H3_geschichte` = Gesamtvideo mit Ton, `H3_geschichte_stumm` = ohne Ton.\n- Jede Szene zusätzlich einzeln (`H3_szene_1` …) – gut zum Nachschneiden.\n\n## Gut zu wissen\n- Szenen laufen nacheinander; Abbruch → beim nächsten Queue geht es ab der abgebrochenen Szene weiter.\n- Änderst du Szene 4, werden 4–6 neu gerechnet, 1–3 bleiben.\n- Kleine Abweichungen summieren sich über die Kette. Finale ohne Turbo (`Ctrl+B` auf LoRA, Schritte 20).\n- RAM: 60 s bei 1344×768 ≈ 18 GB für das Gesamtvideo.\n\n## Sprachmodell\n- Datei: `gemma4_e4b_it_fp8_scaled.safetensors` → `models/text_encoders/`\n- ComfyUI lagert das Sprachmodell automatisch aus, sobald H3 den Grafikspeicher braucht – kein extra Programm nötig.\n- Prompt gefällt nicht? Notiz der Szene ändern oder im KI-Node den `seed` ändern → neuer Text.\n"
       ],
       "title": "Anleitung"
     }
@@ -6285,82 +6403,82 @@
     ],
     [
       36,
-      2,
+      30,
       0,
       31,
       0,
-      "STRING"
+      "IMAGE"
     ],
     [
       37,
-      6,
+      1,
       0,
-      32,
-      0,
-      "CLIP"
+      31,
+      1,
+      "IMAGE"
     ],
     [
       38,
-      31,
+      2,
       0,
       32,
-      1,
+      0,
       "STRING"
     ],
     [
       39,
-      30,
+      6,
       0,
-      32,
-      2,
-      "IMAGE"
+      33,
+      0,
+      "CLIP"
     ],
     [
       40,
-      3,
-      0,
-      32,
-      5,
-      "STRING"
-    ],
-    [
-      41,
-      4,
-      0,
-      34,
-      0,
-      "STRING"
-    ],
-    [
-      42,
       32,
       0,
-      34,
+      33,
       1,
       "STRING"
     ],
     [
-      43,
-      32,
+      41,
+      31,
       0,
       33,
+      2,
+      "IMAGE"
+    ],
+    [
+      42,
+      3,
+      0,
+      33,
+      5,
+      "STRING"
+    ],
+    [
+      43,
+      4,
+      0,
+      35,
       0,
       "STRING"
     ],
     [
       44,
-      34,
+      33,
       0,
       35,
-      0,
+      1,
       "STRING"
     ],
     [
       45,
-      5,
+      33,
       0,
-      35,
-      1,
+      34,
+      0,
       "STRING"
     ],
     [
@@ -6368,140 +6486,140 @@
       35,
       0,
       36,
-      4,
+      0,
       "STRING"
     ],
     [
       47,
-      9,
+      5,
       0,
       36,
+      1,
+      "STRING"
+    ],
+    [
+      48,
+      36,
+      0,
+      37,
+      4,
+      "STRING"
+    ],
+    [
+      49,
+      9,
+      0,
+      37,
       0,
       "CLIP"
     ],
     [
-      48,
+      50,
       10,
       0,
-      36,
+      37,
       1,
       "VAE"
     ],
     [
-      49,
+      51,
       15,
       0,
-      36,
+      37,
       5,
       "INT"
     ],
     [
-      50,
+      52,
       15,
       1,
-      36,
+      37,
       6,
       "INT"
     ],
     [
-      51,
-      30,
+      53,
+      31,
       0,
-      36,
+      37,
       2,
       "IMAGE"
     ],
     [
-      52,
-      37,
-      0,
+      54,
       38,
+      0,
+      39,
       0,
       "FLOAT"
     ],
     [
-      53,
-      38,
+      55,
+      39,
       1,
-      36,
+      37,
       7,
       "INT"
     ],
     [
-      54,
+      56,
       8,
       0,
-      39,
+      40,
       0,
       "MODEL"
     ],
     [
-      55,
-      36,
+      57,
+      37,
       0,
-      39,
+      40,
       1,
       "CONDITIONING"
     ],
     [
-      56,
+      58,
       14,
       0,
-      40,
+      41,
       0,
       "NOISE"
     ],
     [
-      57,
-      39,
-      0,
+      59,
       40,
+      0,
+      41,
       1,
       "GUIDER"
     ],
     [
-      58,
+      60,
       12,
       0,
-      40,
+      41,
       2,
       "SAMPLER"
     ],
     [
-      59,
+      61,
       13,
       0,
-      40,
+      41,
       3,
       "SIGMAS"
     ],
     [
-      60,
-      36,
+      62,
+      37,
       1,
-      40,
+      41,
       4,
       "LATENT"
     ],
     [
-      61,
-      40,
-      0,
-      41,
-      0,
-      "LATENT"
-    ],
-    [
-      62,
-      10,
-      0,
-      41,
-      1,
-      "VAE"
-    ],
-    [
       63,
-      40,
+      41,
       0,
       42,
       0,
@@ -6509,7 +6627,7 @@
     ],
     [
       64,
-      11,
+      10,
       0,
       42,
       1,
@@ -6521,46 +6639,46 @@
       0,
       43,
       0,
-      "IMAGE"
+      "LATENT"
     ],
     [
       66,
-      42,
+      11,
       0,
       43,
+      1,
+      "VAE"
+    ],
+    [
+      67,
+      42,
+      0,
+      44,
+      0,
+      "IMAGE"
+    ],
+    [
+      68,
+      43,
+      0,
+      44,
       1,
       "AUDIO"
     ],
     [
-      67,
-      43,
-      0,
+      69,
       44,
+      0,
+      45,
       0,
       "VIDEO"
     ],
     [
-      68,
-      41,
-      0,
-      45,
-      0,
-      "IMAGE"
-    ],
-    [
-      69,
-      26,
-      0,
-      46,
-      0,
-      "IMAGE"
-    ],
-    [
       70,
-      45,
+      42,
       0,
       46,
-      1,
+      0,
       "IMAGE"
     ],
     [
@@ -6573,7 +6691,7 @@
     ],
     [
       72,
-      42,
+      43,
       0,
       47,
       1,
@@ -6581,7 +6699,7 @@
     ],
     [
       73,
-      41,
+      42,
       0,
       48,
       0,
@@ -6589,82 +6707,82 @@
     ],
     [
       74,
-      2,
+      48,
       0,
       49,
       0,
-      "STRING"
+      "IMAGE"
     ],
     [
       75,
-      6,
+      1,
       0,
-      50,
-      0,
-      "CLIP"
+      49,
+      1,
+      "IMAGE"
     ],
     [
       76,
-      49,
+      2,
       0,
       50,
-      1,
+      0,
       "STRING"
     ],
     [
       77,
-      48,
+      6,
       0,
-      50,
-      2,
-      "IMAGE"
+      51,
+      0,
+      "CLIP"
     ],
     [
       78,
-      3,
-      0,
-      50,
-      5,
-      "STRING"
-    ],
-    [
-      79,
-      4,
-      0,
-      52,
-      0,
-      "STRING"
-    ],
-    [
-      80,
       50,
       0,
-      52,
+      51,
       1,
       "STRING"
     ],
     [
-      81,
-      50,
+      79,
+      49,
       0,
       51,
+      2,
+      "IMAGE"
+    ],
+    [
+      80,
+      3,
+      0,
+      51,
+      5,
+      "STRING"
+    ],
+    [
+      81,
+      4,
+      0,
+      53,
       0,
       "STRING"
     ],
     [
       82,
-      52,
+      51,
       0,
       53,
-      0,
+      1,
       "STRING"
     ],
     [
       83,
-      5,
+      51,
       0,
-      53,
-      1,
+      52,
+      0,
       "STRING"
     ],
     [
@@ -6672,140 +6790,140 @@
       53,
       0,
       54,
-      4,
+      0,
       "STRING"
     ],
     [
       85,
-      9,
+      5,
       0,
       54,
+      1,
+      "STRING"
+    ],
+    [
+      86,
+      54,
+      0,
+      55,
+      4,
+      "STRING"
+    ],
+    [
+      87,
+      9,
+      0,
+      55,
       0,
       "CLIP"
     ],
     [
-      86,
+      88,
       10,
       0,
-      54,
+      55,
       1,
       "VAE"
     ],
     [
-      87,
+      89,
       15,
       0,
-      54,
+      55,
       5,
       "INT"
     ],
     [
-      88,
+      90,
       15,
       1,
-      54,
+      55,
       6,
       "INT"
     ],
     [
-      89,
-      48,
+      91,
+      49,
       0,
-      54,
+      55,
       2,
       "IMAGE"
     ],
     [
-      90,
-      55,
-      0,
+      92,
       56,
+      0,
+      57,
       0,
       "FLOAT"
     ],
     [
-      91,
-      56,
+      93,
+      57,
       1,
-      54,
+      55,
       7,
       "INT"
     ],
     [
-      92,
+      94,
       8,
       0,
-      57,
+      58,
       0,
       "MODEL"
     ],
     [
-      93,
-      54,
+      95,
+      55,
       0,
-      57,
+      58,
       1,
       "CONDITIONING"
     ],
     [
-      94,
+      96,
       14,
       0,
-      58,
+      59,
       0,
       "NOISE"
     ],
     [
-      95,
-      57,
-      0,
+      97,
       58,
+      0,
+      59,
       1,
       "GUIDER"
     ],
     [
-      96,
+      98,
       12,
       0,
-      58,
+      59,
       2,
       "SAMPLER"
     ],
     [
-      97,
+      99,
       13,
       0,
-      58,
+      59,
       3,
       "SIGMAS"
     ],
     [
-      98,
-      54,
+      100,
+      55,
       1,
-      58,
+      59,
       4,
       "LATENT"
     ],
     [
-      99,
-      58,
-      0,
-      59,
-      0,
-      "LATENT"
-    ],
-    [
-      100,
-      10,
-      0,
-      59,
-      1,
-      "VAE"
-    ],
-    [
       101,
-      58,
+      59,
       0,
       60,
       0,
@@ -6813,7 +6931,7 @@
     ],
     [
       102,
-      11,
+      10,
       0,
       60,
       1,
@@ -6825,46 +6943,46 @@
       0,
       61,
       0,
-      "IMAGE"
+      "LATENT"
     ],
     [
       104,
-      60,
+      11,
       0,
       61,
+      1,
+      "VAE"
+    ],
+    [
+      105,
+      60,
+      0,
+      62,
+      0,
+      "IMAGE"
+    ],
+    [
+      106,
+      61,
+      0,
+      62,
       1,
       "AUDIO"
     ],
     [
-      105,
-      61,
-      0,
+      107,
       62,
+      0,
+      63,
       0,
       "VIDEO"
     ],
     [
-      106,
-      59,
-      0,
-      63,
-      0,
-      "IMAGE"
-    ],
-    [
-      107,
-      46,
-      0,
-      64,
-      0,
-      "IMAGE"
-    ],
-    [
       108,
-      63,
+      60,
       0,
       64,
-      1,
+      0,
       "IMAGE"
     ],
     [
@@ -6877,7 +6995,7 @@
     ],
     [
       110,
-      60,
+      61,
       0,
       65,
       1,
@@ -6885,7 +7003,7 @@
     ],
     [
       111,
-      59,
+      60,
       0,
       66,
       0,
@@ -6893,82 +7011,82 @@
     ],
     [
       112,
-      2,
+      66,
       0,
       67,
       0,
-      "STRING"
+      "IMAGE"
     ],
     [
       113,
-      6,
+      1,
       0,
-      68,
-      0,
-      "CLIP"
+      67,
+      1,
+      "IMAGE"
     ],
     [
       114,
-      67,
+      2,
       0,
       68,
-      1,
+      0,
       "STRING"
     ],
     [
       115,
-      66,
+      6,
       0,
-      68,
-      2,
-      "IMAGE"
+      69,
+      0,
+      "CLIP"
     ],
     [
       116,
-      3,
-      0,
-      68,
-      5,
-      "STRING"
-    ],
-    [
-      117,
-      4,
-      0,
-      70,
-      0,
-      "STRING"
-    ],
-    [
-      118,
       68,
       0,
-      70,
+      69,
       1,
       "STRING"
     ],
     [
-      119,
-      68,
+      117,
+      67,
       0,
       69,
+      2,
+      "IMAGE"
+    ],
+    [
+      118,
+      3,
+      0,
+      69,
+      5,
+      "STRING"
+    ],
+    [
+      119,
+      4,
+      0,
+      71,
       0,
       "STRING"
     ],
     [
       120,
-      70,
+      69,
       0,
       71,
-      0,
+      1,
       "STRING"
     ],
     [
       121,
-      5,
+      69,
       0,
-      71,
-      1,
+      70,
+      0,
       "STRING"
     ],
     [
@@ -6976,140 +7094,140 @@
       71,
       0,
       72,
-      4,
+      0,
       "STRING"
     ],
     [
       123,
-      9,
+      5,
       0,
       72,
+      1,
+      "STRING"
+    ],
+    [
+      124,
+      72,
+      0,
+      73,
+      4,
+      "STRING"
+    ],
+    [
+      125,
+      9,
+      0,
+      73,
       0,
       "CLIP"
     ],
     [
-      124,
+      126,
       10,
       0,
-      72,
+      73,
       1,
       "VAE"
     ],
     [
-      125,
+      127,
       15,
       0,
-      72,
+      73,
       5,
       "INT"
     ],
     [
-      126,
+      128,
       15,
       1,
-      72,
+      73,
       6,
       "INT"
     ],
     [
-      127,
-      66,
+      129,
+      67,
       0,
-      72,
+      73,
       2,
       "IMAGE"
     ],
     [
-      128,
-      73,
-      0,
+      130,
       74,
+      0,
+      75,
       0,
       "FLOAT"
     ],
     [
-      129,
-      74,
+      131,
+      75,
       1,
-      72,
+      73,
       7,
       "INT"
     ],
     [
-      130,
+      132,
       8,
       0,
-      75,
+      76,
       0,
       "MODEL"
     ],
     [
-      131,
-      72,
+      133,
+      73,
       0,
-      75,
+      76,
       1,
       "CONDITIONING"
     ],
     [
-      132,
+      134,
       14,
       0,
-      76,
+      77,
       0,
       "NOISE"
     ],
     [
-      133,
-      75,
-      0,
+      135,
       76,
+      0,
+      77,
       1,
       "GUIDER"
     ],
     [
-      134,
+      136,
       12,
       0,
-      76,
+      77,
       2,
       "SAMPLER"
     ],
     [
-      135,
+      137,
       13,
       0,
-      76,
+      77,
       3,
       "SIGMAS"
     ],
     [
-      136,
-      72,
+      138,
+      73,
       1,
-      76,
+      77,
       4,
       "LATENT"
     ],
     [
-      137,
-      76,
-      0,
-      77,
-      0,
-      "LATENT"
-    ],
-    [
-      138,
-      10,
-      0,
-      77,
-      1,
-      "VAE"
-    ],
-    [
       139,
-      76,
+      77,
       0,
       78,
       0,
@@ -7117,7 +7235,7 @@
     ],
     [
       140,
-      11,
+      10,
       0,
       78,
       1,
@@ -7129,46 +7247,46 @@
       0,
       79,
       0,
-      "IMAGE"
+      "LATENT"
     ],
     [
       142,
-      78,
+      11,
       0,
       79,
+      1,
+      "VAE"
+    ],
+    [
+      143,
+      78,
+      0,
+      80,
+      0,
+      "IMAGE"
+    ],
+    [
+      144,
+      79,
+      0,
+      80,
       1,
       "AUDIO"
     ],
     [
-      143,
-      79,
-      0,
+      145,
       80,
+      0,
+      81,
       0,
       "VIDEO"
     ],
     [
-      144,
-      77,
-      0,
-      81,
-      0,
-      "IMAGE"
-    ],
-    [
-      145,
-      64,
-      0,
-      82,
-      0,
-      "IMAGE"
-    ],
-    [
       146,
-      81,
+      78,
       0,
       82,
-      1,
+      0,
       "IMAGE"
     ],
     [
@@ -7181,7 +7299,7 @@
     ],
     [
       148,
-      78,
+      79,
       0,
       83,
       1,
@@ -7189,7 +7307,7 @@
     ],
     [
       149,
-      77,
+      78,
       0,
       84,
       0,
@@ -7197,82 +7315,82 @@
     ],
     [
       150,
-      2,
+      84,
       0,
       85,
       0,
-      "STRING"
+      "IMAGE"
     ],
     [
       151,
-      6,
+      1,
       0,
-      86,
-      0,
-      "CLIP"
+      85,
+      1,
+      "IMAGE"
     ],
     [
       152,
-      85,
+      2,
       0,
       86,
-      1,
+      0,
       "STRING"
     ],
     [
       153,
-      84,
+      6,
       0,
-      86,
-      2,
-      "IMAGE"
+      87,
+      0,
+      "CLIP"
     ],
     [
       154,
-      3,
-      0,
-      86,
-      5,
-      "STRING"
-    ],
-    [
-      155,
-      4,
-      0,
-      88,
-      0,
-      "STRING"
-    ],
-    [
-      156,
       86,
       0,
-      88,
+      87,
       1,
       "STRING"
     ],
     [
-      157,
-      86,
+      155,
+      85,
       0,
       87,
+      2,
+      "IMAGE"
+    ],
+    [
+      156,
+      3,
+      0,
+      87,
+      5,
+      "STRING"
+    ],
+    [
+      157,
+      4,
+      0,
+      89,
       0,
       "STRING"
     ],
     [
       158,
-      88,
+      87,
       0,
       89,
-      0,
+      1,
       "STRING"
     ],
     [
       159,
-      5,
+      87,
       0,
-      89,
-      1,
+      88,
+      0,
       "STRING"
     ],
     [
@@ -7280,140 +7398,140 @@
       89,
       0,
       90,
-      4,
+      0,
       "STRING"
     ],
     [
       161,
-      9,
+      5,
       0,
       90,
+      1,
+      "STRING"
+    ],
+    [
+      162,
+      90,
+      0,
+      91,
+      4,
+      "STRING"
+    ],
+    [
+      163,
+      9,
+      0,
+      91,
       0,
       "CLIP"
     ],
     [
-      162,
+      164,
       10,
       0,
-      90,
+      91,
       1,
       "VAE"
     ],
     [
-      163,
+      165,
       15,
       0,
-      90,
+      91,
       5,
       "INT"
     ],
     [
-      164,
+      166,
       15,
       1,
-      90,
+      91,
       6,
       "INT"
     ],
     [
-      165,
-      84,
+      167,
+      85,
       0,
-      90,
+      91,
       2,
       "IMAGE"
     ],
     [
-      166,
-      91,
-      0,
+      168,
       92,
+      0,
+      93,
       0,
       "FLOAT"
     ],
     [
-      167,
-      92,
+      169,
+      93,
       1,
-      90,
+      91,
       7,
       "INT"
     ],
     [
-      168,
+      170,
       8,
       0,
-      93,
+      94,
       0,
       "MODEL"
     ],
     [
-      169,
-      90,
+      171,
+      91,
       0,
-      93,
+      94,
       1,
       "CONDITIONING"
     ],
     [
-      170,
+      172,
       14,
       0,
-      94,
+      95,
       0,
       "NOISE"
     ],
     [
-      171,
-      93,
-      0,
+      173,
       94,
+      0,
+      95,
       1,
       "GUIDER"
     ],
     [
-      172,
+      174,
       12,
       0,
-      94,
+      95,
       2,
       "SAMPLER"
     ],
     [
-      173,
+      175,
       13,
       0,
-      94,
+      95,
       3,
       "SIGMAS"
     ],
     [
-      174,
-      90,
+      176,
+      91,
       1,
-      94,
+      95,
       4,
       "LATENT"
     ],
     [
-      175,
-      94,
-      0,
-      95,
-      0,
-      "LATENT"
-    ],
-    [
-      176,
-      10,
-      0,
-      95,
-      1,
-      "VAE"
-    ],
-    [
       177,
-      94,
+      95,
       0,
       96,
       0,
@@ -7421,7 +7539,7 @@
     ],
     [
       178,
-      11,
+      10,
       0,
       96,
       1,
@@ -7433,46 +7551,46 @@
       0,
       97,
       0,
-      "IMAGE"
+      "LATENT"
     ],
     [
       180,
-      96,
+      11,
       0,
       97,
+      1,
+      "VAE"
+    ],
+    [
+      181,
+      96,
+      0,
+      98,
+      0,
+      "IMAGE"
+    ],
+    [
+      182,
+      97,
+      0,
+      98,
       1,
       "AUDIO"
     ],
     [
-      181,
-      97,
-      0,
+      183,
       98,
+      0,
+      99,
       0,
       "VIDEO"
     ],
     [
-      182,
-      95,
-      0,
-      99,
-      0,
-      "IMAGE"
-    ],
-    [
-      183,
-      82,
-      0,
-      100,
-      0,
-      "IMAGE"
-    ],
-    [
       184,
-      99,
+      96,
       0,
       100,
-      1,
+      0,
       "IMAGE"
     ],
     [
@@ -7485,7 +7603,7 @@
     ],
     [
       186,
-      96,
+      97,
       0,
       101,
       1,
@@ -7493,7 +7611,7 @@
     ],
     [
       187,
-      95,
+      96,
       0,
       102,
       0,
@@ -7501,82 +7619,82 @@
     ],
     [
       188,
-      2,
+      102,
       0,
       103,
       0,
-      "STRING"
+      "IMAGE"
     ],
     [
       189,
-      6,
+      1,
       0,
-      104,
-      0,
-      "CLIP"
+      103,
+      1,
+      "IMAGE"
     ],
     [
       190,
-      103,
+      2,
       0,
       104,
-      1,
+      0,
       "STRING"
     ],
     [
       191,
-      102,
+      6,
       0,
-      104,
-      2,
-      "IMAGE"
+      105,
+      0,
+      "CLIP"
     ],
     [
       192,
-      3,
-      0,
-      104,
-      5,
-      "STRING"
-    ],
-    [
-      193,
-      4,
-      0,
-      106,
-      0,
-      "STRING"
-    ],
-    [
-      194,
       104,
       0,
-      106,
+      105,
       1,
       "STRING"
     ],
     [
-      195,
-      104,
+      193,
+      103,
       0,
       105,
+      2,
+      "IMAGE"
+    ],
+    [
+      194,
+      3,
+      0,
+      105,
+      5,
+      "STRING"
+    ],
+    [
+      195,
+      4,
+      0,
+      107,
       0,
       "STRING"
     ],
     [
       196,
-      106,
+      105,
       0,
       107,
-      0,
+      1,
       "STRING"
     ],
     [
       197,
-      5,
+      105,
       0,
-      107,
-      1,
+      106,
+      0,
       "STRING"
     ],
     [
@@ -7584,140 +7702,140 @@
       107,
       0,
       108,
-      4,
+      0,
       "STRING"
     ],
     [
       199,
-      9,
+      5,
       0,
       108,
+      1,
+      "STRING"
+    ],
+    [
+      200,
+      108,
+      0,
+      109,
+      4,
+      "STRING"
+    ],
+    [
+      201,
+      9,
+      0,
+      109,
       0,
       "CLIP"
     ],
     [
-      200,
+      202,
       10,
       0,
-      108,
+      109,
       1,
       "VAE"
     ],
     [
-      201,
+      203,
       15,
       0,
-      108,
+      109,
       5,
       "INT"
     ],
     [
-      202,
+      204,
       15,
       1,
-      108,
+      109,
       6,
       "INT"
     ],
     [
-      203,
-      102,
+      205,
+      103,
       0,
-      108,
+      109,
       2,
       "IMAGE"
     ],
     [
-      204,
-      109,
-      0,
+      206,
       110,
+      0,
+      111,
       0,
       "FLOAT"
     ],
     [
-      205,
-      110,
+      207,
+      111,
       1,
-      108,
+      109,
       7,
       "INT"
     ],
     [
-      206,
+      208,
       8,
       0,
-      111,
+      112,
       0,
       "MODEL"
     ],
     [
-      207,
-      108,
+      209,
+      109,
       0,
-      111,
+      112,
       1,
       "CONDITIONING"
     ],
     [
-      208,
+      210,
       14,
       0,
-      112,
+      113,
       0,
       "NOISE"
     ],
     [
-      209,
-      111,
-      0,
+      211,
       112,
+      0,
+      113,
       1,
       "GUIDER"
     ],
     [
-      210,
+      212,
       12,
       0,
-      112,
+      113,
       2,
       "SAMPLER"
     ],
     [
-      211,
+      213,
       13,
       0,
-      112,
+      113,
       3,
       "SIGMAS"
     ],
     [
-      212,
-      108,
+      214,
+      109,
       1,
-      112,
+      113,
       4,
       "LATENT"
     ],
     [
-      213,
-      112,
-      0,
-      113,
-      0,
-      "LATENT"
-    ],
-    [
-      214,
-      10,
-      0,
-      113,
-      1,
-      "VAE"
-    ],
-    [
       215,
-      112,
+      113,
       0,
       114,
       0,
@@ -7725,7 +7843,7 @@
     ],
     [
       216,
-      11,
+      10,
       0,
       114,
       1,
@@ -7737,46 +7855,46 @@
       0,
       115,
       0,
-      "IMAGE"
+      "LATENT"
     ],
     [
       218,
-      114,
+      11,
       0,
       115,
+      1,
+      "VAE"
+    ],
+    [
+      219,
+      114,
+      0,
+      116,
+      0,
+      "IMAGE"
+    ],
+    [
+      220,
+      115,
+      0,
+      116,
       1,
       "AUDIO"
     ],
     [
-      219,
-      115,
-      0,
+      221,
       116,
+      0,
+      117,
       0,
       "VIDEO"
     ],
     [
-      220,
-      113,
-      0,
-      117,
-      0,
-      "IMAGE"
-    ],
-    [
-      221,
-      100,
-      0,
-      118,
-      0,
-      "IMAGE"
-    ],
-    [
       222,
-      117,
+      114,
       0,
       118,
-      1,
+      0,
       "IMAGE"
     ],
     [
@@ -7789,7 +7907,7 @@
     ],
     [
       224,
-      114,
+      115,
       0,
       119,
       1,
@@ -7797,7 +7915,7 @@
     ],
     [
       225,
-      118,
+      26,
       0,
       120,
       0,
@@ -7805,33 +7923,81 @@
     ],
     [
       226,
-      119,
+      46,
       0,
       120,
       1,
-      "AUDIO"
+      "IMAGE"
     ],
     [
       227,
+      64,
+      0,
       120,
-      0,
-      121,
-      0,
-      "VIDEO"
+      2,
+      "IMAGE"
     ],
     [
       228,
-      118,
+      82,
       0,
-      122,
-      0,
+      120,
+      3,
       "IMAGE"
     ],
     [
       229,
+      100,
+      0,
+      120,
+      4,
+      "IMAGE"
+    ],
+    [
+      230,
+      118,
+      0,
+      120,
+      5,
+      "IMAGE"
+    ],
+    [
+      231,
+      120,
+      0,
+      121,
+      0,
+      "IMAGE"
+    ],
+    [
+      232,
+      119,
+      0,
+      121,
+      1,
+      "AUDIO"
+    ],
+    [
+      233,
+      121,
+      0,
       122,
       0,
+      "VIDEO"
+    ],
+    [
+      234,
+      120,
+      0,
       123,
+      0,
+      "IMAGE"
+    ],
+    [
+      235,
+      123,
+      0,
+      124,
       0,
       "VIDEO"
     ]
@@ -7948,7 +8114,7 @@
         3480,
         680,
         660,
-        1440
+        1500
       ],
       "color": "#8A8",
       "font_size": 24,

@@ -1,8 +1,8 @@
 {
-  "id": "aa04caf7-32df-4557-800f-833640ffd4c6",
+  "id": "b9a1a7d4-7896-4f2e-8607-b2f99aad8454",
   "revision": 0,
-  "last_node_id": 64,
-  "last_link_id": 112,
+  "last_node_id": 62,
+  "last_link_id": 110,
   "nodes": [
     {
       "id": 1,
@@ -1102,7 +1102,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            96
+            104
           ]
         }
       ],
@@ -1142,7 +1142,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            98
+            96
           ]
         }
       ],
@@ -1606,7 +1606,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            99
+            97
           ]
         }
       ],
@@ -2030,7 +2030,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            100
+            98
           ]
         }
       ],
@@ -2070,7 +2070,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            104
+            100
           ]
         }
       ],
@@ -2494,7 +2494,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            105
+            101
           ]
         }
       ],
@@ -2534,7 +2534,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            109
+            103
           ]
         }
       ],
@@ -2571,7 +2571,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            97
+            105
           ]
         }
       ],
@@ -2586,46 +2586,6 @@
     },
     {
       "id": 54,
-      "type": "ImageBatch",
-      "pos": [
-        580,
-        2150
-      ],
-      "size": [
-        240,
-        70
-      ],
-      "flags": {},
-      "order": 53,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 96
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 97
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            101
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageBatch"
-      },
-      "title": "+ Teil 2 (Bild)"
-    },
-    {
-      "id": 55,
       "type": "AudioConcat",
       "pos": [
         580,
@@ -2636,18 +2596,18 @@
         90
       ],
       "flags": {},
-      "order": 54,
+      "order": 53,
       "mode": 0,
       "inputs": [
         {
           "name": "audio1",
           "type": "AUDIO",
-          "link": 98
+          "link": 96
         },
         {
           "name": "audio2",
           "type": "AUDIO",
-          "link": 99
+          "link": 97
         }
       ],
       "outputs": [
@@ -2655,7 +2615,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            103
+            99
           ]
         }
       ],
@@ -2670,7 +2630,7 @@
       "bgcolor": "#335"
     },
     {
-      "id": 56,
+      "id": 55,
       "type": "ImageFromBatch",
       "pos": [
         1160,
@@ -2681,13 +2641,13 @@
         100
       ],
       "flags": {},
-      "order": 55,
+      "order": 54,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 100
+          "link": 98
         }
       ],
       "outputs": [
@@ -2695,7 +2655,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            102
+            106
           ]
         }
       ],
@@ -2709,47 +2669,7 @@
       "title": "Doppeltes Übergangsbild weg"
     },
     {
-      "id": 57,
-      "type": "ImageBatch",
-      "pos": [
-        1160,
-        2150
-      ],
-      "size": [
-        240,
-        70
-      ],
-      "flags": {},
-      "order": 56,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 101
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 102
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            106
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageBatch"
-      },
-      "title": "+ Teil 3 (Bild)"
-    },
-    {
-      "id": 58,
+      "id": 56,
       "type": "AudioConcat",
       "pos": [
         1160,
@@ -2760,18 +2680,18 @@
         90
       ],
       "flags": {},
-      "order": 57,
+      "order": 55,
       "mode": 0,
       "inputs": [
         {
           "name": "audio1",
           "type": "AUDIO",
-          "link": 103
+          "link": 99
         },
         {
           "name": "audio2",
           "type": "AUDIO",
-          "link": 104
+          "link": 100
         }
       ],
       "outputs": [
@@ -2779,7 +2699,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            108
+            102
           ]
         }
       ],
@@ -2794,7 +2714,7 @@
       "bgcolor": "#335"
     },
     {
-      "id": 59,
+      "id": 57,
       "type": "ImageFromBatch",
       "pos": [
         1740,
@@ -2805,13 +2725,13 @@
         100
       ],
       "flags": {},
-      "order": 58,
+      "order": 56,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 105
+          "link": 101
         }
       ],
       "outputs": [
@@ -2833,47 +2753,7 @@
       "title": "Doppeltes Übergangsbild weg"
     },
     {
-      "id": 60,
-      "type": "ImageBatch",
-      "pos": [
-        1740,
-        2150
-      ],
-      "size": [
-        240,
-        70
-      ],
-      "flags": {},
-      "order": 59,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 106
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 107
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            110
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageBatch"
-      },
-      "title": "+ Teil 4 (Bild)"
-    },
-    {
-      "id": 61,
+      "id": 58,
       "type": "AudioConcat",
       "pos": [
         1740,
@@ -2884,18 +2764,18 @@
         90
       ],
       "flags": {},
-      "order": 60,
+      "order": 57,
       "mode": 0,
       "inputs": [
         {
           "name": "audio1",
           "type": "AUDIO",
-          "link": 108
+          "link": 102
         },
         {
           "name": "audio2",
           "type": "AUDIO",
-          "link": 109
+          "link": 103
         }
       ],
       "outputs": [
@@ -2903,7 +2783,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            111
+            109
           ]
         }
       ],
@@ -2918,7 +2798,71 @@
       "bgcolor": "#335"
     },
     {
-      "id": 62,
+      "id": 59,
+      "type": "BatchImagesNode",
+      "pos": [
+        2660,
+        760
+      ],
+      "size": [
+        300,
+        170
+      ],
+      "flags": {},
+      "order": 58,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "image0",
+          "name": "images.image0",
+          "type": "IMAGE",
+          "link": 104
+        },
+        {
+          "label": "image1",
+          "name": "images.image1",
+          "type": "IMAGE",
+          "link": 105,
+          "shape": 7
+        },
+        {
+          "label": "image2",
+          "name": "images.image2",
+          "type": "IMAGE",
+          "link": 106,
+          "shape": 7
+        },
+        {
+          "label": "image3",
+          "name": "images.image3",
+          "type": "IMAGE",
+          "link": 107,
+          "shape": 7
+        },
+        {
+          "label": "image4",
+          "name": "images.image4",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            108
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BatchImagesNode"
+      },
+      "title": "Alle Szenen aneinanderhängen (Bild)"
+    },
+    {
+      "id": 60,
       "type": "CreateVideo",
       "pos": [
         2340,
@@ -2929,18 +2873,18 @@
         100
       ],
       "flags": {},
-      "order": 61,
+      "order": 59,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 110
+          "link": 108
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 111,
+          "link": 109,
           "shape": 7
         }
       ],
@@ -2949,7 +2893,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            112
+            110
           ]
         }
       ],
@@ -2963,24 +2907,24 @@
       "title": "Video erstellen"
     },
     {
-      "id": 63,
+      "id": 61,
       "type": "SaveVideo",
       "pos": [
         2340,
-        900
+        1000
       ],
       "size": [
         620,
         480
       ],
       "flags": {},
-      "order": 62,
+      "order": 60,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
           "type": "VIDEO",
-          "link": 112
+          "link": 110
         }
       ],
       "outputs": [],
@@ -2993,7 +2937,7 @@
       "title": "Gesamtvideo"
     },
     {
-      "id": 64,
+      "id": 62,
       "type": "MarkdownNote",
       "pos": [
         3020,
@@ -3004,7 +2948,7 @@
         1500
       ],
       "flags": {},
-      "order": 63,
+      "order": 61,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -3778,47 +3722,47 @@
     ],
     [
       96,
-      24,
-      0,
-      54,
-      0,
-      "IMAGE"
-    ],
-    [
-      97,
-      53,
-      0,
-      54,
-      1,
-      "IMAGE"
-    ],
-    [
-      98,
       25,
       0,
-      55,
+      54,
       0,
       "AUDIO"
     ],
     [
-      99,
+      97,
       34,
       0,
-      55,
+      54,
       1,
+      "AUDIO"
+    ],
+    [
+      98,
+      42,
+      0,
+      55,
+      0,
+      "IMAGE"
+    ],
+    [
+      99,
+      54,
+      0,
+      56,
+      0,
       "AUDIO"
     ],
     [
       100,
-      42,
+      43,
       0,
       56,
-      0,
-      "IMAGE"
+      1,
+      "AUDIO"
     ],
     [
       101,
-      54,
+      51,
       0,
       57,
       0,
@@ -3828,63 +3772,63 @@
       102,
       56,
       0,
-      57,
-      1,
-      "IMAGE"
+      58,
+      0,
+      "AUDIO"
     ],
     [
       103,
-      55,
+      52,
       0,
       58,
-      0,
+      1,
       "AUDIO"
     ],
     [
       104,
-      43,
-      0,
-      58,
-      1,
-      "AUDIO"
-    ],
-    [
-      105,
-      51,
+      24,
       0,
       59,
       0,
+      "IMAGE"
+    ],
+    [
+      105,
+      53,
+      0,
+      59,
+      1,
       "IMAGE"
     ],
     [
       106,
-      57,
+      55,
       0,
-      60,
-      0,
+      59,
+      2,
       "IMAGE"
     ],
     [
       107,
-      59,
+      57,
       0,
-      60,
-      1,
+      59,
+      3,
       "IMAGE"
     ],
     [
       108,
-      58,
+      59,
       0,
-      61,
+      60,
       0,
-      "AUDIO"
+      "IMAGE"
     ],
     [
       109,
-      52,
+      58,
       0,
-      61,
+      60,
       1,
       "AUDIO"
     ],
@@ -3892,23 +3836,7 @@
       110,
       60,
       0,
-      62,
-      0,
-      "IMAGE"
-    ],
-    [
-      111,
       61,
-      0,
-      62,
-      1,
-      "AUDIO"
-    ],
-    [
-      112,
-      62,
-      0,
-      63,
       0,
       "VIDEO"
     ]
@@ -4025,7 +3953,7 @@
         2320,
         680,
         660,
-        760
+        840
       ],
       "color": "#8A8",
       "font_size": 24,
