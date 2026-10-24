@@ -540,6 +540,37 @@ function patchData(patch) {
 
 ipcMain.handle('data:load', () => loadData());
 ipcMain.handle('data:save', (_e, data) => patchData(data));
+// Sicherungen auf dem PC (je Bereich, Ordner „sicherungen“): automatisch einmal pro Woche, „Zurückholen“ in der App
+const backupDir = () => path.join(areaDir(), 'sicherungen');
+const backupPath = (name) => {
+  if (!/^[\w.-]+\.json$/.test(String(name))) throw new Error('ungültiger Name');
+  return path.join(backupDir(), name);
+};
+ipcMain.handle('backup:save', (_e, name, value) => {
+  fs.mkdirSync(backupDir(), { recursive: true });
+  fs.writeFileSync(backupPath(name), JSON.stringify(value));
+  return true;
+});
+ipcMain.handle('backup:list', () => {
+  try {
+    return fs.readdirSync(backupDir()).filter((n) => /\.json$/.test(n)).sort();
+  } catch {
+    return [];
+  }
+});
+ipcMain.handle('backup:read', (_e, name) => {
+  try {
+    return JSON.parse(fs.readFileSync(backupPath(name), 'utf8'));
+  } catch {
+    return null;
+  }
+});
+ipcMain.handle('backup:delete', (_e, name) => {
+  try {
+    fs.unlinkSync(backupPath(name));
+  } catch {}
+  return true;
+});
 
 // ---------------------------------------------------------------- Dokumente speichern (PDF, Word, Markdown)
 // Alles lokal: Word wird in der Oberfläche erzeugt, PDF hier über die Druckfunktion.

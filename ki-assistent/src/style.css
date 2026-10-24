@@ -557,3 +557,10 @@ body.dictating #input { outline: 2px solid var(--danger); }
 .chips .chip { padding: 3px 9px; border-radius: 12px; font-size: 13px; }
 .chips .chip.active { background: var(--accent, #4c8dff); color: #fff; border-color: transparent; }
 .brain-steps { white-space: pre-line; font-size: 13px; margin: 6px 0 2px; opacity: 0.9; }
+
+/* Läuft alles? */
+.health-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.health-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
+.health-row span { flex: 1; overflow-wrap: anywhere; }
+.health-row.bad { background: rgba(220, 60, 60, 0.12); }
+.health-row.warn { background: rgba(240, 180, 41, 0.12); }

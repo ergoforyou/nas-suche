@@ -2996,6 +2996,54 @@ const b75 = await page.evaluate(async () => {
   return out;
 });
 check(b75.dictate && b75.share && b75.contact, 'Widget „Diktat“, Geteiltes als Notiz anbieten, Anruf per Name aus dem Adressbuch', JSON.stringify(b75));
+// Beta 76: „Läuft alles?“, Sicherung auf dem Gerät mit Zurückholen, Tagesstimmung wirkt auf die Figur
+const b76 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const had = window.KIDevice;
+  const asked = [];
+  window.KIDevice = { ...(had ?? {}), notifyAllowed: () => false, askNotify: () => asked.push('notify'), exactAlarms: () => true, batteryExempt: () => false, askBatteryExempt: () => asked.push('akku'), notifyAccess: () => true, hasPerm: () => false, askPerm: (n) => asked.push(n) };
+  const rows = await app.renderHealth();
+  const by = (n) => rows.find((r) => r.name === n);
+  out.rows = rows.map((r) => `${r.name}:${r.ok}`);
+  out.health = by('Benachrichtigungen')?.ok === 'bad' && by('Akku-Optimierung')?.ok === 'warn' && by('Erinnerungen pünktlich')?.ok === 'ok' && !!by('KI-Anbieter');
+  [...document.querySelectorAll('#healthList .health-row')].find((r) => /Benachrichtigungen/.test(r.textContent))?.querySelector('button')?.click();
+  await new Promise((r) => setTimeout(r, 50));
+  out.fix = asked.includes('notify');
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  // Sicherung: speichern, etwas ändern, zurückholen
+  const store = new Map();
+  window.desktop.backupSave = async (n, v) => void store.set(n, JSON.parse(JSON.stringify(v)));
+  window.desktop.backupList = async () => [...store.keys()].sort();
+  window.desktop.backupRead = async (n) => store.get(n) ?? null;
+  window.desktop.backupDelete = async (n) => void store.delete(n);
+  const name = await app.autoBackup({ force: true });
+  const p = app.persona();
+  p.memory.push({ id: 'nachher1', text: 'Erst nach der Sicherung gemerkt.', created: Date.now() });
+  const conf = window.confirm;
+  window.confirm = () => true;
+  await app.restoreLocalBackup(name);
+  window.confirm = conf;
+  out.backup = !!name && !app.persona().memory.some((m) => m.id === 'nachher1') && [...store.keys()].some((k) => k.startsWith('vor-ruecksicherung-'));
+  await app.renderBackupsLocal();
+  out.list = document.querySelectorAll('#localBackupList .row').length >= 2;
+  // Tagesstimmung prägt die Figur auch zwischen den Antworten
+  const keep = app.persona().stimmung;
+  app.persona().stimmung = { gefuehl: 'heiter', grund: 'Test', t: Date.now() };
+  app.applyBaseMood();
+  out.mood = !!app.avatarState.baseMood;
+  app.state.settings.moodEffect = false;
+  app.applyBaseMood();
+  out.moodOff = app.avatarState.baseMood === null;
+  app.state.settings.moodEffect = true;
+  app.persona().stimmung = keep;
+  app.applyBaseMood();
+  return out;
+});
+check(b76.health && b76.fix, '„Läuft alles?“: Ampel je Punkt, Knopf behebt (Benachrichtigungen erlauben)', JSON.stringify(b76));
+check(b76.backup && b76.list, 'Sicherung auf dem Gerät: speichern, vorher sichern, zurückholen, Liste', JSON.stringify(b76));
+check(b76.mood && b76.moodOff, 'Tagesstimmung wirkt auf Gesicht und Posen (abschaltbar)', JSON.stringify(b76));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

@@ -696,7 +696,10 @@ function applyAvatar() {
 
 function applyPersona() {
   const p = persona();
-  setTimeout(() => renderBrain(), 0);
+  setTimeout(() => {
+    renderBrain();
+    applyBaseMood();
+  }, 0);
   $('titleName').textContent = p.name || 'KI-Assistent';
   document.title = p.name || 'KI-Assistent';
   applyAvatar();
@@ -1806,6 +1809,7 @@ function renderTopics() {
   $('cTagesbegleiter').checked = state.settings.tagesbegleiter !== false;
   $('cVorhaben').checked = state.settings.vorhaben !== false;
   $('cOwnTidy').checked = state.settings.ownTidy !== false;
+  $('cMoodEffect').checked = state.settings.moodEffect !== false;
   $('privRounds').hidden = !PRIV;
   renderBudget();
   $('cThink').checked = state.settings.thinkSounds !== false;
@@ -1858,10 +1862,11 @@ $('cInitiative').onchange = (e) => {
   state.settings.initiative = e.target.checked;
   save();
 };
-for (const [id, key] of [['cTagesbegleiter', 'tagesbegleiter'], ['cVorhaben', 'vorhaben'], ['cOwnTidy', 'ownTidy']]) {
+for (const [id, key] of [['cTagesbegleiter', 'tagesbegleiter'], ['cVorhaben', 'vorhaben'], ['cOwnTidy', 'ownTidy'], ['cMoodEffect', 'moodEffect']]) {
   $(id).onchange = (e) => {
     state.settings[key] = e.target.checked;
     save();
+    if (key === 'moodEffect') applyBaseMood();
   };
 }
 $('cMitdenken').onchange = (e) => {
@@ -3744,6 +3749,7 @@ $('btnSettings').onclick = () => {
     fillSettings();
     loadPresets();
     renderMemory();
+    renderBackupsLocal().catch(() => {});
   }
   previewEdited();
 };
@@ -8448,6 +8454,176 @@ $('brainImportFile').onchange = async (e) => {
   }
 };
 
+// ---- „Läuft alles?“: Mikrofon, Stimme, KI, Internet, Abgleich, Erinnerungen, Akku, Freigaben – mit Knopf zum Beheben
+async function healthChecks() {
+  const d = dev();
+  const rows = [];
+  const add = (ok, name, info, fix) => rows.push({ ok, name, info, ...(fix ? { fix } : {}) });
+  const keys = await desktop.keyStatus?.().catch(() => ({})) ?? {};
+  const prov = state.settings.provider;
+  const needKey = prov === 'anthropic' ? keys.anthropic : prov === 'openai' ? keys.openai : true;
+  add(needKey ? 'ok' : 'bad', 'KI-Anbieter', prov === 'anthropic' ? `Claude${keys.anthropic ? '' : ' – kein Schlüssel'}` : prov === 'openai' ? `ChatGPT${keys.openai ? '' : ' – kein Schlüssel'}` : 'LM Studio (lokal)', needKey ? null : ['Schlüssel eintragen', () => openTab('conn')]);
+  if (budgetSaving()) add('warn', 'Kostenbremse', 'Monatsbudget erreicht – günstiges Modell, Extras ruhen');
+  const online = navigator.onLine && !state.settings.offline;
+  add(online ? 'ok' : 'warn', 'Internet', online ? 'verbunden' : state.settings.offline ? 'Offline-Modus ist an' : 'keine Verbindung');
+  let mic = 'unbekannt';
+  try {
+    mic = (await navigator.permissions.query({ name: 'microphone' })).state;
+  } catch {}
+  add(mic === 'denied' ? 'bad' : mic === 'granted' ? 'ok' : 'warn', 'Mikrofon', mic === 'granted' ? 'freigegeben' : mic === 'denied' ? 'gesperrt' : 'noch nicht gefragt', mic === 'granted' ? null : ['Freigeben', () => navigator.mediaDevices.getUserMedia({ audio: true }).then((st) => st.getTracks().forEach((t) => t.stop()))]);
+  add(state.settings.speak ? 'ok' : 'warn', 'Stimme', state.settings.speak ? 'Vorlesen an' : 'Vorlesen ist aus', state.settings.speak ? null : ['Einschalten', () => ((state.settings.speak = true), save())]);
+  if (MOBILE && state.settings.syncPair?.token) add(state.settings.syncPair.error ? 'warn' : 'ok', 'WLAN-Abgleich', state.settings.syncPair.error ? `letzter Versuch: ${state.settings.syncPair.error}` : `zuletzt ${state.abgleich?.last ? new Date(state.abgleich.last).toLocaleString('de-DE') : 'noch nie'}`);
+  if (PRIV && state.settings.nas?.url) add(state.settings.nas.error ? 'warn' : 'ok', 'NAS', state.settings.nas.error ?? `zuletzt ${state.settings.nas.last ? new Date(state.settings.nas.last).toLocaleString('de-DE') : 'noch nie'}`);
+  if (d) {
+    const n = d.notifyAllowed?.();
+    if (n != null) add(n ? 'ok' : 'bad', 'Benachrichtigungen', n ? 'erlaubt' : 'nicht erlaubt – Erinnerungen bleiben stumm', n ? null : ['Erlauben', () => d.askNotify?.()]);
+    const ex = d.exactAlarms?.();
+    if (ex != null) add(ex ? 'ok' : 'warn', 'Erinnerungen pünktlich', ex ? 'auf die Minute' : 'können sich verspäten', ex ? null : ['Freigeben', () => d.askExactAlarms?.()]);
+    const bat = d.batteryExempt?.();
+    if (bat != null) add(bat ? 'ok' : 'warn', 'Akku-Optimierung', bat ? 'App ausgenommen' : 'Android kann die App im Hintergrund anhalten', bat ? null : ['Ausnehmen', () => d.askBatteryExempt?.()]);
+    const ov = window.KIFloat?.allowed?.();
+    if (ov != null) add(ov ? 'ok' : 'warn', 'Über anderen Apps', ov ? 'erlaubt (schwebende Figur, Apps öffnen)' : 'nicht erlaubt – schwebende Figur und Apps öffnen aus dem Hintergrund gehen nicht', ov ? null : ['Erlauben', () => window.KIFloat?.askPermission?.()]);
+    const na = d.notifyAccess?.();
+    if (na != null && PRIV) add(na ? 'ok' : 'warn', 'Musik steuern / Nachrichten vorlesen', na ? 'Zugriff erteilt' : 'kein Zugriff auf Benachrichtigungen', na ? null : ['Freigeben', () => d.askNotifyAccess?.()]);
+    const ct = d.hasPerm?.('android.permission.READ_CONTACTS');
+    if (ct != null && PRIV) add(ct ? 'ok' : 'warn', 'Adressbuch', ct ? 'freigegeben („Ruf Anna an“)' : 'nicht freigegeben – Anrufe nur mit Nummer', ct ? null : ['Freigeben', () => d.askPerm?.('android.permission.READ_CONTACTS')]);
+  }
+  const lastBackup = state.settings.autoBackupAt;
+  add(lastBackup && Date.now() - lastBackup < 9 * 86400e3 ? 'ok' : 'warn', 'Sicherung', lastBackup ? `zuletzt ${new Date(lastBackup).toLocaleDateString('de-DE')}` : 'noch keine', ['Jetzt sichern', () => autoBackup({ force: true }).then(() => renderBackupsLocal())]);
+  const errs = LOG.filter((l) => /Fehler|nicht erreichbar|fehlgeschlagen/i.test(l)).slice(-3);
+  if (errs.length) add('warn', 'Letzte Fehler', errs.map((l) => l.slice(13, 120)).join(' · '));
+  return rows;
+}
+function openTab(name) {
+  $('drawer').hidden = false;
+  document.querySelector(`#drawer [data-tab=${name}]`)?.click();
+}
+async function renderHealth() {
+  const box = document.getElementById('healthList');
+  if (!box) return;
+  box.textContent = 'Prüfe …';
+  const rows = await healthChecks();
+  const icon = { ok: '✅', warn: '⚠️', bad: '❌' };
+  box.replaceChildren(
+    ...rows.map((r) => {
+      const row = document.createElement('div');
+      row.className = `health-row ${r.ok}`;
+      const t = document.createElement('span');
+      t.textContent = `${icon[r.ok]} ${r.name}: ${r.info}`;
+      row.append(t);
+      if (r.fix) {
+        const b = document.createElement('button');
+        b.textContent = r.fix[0];
+        b.onclick = async () => {
+          await r.fix[1]();
+          setTimeout(renderHealth, 1500);
+        };
+        row.append(b);
+      }
+      return row;
+    }),
+  );
+  const bad = rows.filter((r) => r.ok !== 'ok').length;
+  $('healthSum').textContent = bad ? `${bad} Punkt(e) zum Ansehen` : 'Alles in Ordnung.';
+  return rows;
+}
+$('healthNow').onclick = () => renderHealth();
+
+// ---- Automatische Sicherung auf dem Gerät: einmal pro Woche (6 bleiben), dazu „Jetzt sichern“ und „Zurückholen“
+const BACKUP_KEEP = 6;
+const backupBody = () => ({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), stand: syncSnapshot(state, state.abgleich) });
+async function autoBackup({ force = false } = {}) {
+  if (!desktop.backupSave) return null;
+  if (!force && (state.settings.autoBackup === false || Date.now() - (state.settings.autoBackupAt ?? 0) < 7 * 86400e3)) return null;
+  stampSync(state, syncCache);
+  const name = `sicherung-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-')}.json`;
+  await desktop.backupSave(name, backupBody());
+  state.settings.autoBackupAt = Date.now();
+  save({ quiet: true });
+  const list = (await desktop.backupList()).filter((n) => n.startsWith('sicherung-'));
+  for (const old of list.slice(0, Math.max(0, list.length - BACKUP_KEEP))) await desktop.backupDelete(old);
+  logEv('SICHERUNG', name);
+  return name;
+}
+setTimeout(() => autoBackup().catch((e) => logEv('SICHERUNG', `Fehler: ${e.message}`)), 30000);
+setInterval(() => autoBackup().catch((e) => logEv('SICHERUNG', `Fehler: ${e.message}`)), 6 * 3600e3);
+async function renderBackupsLocal() {
+  const box = document.getElementById('localBackupList');
+  if (!box || !desktop.backupList) return;
+  const list = (await desktop.backupList()).slice().reverse();
+  $('autoBackupOn').checked = state.settings.autoBackup !== false;
+  box.replaceChildren(
+    ...(list.length
+      ? list.map((n) => {
+          const row = document.createElement('div');
+          row.className = 'row';
+          const t = document.createElement('span');
+          t.style.flex = '1';
+          const m = n.match(/(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})/);
+          t.textContent = `${n.startsWith('vor-') ? '↩ vor Rücksicherung' : '🗂 Sicherung'} ${m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : n}`;
+          const b = document.createElement('button');
+          b.textContent = '↩ Zurückholen';
+          b.onclick = () => restoreLocalBackup(n);
+          const x = document.createElement('button');
+          x.textContent = '📤';
+          x.title = 'Als Datei speichern (z. B. für den PC)';
+          x.onclick = async () => {
+            const doc = await desktop.backupRead(n);
+            const bytes = new TextEncoder().encode(JSON.stringify(doc));
+            if (desktop.saveFileAs) await desktop.saveFileAs(n.replace(/\.json$/, '.kisicherung'), bytes);
+            else await desktop.exportSave(n.replace(/\.json$/, ''), 'kisicherung', 'KI-Sicherung', bytes);
+          };
+          row.append(t, b, x);
+          return row;
+        })
+      : [Object.assign(document.createElement('span'), { className: 'hint', textContent: 'Noch keine Sicherung.' })]),
+  );
+}
+/** Sicherung zurückholen: erst den jetzigen Stand sichern, dann übernehmen (Figuren bleiben). */
+async function restoreLocalBackup(name) {
+  const doc = await desktop.backupRead(name);
+  if (!doc?.stand) return status('Sicherung ist leer oder beschädigt.');
+  if (doc.area && doc.area !== AREA) return status('Diese Sicherung stammt aus dem anderen Bereich.');
+  if (!confirm('Diesen Stand zurückholen? Personas, Verlauf, Gedächtnis, Wissen, Second Brain und Erinnerungen werden darauf gesetzt (Figuren bleiben). Der jetzige Stand wird vorher gesichert.')) return;
+  await desktop.backupSave(`vor-ruecksicherung-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-')}.json`, backupBody());
+  adoptStand(doc.stand);
+  applyPersona();
+  renderBrain();
+  status('↩ Sicherung zurückgeholt.');
+  renderBackupsLocal();
+}
+$('backupNowLocal').onclick = async () => {
+  const n = await autoBackup({ force: true });
+  status(n ? '🗂 Gesichert.' : 'Sichern geht hier nicht.');
+  renderBackupsLocal();
+};
+$('autoBackupOn').onchange = (e) => {
+  state.settings.autoBackup = e.target.checked;
+  save();
+};
+$('backupImportLocal').onclick = () => $('backupImportFile').click();
+$('backupImportFile').onchange = async (e) => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const doc = JSON.parse(await f.text());
+    if (doc?.typ !== 'ki-assistent-stand' || !doc.stand) throw new Error('keine KI-Sicherung');
+    const name = `sicherung-${new Date(doc.geaendert || Date.now()).toISOString().slice(0, 16).replace(/[T:]/g, '-')}.json`;
+    await desktop.backupSave(name, doc);
+    await renderBackupsLocal();
+    status('Sicherung übernommen – mit „↩ Zurückholen“ einspielen.');
+  } catch (err) {
+    status(`Sicherung: ${err.message}`);
+  }
+};
+
+// ---- Stimmung mit Wirkung: die Tagesstimmung der Figur prägt Gesicht und Posen auch zwischen den Antworten
+function applyBaseMood() {
+  avatarState.baseMood = PRIV && state.settings.moodEffect !== false && persona().selbstOn !== false ? baseMood() : null;
+}
+setInterval(applyBaseMood, 60e3);
+
 // ---- Tagesbriefing: einmal am Tag zur eingestellten Zeit (oder auf Knopfdruck)
 const BRIEFING_PROMPT =
   'Gib mir bitte ein kurzes Tagesbriefing für heute: meine Termine und fälligen Aufgaben (schau in Kalender und Aufgaben, falls verbunden), ' +
@@ -10739,6 +10915,13 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  healthChecks,
+  renderHealth,
+  autoBackup,
+  restoreLocalBackup,
+  renderBackupsLocal,
+  applyBaseMood,
+  avatarState,
   handleIntents: () => handleIntents(),
   receiveShare: (ev) => receiveShare(ev),
   captureTop3,

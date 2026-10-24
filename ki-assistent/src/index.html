@@ -425,6 +425,8 @@
         <label class="check"><input id="cInitiative" type="checkbox" /> 💬 Eigene Initiative <span class="hint">(höchstens zweimal am Tag
           meldet sich die Figur in einer Pause von selbst – zu ihrem Ziel, einem offenen Thema oder einem Gedanken aus dem Tagebuch;
           9–21 Uhr, nie im Fahrmodus)</span></label>
+        <label class="check"><input id="cMoodEffect" type="checkbox" /> 🎭 Stimmung mit Wirkung <span class="hint">(die Tagesstimmung
+          der Figur zeigt sich auch zwischen den Antworten in Gesicht und Posen)</span></label>
         <label class="check"><input id="cTagesbegleiter" type="checkbox" /> ☀ Tagesbegleiter <span class="hint">(morgens fragt die Figur
           nach deinen drei wichtigsten Dingen für heute, abends hakt sie mit dir ab – landet als offene Punkte im Second Brain)</span></label>
         <label class="check"><input id="cVorhaben" type="checkbox" /> 🧭 Selbstständig an Vorhaben arbeiten <span class="hint">(eigene
@@ -651,6 +653,22 @@
     </div>
 
     <div class="tab" data-tab="conn" hidden>
+      <div id="healthWrap">
+        <h3>🩺 Läuft alles?</h3>
+        <p class="hint">Prüft Mikrofon, Stimme, KI-Anbieter, Internet, Abgleich, Erinnerungen, Akku und Freigaben – mit einem
+          Knopf zum Beheben, wo es geht.</p>
+        <div class="row wrap"><button id="healthNow">🩺 Jetzt prüfen</button><span id="healthSum" class="hint"></span></div>
+        <div id="healthList" class="health-list"></div>
+      </div>
+      <div id="localBackupWrap">
+        <h3>🗂 Sicherungen auf diesem Gerät</h3>
+        <p class="hint">Einmal pro Woche sichert die App Personas (ohne Figuren), Verlauf, Gedächtnis, Wissen, Second Brain und
+          Erinnerungen auf dem Gerät (die letzten 6 bleiben). Mit 📤 als Datei speichern, z. B. um sie auf den PC zu bringen.</p>
+        <label class="check"><input id="autoBackupOn" type="checkbox" /> Jede Woche automatisch sichern</label>
+        <div class="row wrap"><button id="backupNowLocal">🗂 Jetzt sichern</button><button id="backupImportLocal">📥 Sicherungsdatei einlesen</button></div>
+        <input id="backupImportFile" type="file" accept=".kisicherung,.json" hidden />
+        <div id="localBackupList"></div>
+      </div>
       <label>KI-Anbieter
         <select id="cProvider">
           <option value="lmstudio">LM Studio – lokal auf diesem Rechner</option>

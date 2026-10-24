@@ -76,6 +76,10 @@ try {
   if (localStorage.getItem('ki-bereich') === 'privat') AREA = 'privat';
 } catch {}
 const areaPath = (p) => (AREA === 'privat' ? `privat/${p}` : p);
+const safeBackup = (n) => {
+  if (!/^[\w.-]+\.json$/.test(String(n))) throw new Error('ungültiger Name');
+  return n;
+};
 // Schlüssel liegen verschlüsselt im App-Speicher: Der AES-Schlüssel dazu steckt im Android-Keystore
 // (Hardware-geschützt, lässt sich nicht auslesen oder kopieren). window.KIKeys kommt aus MainActivity.java.
 const vault = () => (window.KIKeys?.available?.() ? window.KIKeys : null);
@@ -245,6 +249,18 @@ const api = {
   weather: (o) => wetter.weather(o, { fetchFn: nativeGet }),
   news: (o) => nachrichten.news(o, { fetchFn: nativeGet }),
   traffic: (o) => verkehr.traffic(o, { fetchFn: nativeGet }),
+  // Sicherungen auf dem Gerät (Bereich getrennt): automatisch einmal pro Woche, „Zurückholen“ in der App
+  backupSave: (name, value) => writeJson(areaPath(`sicherungen/${safeBackup(name)}`), value),
+  backupList: async () => {
+    try {
+      const r = await Filesystem.readdir({ path: areaPath('sicherungen'), directory: Directory.Data });
+      return r.files.map((f) => (typeof f === 'string' ? f : f.name)).filter((n) => /\.json$/.test(n)).sort();
+    } catch {
+      return [];
+    }
+  },
+  backupRead: (name) => readJson(areaPath(`sicherungen/${safeBackup(name)}`)),
+  backupDelete: (name) => Filesystem.deleteFile({ path: areaPath(`sicherungen/${safeBackup(name)}`), directory: Directory.Data }).catch(() => {}),
   // YouTube-Suche (Privat): nur der Suchbegriff geht hinaus
   youtubeSearch: (q) => youtube.search(q, { fetchFn: nativeGet }),
   nasHasPassword: async () => AREA === 'privat' && !!(await getKeys()).nas,

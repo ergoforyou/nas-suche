@@ -72,6 +72,10 @@ contextBridge.exposeInMainWorld('desktop', {
 
   // Medien (Video-Posen)
   saveMedia: (bytes, ext) => ipcRenderer.invoke('media:save', { bytes, ext }),
+  backupSave: (name, value) => ipcRenderer.invoke('backup:save', name, value),
+  backupList: () => ipcRenderer.invoke('backup:list'),
+  backupRead: (name) => ipcRenderer.invoke('backup:read', name),
+  backupDelete: (name) => ipcRenderer.invoke('backup:delete', name),
   deleteMedia: (url) => ipcRenderer.invoke('media:delete', url),
 
   // Modelle / Netzwerk

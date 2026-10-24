@@ -1367,6 +1367,37 @@ public class MainActivity extends BridgeActivity {
             KIReminder.store(MainActivity.this, json);
         }
 
+        /** Für „Läuft alles?“: ist eine Android-Berechtigung erteilt? (z. B. android.permission.READ_CONTACTS) */
+        @JavascriptInterface
+        public boolean hasPerm(String name) {
+            return checkSelfPermission(name) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @JavascriptInterface
+        public void askPerm(String name) {
+            runOnUiThread(() -> requestPermissions(new String[] { name }, 4731));
+        }
+
+        /** Dürfen Erinnerungen auf die Minute genau kommen? (ab Android 12 eigene Freigabe) */
+        @JavascriptInterface
+        public boolean exactAlarms() {
+            if (Build.VERSION.SDK_INT < 31) return true;
+            android.app.AlarmManager am = getSystemService(android.app.AlarmManager.class);
+            return am != null && am.canScheduleExactAlarms();
+        }
+
+        @JavascriptInterface
+        public void askExactAlarms() {
+            if (Build.VERSION.SDK_INT < 31) return;
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + getPackageName())));
+                } catch (Exception e) {
+                    Log.w("KI-Assistent", "Wecker-Freigabe", e);
+                }
+            });
+        }
+
         /** Handy-Aktion auf Zuruf (KIActions): {"aktion": …} → {"ok":true,"erledigt":…} oder {"fehler":…}. */
         @JavascriptInterface
         public String deviceAction(String json) {

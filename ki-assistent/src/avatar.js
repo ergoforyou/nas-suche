@@ -1005,8 +1005,12 @@ export class Avatar {
   updateMood(now, dt) {
     const st = this.state;
     // Die Stimmung hält, solange gesprochen wird, und klingt danach langsam ab
-    const name = st.mood && (st.speaking || st.thinking || now - st.moodAt < 7000) ? st.mood : 'ruhig';
-    const target = MOODS[name] ?? MOODS.ruhig;
+    // ohne aktuelle Stimmung aus der Antwort: die Tagesstimmung der Figur (halb so stark) – sie wirkt auf Gesicht und Posen
+    const live = st.mood && (st.speaking || st.thinking || now - st.moodAt < 7000);
+    const base = !live && st.baseMood && MOODS[st.baseMood] ? st.baseMood : null;
+    const name = live ? st.mood : base ?? 'ruhig';
+    const full = MOODS[name] ?? MOODS.ruhig;
+    const target = base ? Object.fromEntries(Object.keys(MOODS.ruhig).map((k) => [k, (MOODS.ruhig[k] + full[k]) / 2])) : full;
     const M = (this.moodCur ??= { ...MOODS.ruhig, side: 1, name: 'ruhig' });
     if (M.name !== name) {
       M.name = name;
