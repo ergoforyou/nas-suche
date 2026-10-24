@@ -83,6 +83,11 @@
       </nav>
       <button id="btnCloseDrawer" class="icon" title="Schließen">✕</button>
     </div>
+    <div class="set-find">
+      <input id="setSearch" type="search" placeholder="🔍 Einstellung suchen (z. B. Stimme, Erinnerung, Schlüssel)" autocomplete="off" />
+      <label class="check" title="Aus: nur die wichtigsten Einstellungen"><input id="setAll" type="checkbox" /> alle zeigen</label>
+    </div>
+    <div id="setResults" class="set-results" hidden></div>
 
     <div class="tab" data-tab="persona">
       <label>Aktive Persona
@@ -678,7 +683,7 @@
         <h3>🩺 Läuft alles?</h3>
         <p class="hint">Prüft Mikrofon, Stimme, KI-Anbieter, Internet, Abgleich, Erinnerungen, Akku und Freigaben – mit einem
           Knopf zum Beheben, wo es geht.</p>
-        <div class="row wrap"><button id="healthNow">🩺 Jetzt prüfen</button><span id="healthSum" class="hint"></span></div>
+        <div class="row wrap"><button id="healthNow">🩺 Jetzt prüfen</button><button id="obAgain">🧭 Einrichtung erneut starten</button><span id="healthSum" class="hint"></span></div>
         <div id="healthList" class="health-list"></div>
       </div>
       <div id="localBackupWrap">

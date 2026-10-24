@@ -83,8 +83,25 @@ const check = (ok, label, detail = '') => {
   console.log(ok ? '✔' : '✘', label, detail);
   if (!ok) process.exitCode = 1;
 };
+/** Ersteinrichtung (erscheint beim ersten Start eines Bereichs) mit „Später“ schließen und alle Einstellungen zeigen. */
+async function skipOnboard() {
+  await page.waitForFunction(() => window.__app.state.settings.onboarded || document.getElementById('onboard'), null, { timeout: 15000 }).catch(() => {});
+  return page.evaluate(() => {
+    const shown = !!document.getElementById('onboard');
+    [...document.querySelectorAll('#onboard button')].find((b) => b.textContent === 'Später')?.click();
+    if (window.__app.state.settings.setSimple) document.getElementById('setAll').click();
+    return shown;
+  });
+}
 await page.goto('http://localhost:8776/index.html');
 await page.waitForFunction(() => window.__app, null, { timeout: 30000 });
+const firstStart = await page.evaluate(async () => {
+  await new Promise((r) => setTimeout(r, 300));
+  const ob = document.getElementById('onboard');
+  return { shown: !!ob, text: ob?.textContent ?? '', simple: document.getElementById('drawer').classList.contains('simple') };
+});
+check(firstStart.shown && /Lass uns kurz alles einrichten/.test(firstStart.text) && firstStart.simple, 'Erster Start: Ersteinrichtung erscheint, Einstellungen im einfachen Modus', JSON.stringify(firstStart));
+await skipOnboard();
 check((await page.evaluate(() => window.__app.edition)) === 'mobile', 'Android-Ausgabe aktiv');
 check((await page.evaluate(() => window.__app.state.settings.provider)) === 'anthropic', 'Claude ist Standard');
 check(!(await page.isVisible('#btnFloat')) && !(await page.isVisible('#btnClose')), 'Desktop-Knöpfe ausgeblendet');
@@ -157,6 +174,7 @@ check(
 await page.waitForTimeout(2500);
 await page.reload();
 await page.waitForFunction(() => window.__app);
+await skipOnboard();
 await page.waitForTimeout(500);
 const kept = await page.evaluate(() => Object.values(window.__app.state.history).reduce((n, h) => n + h.length, 0));
 check(kept === 2, 'Verlauf bleibt nach Neustart erhalten', `(${kept} Nachrichten)`);
@@ -2160,6 +2178,7 @@ const keysBefore = await page.evaluate(async () => {
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'privat'));
 await page.reload();
 await page.waitForFunction(() => window.__app);
+await skipOnboard();
 const priv = await page.evaluate(async () => ({
   area: window.__app.area,
   cls: document.documentElement.classList.contains('area-privat'),
@@ -3181,9 +3200,16 @@ const b80 = await page.evaluate(async () => {
       return v.map((x) => x / n);
     });
   });
+  // hat das echte Suchmodell (CI: Internet) schon gerechnet, passen dessen Vektoren nicht zum nachgebildeten
+  app.sem.clear();
   const made = await app.runAppTool('notiz_anlegen', { titel: 'Gardasee im Juni', text: 'Unterkunft in Malcesine anschauen', ordner: 'projekte' });
   out.made = !!made.id;
-  await app.semRun();
+  // läuft gerade noch eine Runde mit dem echten Modell, wartet semRun nicht – dann kurz nachfassen
+  for (let i = 0; i < 40; i++) {
+    await app.semRun();
+    if (!app.sem.pending()) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
   out.stats = app.sem.stats();
   // Umschreibung: kein gemeinsames Wort mit der Notiz
   const r = await app.runAppTool('gedaechtnis_durchsuchen', { suche: 'Wann wollten wir verreisen?' });
@@ -3301,9 +3327,96 @@ check(b80d.round && /Antippen für die Morgenrunde/.test(b80d.preview ?? '') && 
 check(b80d.job && b80d.nightOff, 'Nachtschicht: Auftrag fürs Gerät ohne Schlüssel, abschaltbar', JSON.stringify(b80d));
 check(b80d.applied && b80d.topic && b80d.replanned && b80d.twice, 'Nachtschicht: Ergebnis wird beim Öffnen übernommen, die Figur erzählt davon, nächster Schritt geplant', JSON.stringify(b80d));
 check(b80d.merk && b80d.place && b80d.unknown && b80d.acked && b80d.list.includes('Supermarkt') && b80d.deleted, 'Erinnerungen an Orten: Ort merken, Erinnerung beim Ankommen, Bestätigen, löschen', JSON.stringify(b80d));
+// Beta 80 (B): Einrichtung und Hilfe – Suche in den Einstellungen, einfacher Modus, „Was kannst du?“, Ersteinrichtung
+const b80b = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  document.getElementById('btnSettings').click();
+  // einfacher Modus: Fortgeschrittenes verborgen, Wichtiges sichtbar
+  app.state.settings.setSimple = true;
+  app.applySimple();
+  const vis = (id) => !!document.getElementById(id)?.offsetParent;
+  document.querySelector('#tabs [data-tab=memory]').click();
+  out.simpleHides = !vis('diaryList') && vis('mSem');
+  // Suche findet auch Verborgenes; Klick zeigt alles, springt hin und markiert
+  const q = document.getElementById('setSearch');
+  q.value = 'Tagebuch';
+  q.dispatchEvent(new Event('input'));
+  const hits = [...document.querySelectorAll('#setResults button')];
+  out.hits = hits.map((b) => b.textContent).slice(0, 3);
+  hits[0]?.click();
+  await new Promise((r) => setTimeout(r, 100));
+  out.jumped = !app.state.settings.setSimple && !!document.querySelector('#drawer .flash') && document.getElementById('setResults').hidden;
+  q.value = 'Stimme';
+  q.dispatchEvent(new Event('input'));
+  out.voice = [...document.querySelectorAll('#setResults .set-path')].some((p) => /Sprache/.test(p.textContent));
+  q.value = 'xyzquatsch';
+  q.dispatchEvent(new Event('input'));
+  out.none = /Nichts gefunden/.test(document.getElementById('setResults').textContent);
+  q.value = '';
+  q.dispatchEvent(new Event('input'));
+  document.getElementById('btnCloseDrawer').click();
+  // Hilfe: was kann die App (nur, was es hier gibt)
+  const h1 = await app.runAppTool('app_hilfe', { frage: 'Wie stelle ich einen Timer?' });
+  out.timer = h1.treffer?.[0]?.titel;
+  const h2 = await app.runAppTool('app_hilfe', {});
+  out.groups = Object.keys(h2.ueberblick ?? {});
+  out.noPc = !JSON.stringify(h2).includes('Büro-Helfer');
+  const h3 = await app.runAppTool('app_hilfe', { frage: 'Kannst du Pizza backen?' });
+  out.unknown = h3.treffer.length === 0 && /ehrlich/.test(h3.hinweis);
+  // Ersteinrichtung komplett durchklicken
+  const p = app.persona();
+  const keep = { name: p.name, mem: p.memory.slice(), prov: app.state.settings.provider, onb: app.state.settings.onboarded };
+  const done = app.startOnboarding();
+  const step = () => document.querySelector('#onboard .onboard-head')?.textContent ?? '';
+  out.steps = [step()];
+  document.getElementById('obUser').value = 'Jens';
+  document.getElementById('obName').value = 'Lina';
+  document.getElementById('obNext').click();
+  await new Promise((r) => setTimeout(r, 100));
+  out.steps.push(step());
+  document.getElementById('obProvider').value = 'anthropic';
+  document.getElementById('obKey').value = 'sk-ant-onboard-test';
+  document.getElementById('obNext').click();
+  await new Promise((r) => setTimeout(r, 300));
+  out.keyHidden = !document.body.textContent.includes('sk-ant-onboard-test');
+  while (document.getElementById('obNext')?.textContent === 'Weiter') {
+    out.steps.push(step());
+    document.getElementById('obNext').click();
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  out.steps.push(step());
+  out.ideas = document.querySelectorAll('#onboard .onboard-ideas li').length;
+  document.getElementById('obNext').click();
+  out.how = await done;
+  out.name = p.name;
+  out.user = p.memory.some((m) => /Mein Gegenüber heißt Jens/.test(m.text));
+  out.key = (await window.desktop.keyStatus()).anthropic;
+  out.closed = !document.getElementById('onboard');
+  Object.assign(p, { name: keep.name, memory: keep.mem });
+  app.state.settings.provider = keep.prov;
+  return out;
+});
+check(b80b.simpleHides && b80b.jumped && b80b.voice && b80b.none, 'Einstellungen: einfacher Modus, Suche springt hin (auch zu Verborgenem)', JSON.stringify(b80b));
+check(/Timer/.test(b80b.timer ?? '') && b80b.groups.includes('Handy') && b80b.noPc && b80b.unknown, '„Was kannst du?“: Hilfe passend zu Gerät und Bereich, ehrlich bei Unbekanntem', JSON.stringify(b80b));
+check(b80b.how === 'fertig' && b80b.name === 'Lina' && b80b.user && b80b.key && b80b.keyHidden && b80b.closed && b80b.ideas >= 4 && b80b.steps.length >= 4, 'Ersteinrichtung: Namen, Anbieter und Schlüssel (verdeckt), Freigaben, Ideen', JSON.stringify(b80b));
+// Beta 80 (F): Selbsttest beim Start – kaputte Einstellung und verwaiste Orts-Erinnerung werden repariert
+const b80f = await page.evaluate(async () => {
+  const app = window.__app;
+  const startup = app.state.selfTest;
+  app.state.settings.livePauseMs = 'kaputt';
+  app.state.erinnerungen.push({ id: 'verwaist', ort: 'gibtsnicht', text: 'Testerinnerung', created: Date.now(), changed: Date.now() });
+  const r = await app.startCheck();
+  const row = (await app.healthChecks()).find((h) => h.name === 'Selbsttest beim Start');
+  const out = { startup: !!startup, pause: app.state.settings.livePauseMs, acked: !!app.state.erinnerungen.find((x) => x.id === 'verwaist')?.ack, repairs: r.repairs, row: row?.info };
+  app.state.erinnerungen = app.state.erinnerungen.filter((x) => x.id !== 'verwaist');
+  return out;
+});
+check(b80f.startup && b80f.pause === 1200 && b80f.acked && /livePauseMs/.test(b80f.row ?? ''), 'Selbsttest beim Start: Einstellungen und Daten geprüft, Kaputtes repariert, steht unter „Läuft alles?“', JSON.stringify(b80f));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);
+await skipOnboard();
 const back = await page.evaluate(() => ({ area: window.__app.area, history: Object.values(window.__app.state.history ?? {}).flat().length, nas: !document.getElementById('nasWrap').hidden }));
 check(back.area === 'dienstlich' && back.history > 0, 'Zurück in Dienstlich: alles wieder da', JSON.stringify(back));
 check(!back.nas, 'NAS-Abgleich gibt es im Bereich Dienstlich (noch) nicht');

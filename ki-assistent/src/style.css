@@ -572,3 +572,24 @@ body.dictating #input { outline: 2px solid var(--danger); }
 .clip-trim { border: 1px solid var(--border, #2a2f3a); border-radius: 10px; padding: 8px; margin: 6px 0; }
 .clip-trim video { width: 100%; max-height: 260px; background: #000; border-radius: 6px; }
 .clip-row button.active { border-color: var(--accent, #4c8dff); }
+
+/* Einstellungen: Suche und einfacher Modus */
+.set-find { display: flex; gap: 8px; align-items: center; margin: 2px 0 8px; }
+.set-find input[type='search'] { flex: 1; min-width: 0; }
+.set-find .check { white-space: nowrap; margin: 0; }
+.drawer.simple .set-adv { display: none !important; }
+.set-results { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.set-results button { text-align: left; white-space: normal; }
+.set-results .set-path { display: block; font-size: 0.8em; opacity: 0.7; }
+.flash { animation: setFlash 1.8s ease-out; border-radius: 6px; }
+@keyframes setFlash { 0%, 40% { box-shadow: 0 0 0 3px var(--accent); background: rgba(91, 156, 245, 0.18); } 100% { box-shadow: none; background: none; } }
+/* Ersteinrichtung */
+.onboard { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.35); }
+.onboard-card { width: min(520px, 100%); max-height: 80vh; overflow: auto; background: var(--panel); border: 1px solid var(--panel-2); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45); }
+.onboard-head { font-size: 0.85em; opacity: 0.75; }
+.onboard-say { font-size: 1.05em; margin: 0; }
+.onboard-card label { display: flex; flex-direction: column; gap: 4px; }
+.onboard-health { display: flex; flex-direction: column; gap: 6px; font-size: 0.92em; }
+.onboard-ideas { margin: 0; padding-left: 18px; font-size: 0.92em; }
+.onboard-nav { justify-content: flex-end; gap: 8px; }
+.onboard-nav .primary { background: var(--accent-2); border-color: var(--accent); }

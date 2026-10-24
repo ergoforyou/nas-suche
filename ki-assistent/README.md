@@ -141,12 +141,48 @@ Tageszeit, Begrüßung beim Start, Status-Leuchte, Sprechblase (z. B. im Büro o
 
 - **Echtzeit-Gespräch** (OpenAI Realtime): Antworten in ca. ½ s, Dazwischenreden; kostet mehr pro Minute.
 - **Aktivierungswort** frei wählbar (Standard: Name der Persona), auf dem Handy erkannt.
-- **Notizen**: „Merk dir: … bis Samstag“ bzw. 📝 im Widget – Google Aufgaben oder lokale Liste.
-- **Fahrmodus**: startet mit dem Auto-Bluetooth, kurze Antworten, Nur-Figur-Ansicht.
-- **Nachrichten vorlesen** (WhatsApp, Signal, SMS …) mit der Stimme auf dem Gerät.
-- **Bildschirm fragen** über das Menü der schwebenden Figur.
-- **Abgleich mit dem PC im WLAN** (QR-Code), **Fehlerprotokoll** zum Weitergeben.
-- Schwebende Figur: Sprechblase, Andocken am Rand, Menü bei langem Drücken.
+- **Diktat**: lange Gedanken am Stück sprechen, abschnittsweise mitgeschrieben; „fertig“ beendet, „als Notiz“ legt ab.
+- **Second Brain**: Notizen in Ordnern (Eingang, Projekte, Themen, Personen, Tagebuch, Archiv), offene Punkte,
+  Wochenrückblick, Export/Import als `.kibrain`-Datei (z. B. zum PC). Die Figur führt zusätzlich ein **eigenes Notizbuch**.
+- **Für später** (Zwischenspeicher): „Für später: …“, im Widget oder per App-Verknüpfung nebenbei notieren, ohne dass die
+  Figur antwortet; später gemeinsam durchgehen.
+- **Vorhaben**: Aufgaben über mehrere Tage („Such mir bis Freitag Wallbox-Angebote heraus“) – die Figur arbeitet Schritt
+  für Schritt daran (mit Internetsuche) und erzählt, was sie gefunden hat; **Tagesbegleiter** mit den drei wichtigsten
+  Dingen des Tages.
+- **Erinnerungen und Timer** auch ohne Google; bleiben stehen, bis sie bestätigt sind; Abgleich mit dem PC/der NAS.
+- **Begleiter bei geschlossener App** (Beta 80): Morgen- und Feierabendrunde als Benachrichtigung zur gewählten Uhrzeit
+  (Antippen startet die Runde); **Nachtschicht** – nachts zwischen 1 und 6 Uhr, nur beim Laden im WLAN, arbeitet die Figur
+  einen Schritt an einem Vorhaben weiter (der Claude-Schlüssel bleibt im verschlüsselten Speicher des Geräts);
+  **Erinnerungen an Orten** („Merk dir diesen Ort als Supermarkt“ → „Erinnere mich an Milch, wenn ich beim Supermarkt
+  bin“) – die Orte bleiben nur auf dem Handy.
+- **Handy steuern**: Apps öffnen, Navigation, Wecker/Timer, Musik, YouTube, Lautstärke, Taschenlampe, „An Claude: …“;
+  Anrufe und Nachrichten (auch WhatsApp, per Name aus dem Adressbuch) werden nur vorbereitet – gesendet wird per Tippen.
+  Bei Telefonaten pausiert die Figur.
+- **Videos auf Kommando**: bis zu 5 Videos der Figur; aus der Galerie teilen, Ausschnitt wählen, auf 720p verkleinern,
+  Inhalt erkennen (nur auf Knopfdruck, 3 Standbilder an Claude); die Figur schaut klein in der Ecke mit.
+- **Widget** (Glas, durchsichtig oder dunkel), Schnellkacheln, App-Verknüpfungen; **Teilen** mit der App legt Notizen an.
+- **Fahrmodus**, **Nachrichten vorlesen** (mit der Stimme auf dem Gerät), **Bildschirm fragen**, schwebende Figur.
+- **Abgleich mit dem PC im WLAN** (QR-Code) und über die **Synology-NAS** (WebDAV oder QuickConnect).
+- **Läuft alles?** (⚙ → Verbindung): Ampel für Schlüssel, Mikrofon, Freigaben, Sicherung, Suche und Selbsttest – mit Knopf
+  zum Beheben; wöchentliche **Sicherung auf dem Gerät**.
+
+### Gedächtnis mit Suche nach Bedeutung (Beta 80)
+
+Ein kleines Suchmodell (multilingual-e5-small, einmalig ca. 120 MB, auf dem Handy nur im WLAN) läuft auf dem Gerät und
+durchsucht Notizen, das Notizbuch der Figur, frühere Gespräche, gespeichertes Wissen und – nur Dienstlich – das
+Firmenwissen nach ihrer **Bedeutung** („Wann wollten wir verreisen?“ findet die Notiz „Gardasee im Juni“). Wortsuche
+und Bedeutungssuche werden zusammengeführt; unter der Antwort steht, was aus dem Gedächtnis mitgegeben wurde (nicht
+vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder abgeglichen noch exportiert.
+
+### Einrichtung und Hilfe (Beta 80)
+
+- **Ersteinrichtung** beim ersten Start: Namen, KI-Anbieter und Schlüssel (verdeckt, verschlüsselt gespeichert),
+  Mikrofon und Stimme, Freigaben auf dem Handy, Ideen zum Ausprobieren. Später erneut über ⚙ → Verbindung →
+  „🧭 Einrichtung erneut starten“.
+- **Suche in den Einstellungen** (🔍 oben im ⚙) springt direkt zur Einstellung; **einfacher Modus** zeigt nur das
+  Wichtigste („alle zeigen“ schaltet um).
+- **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
+- **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
 ### Gedächtnis
 

@@ -147,6 +147,7 @@ export function createSemantik({ embed, store = null, log = () => {}, model = EM
       for (const [key, it] of items) {
         if (prefixes && !prefixes.some((p) => key.startsWith(p))) continue;
         if (want.size && !want.has(key)) continue;
+        if (it.v.length !== qv.length) continue; // aus einem anderen Modell – wird beim nächsten Erfassen ersetzt
         out.push({ key, score: dot(it, qv) });
       }
       out.sort((a, b) => b.score - a.score);

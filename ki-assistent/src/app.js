@@ -4,6 +4,9 @@ import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeN
 import JSZip from 'jszip';
 import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pickVorhaben, vorhabenPrompt, vorhabenInput, parseVorhaben, applyVorhaben, stepsFrom, TOP3_PROMPT, parseTop3, TOP3_ASK } from './vorhaben.js';
 import { SpeechInput, Embedder } from './stt.js';
+import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
+import { repairSettings, checkData, runChecks } from './selbsttest.js';
+import { markSections, indexSettings, searchSettings, runOnboarding } from './einrichtung.js';
 import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS } from './begleiter.js';
 import { EMBED_MODEL, createSemantik, combine, docText, sourcesLine, idbStore } from './suche.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
@@ -7269,6 +7272,13 @@ async function runAppToolInner(name, input) {
     const ort = String(input?.ort ?? '').trim() || (await currentPlace());
     return desktop.news({ bereiche: input?.bereiche, ort, anzahl: input?.anzahl });
   }
+  if (name === 'app_hilfe') {
+    const q = String(input?.frage ?? '').trim();
+    const ctx = helpCtx();
+    if (!q) return { ueberblick: helpOverview(ctx) };
+    const hits = helpSearch(q, ctx, 5);
+    return hits.length ? { treffer: hits.map(helpEntry) } : { treffer: [], hinweis: 'Dazu kenne ich keine Funktion der App – ehrlich sagen.', ueberblick: helpOverview(ctx) };
+  }
   if (name === 'gedaechtnis_durchsuchen') {
     const q = String(input.suche ?? '').trim();
     if (!q) throw new Error('Suchbegriff fehlt');
@@ -7341,6 +7351,8 @@ async function runAppToolInner(name, input) {
   throw new Error(`Unbekanntes Werkzeug ${name}`);
 }
 /** Kurzes Grundwissen über diese App – damit die Figur Fragen zur Bedienung beantworten und ihre Möglichkeiten nutzen kann. */
+/** Wo läuft die App gerade (für die Hilfe): Handy, Bereich, Cloud. */
+const helpCtx = () => ({ mobil: MOBILE, privat: AREA === 'privat', cloud: appToolsActive() });
 function appKnowledge() {
   const lines = [
     'Technischer Rahmen (nur wichtig, wenn nach der App gefragt wird – Version ' + APP_VERSION + '): Du lebst als Figur mit Stimme in der App „KI-Assistent“ am PC und auf dem Android-Handy.',
@@ -7370,7 +7382,8 @@ function appKnowledge() {
         'Strg+Alt+D = Diktat in jede App; die Figur kann frei auf dem Desktop stehen (🧍), 📄 öffnet das Ausgabefenster.' +
         (CLAUDE_HANDOFF ? ' „An Claude: …“ (oder ✳ neben dem Eingabefeld) übergibt eine Aufgabe ohne dich an die Claude-App (Chat/Cowork), die sie dann erledigt; bittet dich der Nutzer, etwas an Claude oder Cowork weiterzugeben, nutze das Werkzeug an_claude_uebergeben.' : ''),
     );
-  lines.push('Oben im Fenster zeigt 💲 die geschätzten API-Kosten (heute/Monat). Einstellungen über ⚙.');
+  lines.push('Oben im Fenster zeigt 💲 die geschätzten API-Kosten (heute/Monat). Einstellungen über ⚙ (mit Suchfeld).');
+  if (appToolsActive()) lines.push('Fragt dein Gegenüber, was du kannst oder wie etwas in der App geht, schau mit app_hilfe nach, statt zu raten.');
   return lines.join('\n');
 }
 function renderSaved() {
@@ -8267,8 +8280,17 @@ function brainSearchIndex(q, k = 5, { ordner, offen } = {}, who = 'nutzer') {
 // Hintergrund auf dem Gerät berechnet und bleiben dort; bis sie fertig sind, sucht die App wie bisher nach Wörtern.
 const embedder = new Embedder(EMBED_MODEL);
 let embedOverride = null; // Tests: nachgebildetes Suchmodell
+let semLoadedLogged = false;
 const sem = createSemantik({
-  embed: (texts) => embedOverride ? embedOverride(texts) : embedder.embed(texts, (p) => p?.status === 'progress' && p.total > 5e6 && status(`Suchmodell wird geladen … ${Math.round(p.progress ?? 0)} %`)),
+  // Laden des Modells läuft still im Hintergrund (Stand unter „Läuft alles?“ und im Protokoll), ohne die Statuszeile
+  embed: (texts) =>
+    embedOverride
+      ? embedOverride(texts)
+      : embedder.embed(texts, (p) => {
+          if (p?.status !== 'progress' || !(p.total > 5e6) || p.progress < 100 || semLoadedLogged) return;
+          semLoadedLogged = true;
+          logEv('SUCHE', `Suchmodell geladen (${Math.round(p.total / 1e6)} MB)`);
+        }),
   store: typeof indexedDB !== 'undefined' ? idbStore(`${AREA}`) : null,
   log: (m) => logEv('SUCHE', m),
 });
@@ -8983,6 +9005,8 @@ async function healthChecks() {
   }
   const lastBackup = state.settings.autoBackupAt;
   add(lastBackup && Date.now() - lastBackup < 9 * 86400e3 ? 'ok' : 'warn', 'Sicherung', lastBackup ? `zuletzt ${new Date(lastBackup).toLocaleDateString('de-DE')}` : 'noch keine', ['Jetzt sichern', () => autoBackup({ force: true }).then(() => renderBackupsLocal())]);
+  const st = state.selfTest;
+  if (st) add(st.problems.length ? 'warn' : 'ok', 'Selbsttest beim Start', st.problems.length ? st.problems.join(' · ') : st.repairs.length ? `repariert: ${st.repairs.join(' · ')}` : 'alles in Ordnung');
   const errs = LOG.filter((l) => /Fehler|nicht erreichbar|fehlgeschlagen/i.test(l)).slice(-3);
   if (semOn()) {
     const { total, done } = sem.stats();
@@ -8990,6 +9014,123 @@ async function healthChecks() {
   }
   if (errs.length) add('warn', 'Letzte Fehler', errs.map((l) => l.slice(13, 120)).join(' · '));
   return rows;
+}
+// ---- Einstellungen: Suche, einfacher Modus, Ersteinrichtung (siehe einrichtung.js)
+function applySimple() {
+  const simple = state.settings.setSimple === true;
+  $('drawer').classList.toggle('simple', simple);
+  $('setAll').checked = !simple;
+}
+markSections($('drawer'));
+$('setAll').onchange = (e) => {
+  state.settings.setSimple = !e.target.checked;
+  save();
+  applySimple();
+};
+$('setSearch').oninput = (e) => {
+  const q = e.target.value;
+  const box = $('setResults');
+  const hits = q.trim().length >= 2 ? searchSettings(indexSettings($('drawer')), q, 10) : [];
+  box.hidden = !q.trim();
+  box.replaceChildren(
+    ...hits.map((h) => {
+      const b = document.createElement('button');
+      const path = document.createElement('span');
+      path.className = 'set-path';
+      path.textContent = `${h.tabName}${h.sec ? ` › ${h.sec}` : ''}`;
+      b.append(path, h.text.length > 110 ? `${h.text.slice(0, 110)}…` : h.text);
+      b.onclick = () => {
+        // im einfachen Modus verborgen: dann alle zeigen
+        if (h.el.closest('.set-adv') && state.settings.setSimple) {
+          state.settings.setSimple = false;
+          save();
+          applySimple();
+        }
+        openTab(h.tab);
+        $('setSearch').value = '';
+        box.hidden = true;
+        h.el.scrollIntoView({ block: 'center' });
+        h.el.classList.remove('flash');
+        void h.el.offsetWidth;
+        h.el.classList.add('flash');
+        h.el.matches('input,select,button') ? h.el.focus?.() : h.el.querySelector?.('input,select,textarea')?.focus?.();
+      };
+      return b;
+    }),
+  );
+  if (q.trim() && !hits.length) box.textContent = 'Nichts gefunden – frag einfach die Figur („Wo stelle ich … ein?“).';
+};
+function startOnboarding() {
+  $('drawer').hidden = true;
+  return runOnboarding({
+    persona: () => persona(),
+    rename: (name) => {
+      persona().name = name.slice(0, 60);
+      save();
+    },
+    userName: (name) => addMemory(persona(), `Mein Gegenüber heißt ${name.slice(0, 40)}.`, 'nutzer'),
+    mobile: MOBILE,
+    local: LOCAL_ONLY,
+    providers: MOBILE ? [['anthropic', 'Claude (empfohlen)'], ['openai', 'ChatGPT']] : [['anthropic', 'Claude'], ['openai', 'ChatGPT'], ['lmstudio', 'LM Studio (lokal, ohne Schlüssel)']],
+    provider: () => state.settings.provider,
+    setProvider: (id) => {
+      state.settings.provider = id;
+      save();
+    },
+    setKey: (id, key) => (id === 'lmstudio' ? null : desktop.setKey(id, key)),
+    speak: (t) => {
+      if (!state.settings.speak) return;
+      tts.stop();
+      tts.enqueue(t, { mood: 'freundlich', text: t, local: true });
+    },
+    testMic: () => navigator.mediaDevices?.getUserMedia({ audio: true }).then((st) => st.getTracks().forEach((t) => t.stop())).catch(() => status('Mikrofon nicht freigegeben')),
+    healthRows: () => healthChecks(),
+    overview: () => helpOverview(helpCtx()),
+    done: (how) => {
+      state.settings.onboarded = Date.now();
+      save();
+      tts.stop();
+      logEv('EINRICHTUNG', how);
+      if (how === 'fertig') fireEvent('greet', 2500);
+    },
+  });
+}
+$('obAgain').onclick = () => startOnboarding();
+/** Selbsttest beim Start (siehe selbsttest.js): Einstellungen und Daten prüfen, Sicheres reparieren, Ergebnis merken. */
+async function startCheck() {
+  const fixed = repairSettings(state.settings, DEFAULT_SETTINGS);
+  const data = checkData({ personas: state.personas, activeId: state.activeId, brain: state.brain, erinnerungen: state.erinnerungen, orte: state.settings.orte ?? [], newId });
+  const checks = await runChecks([
+    {
+      name: 'Speicher',
+      run: async () => {
+        const e = await navigator.storage?.estimate?.();
+        if (!e?.quota) return true;
+        const free = e.quota - (e.usage ?? 0);
+        return free > 100e6 ? true : `nur noch ${Math.round(free / 1e6)} MB frei`;
+      },
+    },
+    { name: 'Browser-Datenbank', run: async () => (typeof indexedDB === 'undefined' ? 'nicht verfügbar – Suche nach Bedeutung aus' : true) },
+  ]);
+  const problems = [...data.issues, ...checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.info}`)];
+  const repairs = [...(fixed.length ? [`Einstellungen zurückgesetzt: ${fixed.join(', ')}`] : []), ...data.fixes];
+  if (repairs.length) save();
+  state.selfTest = { at: Date.now(), problems, repairs };
+  logEv('SELBSTTEST', problems.length || repairs.length ? `${problems.join(' · ') || 'keine Probleme'}${repairs.length ? ` | repariert: ${repairs.join(' · ')}` : ''}` : 'alles in Ordnung');
+  return state.selfTest;
+}
+/** Beim allerersten Start: einfacher Modus und Ersteinrichtung; wer die App schon nutzt, bekommt sie nicht. */
+function maybeOnboard() {
+  if (state.settings.onboarded) return applySimple();
+  const used = Object.values(state.history ?? {}).some((h) => h?.length) || state.personas.length > 1;
+  if (used) {
+    state.settings.onboarded = 'vorher';
+    save();
+    return applySimple();
+  }
+  state.settings.setSimple = true;
+  applySimple();
+  startOnboarding();
 }
 function openTab(name) {
   $('drawer').hidden = false;
@@ -11574,6 +11715,10 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  startCheck,
+  startOnboarding,
+  maybeOnboard,
+  applySimple,
   roundNotifyItems,
   planNight,
   takeNight,
@@ -11765,6 +11910,10 @@ init().then(() => {
     }
   }
   desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
+  // Selbsttest: Einstellungen und Daten prüfen, Sicheres reparieren (Ergebnis unter „Läuft alles?“)
+  startCheck().catch((e) => logEv('SELBSTTEST', `Fehler: ${e.message}`));
+  // allererster Start: Ersteinrichtung (sonst nur den gewählten Modus der Einstellungen)
+  maybeOnboard();
   // Begrüßen, sobald die Figur steht
   if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);
   // persönliche Begrüßung (nach längerer Pause), sobald die Figur steht

@@ -41,6 +41,15 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'app_hilfe',
+    description:
+      'Was kann die App, und wie geht etwas? Nutze es, wenn dein Gegenüber fragt, was du alles kannst, wie eine Funktion ' +
+      'geht oder wo etwas eingestellt wird („Was kannst du?“, „Wie stelle ich einen Timer?“, „Wo ändere ich die ' +
+      'Stimme?“). Ohne frage: Überblick nach Gruppen. Antworte danach kurz in deiner Art mit zwei, drei passenden ' +
+      'Beispielen statt einer langen Liste.',
+    input_schema: { type: 'object', properties: { frage: { type: 'string', description: 'Worum es geht (leer = Überblick)' } } },
+  },
+  {
     name: 'selbst_notieren',
     description:
       'Schreibt eine Notiz über DICH SELBST in dein Selbstbild (bleibt dauerhaft, steht dir in jedem Gespräch zur ' +
