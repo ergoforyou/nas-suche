@@ -399,6 +399,11 @@
       <p class="hint">Beim Dazulernen fragt die App dein Modell in LM Studio kurz, welche Fakten aus dem Gespräch
         dauerhaft nützlich sind (z. B. Name, Beruf, Vorlieben, Absprachen). Du kannst auch einfach sagen:
         „Merk dir, dass …“.</p>
+      <label class="check"><input id="mSem" type="checkbox" /> Suche nach Bedeutung (findet auch Umschreibungen)</label>
+      <label class="check"><input id="mSources" type="checkbox" /> Unter der Antwort zeigen, was aus dem Gedächtnis mitgegeben wurde</label>
+      <p class="hint" id="mSemInfo">Ein kleines Suchmodell (einmalig ca. 120 MB, auf dem Handy nur im WLAN) läuft auf diesem
+        Gerät und durchsucht Notizen, frühere Gespräche, gespeichertes Wissen und – nur Dienstlich – das Firmenwissen
+        nach ihrer Bedeutung. Die Suchdaten bleiben auf dem Gerät und werden nicht abgeglichen oder exportiert.</p>
       <h3>Erinnerungen <span id="mCount" class="hint"></span></h3>
       <div id="mList" class="memory-list"></div>
       <div class="row">

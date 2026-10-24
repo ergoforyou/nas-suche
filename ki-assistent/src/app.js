@@ -3,7 +3,8 @@ import { extractText, chunkText, buildIndex, searchIndex, kbPrompt, KB_ACCEPT, t
 import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeNotes, brainPrompt, INBOX_PROMPT, parseInbox, OPEN_RE, BRAIN_PICK_PROMPT, brainPickInput, parsePick, isoWeek, weekFacts, weekMarkdown, BRAIN_WEEK_PROMPT, brainFile, readBrainFile } from './brain.js';
 import JSZip from 'jszip';
 import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pickVorhaben, vorhabenPrompt, vorhabenInput, parseVorhaben, applyVorhaben, stepsFrom, TOP3_PROMPT, parseTop3, TOP3_ASK } from './vorhaben.js';
-import { SpeechInput } from './stt.js';
+import { SpeechInput, Embedder } from './stt.js';
+import { EMBED_MODEL, createSemantik, combine, docText, sourcesLine, idbStore } from './suche.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
 import { computeVideoMask, seek as seekVideo } from './videomask.js';
@@ -254,6 +255,7 @@ const DEFAULT_SETTINGS = {
   briefing: '', // Tagesbriefing um 'HH:MM' ('' = aus)
   lastBriefing: '',
   dnd: 'auto', // Nicht stören: 'auto' (Vollbild/Präsentation) | 'an' | 'aus'
+  semSearch: true, // Suche nach Bedeutung (lokales Modell, einmalig ca. 120 MB)
 };
 
 const CLAUDE_MODELS = [
@@ -1246,6 +1248,13 @@ async function send(text) {
     // Firmenwissen: zeigen, welche Dokumente (Abschnitte daraus) mitgegeben wurden – nicht vorgelesen
     const kbDocs = [...new Set((state.kbHits ?? []).map((h) => h.doc.name))];
     if (answer && kbDocs.length) answer += `\n\n📚 *Aus dem Firmenwissen mitgegeben: ${kbDocs.join(', ')}*`;
+    // Gedächtnis: was aus Notizen, Gesprächen und gespeichertem Wissen mitgegeben wurde – nicht vorgelesen
+    const memSrc = [
+      ...(state.brainHits ?? []).map((n) => `Notiz „${n.titel}“`),
+      ...(state.episodeHits ?? []).map((e) => `Gespräch vom ${fmtDate(e.von)}`),
+      ...(state.savedHits ?? []).map((h) => `„${h.doc.name}“`),
+    ];
+    if (answer && memSrc.length && state.settings.showSources !== false) answer += `\n\n${sourcesLine(memSrc, persona().language === 'en' ? 'en' : 'de')}`;
     if (answer || created.length) {
       const tools = takeTurnTools();
       const cut = !!state.cutId && state.cutId === state.currentChatId;
@@ -1287,18 +1296,38 @@ async function send(text) {
   }
 
   state.place = await currentPlace();
-  state.kbHits = kbActive() ? searchIndex(kbIndex, text || attachments.map((a) => a.name).join(' '), 5) : [];
-  state.storyHits = storyIsLong(persona().geschichte) ? searchIndex(storyIndex(persona()), text, 2) : [];
-  state.savedHits = savedIndex?.n ? searchIndex(savedIndex, text, 3) : [];
-  state.brainHits = PRIV && state.brain?.length && text ? brainSearchIndex(text, 3) : [];
+  // Wortsuche und – sobald berechnet – Bedeutungssuche über alles, was die Figur weiß (ein gemeinsamer Durchlauf)
+  const pp = persona();
+  const vec = await semQuery(text, null, 12);
+  const kbKey = (h) => `k:${kb.docs.indexOf(h.doc)}:${h.i}`;
+  state.kbHits = kbActive()
+    ? semMerge(searchIndex(kbIndex, text || attachments.map((a) => a.name).join(' '), 5), vec, 'k:', kbKey, (key) => {
+        const [, di, i] = key.split(':');
+        const d = kb.docs[Number(di)];
+        return d && { doc: d, i: Number(i), text: d.chunks[Number(i)] };
+      }, 5)
+    : [];
+  state.storyHits = storyIsLong(pp.geschichte) ? searchIndex(storyIndex(pp), text, 2) : [];
+  state.savedHits = state.saved?.length
+    ? semMerge(savedIndex?.n ? searchIndex(savedIndex, text, 3) : [], vec, 's:', (h) => `s:${h.doc.entry.id}`, (key) => {
+        const e = state.saved.find((x) => `s:${x.id}` === key);
+        return e && { doc: { name: e.title, entry: e }, i: 0, text: chunkText(e.text, 1600)[0] ?? '' };
+      }, 3)
+    : [];
+  state.brainHits = PRIV && state.brain?.length && text ? semMerge(brainSearchIndex(text, 3), vec, 'b:', (n) => `b:${n.id}`, (key) => state.brain.find((n) => `b:${n.id}` === key), 3) : [];
   // klingt nach den eigenen Notizen („was hatte ich notiert …“, „weißt du noch …“): auch Umschreibungen verstehen
-  if (PRIV && state.brain?.length && !state.brainHits.length && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text))) state.brainHits = await brainSmart(text, 2);
-  state.ownBrainHits = PRIV && persona().brain?.length && text ? brainSearchIndex(text, 2, {}, 'figur') : [];
+  // (das Hilfsmodell nur, solange die Bedeutungssuche noch nicht bereitsteht)
+  if (PRIV && state.brain?.length && !state.brainHits.length && !sem.ready(['b:']) && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text))) state.brainHits = await brainSmart(text, 2);
+  state.ownBrainHits = PRIV && pp.brain?.length && text ? semMerge(brainSearchIndex(text, 2, {}, 'figur'), vec, `f:${pp.id}:`, (n) => `f:${pp.id}:${n.id}`, (key) => pp.brain.find((n) => `f:${pp.id}:${n.id}` === key), 2) : [];
   state.ownBrainLoops = PRIV && persona().brain?.length ? openLoops(persona().brain, 3) : [];
   state.brainLoops = PRIV && /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text) ? openLoops(state.brain, 10) : [];
   // frühere Gespräche, die zur Frage passen (nur mit eingeschaltetem Gedächtnis)
   // klingt die Frage nach Erinnerung („weißt du noch …“), auch Umschreibungen verstehen (kurz das Hilfsmodell fragen)
-  state.episodeHits = persona().memoryOn && persona().episoden?.length ? (RECALL_RE.test(text) ? await findEpisodesSmart(persona(), text, 2, 6) : findEpisodes(persona(), text, 2, 6)) : [];
+  if (pp.memoryOn && pp.episoden?.length) {
+    const eKey = (e) => `e:${pp.id}:${e.id}`;
+    state.episodeHits = semMerge(findEpisodes(pp, text, 2, 6), vec, `e:${pp.id}:`, eKey, (key) => pp.episoden.find((e) => eKey(e) === key), 2);
+    if (!state.episodeHits.length && RECALL_RE.test(text) && !sem.ready([`e:${pp.id}:`])) state.episodeHits = await findEpisodesSmart(pp, text, 2, 6);
+  } else state.episodeHits = [];
   const id = newId();
   state.currentChatId = id;
   // Denklaut: kommt nach gut einer Sekunde noch nichts, sagt die Figur kurz „Hm, Moment …“ (statt Stille)
@@ -1762,6 +1791,8 @@ function renderMemory() {
   list.innerHTML = '';
   $('mOn').checked = !!p.memoryOn;
   $('mLearn').checked = !!state.settings.memoryLearn;
+  $('mSem').checked = semOn();
+  $('mSources').checked = state.settings.showSources !== false;
   $('mCount').textContent = p.memory.length ? `(${p.memory.length})` : '';
   $('mNight').checked = state.settings.nightTidy !== false;
   renderTidy();
@@ -1915,6 +1946,15 @@ $('mOn').onchange = (e) => {
 };
 $('mLearn').onchange = (e) => {
   state.settings.memoryLearn = e.target.checked;
+  save();
+};
+$('mSem').onchange = (e) => {
+  state.settings.semSearch = e.target.checked;
+  save();
+  semKick(500);
+};
+$('mSources').onchange = (e) => {
+  state.settings.showSources = e.target.checked;
   save();
 };
 const addMemoryFromInput = () => {
@@ -2747,6 +2787,7 @@ async function summarizeEpisodes(p, { max = 8 } = {}) {
         const e = parseEpisode(await helperJson(EPISODE_PROMPT, talk));
         if (!e.belanglos && e.text) {
           p.episoden = [...(p.episoden ?? []), { id: newId(), von: s[0].t ?? last, bis: last, titel: e.titel || 'Gespräch', text: e.text, offen: e.offen, created: Date.now() }].slice(-EPISODEN_MAX);
+          semKick();
           n++;
         }
       } catch (err) {
@@ -7045,6 +7086,7 @@ const appToolsActive = () => !LOCAL_ONLY && (state.settings.provider === 'anthro
 function rebuildSaved() {
   savedIndex = buildIndex({ docs: (state.saved ?? []).map((e) => ({ name: e.title, entry: e, chunks: chunkText(e.text, 1600) })) });
   renderSaved();
+  semKick();
 }
 function saveSavedNow() {
   desktop.saveData({ wissen: state.saved });
@@ -7203,6 +7245,12 @@ async function runAppToolInner(name, input) {
     const ort = String(input?.ort ?? '').trim() || (await currentPlace());
     return desktop.news({ bereiche: input?.bereiche, ort, anzahl: input?.anzahl });
   }
+  if (name === 'gedaechtnis_durchsuchen') {
+    const q = String(input.suche ?? '').trim();
+    if (!q) throw new Error('Suchbegriff fehlt');
+    const treffer = await searchEverything(q, Math.min(10, Math.max(1, Number(input.anzahl) || 6)));
+    return treffer.length ? { treffer } : { treffer: [], hinweis: 'Dazu ist nichts gespeichert.' };
+  }
   if (name === 'wissen_suchen') {
     const q = String(input.suchbegriff ?? '').trim();
     if (!q) return { eintraege: state.saved.slice(-10).reverse().map((e) => ({ titel: e.title, datum: fmtDate(e.created) })) };
@@ -7350,6 +7398,7 @@ async function loadKb() {
     kb = { docs: [] };
   }
   kbIndex = buildIndex(kb);
+  semKick();
   renderKb();
 }
 function renderKb() {
@@ -7379,6 +7428,7 @@ function renderKb() {
 async function saveKb() {
   await desktop.kbSave(kb);
   kbIndex = buildIndex(kb);
+  semKick();
   renderKb();
 }
 async function addKbFiles(files) {
@@ -8189,8 +8239,118 @@ function brainSearchIndex(q, k = 5, { ordner, offen } = {}, who = 'nutzer') {
   }
   return pick(buildIndex({ docs: list.map((n) => ({ name: n.titel, entry: n, chunks: chunkText(`${n.titel}\n${n.text}`, 1600) })) }), k);
 }
+// ---- Ein Gedächtnis: Suche nach Bedeutung über alles, was die Figur weiß (siehe suche.js). Die Vektoren werden im
+// Hintergrund auf dem Gerät berechnet und bleiben dort; bis sie fertig sind, sucht die App wie bisher nach Wörtern.
+const embedder = new Embedder(EMBED_MODEL);
+let embedOverride = null; // Tests: nachgebildetes Suchmodell
+const sem = createSemantik({
+  embed: (texts) => embedOverride ? embedOverride(texts) : embedder.embed(texts, (p) => p?.status === 'progress' && p.total > 5e6 && status(`Suchmodell wird geladen … ${Math.round(p.progress ?? 0)} %`)),
+  store: typeof indexedDB !== 'undefined' ? idbStore(`${AREA}`) : null,
+  log: (m) => logEv('SUCHE', m),
+});
+function semOn() {
+  return state.settings.semSearch !== false;
+}
+/** Alles, was durchsuchbar ist – mit Quelle im Schlüssel. */
+function semDocs() {
+  const docs = [];
+  const p = persona();
+  if (PRIV) {
+    for (const n of state.brain ?? []) docs.push({ key: `b:${n.id}`, text: docText(n.titel, (n.tags ?? []).join(', '), n.projekt, n.text) });
+    for (const n of p.brain ?? []) docs.push({ key: `f:${p.id}:${n.id}`, text: docText(n.titel, (n.tags ?? []).join(', '), n.text) });
+  }
+  if (p.memoryOn) for (const e of p.episoden ?? []) docs.push({ key: `e:${p.id}:${e.id}`, text: docText(e.titel, e.text, e.offen) });
+  for (const e of state.saved ?? []) docs.push({ key: `s:${e.id}`, text: docText(e.title, e.text) });
+  if (AREA === 'dienstlich' && state.settings.kbUse !== false) kb.docs.forEach((d, di) => d.chunks.forEach((c, i) => docs.push({ key: `k:${di}:${i}`, text: docText(d.name, c) })));
+  return docs;
+}
+let semTimer = null;
+let semRunning = false;
+/** Bestand neu abgleichen und das Berechnen anstoßen (gebündelt). */
+function semKick(delay = 3000) {
+  clearTimeout(semTimer);
+  if (!semOn()) return;
+  semTimer = setTimeout(semRun, delay);
+}
+async function semRun() {
+  if (semRunning || !semOn()) return;
+  // Mobilfunk: das Modell (einmalig ~120 MB) erst im WLAN laden
+  if (!state.settings.semLoaded && navigator.connection?.type === 'cellular') return semKick(10 * 60e3);
+  if (state.busy || stt.listening) return semKick(15e3);
+  semRunning = true;
+  try {
+    await sem.load();
+    let left = sem.sync(semDocs());
+    const t0 = Date.now();
+    while (left > 0 && semOn()) {
+      if (state.busy || stt.listening) return semKick(15e3);
+      const n = await sem.pump();
+      if (!n) break;
+      if (!state.settings.semLoaded) ((state.settings.semLoaded = true), save());
+      left = sem.pending();
+      await new Promise((r) => setTimeout(r, MOBILE ? 150 : 50));
+    }
+    const { total, done } = sem.stats();
+    if (Date.now() - t0 > 2000) logEv('SUCHE', `${done} von ${total} Einträgen nach Bedeutung durchsuchbar`);
+  } catch (e) {
+    logEv('SUCHE', `Fehler: ${e.message}`);
+    semKick(10 * 60e3);
+  } finally {
+    semRunning = false;
+  }
+}
+/** Bedeutungssuche mit Zeitlimit – hängt das Modell, geht die Antwort trotzdem sofort raus. */
+async function semQuery(q, prefixes, k = 8, ms = 900) {
+  if (!semOn() || !String(q ?? '').trim() || !sem.ready(prefixes)) return [];
+  try {
+    const hits = await Promise.race([sem.search(q, { prefixes, k }), new Promise((r) => setTimeout(() => r(null), ms))]);
+    if (!hits) logEv('SUCHE', 'Bedeutungssuche zu langsam – nur Wortsuche');
+    else if (hits.length) logEv('SUCHE', `${hits.length} Treffer, bester ${hits[0].score.toFixed(3)}`);
+    return hits ?? [];
+  } catch (e) {
+    logEv('SUCHE', `Fehler: ${e.message}`);
+    return [];
+  }
+}
+/** Wortsuche + Bedeutungssuche einer Quelle zusammenführen: words = Objekte aus der Wortsuche, keyOf/byKey übersetzen. */
+function semMerge(words, vec, prefix, keyOf, byKey, k) {
+  const v = vec.filter((h) => h.key.startsWith(prefix));
+  if (!v.length) return words.slice(0, k);
+  const map = new Map(words.map((w) => [keyOf(w), w]));
+  return combine([...map.keys()], v, k).map((key) => map.get(key) ?? byKey(key)).filter(Boolean);
+}
+/** Überall suchen (Werkzeug gedaechtnis_durchsuchen und Suchfeld): Treffer mit Quelle, Titel und Auszug. */
+async function searchEverything(q, k = 8) {
+  const out = [];
+  const p = persona();
+  const vec = await semQuery(q, null, 16, 2500);
+  const push = (quelle, titel, text, extra = {}) => out.length < k && out.push({ quelle, titel, auszug: String(text ?? '').replace(/\s+/g, ' ').slice(0, 400), ...extra });
+  const seen = new Set();
+  const take = (key, fn) => !seen.has(key) && (seen.add(key), fn());
+  for (const h of vec) {
+    const [kind, a, b] = h.key.split(':');
+    take(h.key, () => {
+      if (kind === 'b') { const n = (state.brain ?? []).find((x) => x.id === a); n && push('Notiz', n.titel, n.text, { id: n.id }); }
+      else if (kind === 'f') { const n = (p.brain ?? []).find((x) => x.id === b); n && push('eigenes Notizbuch', n.titel, n.text, { id: n.id }); }
+      else if (kind === 'e') { const e = (p.episoden ?? []).find((x) => x.id === b); e && push('früheres Gespräch', `${e.titel} (${fmtDate(e.von)})`, e.text); }
+      else if (kind === 's') { const e = (state.saved ?? []).find((x) => x.id === a); e && push('gespeichertes Wissen', e.title, e.text); }
+      else if (kind === 'k') { const d = kb.docs[Number(a)]; d && push('Firmenwissen', `${d.name} (Abschnitt ${Number(b) + 1})`, d.chunks[Number(b)]); }
+    });
+  }
+  // Wortsuche ergänzt, was die Bedeutungssuche (noch) nicht kennt
+  if (PRIV) for (const n of brainSearch(q, 4)) take(`b:${n.id}`, () => push('Notiz', n.titel, n.text, { id: n.id }));
+  if (PRIV) for (const n of brainSearch(q, 2, {}, 'figur')) take(`f:${p.id}:${n.id}`, () => push('eigenes Notizbuch', n.titel, n.text, { id: n.id }));
+  if (p.memoryOn) for (const e of findEpisodes(p, q, 3, 5)) take(`e:${p.id}:${e.id}`, () => push('früheres Gespräch', `${e.titel} (${fmtDate(e.von)})`, e.text));
+  for (const h of savedIndex?.n ? searchIndex(savedIndex, q, 3) : []) take(`s:${h.doc.entry.id}`, () => push('gespeichertes Wissen', h.doc.name, h.text));
+  if (kbActive()) for (const h of searchIndex(kbIndex, q, 3)) take(`k:${kb.docs.indexOf(h.doc)}:${h.i}`, () => push('Firmenwissen', `${h.doc.name} (Abschnitt ${h.i + 1})`, h.text));
+  const facts = (p.memory ?? []).filter((m) => [...new Set(terms(q))].some((t) => terms(m.text ?? m).includes(t))).slice(0, 3);
+  for (const m of facts) push('Gedächtnis', 'Fakt', m.text ?? m);
+  return out;
+}
+
 function brainChanged() {
   brainIdx = new WeakMap();
+  semKick();
   save();
   renderBrain();
   renderNotes();
@@ -8595,7 +8755,8 @@ function renderBrain() {
   let list = brainFilter.ordner === 'offen' ? openLoops(notes, 999) : brainFilter.ordner === 'zwischen' ? zwischenItems() : notes.filter((n) => !brainFilter.ordner || n.ordner === brainFilter.ordner);
   if (q) {
     const ids = new Set(brainSearch(q, 50, {}, who).map((n) => n.id));
-    list = list.filter((n) => ids.has(n.id) || n.titel.toLowerCase().includes(q.toLowerCase()));
+    const semIds = brainFilter.sem?.q === q ? brainFilter.sem.ids : new Set();
+    list = list.filter((n) => ids.has(n.id) || semIds.has(n.id) || n.titel.toLowerCase().includes(q.toLowerCase()));
   } else if (brainFilter.ordner !== 'offen') list = list.slice().sort((a, b) => b.changed - a.changed);
   const box = $('brainList');
   box.replaceChildren(
@@ -8640,9 +8801,20 @@ function renderBrain() {
   );
   $('brainCount').textContent = list.length > 100 ? `${list.length} Notizen – die neuesten 100 werden gezeigt` : '';
 }
+let brainSemTimer = null;
 $('brainSearch').oninput = (e) => {
   brainFilter.q = e.target.value;
   renderBrain();
+  // nach kurzer Tipp-Pause auch nach Bedeutung suchen (findet „Urlaub“ in der Notiz „Ferien am Gardasee“)
+  clearTimeout(brainSemTimer);
+  brainSemTimer = setTimeout(async () => {
+    const q = brainFilter.q.trim();
+    const who = brainFilter.who;
+    const prefix = who === 'figur' ? `f:${persona().id}:` : 'b:';
+    const hits = await semQuery(q, [prefix], 20, 3000);
+    brainFilter.sem = { q, ids: new Set(hits.map((h) => h.key.slice(prefix.length))) };
+    if (brainFilter.q.trim() === q && hits.length) renderBrain();
+  }, 450);
 };
 $('brainNew').onclick = () => {
   const titel = prompt('Titel der neuen Notiz:');
@@ -8786,6 +8958,10 @@ async function healthChecks() {
   const lastBackup = state.settings.autoBackupAt;
   add(lastBackup && Date.now() - lastBackup < 9 * 86400e3 ? 'ok' : 'warn', 'Sicherung', lastBackup ? `zuletzt ${new Date(lastBackup).toLocaleDateString('de-DE')}` : 'noch keine', ['Jetzt sichern', () => autoBackup({ force: true }).then(() => renderBackupsLocal())]);
   const errs = LOG.filter((l) => /Fehler|nicht erreichbar|fehlgeschlagen/i.test(l)).slice(-3);
+  if (semOn()) {
+    const { total, done } = sem.stats();
+    add(sem.failed ? 'warn' : 'ok', 'Suche nach Bedeutung', sem.failed ? `Suchmodell nicht geladen (${sem.failed}) – Wortsuche aktiv` : total ? `${done} von ${total} Einträgen erfasst` : state.settings.semLoaded ? 'bereit' : 'startet, sobald es etwas zu durchsuchen gibt', done < total || sem.failed ? ['Jetzt erfassen', () => semKick(0)] : null);
+  }
   if (errs.length) add('warn', 'Letzte Fehler', errs.map((l) => l.slice(13, 120)).join(' · '));
   return rows;
 }
@@ -11230,6 +11406,11 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  sem,
+  semRun,
+  semQuery,
+  searchEverything,
+  setEmbed: (fn) => (embedOverride = fn),
   addClipFile,
   shrinkClip,
   trimClip,
@@ -11415,6 +11596,8 @@ init().then(() => {
   // persönliche Begrüßung (nach längerer Pause), sobald die Figur steht
   setTimeout(() => personalGreeting().catch(() => {}), 2500);
   ensureFaceRig();
+  // Bedeutungssuche: Bestand im Hintergrund erfassen, wenn die App zur Ruhe gekommen ist
+  semKick(20e3);
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
   if (!state.settings.offline && state.settings.handsFree) setTimeout(() => warmupLocalStt().catch(() => {}), 3000);
 });

@@ -284,3 +284,33 @@ export class SpeechInput {
     return !!this.rec;
   }
 }
+
+/** Eigener Worker für die Bedeutungssuche (Text → Vektor), getrennt von der Spracherkennung. */
+export class Embedder {
+  constructor(model) {
+    this.model = model;
+    this.worker = null;
+    this.pending = new Map();
+    this.nextId = 1;
+  }
+  embed(texts, onProgress) {
+    if (!this.worker) {
+      this.worker = new Worker(new URL('stt-worker.js', location.href), { type: 'module' });
+      this.worker.onmessage = ({ data }) => {
+        const p = this.pending.get(data.id);
+        if (!p) return;
+        if (data.type === 'progress') p.onProgress?.(data.progress);
+        else {
+          this.pending.delete(data.id);
+          if (data.type === 'error') p.reject(new Error(data.error));
+          else p.resolve(data.vecs);
+        }
+      };
+    }
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject, onProgress });
+      this.worker.postMessage({ type: 'embed', model: this.model, texts, id });
+    });
+  }
+}

@@ -25,6 +25,22 @@ const APP_TOOLS = [
     input_schema: { type: 'object', properties: { suchbegriff: { type: 'string' } }, required: ['suchbegriff'] },
   },
   {
+    name: 'gedaechtnis_durchsuchen',
+    description:
+      'Durchsucht ALLES, was du weißt, nach Bedeutung (versteht auch Umschreibungen): Notizen deines Gegenübers, dein ' +
+      'eigenes Notizbuch, frühere Gespräche, gespeichertes Wissen, gelernte Fakten und – im Bereich Dienstlich – das ' +
+      'Firmenwissen. Nutze es bei „Weißt du noch …“, „Was hatten wir zu … besprochen?“, „Hab ich dir mal von … ' +
+      'erzählt?“ oder wenn dir zu einer Frage etwas fehlen könnte, das ihr schon mal hattet. Jeder Treffer nennt die Quelle.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        suche: { type: 'string', description: 'Worum es geht – in eigenen Worten, gern als ganzer Satz' },
+        anzahl: { type: 'integer', description: 'höchstens so viele Treffer (Standard 6, max. 10)' },
+      },
+      required: ['suche'],
+    },
+  },
+  {
     name: 'selbst_notieren',
     description:
       'Schreibt eine Notiz über DICH SELBST in dein Selbstbild (bleibt dauerhaft, steht dir in jedem Gespräch zur ' +

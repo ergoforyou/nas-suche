@@ -3164,6 +3164,58 @@ check(b79.shareBtn && b79.added && b79.trimBtn, 'Video aus der Galerie teilen un
 check(b79.watching && b79.after, 'Video läuft: Figur bleibt klein sichtbar und schaut freundlich mit', JSON.stringify(b79));
 check(b79.shrunk === true, 'Video verkleinern und auf den Ausschnitt kürzen', JSON.stringify(b79));
 check(/See/.test(b79.desc) && b79.images === 3 && b79.found, 'Inhalt erkennen (3 Standbilder) – Video danach auch über Umschreibung gefunden', JSON.stringify(b79));
+// Beta 80 (A): ein Gedächtnis – Suche nach Bedeutung über Notizen, Gespräche und gespeichertes Wissen
+const b80 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  // nachgebildetes Suchmodell: Begriffe gleicher Bedeutung zeigen in dieselbe Richtung
+  const GROUPS = [['urlaub', 'ferien', 'verreisen', 'reise', 'gardasee'], ['wallbox', 'elektroauto', 'laden'], ['geschenk', 'geburtstag', 'mama']];
+  window.__embedCalls = 0;
+  app.setEmbed(async (texts) => {
+    window.__embedCalls++;
+    return texts.map((t) => {
+      const v = new Float32Array(GROUPS.length + 1);
+      v[GROUPS.length] = 1.6;
+      for (const w of t.toLowerCase().match(/[a-zäöüß]+/g) ?? []) GROUPS.forEach((g, i) => g.includes(w) && (v[i] += 1));
+      const n = Math.hypot(...v);
+      return v.map((x) => x / n);
+    });
+  });
+  const made = await app.runAppTool('notiz_anlegen', { titel: 'Gardasee im Juni', text: 'Unterkunft in Malcesine anschauen', ordner: 'projekte' });
+  out.made = !!made.id;
+  await app.semRun();
+  out.stats = app.sem.stats();
+  // Umschreibung: kein gemeinsames Wort mit der Notiz
+  const r = await app.runAppTool('gedaechtnis_durchsuchen', { suche: 'Wann wollten wir verreisen?' });
+  out.top = r.treffer?.find((t) => /Gardasee/.test(t.titel));
+  out.rank = r.treffer?.indexOf(out.top);
+  const health = await app.healthChecks();
+  out.health = health.find((h) => h.name === 'Suche nach Bedeutung')?.info;
+  // Suchfeld im Second Brain findet die Notiz über die Bedeutung
+  document.getElementById('brainSearch').value = 'Ferien';
+  document.getElementById('brainSearch').dispatchEvent(new Event('input'));
+  await new Promise((r) => setTimeout(r, 800));
+  out.box = [...document.querySelectorAll('#brainList .brain-note summary')].some((s) => /Gardasee/.test(s.textContent));
+  document.getElementById('brainSearch').value = '';
+  document.getElementById('brainSearch').dispatchEvent(new Event('input'));
+  return out;
+});
+check(b80.made && b80.stats.total > 0 && b80.stats.done === b80.stats.total, 'Gedächtnis: Einträge werden im Hintergrund erfasst', JSON.stringify(b80));
+check(b80.top?.quelle === 'Notiz' && b80.rank >= 0 && b80.rank < 3, 'Gedächtnis durchsuchen: Umschreibung findet die Notiz („verreisen“ → Gardasee)', JSON.stringify(b80));
+check(/erfasst/.test(b80.health ?? ''), '„Läuft alles?“ zeigt den Stand der Bedeutungssuche', JSON.stringify(b80.health));
+check(b80.box, 'Suchfeld im Second Brain sucht auch nach Bedeutung', JSON.stringify(b80));
+// im Gespräch: passende Notiz geht mit und steht unter der Antwort
+await page.evaluate(() => (window.__app.state.busy = false));
+claudeQueue.push(sayText('Im Juni an den Gardasee, hattest du notiert.'));
+const n80 = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+const before80 = claudeRequests.length;
+await page.fill('#input', 'Wohin wollten wir noch mal verreisen?');
+await page.click('#btnSend');
+await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !window.__app.state.busy, n80, { timeout: 15000 }).catch(() => {});
+const req80 = claudeRequests.slice(before80).find((r) => JSON.stringify(r.messages ?? '').includes('verreisen'));
+const last80 = await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? '');
+check(/Gardasee im Juni/.test(JSON.stringify(req80?.system ?? '') + JSON.stringify(req80?.messages ?? '')), 'Gespräch: Notiz kommt über die Bedeutung mit, obwohl kein Wort passt', String(!!req80));
+check(/Aus dem Gedächtnis mitgegeben:.*Notiz „Gardasee im Juni“/.test(last80), 'Unter der Antwort steht, was aus dem Gedächtnis mitgegeben wurde', last80.slice(-200));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

@@ -111,6 +111,20 @@ async function estimateDepth({ rgba, width, height }, progress) {
   return new Uint8ClampedArray(gray.data);
 }
 
+// Bedeutungssuche (multilingual-e5-small, MIT, ~120 MB): Text → Vektor. Läuft in einem eigenen Worker, damit das
+// Berechnen im Hintergrund die Spracherkennung nicht aufhält.
+let extractor = null;
+async function embedTexts(model, texts, progress) {
+  extractor ??= pipeline('feature-extraction', model, { device: 'wasm', dtype: 'q8', progress_callback: progress }).catch((e) => {
+    extractor = null;
+    throw e;
+  });
+  const fx = await extractor;
+  const out = await fx(texts, { pooling: 'mean', normalize: true });
+  const dim = out.dims.at(-1);
+  return texts.map((_, i) => out.data.slice(i * dim, (i + 1) * dim));
+}
+
 self.onmessage = async ({ data }) => {
   const { id, type } = data;
   try {
@@ -126,6 +140,9 @@ self.onmessage = async ({ data }) => {
         stride_length_s: 5,
       });
       self.postMessage({ id, type: 'result', text: (out.text || '').trim() });
+    } else if (type === 'embed') {
+      const vecs = await embedTexts(data.model, data.texts, (p) => self.postMessage({ id, type: 'progress', progress: p }));
+      self.postMessage({ id, type: 'result', vecs }, vecs.map((v) => v.buffer));
     } else if (type === 'depth') {
       const depth = await estimateDepth(data, (p) => self.postMessage({ id, type: 'progress', progress: p }));
       self.postMessage({ id, type: 'result', depth }, [depth.buffer]);
