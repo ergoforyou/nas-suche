@@ -137,17 +137,21 @@ public class KIReminder extends BroadcastReceiver {
                 nm.createNotificationChannel(ch);
             }
             Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            // Morgen-/Feierabendrunde: Antippen öffnet die App und startet die Runde – ohne Erledigt-Knöpfe
+            boolean round = key.startsWith("runde:");
             Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, CHANNEL) : new Notification.Builder(c);
             b.setSmallIcon(R.drawable.ic_ki_mic)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
-                // bleibt stehen, bis sie bestätigt wird (Erledigt / Später) – Antippen öffnet die App
-                .setAutoCancel(false)
-                .addAction(new Notification.Action.Builder((android.graphics.drawable.Icon) null, "✔ Erledigt", actionIntent(c, ACK, key)).build())
-                .addAction(new Notification.Action.Builder((android.graphics.drawable.Icon) null, "💤 10 Min", actionIntent(c, SNOOZE, key)).build())
+                // bleibt stehen, bis sie bestätigt wird (Erledigt / Später) – Antippen öffnet die App; Runden verschwinden beim Antippen
+                .setAutoCancel(round)
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setContentIntent(PendingIntent.getActivity(c, key.hashCode(), open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+            if (!round) {
+                b.addAction(new Notification.Action.Builder((android.graphics.drawable.Icon) null, "✔ Erledigt", actionIntent(c, ACK, key)).build());
+                b.addAction(new Notification.Action.Builder((android.graphics.drawable.Icon) null, "💤 10 Min", actionIntent(c, SNOOZE, key)).build());
+            }
             if (Build.VERSION.SDK_INT < 26) b.setPriority(Notification.PRIORITY_HIGH).setDefaults(Notification.DEFAULT_ALL);
             nm.notify(key.hashCode(), b.build());
         }

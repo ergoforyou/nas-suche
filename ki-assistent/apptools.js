@@ -249,15 +249,30 @@ const APP_TOOLS = [
     description:
       'Stellt eine Erinnerung oder einen Timer auf dem Gerät (ohne Google, auch offline): „Erinnere mich in 20 Minuten an ' +
       'den Rückruf“, „Weck mich um 6:30“, „Morgen um 9 an den Zahnarzt erinnern“. Entweder in_minuten oder zeitpunkt ' +
-      '(Ortszeit YYYY-MM-DDTHH:MM). Sag danach kurz, wann du erinnerst.',
+      '(Ortszeit YYYY-MM-DDTHH:MM). Sag danach kurz, wann du erinnerst. Handy: statt einer Zeit auch an einem gemerkten ' +
+      'Ort – „Erinnere mich an Milch, wenn ich beim Supermarkt bin“ → ort: „Supermarkt“ (Orte siehe orte_verwalten).',
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Woran erinnert werden soll (kurz)' },
         in_minuten: { type: 'number', description: 'In wie vielen Minuten (für Timer)' },
         zeitpunkt: { type: 'string', description: 'Ortszeit YYYY-MM-DDTHH:MM' },
+        ort: { type: 'string', description: 'Name eines gemerkten Orts (statt Zeit): erinnert beim Ankommen dort' },
       },
       required: ['text'],
+    },
+  },
+  {
+    name: 'orte_verwalten',
+    privatOnly: true,
+    mobileOnly: true,
+    description:
+      'Gemerkte Orte für Erinnerungen an Orten (bleiben nur auf dem Handy): „Merk dir diesen Ort als Supermarkt“ → ' +
+      'aktion hier_merken mit name (nimmt den aktuellen Standort); „Welche Orte kennst du?“ → liste; löschen mit name.',
+    input_schema: {
+      type: 'object',
+      properties: { aktion: { type: 'string', enum: ['hier_merken', 'liste', 'loeschen'] }, name: { type: 'string' } },
+      required: ['aktion'],
     },
   },
   {
@@ -327,6 +342,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   gespraeche_suchen: '💭 Erinnere mich …',
   verkehr: '🚗 Schaue nach dem Verkehr …',
   erinnerung_setzen: '⏰ Stelle die Erinnerung …',
+  orte_verwalten: '📍 Merke mir den Ort …',
   video_abspielen: '🎬 Hole das Video …',
   notiz_anlegen: '🧠 Lege die Notiz ab …',
   notizen_suchen: '🧠 Schaue in deine Notizen …',

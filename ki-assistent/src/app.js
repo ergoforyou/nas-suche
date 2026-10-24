@@ -4,6 +4,7 @@ import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeN
 import JSZip from 'jszip';
 import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pickVorhaben, vorhabenPrompt, vorhabenInput, parseVorhaben, applyVorhaben, stepsFrom, TOP3_PROMPT, parseTop3, TOP3_ASK } from './vorhaben.js';
 import { SpeechInput, Embedder } from './stt.js';
+import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS } from './begleiter.js';
 import { EMBED_MODEL, createSemantik, combine, docText, sourcesLine, idbStore } from './suche.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
@@ -256,6 +257,10 @@ const DEFAULT_SETTINGS = {
   lastBriefing: '',
   dnd: 'auto', // Nicht stören: 'auto' (Vollbild/Präsentation) | 'an' | 'aus'
   semSearch: true, // Suche nach Bedeutung (lokales Modell, einmalig ca. 120 MB)
+  roundNotify: true, // Android (Privat): Morgen-/Feierabendrunde als Benachrichtigung, auch bei geschlossener App
+  roundMorningAt: '07:30',
+  roundEveningAt: '18:00',
+  nightShift: true, // Android (Privat): nachts beim Laden im WLAN einen Schritt an einem Vorhaben weiterarbeiten
 };
 
 const CLAUDE_MODELS = [
@@ -1593,10 +1598,12 @@ async function personalGreeting({ morning: forceMorning = false, evening: forceE
   if (morning) {
     state.settings.morningDay = todayKey();
     save();
+    syncReminders(); // Benachrichtigung von heute entfällt, morgen kommt die nächste
     ctx.push(...(await morningContext(p)));
   } else if (mode === 'evening') {
     state.settings.eveningDay = todayKey();
     save();
+    syncReminders();
     ctx.push(...(await eveningContext(p)));
   } else if (mode === 'initiative') ctx.push(`Woran du gerade denkst:\n${seeds.map((x) => `- ${x}`).join('\n')}`);
   if (mode !== 'initiative' && mode !== 'evening' && googleActive() && desktop.googleUpcoming) {
@@ -1849,6 +1856,11 @@ function renderTopics() {
   $('cGreet').checked = state.settings.personalGreet !== false;
   $('cMorning').checked = state.settings.morningBrief !== false;
   $('cEvening').checked = state.settings.eveningBrief !== false;
+  $('roundNotifyWrap').hidden = !(PRIV && MOBILE);
+  $('cRoundNotify').checked = state.settings.roundNotify !== false;
+  $('cRoundMorningAt').value = state.settings.roundMorningAt || '07:30';
+  $('cRoundEveningAt').value = state.settings.roundEveningAt || '18:00';
+  $('cNightShift').checked = state.settings.nightShift !== false;
   $('cInitiative').checked = state.settings.initiative !== false;
   $('cRemGoogle').checked = !!state.settings.reminderGoogle;
   $('cMitdenken').checked = state.settings.mitdenken !== false;
@@ -1900,6 +1912,14 @@ function renderBudget() {
   $('cBudgetAction').value = state.settings.budgetAction === 'nur-hinweis' ? 'nur-hinweis' : 'sparen';
   const b = budgetState();
   $('budgetInfo').textContent = b.limit ? `Diesen Monat: ${fmtUsd(b.used)} von ${fmtUsd(b.limit)} (${Math.round(b.pct * 100)} %)${b.save ? ' – spart gerade' : ''}.` : 'Kein Budget gesetzt.';
+}
+for (const [id, key, type] of [['cRoundNotify', 'roundNotify', 'check'], ['cRoundMorningAt', 'roundMorningAt'], ['cRoundEveningAt', 'roundEveningAt'], ['cNightShift', 'nightShift', 'check']]) {
+  $(id).onchange = (e) => {
+    state.settings[key] = type === 'check' ? e.target.checked : e.target.value;
+    save();
+    if (key === 'nightShift') planNight();
+    else syncReminders();
+  };
 }
 $('cEvening').onchange = (e) => {
   state.settings.eveningBrief = e.target.checked;
@@ -6784,7 +6804,7 @@ async function init() {
     state.settings.notes = [];
   }
   setTimeout(() => renderBrain(), 0);
-  state.erinnerungen = Array.isArray(data.erinnerungen) ? data.erinnerungen.filter((r) => r.at > Date.now() - 86400e3) : [];
+  state.erinnerungen = Array.isArray(data.erinnerungen) ? data.erinnerungen.filter((r) => (r.ort && !r.ack) || r.at > Date.now() - 86400e3) : [];
   setTimeout(renderReminderBar, 0);
   state.abgleich = data.abgleich ?? { base: [], deleted: {} };
   stampSync(state, syncCache, { record: true, initial: true });
@@ -7209,6 +7229,10 @@ async function runAppToolInner(name, input) {
     const ort = String(input?.ort ?? '').trim() || (await currentPlace());
     if (!ort) return { fehler: 'Kein Ort bekannt – frag nach dem Ort oder bitte darum, ihn in ⚙ einzutragen bzw. den Standort zu erlauben.' };
     return desktop.weather({ ort, tage: input?.tage });
+  }
+  if (name === 'orte_verwalten') {
+    if (!PRIV || !MOBILE) throw new Error('Orte gibt es vorerst in der Handy-App im Bereich Privat.');
+    return ortTool(input);
   }
   if (name === 'erinnerung_setzen' || name === 'erinnerungen_verwalten') {
     if (!PRIV) throw new Error('Erinnerungen gibt es vorerst im Bereich Privat.');
@@ -8952,6 +8976,8 @@ async function healthChecks() {
     if (ov != null) add(ov ? 'ok' : 'warn', 'Über anderen Apps', ov ? 'erlaubt (schwebende Figur, Apps öffnen)' : 'nicht erlaubt – schwebende Figur und Apps öffnen aus dem Hintergrund gehen nicht', ov ? null : ['Erlauben', () => window.KIFloat?.askPermission?.()]);
     const na = d.notifyAccess?.();
     if (na != null && PRIV) add(na ? 'ok' : 'warn', 'Musik steuern / Nachrichten vorlesen', na ? 'Zugriff erteilt' : 'kein Zugriff auf Benachrichtigungen', na ? null : ['Freigeben', () => d.askNotifyAccess?.()]);
+    const bg = PRIV && orte().length ? d.hasPerm?.(BG_LOC) : null;
+    if (bg != null) add(bg ? 'ok' : 'warn', 'Erinnerungen an Orten', bg ? `${orte().length} Ort(e), Standort immer erlaubt` : 'Standort nur bei offener App – „immer erlauben“ fehlt', bg ? null : ['Erlauben', () => d.askPerm?.(BG_LOC)]);
     const ct = d.hasPerm?.('android.permission.READ_CONTACTS');
     if (ct != null && PRIV) add(ct ? 'ok' : 'warn', 'Adressbuch', ct ? 'freigegeben („Ruf Anna an“)' : 'nicht freigegeben – Anrufe nur mit Nummer', ct ? null : ['Freigeben', () => d.askPerm?.('android.permission.READ_CONTACTS')]);
   }
@@ -9414,6 +9440,12 @@ async function handleIntents() {
     } else if (ev.action === 'background-off') {
       setBgTalk(false);
     } else if (ev.action === 'reminder') {
+      // Morgen-/Feierabendrunde bei offener App: gleich die Runde statt Ansage
+      if (String(ev.key ?? '').startsWith('runde:')) {
+        dev()?.dismissReminder?.(ev.key);
+        if (!state.busy && (morningDue() || eveningDue())) personalGreeting().catch(() => {});
+        continue;
+      }
       // eigene Erinnerungen sagt die Erinnerungs-Runde an (nur einmal), Termine/Aufgaben hier – beide bleiben in der Leiste
       if (String(ev.key ?? '').startsWith('e:')) {
         renderReminderBar();
@@ -9546,12 +9578,14 @@ function reminderTool(name, input) {
   }
   const text = String(input?.text ?? '').trim().slice(0, 200);
   if (!text) throw new Error('Woran soll ich erinnern?');
+  // an einem Ort statt zu einer Zeit: „wenn ich beim Supermarkt bin“
+  if (input?.ort && !input?.zeitpunkt && !(Number(input?.in_minuten) > 0)) return placeReminder(text, input.ort);
   let at = null;
   if (Number(input?.in_minuten) > 0) at = Date.now() + Number(input.in_minuten) * 60e3;
   else if (input?.zeitpunkt) at = Date.parse(String(input.zeitpunkt).slice(0, 16));
   if (!Number.isFinite(at) || at < Date.now() + 20e3) throw new Error('Wann? (in Minuten oder als Zeitpunkt in der Zukunft)');
   ownReminders().push({ id: newId(), at, text, created: Date.now(), changed: Date.now() });
-  state.erinnerungen = ownReminders().filter((r) => r.at > Date.now() - 86400e3).slice(-50);
+  state.erinnerungen = ownReminders().filter((r) => (r.ort && !r.ack) || r.at > Date.now() - 86400e3).slice(-50);
   reminderChanged();
   logEv('ERINNERUNG', `gestellt für ${fmt(at)}`);
   // auf Wunsch zusätzlich im Google-Kalender – nur nach Rückfrage (Schreiben in den Kalender braucht ein Ja)
@@ -9562,6 +9596,131 @@ function reminderTool(name, input) {
       }
     : {};
   return { gestellt: true, wann: fmt(at), text, ...google };
+}
+// ---- Begleiter bei geschlossener App (Android, Privat; siehe begleiter.js): Runden als Benachrichtigung,
+// Nachtschicht an einem Vorhaben, Erinnerungen an Orten
+/** Morgen-/Feierabendrunde als Benachrichtigung zur gewählten Uhrzeit (Vorschau aus dem, was auf dem Gerät liegt). */
+function roundNotifyItems(up) {
+  if (!PRIV || !MOBILE || state.settings.roundNotify === false || budgetSaving()) return [];
+  const p = persona();
+  return roundItems(
+    {
+      morning: state.settings.morningBrief !== false,
+      evening: state.settings.eveningBrief !== false,
+      morningAt: state.settings.roundMorningAt,
+      eveningAt: state.settings.roundEveningAt,
+      morningDay: state.settings.morningDay,
+      eveningDay: state.settings.eveningDay,
+    },
+    {
+      termine: up?.termine ?? [],
+      erinnerungen: ownReminders().filter((r) => r.at),
+      offen: openLoops(state.brain ?? [], 99).length,
+      vorhaben: (p.brain ?? []).filter((n) => n.ordner === 'projekte' && !n.erledigt).map((n) => ({ titel: n.titel, neu: Date.now() - (n.gearbeitet ?? 0) < 20 * 3600e3 })),
+      heute: heuteWichtig().map((n) => ({ titel: n.titel, erledigt: !!n.erledigt })),
+      name: p.name,
+    },
+  );
+}
+
+/** Nachtschicht vorbereiten: nächster Schritt eines Vorhabens als fertige Anfrage (ohne Schlüssel) an das Gerät. */
+function planNight() {
+  const d = dev();
+  if (!d?.nightPlan) return;
+  const p = persona();
+  const ok = PRIV && state.settings.nightShift !== false && state.settings.vorhaben !== false && state.settings.provider === 'anthropic' && !state.settings.offline && !budgetSaving();
+  const n = ok ? pickVorhaben(p.brain ?? [], Date.now(), 0) : null;
+  if (!n) {
+    d.nightPlan('');
+    return null;
+  }
+  const model = state.settings.claudeModel || 'claude-haiku-5-5';
+  const job = nightJob({
+    model,
+    system: vorhabenPrompt(p.name || 'die Figur'),
+    input: vorhabenInput(n),
+    noteId: `${p.id}:${n.id}`,
+    step: nextStep(n)?.text ?? '',
+    tools: webActive() ? (desktop.claudeTools?.(model, { web: true }) ?? []) : [],
+  });
+  d.nightPlan(JSON.stringify(job));
+  return job;
+}
+/** Ergebnis der Nachtschicht übernehmen (beim Öffnen): Schritt ins Vorhaben, Neuigkeit als offenes Thema, Kosten. */
+function takeNight() {
+  const raw = dev()?.nightTake?.();
+  if (!raw) return null;
+  const r = readNightResult(raw);
+  if (!r) return null;
+  const [pid, nid] = String(r.noteId).split(':');
+  const p = state.personas.find((x) => x.id === pid);
+  const n = p?.brain?.find((x) => x.id === nid);
+  if (r.use.in || r.use.out) costs.add({ kind: 'chat', provider: 'anthropic', model: r.model || state.settings.claudeModel, in: r.use.in, out: r.use.out, cacheRead: r.use.cacheRead, cacheWrite: 0, searches: r.use.searches });
+  if (r.error || !n) {
+    logEv('VORHABEN', `Nachtschicht: ${r.error ?? 'Vorhaben nicht mehr da'}`);
+    planNight();
+    return null;
+  }
+  const v = parseVorhaben(r.text);
+  if (!v) {
+    logEv('VORHABEN', 'Nachtschicht: Antwort nicht lesbar');
+    planNight();
+    return null;
+  }
+  applyVorhaben(n, v);
+  addTopic(p, v.frage ? `Zu „${n.titel}“ (heute Nacht weitergearbeitet): ${v.frage}` : `Heute Nacht an „${n.titel}“ weitergearbeitet${v.nachricht ? `: ${v.nachricht}` : ` (${r.step})`}`);
+  logEv('VORHABEN', `Nachtschicht übernommen: „${n.titel}“`);
+  save({ quiet: true });
+  if (p.id === persona().id) brainChanged();
+  planNight();
+  return n;
+}
+
+/** Gemerkte Orte (nur auf diesem Handy, nicht abgeglichen) und was dort erinnert werden soll. */
+const orte = () => (state.settings.orte ??= []);
+function syncOrte() {
+  dev()?.ortWatch?.(JSON.stringify(ortWatch(orte(), ownReminders())));
+}
+function herePosition() {
+  return new Promise((ok, fail) => {
+    if (!navigator.geolocation) return fail(new Error('Standort ist hier nicht verfügbar'));
+    navigator.geolocation.getCurrentPosition((pos) => ok(pos.coords), () => fail(new Error('Standort nicht freigegeben')), { enableHighAccuracy: true, maximumAge: 60e3, timeout: 20000 });
+  });
+}
+const BG_LOC = 'android.permission.ACCESS_BACKGROUND_LOCATION';
+function placeReminder(text, ortName) {
+  const o = findOrt(orte(), ortName);
+  if (!o) return { gestellt: false, hinweis: `Den Ort „${ortName}“ kenne ich noch nicht. Bitte dein Gegenüber, dort „Merk dir diesen Ort als ${ortName}“ zu sagen (orte_verwalten).`, orte: orte().map((x) => x.name) };
+  ownReminders().push({ id: newId(), ort: o.id, text, created: Date.now(), changed: Date.now() });
+  reminderChanged();
+  logEv('ERINNERUNG', 'an einem Ort gestellt');
+  const bg = dev()?.hasPerm?.(BG_LOC);
+  if (bg === false) dev()?.askPerm?.(BG_LOC);
+  return { gestellt: true, ort: o.name, text, ...(bg === false ? { hinweis: 'Damit es auch bei geschlossener App klappt, muss der Standort „immer“ erlaubt sein – Android fragt gleich danach.' } : {}) };
+}
+async function ortTool(input) {
+  const aktion = input?.aktion ?? 'liste';
+  if (aktion === 'liste') return { orte: orte().map((o) => ({ name: o.name, erinnerungen: ownReminders().filter((r) => r.ort === o.id && !r.ack).map((r) => r.text) })) };
+  const name = String(input?.name ?? '').trim().slice(0, 60);
+  if (!name) throw new Error('Wie soll der Ort heißen?');
+  if (aktion === 'loeschen') {
+    const o = findOrt(orte(), name);
+    if (!o) return { geloescht: false, hinweis: 'Diesen Ort gibt es nicht.' };
+    state.settings.orte = orte().filter((x) => x !== o);
+    state.erinnerungen = ownReminders().filter((r) => r.ort !== o.id);
+    reminderChanged();
+    return { geloescht: o.name };
+  }
+  if (!dev()?.hasPerm?.('android.permission.ACCESS_FINE_LOCATION')) dev()?.askPerm?.('android.permission.ACCESS_FINE_LOCATION');
+  const c = await herePosition();
+  const old = findOrt(orte(), name);
+  if (old) Object.assign(old, { lat: c.latitude, lon: c.longitude });
+  else if (orte().length >= ORTE_MAX) throw new Error(`Höchstens ${ORTE_MAX} Orte – erst einen löschen.`);
+  else orte().push({ id: newId(), name, lat: c.latitude, lon: c.longitude, radius: ORT_RADIUS });
+  save();
+  syncOrte();
+  logEv('ORT', `${old ? 'aktualisiert' : 'gemerkt'} (Genauigkeit ${Math.round(c.accuracy ?? 0)} m)`);
+  return { gemerkt: name, genauigkeit_m: Math.round(c.accuracy ?? 0) };
 }
 /** Erinnerungen geändert: speichern, neu planen, Leiste nachziehen und gleich abgleichen (NAS / WLAN). */
 function reminderChanged() {
@@ -9651,7 +9810,8 @@ function ackReminder(key, was = 'erledigt') {
   if (ai >= 0) {
     alerts.splice(ai, 1);
     renderReminderBar();
-    return;
+    // Erinnerung an einem Ort: ist zugleich eine eigene Erinnerung (wird unten bestätigt)
+    if (!String(key).startsWith('o:')) return;
   }
   const id = String(key).split(':')[1];
   const r = ownReminders().find((x) => x.id === id);
@@ -9684,9 +9844,10 @@ async function syncReminders() {
   const d = dev()?.setReminders ? dev() : OFFICE ? { setReminders: (j) => scheduleLocalReminders(JSON.parse(j)) } : null;
   if (!d) return;
   const own = PRIV ? ownReminderItems() : [];
-  const plan = (items) => d.setReminders(JSON.stringify([...items, ...own].filter((i) => i.at > Date.now()).sort((a, b) => a.at - b.at).slice(0, 60)));
+  if (PRIV) syncOrte();
+  let up = null;
+  const plan = (items) => d.setReminders(JSON.stringify([...items, ...own, ...roundNotifyItems(up)].filter((i) => i.at > Date.now()).sort((a, b) => a.at - b.at).slice(0, 60)));
   if (!state.settings.reminders || !desktop.googleUpcoming) return plan([]);
-  let up;
   try {
     up = await desktop.googleUpcoming({ timeZone: userTimeZone(), hours: 48 });
   } catch (e) {
@@ -10944,8 +11105,11 @@ window.__kiScreenOff = () => {
   if (lockCfg().on && !state.locked) lockNow();
 };
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) return;
+  // App geht in den Hintergrund: Auftrag für die Nachtschicht auf den neuesten Stand
+  if (document.hidden) return void planNight();
   screenIsOff = false;
+  // Ergebnis der Nachtschicht zuerst – die Morgenrunde kann dann davon erzählen
+  takeNight();
   // App wieder geöffnet: ist gerade Morgen- oder Feierabendrunde fällig, kommt sie jetzt
   if (!state.locked && (morningDue() || eveningDue())) setTimeout(() => personalGreeting().catch(() => {}), 1500);
 });
@@ -11386,6 +11550,10 @@ $('privScreen').onclick = () => {
 function startPhoneFeatures() {
   if (!MOBILE) return;
   refreshPriv();
+  if (PRIV) {
+    takeNight();
+    planNight();
+  }
   window.KIFloat?.setDock?.(state.settings.floatDock !== false);
   refreshFloat();
   intentsReady = true;
@@ -11406,6 +11574,12 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  roundNotifyItems,
+  planNight,
+  takeNight,
+  placeReminder,
+  ortTool,
+  orte,
   sem,
   semRun,
   semQuery,

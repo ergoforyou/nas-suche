@@ -3216,6 +3216,91 @@ const req80 = claudeRequests.slice(before80).find((r) => JSON.stringify(r.messag
 const last80 = await page.evaluate(() => [...document.querySelectorAll('.msg.assistant')].at(-1)?.textContent ?? '');
 check(/Gardasee im Juni/.test(JSON.stringify(req80?.system ?? '') + JSON.stringify(req80?.messages ?? '')), 'Gespräch: Notiz kommt über die Bedeutung mit, obwohl kein Wort passt', String(!!req80));
 check(/Aus dem Gedächtnis mitgegeben:.*Notiz „Gardasee im Juni“/.test(last80), 'Unter der Antwort steht, was aus dem Gedächtnis mitgegeben wurde', last80.slice(-200));
+// Beta 80 (D): Begleiter bei geschlossener App – Runden als Benachrichtigung, Nachtschicht, Erinnerungen an Orten
+const b80d = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const out = {};
+  const planned = [];
+  const nights = [];
+  const watch = [];
+  let nightResult = '';
+  const had = window.KIDevice;
+  window.KIDevice = {
+    ...(had ?? {}),
+    setReminders: (j) => planned.push(JSON.parse(j)),
+    nightPlan: (j) => nights.push(j),
+    nightTake: () => nightResult,
+    ortWatch: (j) => watch.push(JSON.parse(j)),
+    hasPerm: () => true,
+    askPerm() {},
+    dismissReminder() {},
+  };
+  const keep = { md: app.state.settings.morningDay, prov: app.state.settings.provider, rem: app.state.settings.reminders };
+  // Runden: Benachrichtigung zur gewählten Uhrzeit, Vorschau aus den eigenen Daten
+  app.state.settings.reminders = false;
+  app.state.settings.roundMorningAt = '07:30';
+  await app.syncReminders();
+  const keys = (planned.at(-1) ?? []).map((i) => i.key);
+  out.round = keys.some((k) => k.startsWith('runde:m:')) && keys.some((k) => k.startsWith('runde:f:'));
+  out.preview = (planned.at(-1) ?? []).find((i) => i.key.startsWith('runde:m:'))?.text;
+  app.state.settings.roundNotify = false;
+  await app.syncReminders();
+  out.off = !(planned.at(-1) ?? []).some((i) => i.key.startsWith('runde:'));
+  app.state.settings.roundNotify = true;
+  // Nachtschicht: Auftrag für das Gerät (ohne Schlüssel), Ergebnis wird beim Öffnen übernommen
+  await window.desktop.setKey('anthropic', 'sk-ant-test-0000000000');
+  app.state.settings.provider = 'anthropic';
+  const v = await app.runAppTool('notiz_anlegen', { notizbuch: 'eigenes', titel: 'Wallbox-Angebote', text: 'Für die Garage', schritte: ['Drei Angebote heraussuchen', 'Förderung prüfen'] });
+  const job = app.planNight();
+  const sent = nights.at(-1) ?? '';
+  out.job = !!job && /Drei Angebote heraussuchen/.test(sent) && !/sk-ant/.test(sent) && JSON.parse(sent).noteId === `${p.id}:${v.id}`;
+  const usedBefore = app.costs.total?.() ?? null;
+  nightResult = JSON.stringify({
+    noteId: `${p.id}:${v.id}`,
+    step: 'Drei Angebote heraussuchen',
+    t: Date.now(),
+    antworten: [{ model: 'claude-haiku-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: '{"ergebnis": "- Angebot A 899 €\\n- Angebot B 1.050 €\\n- Angebot C 1.190 €", "schritt_erledigt": true, "neue_schritte": [], "fertig": false, "frage": null, "nachricht": "Ich habe drei Wallbox-Angebote gefunden."}' }], usage: { input_tokens: 900, output_tokens: 120 } }],
+  });
+  const n = app.takeNight();
+  const note = p.brain.find((x) => x.id === v.id);
+  out.applied = n?.id === v.id && /Angebot B/.test(note.text) && !!note.schritte[0].erledigt && !note.schritte[1].erledigt;
+  out.topic = (p.themen ?? []).some((t) => /Heute Nacht an „Wallbox-Angebote“ weitergearbeitet: Ich habe drei/.test(t.text ?? t));
+  // nächster Auftrag: das Vorhaben, an dem am längsten nicht gearbeitet wurde (dieses kommt mit „Förderung prüfen“ später)
+  out.replanned = !!JSON.parse(nights.at(-1) || 'null')?.body && /Förderung prüfen/.test(JSON.stringify(note.schritte));
+  nightResult = '';
+  out.twice = app.takeNight() === null;
+  void usedBefore;
+  app.state.settings.nightShift = false;
+  app.planNight();
+  out.nightOff = nights.at(-1) === '';
+  app.state.settings.nightShift = true;
+  // Orte: hier merken (Standort nachgebildet), Erinnerung beim Ankommen, Bestätigen nimmt sie aus der Überwachung
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (ok) => ok({ coords: { latitude: 52.37, longitude: 9.73, accuracy: 12 } }) } });
+  const m = await app.runAppTool('orte_verwalten', { aktion: 'hier_merken', name: 'Supermarkt' });
+  out.merk = m.gemerkt === 'Supermarkt' && app.orte().length >= 1;
+  const r = await app.runAppTool('erinnerung_setzen', { text: 'Milch kaufen', ort: 'beim Supermarkt' });
+  const w = watch.at(-1) ?? [];
+  out.place = r.gestellt && r.ort === 'Supermarkt' && w.some((x) => x.name === 'Supermarkt' && x.texte.some((t) => t.text === 'Milch kaufen'));
+  const unknown = await app.runAppTool('erinnerung_setzen', { text: 'Brötchen', ort: 'Bäcker' });
+  out.unknown = unknown.gestellt === false && /kenne ich noch nicht/.test(unknown.hinweis);
+  const rid = app.state.erinnerungen.find((x) => x.text === 'Milch kaufen')?.id;
+  // Android meldet: angekommen (die App ist offen) → Hinweis; dann „Erledigt“
+  app.ackReminder(`o:${rid}`, 'erledigt');
+  out.acked = !!app.state.erinnerungen.find((x) => x.id === rid)?.ack && !(watch.at(-1) ?? []).some((x) => x.texte.some((t) => t.text === 'Milch kaufen'));
+  out.list = (await app.runAppTool('orte_verwalten', { aktion: 'liste' })).orte.map((o) => o.name);
+  await app.runAppTool('orte_verwalten', { aktion: 'loeschen', name: 'Supermarkt' });
+  out.deleted = !app.orte().some((o) => o.name === 'Supermarkt');
+  Object.assign(app.state.settings, { morningDay: keep.md, provider: keep.prov, reminders: keep.rem });
+  p.brain = p.brain.filter((x) => x.id !== v.id);
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  return out;
+});
+check(b80d.round && /Antippen für die Morgenrunde/.test(b80d.preview ?? '') && b80d.off, 'Morgen-/Feierabendrunde als Benachrichtigung (auch bei geschlossener App), abschaltbar', JSON.stringify(b80d));
+check(b80d.job && b80d.nightOff, 'Nachtschicht: Auftrag fürs Gerät ohne Schlüssel, abschaltbar', JSON.stringify(b80d));
+check(b80d.applied && b80d.topic && b80d.replanned && b80d.twice, 'Nachtschicht: Ergebnis wird beim Öffnen übernommen, die Figur erzählt davon, nächster Schritt geplant', JSON.stringify(b80d));
+check(b80d.merk && b80d.place && b80d.unknown && b80d.acked && b80d.list.includes('Supermarkt') && b80d.deleted, 'Erinnerungen an Orten: Ort merken, Erinnerung beim Ankommen, Bestätigen, löschen', JSON.stringify(b80d));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

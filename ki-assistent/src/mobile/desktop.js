@@ -263,6 +263,8 @@ const api = {
   backupDelete: (name) => Filesystem.deleteFile({ path: areaPath(`sicherungen/${safeBackup(name)}`), directory: Directory.Data }).catch(() => {}),
   // YouTube-Suche (Privat): nur der Suchbegriff geht hinaus
   youtubeSearch: (q) => youtube.search(q, { fetchFn: nativeGet }),
+  // Nachtschicht: dieselben Server-Werkzeuge (Internetsuche) wie im Gespräch
+  claudeTools: (model, o) => cloud.claudeTools(model, o),
   nasHasPassword: async () => AREA === 'privat' && !!(await getKeys()).nas,
   nasReq: async ({ base, user, method = 'GET', path = '', body, headers = {} }) => {
     if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');

@@ -1375,6 +1375,24 @@ public class MainActivity extends BridgeActivity {
             return s;
         }
 
+        /** Nachtschicht: Auftrag hinterlegen (JSON, leer = keiner) – läuft nachts beim Laden im WLAN. */
+        @JavascriptInterface
+        public void nightPlan(String json) {
+            KINachtschicht.plan(MainActivity.this, json);
+        }
+
+        /** Ergebnis der Nachtschicht abholen ("" = keins). */
+        @JavascriptInterface
+        public String nightTake() {
+            return KINachtschicht.take(MainActivity.this);
+        }
+
+        /** Erinnerungen an Orten: [{"id","name","lat","lon","radius","texte":[{"id","text"}]}]. */
+        @JavascriptInterface
+        public void ortWatch(String json) {
+            KIOrt.store(MainActivity.this, json);
+        }
+
         /** Kopfzeile des Widgets: {"name","zwischen","offen"}. */
         @JavascriptInterface
         public void widgetInfo(String json) {

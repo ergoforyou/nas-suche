@@ -226,6 +226,8 @@ const PERMS = [
   // ungefährer Ort für Wetter/Verkehr (nur wenn eingeschaltet; Android fragt beim ersten Mal)
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_FINE_LOCATION',
+  // Privat: Erinnerungen an Orten auch bei geschlossener App (nur wenn eingeschaltet; extra in den Einstellungen erlauben)
+  'android.permission.ACCESS_BACKGROUND_LOCATION',
   // Erinnerungen (nur wenn eingeschaltet)
   'android.permission.POST_NOTIFICATIONS',
   'android.permission.RECEIVE_BOOT_COMPLETED',
@@ -300,6 +302,9 @@ if (!xml.includes('KIConversationService')) {
             </intent-filter>
         </service>
         <receiver android:name=".KIReminder" android:exported="false" />
+        <receiver android:name=".KIOrt" android:exported="false" />
+        <service android:name=".KINachtschicht" android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <activity android:name=".KIQuickNote" android:exported="true" android:excludeFromRecents="true"
             android:taskAffinity="" android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar"
             android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />

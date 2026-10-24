@@ -430,6 +430,19 @@
       <div id="privRounds" hidden>
         <label class="check"><input id="cEvening" type="checkbox" /> 🌆 Feierabendrunde <span class="hint">(zwischen 17 und 22 Uhr beim
           Öffnen: was heute war, was offen ist, der erste Termin morgen – und wie dein Tag war; auch per „Feierabend“)</span></label>
+        <div id="roundNotifyWrap" hidden>
+          <label class="check"><input id="cRoundNotify" type="checkbox" /> 🔔 Runden auch als Benachrichtigung – kommt auch, wenn
+            die App zu ist; Antippen startet die Runde</label>
+          <div class="row">
+            <label>☀️ um <input id="cRoundMorningAt" type="time" /></label>
+            <label>🌆 um <input id="cRoundEveningAt" type="time" /></label>
+          </div>
+          <label class="check"><input id="cNightShift" type="checkbox" /> 🌙 Nachtschicht <span class="hint">(nachts zwischen 1 und 6 Uhr,
+            nur wenn das Handy lädt und im WLAN ist, arbeitet die Figur einen Schritt an einem ihrer Vorhaben weiter – auch bei
+            geschlossener App; morgens erzählt sie davon. Nur mit Claude, höchstens ein Schritt pro Nacht)</span></label>
+          <p class="hint">📍 Erinnerungen an Orten: „Merk dir diesen Ort als Supermarkt“, dann „Erinnere mich an Milch, wenn ich
+            beim Supermarkt bin“. Die Orte bleiben nur auf diesem Handy; dafür muss der Standort „immer“ erlaubt sein.</p>
+        </div>
         <label class="check"><input id="cInitiative" type="checkbox" /> 💬 Eigene Initiative <span class="hint">(höchstens zweimal am Tag
           meldet sich die Figur in einer Pause von selbst – zu ihrem Ziel, einem offenen Thema oder einem Gedanken aus dem Tagebuch;
           9–21 Uhr, nie im Fahrmodus)</span></label>
