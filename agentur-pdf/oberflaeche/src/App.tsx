@@ -5,6 +5,7 @@ import { Bereiche } from "./ansicht/Bereiche";
 import { Auftraege } from "./ansicht/Auftraege";
 import { SperrHinweis } from "./ansicht/SperrHinweis";
 import { Dialoge } from "./ansicht/Dialoge";
+import { Fehlergrenze } from "./ansicht/Fehlergrenze";
 import { OcrHinweis } from "./ansicht/OcrDialoge";
 import { textstatusBeobachten } from "./zustand/ocr";
 import { Menueband } from "./ansicht/Menueband";
@@ -19,7 +20,7 @@ import { api } from "./api";
 import { dateienOeffnen, naechsterTreffer, sitzungMerken, starten } from "./zustand/aktionen";
 import { dateienEinfuegen } from "./zustand/seitenaktionen";
 import { auswahlLoeschen, formularfeldLoeschen, textAuswahlKopieren } from "./zustand/anmerkungen";
-import { abonnieren, holen, setzen, useZustand } from "./zustand/store";
+import { abonnieren, holen, melden, setzen, useZustand } from "./zustand/store";
 
 // Tastenkürzel nach Acrobat-Konvention → Befehls-IDs
 const MIT_STRG: Record<string, string> = {
@@ -226,18 +227,34 @@ export function App() {
       <Eigenschaftsleiste />
       <main className="hauptbereich">
         <Panelleiste />
-        {seitenleisteOffen && <Seitenleiste />}
+        {seitenleisteOffen && (
+          <Fehlergrenze bereich="Seitenleiste">
+            <Seitenleiste />
+          </Fehlergrenze>
+        )}
         {seitenleisteOffen && <Trennlinie breite={seitenleisteBreite} />}
         <section className="dokumentbereich">
           {hatDokumente && <Tabs />}
           <div className="dokument-flaeche">
-            <Dialoge />
+            <Fehlergrenze
+              bereich="Dialog"
+              stillZuruecksetzen={() => {
+                setzen({ dialog: null });
+                melden("Der Dialog wurde wegen eines Fehlers geschlossen.", "fehler");
+              }}
+            >
+              <Dialoge />
+            </Fehlergrenze>
             <OcrHinweis />
             <SperrHinweis />
             {aktiv ? <Bereiche /> : <Startseite />}
           </div>
         </section>
-        {rechtsOffen && aktiv && <EigenschaftenBereich />}
+        {rechtsOffen && aktiv && (
+          <Fehlergrenze bereich="Eigenschaften">
+            <EigenschaftenBereich />
+          </Fehlergrenze>
+        )}
       </main>
       <Statusleiste />
       <DateiMenue />

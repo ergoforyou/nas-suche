@@ -3,14 +3,25 @@
 
 import { Columns2, X } from "lucide-react";
 import { Dokumentansicht } from "./Dokumentansicht";
+import { Fehlergrenze } from "./Fehlergrenze";
 import { Miniaturen } from "./Miniaturen";
-import { bereichSchliessen, setzen, useZustand } from "../zustand/store";
+import { ansichtAendern, bereichSchliessen, setzen, useZustand } from "../zustand/store";
+
+/** Dokumentansicht mit Fehlergrenze – bei „Ansicht neu laden“ fester Zoom, damit
+ * ein Fehler in der automatischen Zoomberechnung nicht sofort wiederkommt. */
+function GeschuetzteAnsicht({ dokId }: { dokId: string }) {
+  return (
+    <Fehlergrenze bereich="Dokumentansicht" vorNeuladen={() => ansichtAendern(dokId, { zoomModus: "frei" })}>
+      <Dokumentansicht dokId={dokId} />
+    </Fehlergrenze>
+  );
+}
 
 export function Bereiche() {
   const bereiche = useZustand((z) => z.bereiche);
   const aktiv = useZustand((z) => z.aktiv);
   if (bereiche.length <= 1) {
-    return aktiv ? <Dokumentansicht key={aktiv} dokId={aktiv} /> : null;
+    return aktiv ? <GeschuetzteAnsicht key={aktiv} dokId={aktiv} /> : null;
   }
   return (
     <div className="bereiche">
@@ -47,7 +58,7 @@ function Bereich({ dokId, fokus }: { dokId: string; fokus: boolean }) {
         <div className="bereich-miniaturen" style={{ width: miniGroesse + 40 }}>
           <Miniaturen dok={dok} groesse={miniGroesse} />
         </div>
-        <Dokumentansicht dokId={dokId} />
+        <GeschuetzteAnsicht dokId={dokId} />
       </div>
     </section>
   );

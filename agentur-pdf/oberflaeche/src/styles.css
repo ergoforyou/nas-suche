@@ -4056,9 +4056,136 @@ body {
 }
 
 .sig-dialog {
-  width: 560px;
+  width: 580px;
   max-height: calc(100vh - 48px);
   overflow-y: auto;
+}
+
+.sig-dialog.sig-mit-vorschau {
+  width: min(960px, calc(100vw - 48px));
+}
+
+.sig-spalten {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.sig-vorschau {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  background: var(--linie);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.sig-vorschau.leer {
+  background: none;
+  padding: 0;
+}
+
+.sig-vorschau-seite {
+  margin: 0;
+}
+
+.sig-vorschau-seite figcaption {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 3px;
+}
+
+.sig-vorschau-blatt {
+  position: relative;
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.sig-vorschau-blatt img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.sig-vorschau-feld {
+  position: absolute;
+  border: 2px solid;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sig-formular {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sig-person {
+  border: 1px solid var(--linie);
+  border-left: 4px solid;
+  border-radius: 6px;
+  padding: 6px 10px 8px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sig-person legend {
+  font-weight: 700;
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+.sig-link-block,
+.sig-personen > li {
+  border-left: 4px solid;
+  padding: 4px 0 4px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sig-personen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sig-personen > li {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sig-fehlt {
+  margin-right: auto;
+}
+
+.sig-rollen-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+@media (max-width: 760px) {
+  .sig-spalten {
+    grid-template-columns: 1fr;
+  }
 }
 
 .sig-uebersicht {
@@ -4230,6 +4357,11 @@ body {
   color: #4a5361;
 }
 
+.sig-status.sig-teilweise {
+  background: #fff3d6;
+  color: #8a5a00;
+}
+
 .sig-status.sig-geoeffnet {
   background: #e3ecff;
   color: #1e4fa8;
@@ -4271,4 +4403,48 @@ body {
 .sig-verbinden textarea {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 11px;
+}
+
+/* ============================================================ Fehlergrenze */
+.fehlergrenze {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text);
+  background: var(--hintergrund, #f3f3f3);
+}
+
+.fehlergrenze.ganz {
+  height: 100vh;
+}
+
+.fehlergrenze svg {
+  color: #c27c00;
+}
+
+.fehlergrenze h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.fehlergrenze-knoepfe {
+  display: flex;
+  gap: 8px;
+}
+
+.fehlergrenze details {
+  max-width: 640px;
+  text-align: left;
+}
+
+.fehlergrenze pre {
+  font-size: 10px;
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow: auto;
 }

@@ -81,6 +81,13 @@ Ist in Ergoforyou PDF der **gemeinsame Einstellungsordner** auf dem NAS eingetra
 
 ---
 
+## Mehrere Unterzeichner
+- In Ergoforyou PDF bekommt jedes Unterschriftsfeld eine **Rolle**, z. B. Kunde, Ehepartner oder Makler. Felder mit derselben Rolle unterschreibt dieselbe Person.
+- Beim Senden gibt es je Rolle eine Person mit **eigenem Link** und optional eigenem Zugangscode.
+- Mit „Der Reihe nach unterschreiben“ kann die zweite Person erst nach der ersten unterschreiben.
+- Jede Person sieht die bereits gesetzten Unterschriften. Die fertige PDF mit allen Unterschriften und dem Prüfprotokoll gibt es, sobald alle unterschrieben haben, für jeden über seinen eigenen Link.
+- **Update von 0.1.0:** Bereits verschickte Links laufen weiter. Einfach die Dateien ersetzen und das Projekt neu erstellen (siehe „Updates“).
+
 ## Was der Kunde sieht
 - Das Dokument zum Durchblättern, mit gelb markierten Feldern.
 - Unterschreiben per Finger oder Maus (oder Namen tippen), den Haken „gelesen“ und dann **Verbindlich unterschreiben**.

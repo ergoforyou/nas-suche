@@ -1,7 +1,7 @@
 // Verbindung zum lokalen Dienst. Das Zugangs-Token kommt beim Start über den
 // URL-Anker (#t=…) und wird danach nur im Speicher dieser Sitzung gehalten.
 
-import type { HubSpotKontakt, SignaturAuftrag, SignaturStatus } from "./typen";
+import type { HubSpotKontakt, SignaturAuftrag, SignaturEmpfaenger, SignaturFeld, SignaturStatus } from "./typen";
 import type { Anmerkung, BildDaten, Ebene, Formularfeld, RsFehler, Unterschrift, Wiederherstellung, Wort, GemeinsamStatus, UpdateInfo, WindowsStatus, StapelOptionen, VergleichErgebnis, Textzeile } from "./typen";
 import type { Aenderungsantwort, Auftrag, DokumentInfo, Ereignis, OcrStatus, OrdnerRegel, UeberwachungsProtokoll, Einstellungen, OrdnerInhalt, Sitzung, Treffer, Lesezeichen, ZuletztEintrag } from "./typen";
 
@@ -136,14 +136,15 @@ export const api = {
   signaturKontakte: (q: string, signal?: AbortSignal) =>
     anfrage<{ kontakte: HubSpotKontakt[] }>("GET", `/api/signatur/kontakte?q=${enc(q)}`, undefined, signal),
   signaturDeals: (kontakt: string) => anfrage<{ deals: { id: string; name: string; phase: string }[] }>("GET", `/api/signatur/kontakte/${enc(kontakt)}/deals`),
-  signaturFelder: (id: string) => anfrage<{ felder: { seite: number; name: string }[] }>("GET", `/api/dokumente/${id}/signatur/felder`),
+  signaturFelder: (id: string) => anfrage<{ felder: SignaturFeld[]; rollen: string[] }>("GET", `/api/dokumente/${id}/signatur/felder`),
   signaturSenden: (
     id: string,
-    daten: { titel: string; kontakt: HubSpotKontakt | null; deal_id: string; empfaenger_name: string; code: string; gueltig_tage: number; nachricht: string },
+    daten: { titel: string; kontakt: HubSpotKontakt | null; deal_id: string; personen: SignaturEmpfaenger[]; reihenfolge: boolean; gueltig_tage: number; nachricht: string },
   ) => anfrage<SignaturAuftrag>("POST", `/api/dokumente/${id}/signatur/senden`, daten),
   signaturAuftraege: () => anfrage<{ auftraege: SignaturAuftrag[] }>("GET", "/api/signatur/auftraege"),
   signaturAuftrag: (id: string) => anfrage<SignaturAuftrag>("GET", `/api/signatur/auftraege/${enc(id)}`),
-  signaturAktion: (id: string, aktion: "widerrufen" | "entsperren" | "hubspot") => anfrage<SignaturAuftrag>("POST", `/api/signatur/auftraege/${enc(id)}/${aktion}`),
+  signaturAktion: (id: string, aktion: "widerrufen" | "entsperren" | "hubspot", nr = 0) =>
+    anfrage<SignaturAuftrag>("POST", `/api/signatur/auftraege/${enc(id)}/${aktion}?nr=${nr}`),
   signaturOeffnen: (id: string) => anfrage<DokumentInfo>("POST", `/api/signatur/auftraege/${enc(id)}/oeffnen`),
   linkOeffnen: (url: string) => anfrage<{ ok: boolean }>("POST", "/api/signatur/link-oeffnen", { url }),
   chromeStatus: () => anfrage<ChromeStatus>("GET", "/api/system/chrome"),

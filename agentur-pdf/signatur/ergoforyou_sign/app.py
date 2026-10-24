@@ -28,20 +28,26 @@ from . import PRODUKT, __version__
 from .auftraege import (
     KOPIE_TAGE,
     MAX_CODE_FEHLER,
+    MAX_PERSONEN,
     OFFEN,
     AuftragFehler,
     Auftraege,
     aus_iso,
+    braucht_code,
+    felder_von,
+    ist_dran,
     iso,
     jetzt,
     link,
     ortszeit,
+    person,
     sha256,
+    status_aktualisieren,
     zusammenfassung,
 )
 from .hubspot import HubSpot, HubSpotFehler
 from .konfig import Konfig, kennwort_hash, kennwort_pruefen
-from .pdfwerk import ergebnis_erzeugen, felder_pruefen, png_aus_dataurl, pruefen, seite_png
+from .pdfwerk import abschliessen, felder_pruefen, png_aus_dataurl, pruefen, seite_png, stempeln
 
 STATISCH = Path(__file__).parent / "statisch"
 SITZUNG_S = 12 * 3600
@@ -69,9 +75,9 @@ class Dienst:
     def hubspot(self) -> HubSpot:
         return HubSpot(self.konfig.get("hubspot_token"), self.hubspot_transport)
 
-    def zugang(self, a: dict) -> str:
-        """Nachweis „Zugangscode bestätigt“ – an den Link gebunden."""
-        return self.konfig.signieren(f"zugang:{a['id']}:{a['token']}")[:32]
+    def zugang(self, a: dict, p: dict) -> str:
+        """Nachweis „Zugangscode bestätigt“ – an den Link der Person gebunden."""
+        return self.konfig.signieren(f"zugang:{a['id']}:{p['nr']}:{p['token']}")[:32]
 
     def hubspot_kontakt_url(self, kontakt_id: str) -> str:
         portal = self.konfig.get("hubspot_portal")
@@ -85,37 +91,42 @@ class Dienst:
         threading.Thread(target=self.hubspot_ablegen, args=(auftrag_id, art), daemon=True).start()
 
     def hubspot_ablegen(self, auftrag_id: str, art: str) -> None:
-        """art = „gesendet“ (Notiz mit Link) oder „fertig“ (PDF + Notiz).
+        """art = „gesendet“ (Notiz mit Links) oder „fertig“ (PDF + Notiz).
         Die HubSpot-Aufrufe laufen ohne Sperre; nur das Ergebnis wird unter
         der Sperre in den (neu gelesenen) Auftrag geschrieben."""
         schluessel = "hubspot_gesendet" if art == "gesendet" else "hubspot_fertig"
         a = self.auftraege.laden(auftrag_id)
         hs = a["hubspot"]
-        if not (hs.get("kontakt_id") or hs.get("deal_id")) or a["ablage"].get(schluessel):
+        kontakte = list(dict.fromkeys(x for x in [hs.get("kontakt_id", "")] + [p.get("hubspot_kontakt_id", "") for p in a["personen"]] if x))
+        if not (kontakte or hs.get("deal_id")) or a["ablage"].get(schluessel):
             return
         ergebnis, fehler_text = "", ""
         try:
             with self.hubspot() as h:
                 titel = html.escape(a["titel"])
                 if art == "gesendet":
-                    ziel = link(self.konfig.oeffentliche_adresse, a)
+                    zeilen = "".join(
+                        f"<li>{html.escape(p['rolle'])}: {html.escape(p['name'] or '–')}{' · mit Zugangscode' if braucht_code(p) else ''}<br>"
+                        f"{html.escape(link(self.konfig.oeffentliche_adresse, p))}</li>"
+                        for p in a["personen"]
+                    )
                     text = (
                         f"<p><strong>Zur Unterschrift gesendet:</strong> {titel}</p>"
-                        f"<p>Gültig bis {ortszeit(a['gueltig_bis'], False)} · Auftrag {a['id']}"
-                        f"{' · mit Zugangscode' if a['code_hash'] else ''} · von {html.escape(a['erstellt_von'] or 'Büro')}</p>"
-                        f"<p>Link: {html.escape(ziel)}</p>"
+                        f"<p>Gültig bis {ortszeit(a['gueltig_bis'], False)} · Auftrag {a['id']} · von {html.escape(a['erstellt_von'] or 'Büro')}"
+                        f"{' · feste Reihenfolge' if a.get('reihenfolge') else ''}</p><ul>{zeilen}</ul>"
                     )
-                    ergebnis = h.notiz(text, hs.get("kontakt_id", ""), hs.get("deal_id", ""))
+                    ergebnis = h.notiz(text, kontakte, hs.get("deal_id", ""))
                 else:
                     daten = self.auftraege.pfad(a["id"], "ergebnis.pdf").read_bytes()
-                    u = a["unterzeichner"]
                     datei_id = h.datei_hochladen(f"{a['dateiname']} – unterschrieben ({a['id'][-8:]}).pdf", daten)
-                    text = (
-                        f"<p><strong>✔ Unterschrieben:</strong> {titel}</p>"
-                        f"<p>von {html.escape(u['name'])} am {ortszeit(u['zeit'])} · IP {html.escape(u['ip'] or '–')}</p>"
-                        f"<p>Auftrag {a['id']} · SHA-256 {a['sha_ergebnis']}</p>"
+                    zeilen = "".join(
+                        f"<li>{html.escape(p['rolle'])}: {html.escape(p['unterschrift']['name'])} am {ortszeit(p['unterschrift']['zeit'])}"
+                        f" · IP {html.escape(p['unterschrift']['ip'] or '–')}</li>"
+                        for p in a["personen"]
+                        if p.get("unterschrift")
                     )
-                    ergebnis = h.notiz(text, hs.get("kontakt_id", ""), hs.get("deal_id", ""), [datei_id])
+                    text = f"<p><strong>✔ Unterschrieben:</strong> {titel}</p><ul>{zeilen}</ul><p>Auftrag {a['id']} · SHA-256 {a['sha_ergebnis']}</p>"
+                    ergebnis = h.notiz(text, kontakte, hs.get("deal_id", ""), [datei_id])
         except HubSpotFehler as fehler:
             fehler_text = str(fehler)
         except Exception as fehler:  # noqa: BLE001 – Ablage darf die Unterschrift nie gefährden
@@ -189,11 +200,29 @@ def kunde_app(dienst: Dienst) -> FastAPI:
             antwort.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         return antwort
 
-    def mit_zugang(token: str, z: str | None) -> dict:
-        a = auftraege.nach_token(token)
-        if a["code_hash"] and not secrets.compare_digest(z or "", dienst.zugang(a)):
+    def zugang_ok(a: dict, p: dict, z: str | None) -> bool:
+        return not braucht_code(p) or secrets.compare_digest(z or "", dienst.zugang(a, p))
+
+    def mit_zugang(token: str, z: str | None) -> tuple[dict, dict]:
+        a, p = auftraege.nach_token(token)
+        if not zugang_ok(a, p, z):
             raise AuftragFehler("Bitte zuerst den Zugangscode eingeben.", 403)
-        return a
+        return a, p
+
+    def kann_unterschreiben(a: dict, p: dict) -> None:
+        if a["status"] not in OFFEN:
+            raise AuftragFehler("Dieser Link kann nicht mehr benutzt werden.", 410)
+        if p["status"] == "unterschrieben":
+            raise AuftragFehler("Sie haben bereits unterschrieben.", 409)
+        if not ist_dran(a, p):
+            raise AuftragFehler("Sie sind noch nicht an der Reihe.", 409)
+
+    def fortschritt(a: dict) -> dict:
+        return {
+            "anzahl": len(a["personen"]),
+            "fertig": sum(p["status"] == "unterschrieben" for p in a["personen"]),
+            "offen": [p["name"] or p["rolle"] for p in a["personen"] if p["status"] != "unterschrieben"],
+        }
 
     @app.get("/gesundheit")
     async def gesundheit():
@@ -205,7 +234,7 @@ def kunde_app(dienst: Dienst) -> FastAPI:
 
     @app.get("/statisch/{name}")
     async def statisch(name: str):
-        if name not in ("kunde.js", "kunde.css", "zeichnen.js"):
+        if name not in ("kunde.js", "kunde.css"):
             return Response(status_code=404)
         return FileResponse(STATISCH / name, headers={"Cache-Control": "no-cache"})
 
@@ -217,64 +246,67 @@ def kunde_app(dienst: Dienst) -> FastAPI:
     @app.get("/s/{token}/daten")
     @gesperrt
     def daten(token: str, request: Request, z: str | None = None):
-        a = auftraege.nach_token(token)
-        kopf = {"titel": a["titel"], "status": a["status"], "code_noetig": bool(a["code_hash"]), "absender": PRODUKT.split()[0]}
+        a, p = auftraege.nach_token(token)
+        kopf = {"titel": a["titel"], "status": a["status"], "code_noetig": braucht_code(p), "absender": PRODUKT.split()[0], "fortschritt": fortschritt(a)}
         if a["status"] == "unterschrieben":
-            return {**kopf, "unterzeichnet": ortszeit(a["unterzeichner"]["zeit"]), "kopie_bis": ortszeit(a["unterzeichner"]["kopie_bis"], False), "sha": a["sha_ergebnis"]}
+            return {**kopf, "unterzeichnet": ortszeit(a["fertig"]), "kopie_bis": ortszeit(a["kopie_bis"], False), "sha": a["sha_ergebnis"]}
         if a["status"] not in OFFEN:
             return kopf
-        if a["code_hash"] and not secrets.compare_digest(z or "", dienst.zugang(a)):
-            if a["code_fehler"] >= MAX_CODE_FEHLER:
-                return {**kopf, "status": "gesperrt"}
-            return kopf
+        if p["status"] == "unterschrieben":
+            return {**kopf, "status": "wartet", "unterzeichnet": ortszeit(p["unterschrift"]["zeit"])}
+        if not zugang_ok(a, p, z):
+            return {**kopf, "status": "gesperrt"} if p["code_fehler"] >= MAX_CODE_FEHLER else kopf
+        if not ist_dran(a, p):
+            return {**kopf, "status": "noch_nicht"}
         ip, geraet = client_ip(request), request.headers.get("user-agent", "")
-        schluessel = f"{a['id']}|{ip}|{geraet}"
+        schluessel = f"{a['id']}|{p['nr']}|{ip}|{geraet}"
         if time.time() - zuletzt_geoeffnet.get(schluessel, 0) > 1800:
             zuletzt_geoeffnet[schluessel] = time.time()
-            if a["status"] == "offen":
-                a["status"] = "geoeffnet"
-            auftraege.ereignis(a, "geoeffnet", ip, geraet)
+            if p["status"] == "offen":
+                p["status"] = "geoeffnet"
+            auftraege.ereignis(a, "geoeffnet", ip, geraet, nr=p["nr"])
         return {
             **kopf,
             "nachricht": a["nachricht"],
             "gueltig_bis": ortszeit(a["gueltig_bis"], False),
-            "name": a["empfaenger"]["name"] or a["hubspot"].get("kontakt_name", ""),
+            "name": p["name"],
+            "rolle": p["rolle"] if len(a["personen"]) > 1 else "",
             "seiten": a["seiten"],
-            "felder": [{k: f[k] for k in ("id", "seite", "rechteck", "art", "beschriftung", "pflicht")} for f in a["felder"]],
+            "stand": a["sha_stand"][:12],
+            "felder": [{k: f[k] for k in ("id", "seite", "rechteck", "art", "beschriftung", "pflicht")} for f in felder_von(a, p)],
         }
 
     @app.post("/s/{token}/code")
     @gesperrt
     def code(token: str, request: Request, code: str = Body(..., embed=True)):
-        a = auftraege.nach_token(token)
+        a, p = auftraege.nach_token(token)
         if a["status"] not in (*OFFEN, "unterschrieben"):
             raise AuftragFehler("Dieser Link kann nicht mehr benutzt werden.", 410)
-        if a["code_fehler"] >= MAX_CODE_FEHLER:
+        if p["code_fehler"] >= MAX_CODE_FEHLER:
             raise AuftragFehler("Zu viele Fehlversuche – bitte melden Sie sich bei uns.", 423)
         ip, geraet = client_ip(request), request.headers.get("user-agent", "")
-        if not auftraege.code_pruefen(a, str(code)[:64]):
-            a["code_fehler"] += 1
-            auftraege.ereignis(a, "code_falsch", ip, geraet)
-            if a["code_fehler"] >= MAX_CODE_FEHLER:
-                auftraege.ereignis(a, "gesperrt", ip, geraet)
+        if not auftraege.code_pruefen(a, p, str(code)[:64]):
+            p["code_fehler"] += 1
+            auftraege.ereignis(a, "code_falsch", ip, geraet, nr=p["nr"])
+            if p["code_fehler"] >= MAX_CODE_FEHLER:
+                auftraege.ereignis(a, "gesperrt", ip, geraet, nr=p["nr"])
                 raise AuftragFehler("Zu viele Fehlversuche – bitte melden Sie sich bei uns.", 423)
-            raise AuftragFehler(f"Der Zugangscode stimmt nicht (noch {MAX_CODE_FEHLER - a['code_fehler']} Versuche).", 403)
-        auftraege.ereignis(a, "code_ok", ip, geraet)
-        return {"zugang": dienst.zugang(a)}
+            raise AuftragFehler(f"Der Zugangscode stimmt nicht (noch {MAX_CODE_FEHLER - p['code_fehler']} Versuche).", 403)
+        auftraege.ereignis(a, "code_ok", ip, geraet, nr=p["nr"])
+        return {"zugang": dienst.zugang(a, p)}
 
     @app.get("/s/{token}/seite/{nummer}")
     def seitenbild(token: str, nummer: int, breite: int = 1000, z: str | None = None):
-        a = mit_zugang(token, z)
-        if a["status"] not in OFFEN:
+        a, p = mit_zugang(token, z)
+        if a["status"] not in OFFEN or p["status"] == "unterschrieben":
             raise AuftragFehler("Dieser Link kann nicht mehr benutzt werden.", 410)
-        png = seite_png(auftraege.pfad(a["id"], "original.pdf"), auftraege.pfad(a["id"], "seiten"), nummer, breite)
+        png = seite_png(auftraege.stand_pdf(a), auftraege.pfad(a["id"], "seiten"), nummer, breite, a["sha_stand"])
         return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=600"})
 
     @app.post("/s/{token}/unterschreiben")
     def unterschreiben(token: str, request: Request, daten: dict = Body(...)):
-        a = mit_zugang(token, str(daten.get("zugang") or ""))
-        if a["status"] not in OFFEN:
-            raise AuftragFehler("Dieser Link kann nicht mehr benutzt werden.", 410)
+        a, p = mit_zugang(token, str(daten.get("zugang") or ""))
+        kann_unterschreiben(a, p)
         name = " ".join(str(daten.get("name") or "").split())
         if not 2 <= len(name) <= 120:
             raise AuftragFehler("Bitte Ihren vollständigen Namen eingeben.")
@@ -282,7 +314,7 @@ def kunde_app(dienst: Dienst) -> FastAPI:
             raise AuftragFehler("Bitte bestätigen Sie, dass Sie das Dokument gelesen haben.")
         eingegeben = daten.get("unterschriften") or {}
         unterschriften: dict[str, dict] = {}
-        for f in a["felder"]:
+        for f in felder_von(a, p):
             if f["art"] != "unterschrift":
                 continue
             u = eingegeben.get(f["id"]) or {}
@@ -292,37 +324,61 @@ def kunde_app(dienst: Dienst) -> FastAPI:
                 unterschriften[f["id"]] = {"text": " ".join(str(u["text"]).split())[:80]}
             elif f["pflicht"]:
                 raise AuftragFehler("Bitte alle Unterschriftsfelder ausfüllen.")
+        if not unterschriften:
+            raise AuftragFehler("Bitte unterschreiben Sie zuerst.")
         zeit = iso(jetzt())
         ip, geraet = client_ip(request), request.headers.get("user-agent", "")
         with auftraege.sperre:
             a = auftraege.laden(a["id"])
-            if a["status"] not in OFFEN:
-                raise AuftragFehler("Dieses Dokument wurde bereits unterschrieben.", 409)
-            auftraege.ereignis(a, "unterschrieben", ip, geraet, text=f"Name: {name}", speichern=False)
-            eingaben = {"name": name, "zeit": zeit, "ip": ip, "geraet": geraet, "unterschriften": unterschriften}
-            original = auftraege.pfad(a["id"], "original.pdf").read_bytes()
-            if sha256(original) != a["sha_original"]:
+            p = person(a, p["nr"])
+            kann_unterschreiben(a, p)
+            stand_pfad = auftraege.stand_pdf(a)
+            stand = stand_pfad.read_bytes()
+            if sha256(stand) != a["sha_stand"]:
                 raise AuftragFehler("Das Dokument wurde verändert – bitte melden Sie sich bei uns.", 409)
-            pdf = ergebnis_erzeugen(original, a, eingaben)
-            auftraege.pfad(a["id"], "ergebnis.pdf").write_bytes(pdf)
-            a["status"] = "unterschrieben"
-            a["sha_ergebnis"] = sha256(pdf)
-            a["unterzeichner"] = {"name": name, "zeit": zeit, "ip": ip, "geraet": geraet, "kopie_bis": iso(aus_iso(zeit) + timedelta(days=KOPIE_TAGE))}
-            a["ablage"]["datei"] = auftraege.fertig_ablegen(a, pdf).name
+            neu = stempeln(stand, a, p["nr"], {"name": name, "zeit": zeit, "unterschriften": unterschriften})
+            auftraege.pfad(a["id"], "arbeitsstand.pdf").write_bytes(neu)
+            erste = next(iter(unterschriften.values()))
+            ordner = auftraege.pfad(a["id"], "unterschriften")
+            ordner.mkdir(exist_ok=True)
+            if erste.get("png"):
+                (ordner / f"{p['nr']}.png").write_bytes(erste["png"])
+            p["status"] = "unterschrieben"
+            p["unterschrift"] = {"name": name, "zeit": zeit, "ip": ip, "geraet": geraet, "text": erste.get("text", "")}
+            a["sha_stand"] = sha256(neu)
+            auftraege.ereignis(a, "unterschrieben", ip, geraet, text=f"Name: {name}", nr=p["nr"], speichern=False)
+            status_aktualisieren(a)
+            if a["status"] == "unterschrieben":
+                auftraege.ereignis(a, "abgeschlossen", speichern=False)
+                bilder = {}
+                for q in a["personen"]:
+                    png = ordner / f"{q['nr']}.png"
+                    if png.exists():
+                        bilder[q["nr"]] = {"png": png.read_bytes()}
+                    elif (q.get("unterschrift") or {}).get("text"):
+                        bilder[q["nr"]] = {"text": q["unterschrift"]["text"]}
+                pdf = abschliessen(neu, a, bilder)
+                auftraege.pfad(a["id"], "ergebnis.pdf").write_bytes(pdf)
+                a["sha_ergebnis"] = sha256(pdf)
+                a["fertig"] = zeit
+                a["kopie_bis"] = iso(aus_iso(zeit) + timedelta(days=KOPIE_TAGE))
+                a["ablage"]["datei"] = auftraege.fertig_ablegen(a, pdf).name
             auftraege.speichern(a)
-        print(f"[Sign] {a['id']} unterschrieben von {name}", flush=True)
-        dienst.hubspot_im_hintergrund(a["id"], "fertig")
-        return {"ok": True, "sha": a["sha_ergebnis"], "unterzeichnet": ortszeit(zeit), "kopie_bis": ortszeit(a["unterzeichner"]["kopie_bis"], False)}
+        print(f"[Sign] {a['id']} unterschrieben von {name} ({p['rolle']})", flush=True)
+        if a["status"] == "unterschrieben":
+            dienst.hubspot_im_hintergrund(a["id"], "fertig")
+            return {"ok": True, "fertig": True, "sha": a["sha_ergebnis"], "unterzeichnet": ortszeit(zeit), "kopie_bis": ortszeit(a["kopie_bis"], False)}
+        return {"ok": True, "fertig": False, "unterzeichnet": ortszeit(zeit), "fortschritt": fortschritt(a)}
 
     @app.get("/s/{token}/kopie")
     @gesperrt
     def kopie(token: str, request: Request, z: str | None = None):
-        a = mit_zugang(token, z)
+        a, p = mit_zugang(token, z)
         if a["status"] != "unterschrieben":
-            raise AuftragFehler("Es gibt noch keine unterschriebene Fassung.", 404)
-        if jetzt() > aus_iso(a["unterzeichner"]["kopie_bis"]):
+            raise AuftragFehler("Die fertige Fassung gibt es, sobald alle unterschrieben haben.", 404)
+        if jetzt() > aus_iso(a["kopie_bis"]):
             raise AuftragFehler("Der Download ist abgelaufen – bitte melden Sie sich bei uns.", 410)
-        auftraege.ereignis(a, "kopie", client_ip(request), request.headers.get("user-agent", ""))
+        auftraege.ereignis(a, "kopie", client_ip(request), request.headers.get("user-agent", ""), nr=p["nr"])
         name = f"{a['dateiname']} – unterschrieben.pdf"
         return Response(
             auftraege.pfad(a["id"], "ergebnis.pdf").read_bytes(),
@@ -479,6 +535,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
             "hubspot": bool(konfig.get("hubspot_token")),
             "oeffentliche_adresse": konfig.oeffentliche_adresse,
             "bereit": bool(konfig.oeffentliche_adresse),
+            "mehrere_personen": True,
         }
 
     @app.post("/api/auftraege")
@@ -489,9 +546,19 @@ def intern_app(dienst: Dienst) -> FastAPI:
             raise AuftragFehler("PDF fehlt oder ist beschädigt.") from None
         if len(pdf) > 40_000_000:
             raise AuftragFehler("Die PDF ist zu groß (max. 40 MB).")
+        personen = daten.get("personen") or [
+            {  # eine Person – Schnittstelle von Version 0.1.0
+                "name": daten.get("empfaenger_name"),
+                "email": daten.get("empfaenger_email"),
+                "code": daten.get("code"),
+                "hubspot_kontakt_id": daten.get("hubspot_kontakt_id"),
+            }
+        ]
+        if not 1 <= len(personen) <= MAX_PERSONEN:
+            raise AuftragFehler(f"Es sind 1 bis {MAX_PERSONEN} unterzeichnende Personen möglich.")
         seiten = pruefen(pdf)
-        felder = felder_pruefen(daten.get("felder") or [], seiten)
-        a = auftraege.anlegen(pdf, daten, seiten, felder)
+        felder = felder_pruefen(daten.get("felder") or [], seiten, len(personen))
+        a = auftraege.anlegen(pdf, daten, seiten, felder, personen)
         dienst.hubspot_im_hintergrund(a["id"], "gesendet")
         return _detail(a)
 
@@ -506,10 +573,13 @@ def intern_app(dienst: Dienst) -> FastAPI:
     @app.get("/api/auftraege/{auftrag_id}/pdf")
     def auftrag_pdf(auftrag_id: str, art: str = "ergebnis"):
         a = auftraege.laden(auftrag_id)
-        datei = auftraege.pfad(a["id"], "ergebnis.pdf" if art == "ergebnis" else "original.pdf")
-        if not datei.exists():
-            raise AuftragFehler("Noch nicht unterschrieben.", 404)
-        return Response(datei.read_bytes(), media_type="application/pdf")
+        datei = {"ergebnis": "ergebnis.pdf", "stand": "arbeitsstand.pdf"}.get(art, "original.pdf")
+        pfad = auftraege.pfad(a["id"], datei)
+        if art == "stand" and not pfad.exists():
+            pfad = auftraege.pfad(a["id"], "original.pdf")
+        if not pfad.exists():
+            raise AuftragFehler("Noch nicht von allen unterschrieben.", 404)
+        return Response(pfad.read_bytes(), media_type="application/pdf")
 
     @app.post("/api/auftraege/{auftrag_id}/widerrufen")
     @gesperrt
@@ -523,10 +593,12 @@ def intern_app(dienst: Dienst) -> FastAPI:
 
     @app.post("/api/auftraege/{auftrag_id}/entsperren")
     @gesperrt
-    def entsperren(auftrag_id: str, von: str = Body("", embed=True)):
+    def entsperren(auftrag_id: str, von: str = Body("", embed=True), nr: int = Body(0, embed=True)):
         a = auftraege.laden(auftrag_id)
-        a["code_fehler"] = 0
-        auftraege.ereignis(a, "entsperrt", text=f"von {von or 'Büro'}")
+        for p in a["personen"]:
+            if not nr or p["nr"] == nr:
+                p["code_fehler"] = 0
+        auftraege.ereignis(a, "entsperrt", text=f"von {von or 'Büro'}", nr=nr)
         return _detail(a)
 
     @app.post("/api/auftraege/{auftrag_id}/hubspot")
@@ -554,14 +626,16 @@ def intern_app(dienst: Dienst) -> FastAPI:
 
     def _detail(a: dict) -> dict:
         d = zusammenfassung(a)
+        basis = konfig.oeffentliche_adresse
+        for eintrag, p in zip(d["personen"], a["personen"]):
+            eintrag["link"] = link(basis, p)
+            eintrag["hubspot_url"] = dienst.hubspot_kontakt_url(p.get("hubspot_kontakt_id", ""))
         d.update(
-            link=link(konfig.oeffentliche_adresse, a),
             felder=a["felder"],
             seiten=len(a["seiten"]),
             verlauf=a["verlauf"],
             sha_original=a["sha_original"],
             sha_ergebnis=a["sha_ergebnis"],
-            code_gesperrt=a["code_fehler"] >= MAX_CODE_FEHLER,
             hubspot_url=dienst.hubspot_kontakt_url(a["hubspot"].get("kontakt_id", "")),
         )
         return d

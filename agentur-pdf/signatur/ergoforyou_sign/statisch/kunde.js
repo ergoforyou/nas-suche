@@ -41,6 +41,11 @@
     gesperrt: ["Vorübergehend gesperrt", "Der Zugangscode wurde zu oft falsch eingegeben. Bitte melden Sie sich bei uns, damit wir den Link wieder freigeben."],
   };
 
+  function wartetText(f) {
+    const noch = f.offen.join(", ");
+    return `${f.fertig} von ${f.anzahl} Unterschriften sind da – es fehlt noch: ${noch}. Über diesen Link können Sie sich die fertige PDF herunterladen, sobald alle unterschrieben haben.`;
+  }
+
   async function start() {
     zeigen("laden");
     try {
@@ -59,6 +64,11 @@
       return fertig(daten);
     }
     if (HINWEISE[daten.status]) return hinweis(...HINWEISE[daten.status]);
+    if (daten.status === "wartet") return hinweis("Vielen Dank – Sie haben unterschrieben", wartetText(daten.fortschritt));
+    if (daten.status === "noch_nicht") {
+      const vor = daten.fortschritt.offen.slice(0, 1).join("");
+      return hinweis("Noch nicht an der Reihe", `Dieses Dokument wird der Reihe nach unterschrieben. Zuerst unterschreibt ${vor || "eine andere Person"} – danach können Sie hier unterschreiben. Bitte öffnen Sie den Link später noch einmal.`);
+    }
     if (!daten.seiten) {
       zeigen("code");
       $("codeEingabe").focus();
@@ -90,6 +100,8 @@
   function aufbauen() {
     zeigen("dokument");
     $("dokTitel").textContent = daten.titel;
+    $("rolle").hidden = !daten.rolle;
+    $("rolle").textContent = daten.rolle ? `Sie unterschreiben als: ${daten.rolle}` : "";
     $("gueltig").textContent = daten.gueltig_bis;
     if (daten.nachricht) {
       $("nachricht").textContent = daten.nachricht;
@@ -106,7 +118,7 @@
       const img = document.createElement("img");
       img.alt = `Seite ${i + 1}`;
       img.loading = i < 2 ? "eager" : "lazy";
-      img.src = `${basis}/seite/${i}?breite=${breite}${zugang ? `&z=${encodeURIComponent(zugang)}` : ""}`;
+      img.src = `${basis}/seite/${i}?breite=${breite}&v=${daten.stand}${zugang ? `&z=${encodeURIComponent(zugang)}` : ""}`;
       seite.appendChild(img);
       const nr = document.createElement("span");
       nr.className = "seite-nr";
@@ -116,7 +128,11 @@
       container.appendChild(seite);
     });
     $("endeBereich").hidden = !daten.felder.some((f) => f.seite === null);
-    $("endeFeld").addEventListener("click", () => feldAntippen(daten.felder.find((f) => f.id === "ende")));
+    const ende = daten.felder.find((f) => f.seite === null);
+    if (ende) {
+      $("endeFeld").dataset.feld = ende.id;
+      $("endeFeld").onclick = () => feldAntippen(ende);
+    }
     aktualisieren();
   }
 
@@ -168,7 +184,7 @@
         el.appendChild(s);
       } else {
         const s = document.createElement("span");
-        s.textContent = f.id === "ende" ? "Hier tippen und unterschreiben" : "Hier unterschreiben";
+        s.textContent = f.seite === null ? "Hier tippen und unterschreiben" : "Hier unterschreiben";
         el.appendChild(s);
       }
     }
@@ -350,7 +366,8 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: $("name").value.trim(), zustimmung: $("zustimmung").checked, unterschriften: eintraege, zugang }),
       });
-      fertig({ ...r, titel: daten.titel });
+      if (r.fertig) fertig({ ...r, titel: daten.titel });
+      else hinweis("Vielen Dank – Sie haben unterschrieben", wartetText(r.fortschritt));
     } catch (fehler) {
       $("absendeFehler").textContent = fehler.message;
       $("absenden").textContent = "Verbindlich unterschreiben";

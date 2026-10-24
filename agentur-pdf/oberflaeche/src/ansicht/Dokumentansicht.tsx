@@ -17,7 +17,7 @@ import {
   zoomSeitenbreite,
   type SeitenBox,
 } from "../render/layout";
-import { ansichtAendern, auswahlSetzen, holen, setzen, useZustand, werkzeugBenutzt, zoomBegrenzen } from "../zustand/store";
+import { ansichtAendern, auswahlSetzen, holen, melden, setzen, useZustand, werkzeugBenutzt, zoomBegrenzen } from "../zustand/store";
 import { bereichstextErkennen } from "../zustand/ocr";
 import { Seite } from "./Seite";
 import { AnmerkungsEbene } from "./Anmerkungen";
@@ -73,8 +73,20 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
     return ansicht.zoom;
   }, [ansicht, seiten, vp.b, vp.h]);
 
+  // Schutz gegen hin- und herspringenden Zoom: ändert sich der automatische
+  // Zoom mehr als 12-mal in einer Sekunde, gilt ab da der aktuelle Wert fest.
+  const zoomWechsel = useRef<number[]>([]);
   useEffect(() => {
-    if (ansicht && Math.abs(ansicht.zoom - zoom) > 1e-4) ansichtAendern(dokId, { zoom });
+    if (!ansicht || Math.abs(ansicht.zoom - zoom) <= 1e-4) return;
+    const t = performance.now();
+    zoomWechsel.current = [...zoomWechsel.current.filter((x) => t - x < 1000), t];
+    if (ansicht.zoomModus !== "frei" && zoomWechsel.current.length > 12) {
+      zoomWechsel.current = [];
+      ansichtAendern(dokId, { zoom, zoomModus: "frei" });
+      melden("Automatischer Zoom angehalten – die Ansicht sprang hin und her. Zoom bitte von Hand wählen.", "fehler");
+      return;
+    }
+    ansichtAendern(dokId, { zoom });
   }, [zoom, ansicht, dokId]);
 
   const layout = useMemo(
@@ -86,7 +98,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const messen = () => setVp((v) => ({ ...v, b: el.clientWidth, h: el.clientHeight }));
+    const messen = () => setVp((v) => (v.b === el.clientWidth && v.h === el.clientHeight ? v : { ...v, b: el.clientWidth, h: el.clientHeight }));
     messen();
     const ro = new ResizeObserver(messen);
     ro.observe(el);
@@ -123,7 +135,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
     rafRef.current = requestAnimationFrame(() => {
       const el = scrollRef.current;
       if (!el) return;
-      setVp((v) => ({ ...v, x: el.scrollLeft, y: el.scrollTop }));
+      setVp((v) => (v.x === el.scrollLeft && v.y === el.scrollTop ? v : { ...v, x: el.scrollLeft, y: el.scrollTop }));
     });
   }, []);
 
@@ -176,7 +188,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
     if (!box) return;
     el.scrollLeft = box.x + anker.fx * box.b - anker.mx;
     el.scrollTop = box.y + anker.fy * box.h - anker.my;
-    setVp((v) => ({ ...v, x: el.scrollLeft, y: el.scrollTop }));
+    setVp((v) => (v.x === el.scrollLeft && v.y === el.scrollTop ? v : { ...v, x: el.scrollLeft, y: el.scrollTop }));
   }, [layout, zoom]);
 
   const zoomAuf = useCallback(
@@ -248,7 +260,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
     } else {
       el.scrollTop = box.y - 8;
     }
-    setVp((v) => ({ ...v, x: el.scrollLeft, y: el.scrollTop }));
+    setVp((v) => (v.x === el.scrollLeft && v.y === el.scrollTop ? v : { ...v, x: el.scrollLeft, y: el.scrollTop }));
   }, [layout, vp.b, ansicht]);
 
   // -------------------------------------------- Maus: Hand, Lasso, Lupe

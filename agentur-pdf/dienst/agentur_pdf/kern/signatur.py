@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -38,15 +39,25 @@ def code_lesen(code: str) -> dict:
     return {"url": url, "schluessel": schluessel}
 
 
+def rolle(feldname: str) -> str:
+    """Rolle aus dem Feldnamen: „Unterschrift Ehepartner 2“ → „Ehepartner“.
+    Felder derselben Rolle unterschreibt dieselbe Person."""
+    name = re.sub(r"\s+\d+$", "", (feldname or "").strip())
+    name = re.sub(r"^unterschrift\b[\s:–-]*", "", name, flags=re.I).strip()
+    return name or "Kunde"
+
+
 def vorbereiten(doc: pymupdf.Document) -> tuple[bytes, list[dict]]:
     """Kopie des (auch ungespeicherten) Dokuments: Unterschriftsfelder werden
-    zu Feldern für die Kundenseite, ausgefüllte Formularfelder fest eingebrannt.
-    Nur im MuPDF-Thread aufrufen."""
+    zu Feldern für die Kundenseite (mit Rolle), ausgefüllte Formularfelder
+    fest eingebrannt. Nur im MuPDF-Thread aufrufen."""
     kopie = pymupdf.open("pdf", doc.tobytes())
     felder = []
     for seite in kopie:
         for w in [w for w in seite.widgets() if w.field_type == pymupdf.PDF_WIDGET_TYPE_SIGNATURE]:
-            felder.append({"seite": seite.number, "rechteck": norm_rechteck(seite, w.rect), "art": "unterschrift", "beschriftung": w.field_name or ""})
+            felder.append(
+                {"seite": seite.number, "rechteck": norm_rechteck(seite, w.rect), "art": "unterschrift", "beschriftung": w.field_name or "", "rolle": rolle(w.field_name)}
+            )
             seite.delete_widget(w)
     if hasattr(kopie, "bake"):
         kopie.bake()
@@ -56,12 +67,19 @@ def vorbereiten(doc: pymupdf.Document) -> tuple[bytes, list[dict]]:
 
 
 def felder_zaehlen(doc: pymupdf.Document) -> list[dict]:
+    """Unterschriftsfelder für die Vorschau im Senden-Dialog."""
     return [
-        {"seite": s.number, "name": w.field_name or ""}
+        {"seite": s.number, "name": w.field_name or "", "rolle": rolle(w.field_name), "rechteck": norm_rechteck(s, w.rect)}
         for s in doc
         for w in s.widgets()
         if w.field_type == pymupdf.PDF_WIDGET_TYPE_SIGNATURE
     ]
+
+
+def rollen(felder: list[dict]) -> list[str]:
+    """Rollen in Reihenfolge des ersten Auftretens; „Kunde“ zuerst."""
+    liste = list(dict.fromkeys(f["rolle"] for f in felder))
+    return sorted(liste, key=lambda r: (r != "Kunde",)) or ["Kunde"]
 
 
 class NasSign:

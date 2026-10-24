@@ -18,6 +18,7 @@ import {
   stilFuer,
 } from "../zustand/anmerkungen";
 import { aktivesDokument, setzen, useZustand } from "../zustand/store";
+import { ROLLEN_VORSCHLAEGE } from "./Unterschrift";
 
 const WERKZEUG_NAMEN: Record<string, string> = {
   hand: "Hand",
@@ -292,11 +293,7 @@ function FormularfeldEigenschaften({ dokId, feld, seite }: { dokId: string; feld
           />
         </section>
       )}
-      {feld.typ === "unterschrift" && (
-        <section className="eig-abschnitt">
-          <p className="leise">Hier unterschreibt der Kunde online – über „Zur Unterschrift senden“ (Register Schützen).</p>
-        </section>
-      )}
+      {feld.typ === "unterschrift" && <UnterzeichnerWahl feld={feld} speichern={speichern} />}
       {feld.typ !== "ankreuzen" && feld.typ !== "unterschrift" && (
         <section className="eig-abschnitt">
           <h4>Darstellung</h4>
@@ -394,5 +391,55 @@ export function EigenschaftenBereich() {
         )}
       </div>
     </aside>
+  );
+}
+
+/** Wer unterschreibt hier? Gleiche Rolle = dieselbe Person (eigener Link je Rolle). */
+function UnterzeichnerWahl({ feld, speichern }: { feld: Formularfeld; speichern: (daten: Record<string, unknown>) => void }) {
+  const aktuell = rolleAusName(feld.name);
+  const [rolle, setRolle] = useState(aktuell);
+  useEffect(() => setRolle(aktuell), [aktuell]);
+  const setzenAuf = (neu: string) => {
+    const r = neu.trim() || "Kunde";
+    setRolle(r);
+    if (r !== aktuell) speichern({ rolle: r });
+  };
+  return (
+    <section className="eig-abschnitt">
+      <h4>Unterzeichner</h4>
+      <p className="leise">Hier unterschreibt online: Felder mit derselben Rolle unterschreibt dieselbe Person – jede Rolle bekommt beim Senden einen eigenen Link.</p>
+      <Zeile titel="Rolle">
+        <input
+          value={rolle}
+          list="unterzeichner-rollen"
+          onChange={(e) => setRolle(e.target.value)}
+          onBlur={() => setzenAuf(rolle)}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          aria-label="Rolle des Unterzeichners"
+        />
+        <datalist id="unterzeichner-rollen">
+          {ROLLEN_VORSCHLAEGE.map((r) => (
+            <option key={r} value={r} />
+          ))}
+        </datalist>
+      </Zeile>
+      <div className="sig-rollen-knoepfe">
+        {ROLLEN_VORSCHLAEGE.slice(0, 4).map((r) => (
+          <button key={r} type="button" className={`umschalter${r === aktuell ? " an" : ""}`} onClick={() => setzenAuf(r)}>
+            {r}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function rolleAusName(name: string): string {
+  return (
+    name
+      .trim()
+      .replace(/\s+\d+$/, "")
+      .replace(/^unterschrift\b[\s:–-]*/i, "")
+      .trim() || "Kunde"
   );
 }

@@ -29,6 +29,7 @@ EREIGNISSE = {
     "unterschrieben": "Unterschrieben",
     "kopie": "Kopie heruntergeladen",
     "widerrufen": "Vom Büro zurückgezogen",
+    "abgeschlossen": "Alle Unterschriften vollständig",
 }
 
 
@@ -55,15 +56,18 @@ def pruefen(pdf: bytes) -> list[dict]:
         return [{"b": round(s.rect.width, 2), "h": round(s.rect.height, 2)} for s in doc]
 
 
-def felder_pruefen(felder: list, seiten: list[dict]) -> list[dict]:
-    """Felder vom PC übernehmen. Ohne Unterschriftsfeld unterschreibt der
-    Kunde nur auf dem Prüfprotokoll („ende“)."""
+def felder_pruefen(felder: list, seiten: list[dict], personen: int = 1) -> list[dict]:
+    """Felder vom PC übernehmen (``person`` = 1 … Anzahl Personen). Wer kein
+    eigenes Unterschriftsfeld hat, unterschreibt nur auf dem Prüfprotokoll."""
     ergebnis = []
     for i, f in enumerate((felder or [])[:MAX_FELDER]):
         art = f.get("art")
         seite = f.get("seite")
         r = f.get("rechteck") or []
+        nr = f.get("person", 1)
         if art not in ARTEN or not isinstance(seite, int) or not 0 <= seite < len(seiten):
+            continue
+        if not isinstance(nr, int) or not 1 <= nr <= personen:
             continue
         if len(r) != 4 or not all(isinstance(x, (int, float)) for x in r):
             continue
@@ -76,18 +80,21 @@ def felder_pruefen(felder: list, seiten: list[dict]) -> list[dict]:
                 "seite": seite,
                 "rechteck": [round(x, 5) for x in r],
                 "art": art,
+                "person": nr,
                 "beschriftung": str(f.get("beschriftung") or "").strip()[:80],
                 "pflicht": art == "unterschrift" and f.get("pflicht", True) is not False,
             }
         )
-    if not any(f["art"] == "unterschrift" for f in ergebnis):
-        ergebnis.append({"id": "ende", "seite": None, "rechteck": None, "art": "unterschrift", "beschriftung": "Unterschrift", "pflicht": True})
+    for nr in range(1, personen + 1):
+        if not any(f["art"] == "unterschrift" and f["person"] == nr for f in ergebnis):
+            ergebnis.append({"id": f"ende{nr}", "seite": None, "rechteck": None, "art": "unterschrift", "person": nr, "beschriftung": "Unterschrift", "pflicht": True})
     return ergebnis
 
 
-def seite_png(pdf_pfad: Path, cache: Path, nummer: int, breite: int) -> bytes:
+def seite_png(pdf_pfad: Path, cache: Path, nummer: int, breite: int, stand: str = "") -> bytes:
+    """Seitenbild – ``stand`` (Prüfsumme der Fassung) trennt den Cache je Fassung."""
     breite = max(400, min(2000, breite // 100 * 100))
-    datei = cache / f"{nummer}-{breite}.png"
+    datei = cache / f"{nummer}-{breite}-{stand[:12]}.png"
     if datei.exists():
         return datei.read_bytes()
     with pymupdf.open(pdf_pfad) as doc:
@@ -148,12 +155,13 @@ def _unterschrift(seite: pymupdf.Page, r: pymupdf.Rect, eingabe: dict) -> None:
         _text(seite, r, eingabe.get("text", ""), schrift="tiit", max_groesse=28)
 
 
-def ergebnis_erzeugen(original: bytes, a: dict, eingaben: dict) -> bytes:
-    """``eingaben`` = {name, zeit, ip, geraet, unterschriften: {feld_id: {png|text}}}."""
-    doc = pymupdf.open("pdf", original)
+def stempeln(pdf: bytes, a: dict, nr: int, eingaben: dict) -> bytes:
+    """Unterschriften, Datum und Name einer Person in die PDF setzen.
+    ``eingaben`` = {name, zeit, unterschriften: {feld_id: {png|text}}}."""
+    doc = pymupdf.open("pdf", pdf)
     zeit = ortszeit(eingaben["zeit"])
     for f in a["felder"]:
-        if f["seite"] is None:
+        if f["seite"] is None or f.get("person", 1) != nr:
             continue
         seite = doc[f["seite"]]
         r = _pdf_rechteck(seite, f["rechteck"])
@@ -162,26 +170,38 @@ def ergebnis_erzeugen(original: bytes, a: dict, eingaben: dict) -> bytes:
             if not u:
                 continue
             _unterschrift(seite, r, u)
-            vermerk = f"Elektronisch unterschrieben · {zeit} · Nr. {a['id']}"
+            vermerk = f"Elektronisch unterschrieben von {eingaben['name']} · {zeit} · Nr. {a['id']}"
             anzeige = (r * seite.rotation_matrix).normalize()
-            unter = pymupdf.Rect(anzeige.x0, anzeige.y1 + 1, anzeige.x1 + 120, anzeige.y1 + 7)
+            unter = pymupdf.Rect(anzeige.x0, anzeige.y1 + 1, anzeige.x1 + 160, anzeige.y1 + 7)
             if unter.y1 > seite.rect.height:
-                unter = pymupdf.Rect(anzeige.x0, anzeige.y0 - 7, anzeige.x1 + 120, anzeige.y0 - 1)
+                unter = pymupdf.Rect(anzeige.x0, anzeige.y0 - 7, anzeige.x1 + 160, anzeige.y0 - 1)
             _text(seite, unter * seite.derotation_matrix, vermerk, farbe=GRAU, max_groesse=4.5)
         elif f["art"] == "datum":
             _text(seite, r, zeit[:10])
         elif f["art"] == "name":
             _text(seite, r, eingaben["name"])
-    protokollseite(doc, a, eingaben)
-    protokoll = {k: a[k] for k in ("id", "titel", "erstellt", "erstellt_von", "gueltig_bis", "sha_original", "verlauf")}
-    protokoll["zugangscode"] = bool(a["code_hash"])
-    protokoll["unterzeichner"] = {k: eingaben[k] for k in ("name", "zeit", "ip", "geraet")}
+    daten = doc.tobytes(garbage=3, deflate=True)
+    doc.close()
+    return daten
+
+
+def abschliessen(pdf: bytes, a: dict, bilder: dict[int, dict]) -> bytes:
+    """Prüfprotokoll anhängen, Protokoll einbetten, Metadaten setzen.
+    ``bilder`` = {nr: {png|text}} – je Person eine Unterschrift fürs Protokoll."""
+    doc = pymupdf.open("pdf", pdf)
+    protokollseite(doc, a, bilder)
+    protokoll = {k: a[k] for k in ("id", "titel", "erstellt", "erstellt_von", "gueltig_bis", "sha_original", "reihenfolge", "verlauf")}
+    protokoll["personen"] = [
+        {"nr": p["nr"], "rolle": p["rolle"], "zugangscode": bool(p["code_hash"] or p.get("alt_code_hash")), "unterschrift": p.get("unterschrift")}
+        for p in a["personen"]
+    ]
     doc.embfile_add("pruefprotokoll.json", json.dumps(protokoll, ensure_ascii=False, indent=2).encode(), desc="Prüfprotokoll Ergoforyou Sign")
+    namen = ", ".join(p["unterschrift"]["name"] for p in a["personen"] if p.get("unterschrift"))
     doc.set_metadata(
         {
             **(doc.metadata or {}),
             "title": a["titel"],
-            "subject": f"Elektronisch unterschrieben von {eingaben['name']} am {zeit}",
+            "subject": f"Elektronisch unterschrieben von {namen}",
             "keywords": f"Ergoforyou Sign; Auftrag {a['id']}",
             "producer": "Ergoforyou Sign",
         }
@@ -201,10 +221,23 @@ def geraet_kurz(ua: str) -> str:
     return " auf ".join(x for x in (browser, system) if x)
 
 
-def protokollseite(doc: pymupdf.Document, a: dict, eingaben: dict) -> None:
-    seite = doc.new_page(width=595, height=842)
-    links, rechts = 50, 545
-    y = 60
+def protokollseite(doc: pymupdf.Document, a: dict, bilder: dict[int, dict]) -> None:
+    links, rechts, unten = 50, 545, 770
+    seite: pymupdf.Page | None = None
+    y = 0.0
+
+    def neue_seite(fortsetzung: bool = False) -> None:
+        nonlocal seite, y
+        seite = doc.new_page(width=595, height=842)
+        seite.draw_rect(pymupdf.Rect(0, 0, 595, 8), color=None, fill=MARKE)
+        y = 60
+        zeile("Prüfprotokoll" + (" (Fortsetzung)" if fortsetzung else ""), 20, "hebo")
+        zeile("Ergoforyou Sign · elektronische Unterschrift", 10, "helv", GRAU)
+        y += 4
+
+    def platz(hoehe: float) -> None:
+        if y + hoehe > unten:
+            neue_seite(True)
 
     def zeile(text: str, groesse: float = 9.5, schrift: str = "helv", farbe=(0.1, 0.1, 0.12), x: float = links, abstand: float = 1.45) -> None:
         nonlocal y
@@ -213,7 +246,8 @@ def protokollseite(doc: pymupdf.Document, a: dict, eingaben: dict) -> None:
 
     def wert(titel: str, text: str, schrift: str = "helv", groesse: float = 9.5) -> None:
         nonlocal y
-        seite.insert_text((links, y), titel, fontname="helv", fontsize=8.5, color=GRAU)
+        platz(groesse * 1.5)
+        seite.insert_text((links, y), latin(titel), fontname="helv", fontsize=8.5, color=GRAU)
         breite = rechts - 160
         rest = latin(text)
         while rest:
@@ -226,58 +260,69 @@ def protokollseite(doc: pymupdf.Document, a: dict, eingaben: dict) -> None:
 
     def ueberschrift(text: str) -> None:
         nonlocal y
+        platz(60)
         y += 8
         zeile(text, 11, "hebo", MARKE)
         seite.draw_line((links, y - 9), (rechts, y - 9), color=(0.85, 0.86, 0.88), width=0.6)
         y += 2
 
-    seite.draw_rect(pymupdf.Rect(0, 0, 595, 8), color=None, fill=MARKE)
-    zeile("Prüfprotokoll", 20, "hebo")
-    zeile("Ergoforyou Sign · elektronische Unterschrift", 10, "helv", GRAU)
-    y += 4
-
+    neue_seite()
     ueberschrift("Dokument")
     wert("Titel", a["titel"])
     wert("Auftragsnummer", a["id"])
-    wert("Seiten", f"{len(a['seiten'])} (zzgl. dieser Protokollseite)")
+    wert("Seiten", f"{len(a['seiten'])} (zzgl. Prüfprotokoll)")
     wert("Bereitgestellt", f"{ortszeit(a['erstellt'])} von {a['erstellt_von'] or 'Ergoforyou'}")
     wert("Prüfsumme (SHA-256)", a["sha_original"], "cour", 8)
-    wert("", "des unveränderten Originals vor der Unterschrift", groesse=7.5)
+    wert("", "des unveränderten Originals vor der ersten Unterschrift", groesse=7.5)
+    if len(a["personen"]) > 1:
+        wert("Unterzeichnende", f"{len(a['personen'])} Personen" + (", in fester Reihenfolge" if a.get("reihenfolge") else ""))
 
-    ueberschrift("Unterschrieben von")
-    wert("Name", eingaben["name"])
-    if a["hubspot"].get("kontakt_name") or a["empfaenger"].get("email"):
-        wert("Empfänger laut Büro", " · ".join(x for x in (a["hubspot"].get("kontakt_name"), a["empfaenger"].get("email")) if x))
-    wert("Zeitpunkt", f"{ortszeit(eingaben['zeit'])} (Europe/Berlin)")
-    wert("IP-Adresse", eingaben["ip"] or "–")
-    wert("Gerät", geraet_kurz(eingaben["geraet"]))
-    wert("Zugang", "Persönlicher, nicht erratbarer Link" + (" und Zugangscode" if a["code_hash"] else ""))
-    wert("Bestätigung", "„Ich habe das Dokument gelesen und unterschreibe es elektronisch.“")
-
-    erste = next((eingaben["unterschriften"][f["id"]] for f in a["felder"] if f["art"] == "unterschrift" and f["id"] in eingaben["unterschriften"]), None)
-    if erste:
-        y += 4
-        kasten = pymupdf.Rect(160, y, 400, y + 70)
-        seite.draw_rect(kasten, color=(0.8, 0.82, 0.85), width=0.6)
-        seite.insert_text((links, y + 12), "Unterschrift", fontname="helv", fontsize=8.5, color=GRAU)
-        _unterschrift(seite, kasten + (6, 6, -6, -6), erste)
-        y += 84
+    for p in a["personen"]:
+        u = p.get("unterschrift") or {}
+        ueberschrift(f"Unterschrieben von – {p['rolle']}" if len(a["personen"]) > 1 else "Unterschrieben von")
+        wert("Name", u.get("name", "–"))
+        if p.get("name") or p.get("email"):
+            wert("Empfänger laut Büro", " · ".join(x for x in (p.get("name"), p.get("email")) if x))
+        wert("Zeitpunkt", f"{ortszeit(u['zeit'])} (Europe/Berlin)" if u.get("zeit") else "–")
+        wert("IP-Adresse", u.get("ip") or "–")
+        wert("Gerät", geraet_kurz(u.get("geraet", "")))
+        wert("Zugang", "Persönlicher, nicht erratbarer Link" + (" und Zugangscode" if p["code_hash"] or p.get("alt_code_hash") else ""))
+        wert("Bestätigung", "„Ich habe das Dokument gelesen und unterschreibe es elektronisch.“")
+        bild = bilder.get(p["nr"])
+        if bild:
+            platz(80)
+            y += 4
+            kasten = pymupdf.Rect(160, y, 400, y + 64)
+            seite.draw_rect(kasten, color=(0.8, 0.82, 0.85), width=0.6)
+            seite.insert_text((links, y + 12), "Unterschrift", fontname="helv", fontsize=8.5, color=GRAU)
+            _unterschrift(seite, kasten + (6, 6, -6, -6), bild)
+            y += 76
 
     ueberschrift("Verlauf")
-    eintraege = a["verlauf"][-22:]
-    seite.insert_text((links, y), "Zeit", fontname="hebo", fontsize=8, color=GRAU)
-    seite.insert_text((150, y), "Ereignis", fontname="hebo", fontsize=8, color=GRAU)
-    seite.insert_text((330, y), "IP-Adresse", fontname="hebo", fontsize=8, color=GRAU)
-    seite.insert_text((420, y), "Gerät", fontname="hebo", fontsize=8, color=GRAU)
-    y += 13
-    for e in eintraege:
+    namen = {p["nr"]: (p.get("unterschrift") or {}).get("name") or p["name"] or p["rolle"] for p in a["personen"]}
+
+    def kopf() -> None:
+        nonlocal y
+        for x, t in ((links, "Zeit"), (150, "Ereignis"), (330, "IP-Adresse"), (420, "Gerät")):
+            seite.insert_text((x, y), t, fontname="hebo", fontsize=8, color=GRAU)
+        y += 13
+
+    kopf()
+    for e in a["verlauf"]:
+        if y + 12 > unten + 40:
+            neue_seite(True)
+            kopf()
+        ereignis = EREIGNISSE.get(e["art"], e["art"])
+        if e.get("nr") and len(a["personen"]) > 1:
+            ereignis += f" ({namen.get(e['nr'], '')})"
         seite.insert_text((links, y), ortszeit(e["zeit"]), fontname="helv", fontsize=8)
-        seite.insert_text((150, y), latin(EREIGNISSE.get(e["art"], e["art"]))[:38], fontname="helv", fontsize=8)
+        seite.insert_text((150, y), latin(ereignis)[:44], fontname="helv", fontsize=8)
         seite.insert_text((330, y), e.get("ip", "")[:18], fontname="helv", fontsize=8)
         seite.insert_text((420, y), latin(geraet_kurz(e.get("geraet", "")))[:28], fontname="helv", fontsize=8)
         y += 12
 
-    y = max(y + 10, 760)
+    platz(40)
+    y = max(y + 10, unten - 10)
     for text in (
         "Die Prüfsumme belegt, dass das Original zwischen Bereitstellung und Unterschrift nicht verändert wurde.",
         "Das vollständige Protokoll ist zusätzlich als Datei „pruefprotokoll.json“ in diese PDF eingebettet.",

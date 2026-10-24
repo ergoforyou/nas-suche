@@ -81,7 +81,10 @@ def test_unterschriftsfeld_anlegen_und_vorbereiten(c):
     c.post(f"/api/dokumente/{d}/formular", json={"seite": 0, "typ": "text", "rechteck": [0.1, 0.2, 0.5, 0.24], "name": "Tarif"})
     text_id = c.get(f"/api/dokumente/{d}/formular").json()["0"][0]["id"]
     c.put(f"/api/dokumente/{d}/formular/{text_id}", json={"seite": 0, "wert": "Hausrat Komfort"})
-    assert c.get(f"/api/dokumente/{d}/signatur/felder").json()["felder"] == [{"seite": 1, "name": "Unterschrift Kunde"}]
+    assert c.get(f"/api/dokumente/{d}/signatur/felder").json() == {
+        "felder": [{"seite": 1, "name": "Unterschrift Kunde", "rolle": "Kunde", "rechteck": [0.1, 0.8, 0.45, 0.86]}],
+        "rollen": ["Kunde"],
+    }
 
 
 
@@ -119,14 +122,15 @@ def test_verbinden_senden_unterschreiben_oeffnen(c, nas):
     r = c.post(f"/api/dokumente/{d}/signatur/senden", json={"kontakt": k[0], "code": "4711", "gueltig_tage": 7, "nachricht": "Bitte unterschreiben."})
     assert r.status_code == 200, r.text
     a = r.json()
-    assert a["link"].startswith("https://sign.example.org/s/") and a["titel"] == "vertrag"
-    assert a["mit_code"] and a["empfaenger"] == {"name": "Max Muster", "email": "max@example.org"}
+    p1 = a["personen"][0]
+    assert p1["link"].startswith("https://sign.example.org/s/") and a["titel"] == "vertrag"
+    assert p1["mit_code"] and (p1["name"], p1["email"]) == ("Max Muster", "max@example.org")
     assert [f["art"] for f in a["felder"]] == ["unterschrift"] and a["felder"][0]["seite"] == 1
     assert c.get("/api/signatur/auftraege").json()["auftraege"][0]["id"] == a["id"]
 
     # Kunde unterschreibt (direkt am Kundenteil des NAS-Dienstes)
     kunde = TestClient(kunde_app(dienst))
-    t = a["link"].rsplit("/", 1)[1]
+    t = p1["link"].rsplit("/", 1)[1]
     zugang = kunde.post(f"/s/{t}/code", json={"code": "4711"}).json()["zugang"]
     assert kunde.post(f"/s/{t}/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"f1": {"text": "Max Muster"}}, "zugang": zugang}).status_code == 200
 
@@ -146,3 +150,39 @@ def test_nas_nicht_erreichbar(c):
     roh = base64.urlsafe_b64encode(b'{"u": "http://127.0.0.1:9", "k": "abcdefghijklmnopqrstuvwxyz"}').decode()
     r = c.post("/api/signatur/verbinden", json={"code": "EFY-SIGN:" + roh})
     assert r.status_code == 400 and "nicht erreichbar" in r.json()["fehler"]
+
+
+def test_rollen_aus_feldnamen():
+    assert signatur.rolle("Unterschrift Kunde") == "Kunde"
+    assert signatur.rolle("Unterschrift Kunde 2") == "Kunde"
+    assert signatur.rolle("Unterschrift Ehepartner") == "Ehepartner"
+    assert signatur.rolle("Unterschrift") == "Kunde"
+    assert signatur.rolle("Signature1") == "Signature1"
+    assert signatur.rollen([{"rolle": "Makler"}, {"rolle": "Kunde"}, {"rolle": "Makler"}]) == ["Kunde", "Makler"]
+
+
+def test_zwei_personen_senden(c, nas):
+    dienst, code = nas
+    c.post("/api/signatur/verbinden", json={"code": code})
+    d = c.dok
+    r1 = c.post(f"/api/dokumente/{d}/formular", json={"seite": 1, "typ": "unterschrift", "rechteck": [0.1, 0.8, 0.45, 0.86]}).json()["id"]
+    r2 = c.post(f"/api/dokumente/{d}/formular", json={"seite": 1, "typ": "unterschrift", "rechteck": [0.55, 0.8, 0.9, 0.86]}).json()["id"]
+    c.post(f"/api/dokumente/{d}/formular", json={"seite": 0, "typ": "unterschrift", "rechteck": [0.55, 0.3, 0.9, 0.36]})
+    # Rolle über die Eigenschaften setzen → Feld heißt „Unterschrift Ehepartner“
+    assert c.patch(f"/api/dokumente/{d}/formular/{r2}", json={"seite": 1, "rolle": "Ehepartner"}).status_code == 200
+    f = c.get(f"/api/dokumente/{d}/signatur/felder").json()
+    assert f["rollen"] == ["Kunde", "Ehepartner"]
+    assert sorted(x["name"] for x in f["felder"]) == ["Unterschrift Ehepartner", "Unterschrift Kunde", "Unterschrift Kunde 3"]
+    assert all(len(x["rechteck"]) == 4 for x in f["felder"])
+    assert r1
+
+    ohne = c.post(f"/api/dokumente/{d}/signatur/senden", json={"personen": [{"rolle": "Kunde", "name": "Max Muster"}, {"rolle": "Makler", "name": "Büro"}]})
+    assert ohne.status_code == 400 and "Ehepartner" in ohne.json()["fehler"]
+    a = c.post(
+        f"/api/dokumente/{d}/signatur/senden",
+        json={"personen": [{"rolle": "Kunde", "name": "Max Muster"}, {"rolle": "Ehepartner", "name": "Erika Muster", "code": "4711"}], "reihenfolge": True},
+    ).json()
+    assert [p["rolle"] for p in a["personen"]] == ["Kunde", "Ehepartner"] and a["reihenfolge"] is True
+    assert sorted((x["person"], x["seite"]) for x in a["felder"]) == [(1, 0), (1, 1), (2, 1)]
+    assert [p["mit_code"] for p in a["personen"]] == [False, True]
+    assert c.post(f"/api/signatur/auftraege/{a['id']}/oeffnen").status_code == 400

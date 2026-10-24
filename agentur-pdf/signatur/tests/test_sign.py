@@ -99,14 +99,14 @@ def warten(bedingung, sekunden: float = 5.0) -> None:
     raise AssertionError("Zeitüberschreitung")
 
 
-def token(a: dict) -> str:
-    return a["link"].rsplit("/", 1)[1]
+def token(a: dict, nr: int = 1) -> str:
+    return a["personen"][nr - 1]["link"].rsplit("/", 1)[1]
 
 
 def test_ganzer_ablauf(umgebung):
     dienst, intern, kunde, hs = umgebung
     a = anlegen(intern)
-    assert a["link"].startswith("https://sign.example.org/s/")
+    assert a["personen"][0]["link"].startswith("https://sign.example.org/s/")
     assert a["status"] == "offen" and len(a["felder"]) == 3
     warten(lambda: dienst.auftraege.laden(a["id"])["ablage"]["hubspot_gesendet"])
     notiz = json.loads(next(c for m, p, c in hs.anfragen if p == "/crm/v3/objects/notes"))
@@ -144,12 +144,12 @@ def test_ganzer_ablauf(umgebung):
     for erwartet in ("Prüfprotokoll", "Max Muster", "203.0.113.7", "Safari auf iPhone", a["id"], "Unterschrieben"):
         assert erwartet in protokoll
     eingebettet = json.loads(doc.embfile_get("pruefprotokoll.json"))
-    assert eingebettet["unterzeichner"]["name"] == "Max Muster"
+    assert eingebettet["personen"][0]["unterschrift"]["name"] == "Max Muster"
 
     warten(lambda: dienst.auftraege.laden(a["id"])["ablage"]["hubspot_fertig"])
     assert "/files/v3/files" in hs.pfade()
     fertig = intern.get(f"/api/auftraege/{a['id']}").json()
-    assert fertig["status"] == "unterschrieben" and fertig["unterzeichner"] == "Max Muster"
+    assert fertig["status"] == "unterschrieben" and fertig["personen"][0]["unterschrieben_als"] == "Max Muster"
     assert fertig["hubspot_url"].endswith("/contacts/146305116/record/0-1/501")
     assert intern.get(f"/api/auftraege/{a['id']}/pdf").content == kopie.content
     assert list((dienst.ordner / "unterschrieben").glob("*Maklervertrag Max Muster*.pdf"))
@@ -204,9 +204,9 @@ def test_ungueltig_abgelaufen_widerrufen(umgebung):
 def test_ohne_felder_unterschrift_nur_im_protokoll(umgebung):
     _, intern, kunde, _ = umgebung
     a = anlegen(intern, felder=[])
-    assert a["felder"] == [{"id": "ende", "seite": None, "rechteck": None, "art": "unterschrift", "beschriftung": "Unterschrift", "pflicht": True}]
+    assert a["felder"] == [{"id": "ende1", "seite": None, "rechteck": None, "art": "unterschrift", "person": 1, "beschriftung": "Unterschrift", "pflicht": True}]
     t = token(a)
-    r = kunde.post(f"/s/{t}/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"ende": {"png": PNG}}})
+    r = kunde.post(f"/s/{t}/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"ende1": {"png": PNG}}})
     assert r.status_code == 200
     doc = pymupdf.open("pdf", kunde.get(f"/s/{t}/kopie").content)
     assert doc.page_count == 3 and not doc[1].get_images() and doc[2].get_images()
@@ -236,7 +236,7 @@ def test_intern_schutz_und_einrichtung(umgebung, tmp_path):
     assert roh.get("/api/auftraege").status_code == 401
     assert roh.get("/api/auftraege", headers={"X-Sign-Schluessel": "falsch"}).status_code == 401
     assert roh.get("/einrichtung/werte").status_code == 401
-    assert roh.get("/einrichtung/zustand").json() == {"kennwort_gesetzt": False, "angemeldet": False, "version": "0.1.0"}
+    assert roh.get("/einrichtung/zustand").json() == {"kennwort_gesetzt": False, "angemeldet": False, "version": "0.2.0"}
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "kurz"}).status_code == 400
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "geheim123"}).status_code == 200
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "anders123"}).status_code == 409
@@ -274,3 +274,116 @@ def test_kaputte_pdf_und_unterschrift(umgebung):
     assert schlecht.status_code == 400
     ohne_haken = kunde.post(f"/s/{t}/unterschreiben", json={"name": "Max Muster", "zustimmung": False, "unterschriften": {"f1": {"png": PNG}}})
     assert ohne_haken.status_code == 400
+
+
+def test_zwei_personen_mit_reihenfolge(umgebung):
+    dienst, intern, kunde, hs = umgebung
+    r = intern.post(
+        "/api/auftraege",
+        json={
+            "titel": "Maklervertrag Max und Erika Muster",
+            "pdf": base64.b64encode(beispiel_pdf()).decode(),
+            "felder": [
+                {"seite": 1, "rechteck": [0.1, 0.7, 0.45, 0.76], "art": "unterschrift", "person": 1},
+                {"seite": 1, "rechteck": [0.55, 0.7, 0.9, 0.76], "art": "unterschrift", "person": 2},
+                {"seite": 0, "rechteck": [0.55, 0.2, 0.9, 0.26], "art": "unterschrift", "person": 2},
+                {"seite": 1, "rechteck": [0.1, 0.8, 0.4, 0.83], "art": "datum", "person": 2},
+            ],
+            "personen": [
+                {"rolle": "Kunde", "name": "Max Muster", "hubspot_kontakt_id": "501"},
+                {"rolle": "Ehepartner", "name": "Erika Muster", "code": "1234", "hubspot_kontakt_id": "502"},
+            ],
+            "reihenfolge": True,
+            "hubspot_deal_id": "77",
+            "erstellt_von": "JB",
+        },
+    )
+    assert r.status_code == 200, r.text
+    a = r.json()
+    assert [p["rolle"] for p in a["personen"]] == ["Kunde", "Ehepartner"]
+    assert a["personen"][0]["link"] != a["personen"][1]["link"]
+    assert [p["mit_code"] for p in a["personen"]] == [False, True]
+    warten(lambda: dienst.auftraege.laden(a["id"])["ablage"]["hubspot_gesendet"])
+    notiz = json.loads(next(c for m, p, c in hs.anfragen if p == "/crm/v3/objects/notes"))
+    assert {v["to"]["id"] for v in notiz["associations"]} == {"501", "502", "77"}
+    t1, t2 = token(a, 1), token(a, 2)
+
+    # Erika ist erst nach Max dran
+    z2 = kunde.post(f"/s/{t2}/code", json={"code": "1234"}).json()["zugang"]
+    assert kunde.get(f"/s/{t2}/daten?z={z2}").json()["status"] == "noch_nicht"
+    assert kunde.post(f"/s/{t2}/unterschreiben", json={"name": "Erika Muster", "zustimmung": True, "unterschriften": {"f2": {"png": PNG}, "f3": {"png": PNG}}, "zugang": z2}).status_code == 409
+
+    d1 = kunde.get(f"/s/{t1}/daten").json()
+    assert [f["id"] for f in d1["felder"]] == ["f1"], "jeder sieht nur seine Felder"
+    r1 = kunde.post(f"/s/{t1}/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"f1": {"png": PNG}}})
+    assert r1.json()["fertig"] is False and r1.json()["fortschritt"] == {"anzahl": 2, "fertig": 1, "offen": ["Erika Muster"]}
+    assert kunde.get(f"/s/{t1}/daten").json()["status"] == "wartet"
+    assert kunde.get(f"/s/{t1}/kopie").status_code == 404
+    assert intern.get(f"/api/auftraege/{a['id']}").json()["status"] == "teilweise"
+
+    # Erika sieht Max' Unterschrift schon im Seitenbild und hat zwei Felder
+    d2 = kunde.get(f"/s/{t2}/daten?z={z2}").json()
+    assert [f["id"] for f in d2["felder"]] == ["f2", "f3", "f4"] and d2["rolle"] == "Ehepartner"
+    stand = pymupdf.open("pdf", intern.get(f"/api/auftraege/{a['id']}/pdf?art=stand").content)
+    assert len(stand[1].get_images()) == 1
+    assert kunde.post(f"/s/{t2}/unterschreiben", json={"name": "Erika Muster", "zustimmung": True, "unterschriften": {"f2": {"png": PNG}}, "zugang": z2}).status_code == 400
+    r2 = kunde.post(f"/s/{t2}/unterschreiben", json={"name": "Erika Muster", "zustimmung": True, "unterschriften": {"f2": {"png": PNG}, "f3": {"text": "Erika Muster"}}, "zugang": z2})
+    assert r2.json()["fertig"] is True
+
+    for t, z in ((t1, ""), (t2, z2)):
+        assert kunde.get(f"/s/{t}/kopie?z={z}").status_code == 200
+    doc = pymupdf.open("pdf", kunde.get(f"/s/{t1}/kopie").content)
+    assert len(doc[1].get_images()) == 2 and "Erika Muster" in doc[0].get_text()
+    protokoll = "".join(doc[i].get_text() for i in range(2, doc.page_count))
+    for erwartet in ("Kunde", "Ehepartner", "Max Muster", "Erika Muster", "fester Reihenfolge", "Alle Unterschriften vollst"):
+        assert erwartet in protokoll
+    warten(lambda: dienst.auftraege.laden(a["id"])["ablage"]["hubspot_fertig"])
+    fertig = intern.get(f"/api/auftraege/{a['id']}").json()
+    assert fertig["status"] == "unterschrieben" and [p["status"] for p in fertig["personen"]] == ["unterschrieben", "unterschrieben"]
+
+
+def test_ohne_reihenfolge_und_sperre_je_person(umgebung):
+    _, intern, kunde, _ = umgebung
+    a = anlegen(
+        intern,
+        felder=[],
+        personen=[{"name": "Max Muster", "code": "1111"}, {"name": "Erika Muster", "code": "2222"}],
+    )
+    assert [f["id"] for f in a["felder"]] == ["ende1", "ende2"]
+    t1, t2 = token(a, 1), token(a, 2)
+    for _ in range(5):
+        kunde.post(f"/s/{t1}/code", json={"code": "2222"})  # fremder Code zählt nicht
+    assert kunde.post(f"/s/{t1}/code", json={"code": "1111"}).status_code == 423
+    z2 = kunde.post(f"/s/{t2}/code", json={"code": "2222"}).json()["zugang"]
+    assert kunde.post(f"/s/{t2}/unterschreiben", json={"name": "Erika Muster", "zustimmung": True, "unterschriften": {"ende2": {"png": PNG}}, "zugang": z2}).json()["fertig"] is False
+    detail = intern.post(f"/api/auftraege/{a['id']}/entsperren", json={"nr": 1}).json()
+    assert [p["gesperrt"] for p in detail["personen"]] == [False, False]
+    z1 = kunde.post(f"/s/{t1}/code", json={"code": "1111"}).json()["zugang"]
+    assert kunde.post(f"/s/{t1}/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"ende1": {"text": "Max Muster"}}, "zugang": z1}).json()["fertig"] is True
+
+
+def test_alter_auftrag_wird_uebernommen(tmp_path):
+    """Aufträge aus 0.1.0 (Feldtest) laufen nach dem Update weiter."""
+    ordner = tmp_path / "auftraege" / "20261024-abcdef12"
+    ordner.mkdir(parents=True)
+    pdf = beispiel_pdf()
+    (ordner / "original.pdf").write_bytes(pdf)
+    import hashlib
+
+    alt = {
+        "id": "20261024-abcdef12", "token": "t" * 43, "titel": "Alt", "dateiname": "Alt", "nachricht": "",
+        "erstellt": "2026-10-24T10:00:00+00:00", "erstellt_von": "JB", "gueltig_bis": "2099-01-01T00:00:00+00:00",
+        "empfaenger": {"name": "Max Muster", "email": ""}, "hubspot": {"kontakt_id": "", "deal_id": "", "kontakt_name": ""},
+        "code_hash": hashlib.sha256(b"20261024-abcdef12:4711").hexdigest(), "code_fehler": 0, "status": "offen",
+        "seiten": [{"b": 595, "h": 842}, {"b": 595, "h": 842}],
+        "felder": [{"id": "f1", "seite": 1, "rechteck": [0.1, 0.8, 0.4, 0.86], "art": "unterschrift", "beschriftung": "", "pflicht": True}],
+        "sha_original": hashlib.sha256(pdf).hexdigest(), "sha_ergebnis": "", "unterzeichner": None,
+        "ablage": {"hubspot_gesendet": "", "hubspot_fertig": "", "hubspot_fehler": "", "datei": ""}, "verlauf": [],
+    }
+    (ordner / "auftrag.json").write_text(json.dumps(alt))
+    dienst = Dienst(tmp_path)
+    kunde = TestClient(kunde_app(dienst))
+    assert kunde.get("/s/" + "t" * 43 + "/daten").json()["code_noetig"] is True
+    z = kunde.post("/s/" + "t" * 43 + "/code", json={"code": "4711"}).json()["zugang"]
+    r = kunde.post("/s/" + "t" * 43 + "/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"f1": {"png": PNG}}, "zugang": z})
+    assert r.json()["fertig"] is True

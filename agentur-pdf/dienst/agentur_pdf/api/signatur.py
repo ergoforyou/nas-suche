@@ -68,7 +68,7 @@ def einrichten(app: FastAPI, dokumente: DokumentSpeicher, benutzer: BenutzerSpei
     @app.get("/api/dokumente/{dok_id}/signatur/felder")
     async def felder(dok_id: str):
         liste = await im_mupdf_thread(lambda: signatur.felder_zaehlen(dokumente.get(dok_id).doc))
-        return {"felder": liste}
+        return {"felder": liste, "rollen": signatur.rollen(liste)}
 
     @app.post("/api/dokumente/{dok_id}/signatur/senden")
     async def senden(dok_id: str, daten: dict = Body(...)):
@@ -76,18 +76,45 @@ def einrichten(app: FastAPI, dokumente: DokumentSpeicher, benutzer: BenutzerSpei
         dok = dokumente.get(dok_id)
         pdf, felder_liste = await im_mupdf_thread(signatur.vorbereiten, dok.doc)
         kontakt = daten.get("kontakt") or {}
+        personen = daten.get("personen") or [
+            {  # eine Person (Dialog bis 0.13.0)
+                "rolle": "Kunde",
+                "name": str(daten.get("empfaenger_name") or kontakt.get("name") or ""),
+                "email": kontakt.get("email", ""),
+                "code": daten.get("code", ""),
+                "hubspot_kontakt_id": kontakt.get("id", ""),
+            }
+        ]
+        rollen = [str(p.get("rolle") or "").strip() or "Kunde" for p in personen]
+        if len(personen) == 1:
+            for f in felder_liste:
+                f["person"] = 1
+        else:
+            for f in felder_liste:
+                if f["rolle"] not in rollen:
+                    raise DokumentFehler(f"Für das Feld „{f['beschriftung']}“ (Rolle {f['rolle']}) ist keine Person angegeben.")
+                f["person"] = rollen.index(f["rolle"]) + 1
         titel = str(daten.get("titel") or "").strip() or re.sub(r"\.pdf$", "", dok.titel, flags=re.I)
         nutzlast = {
             "titel": titel,
             "dateiname": titel,
             "pdf": base64.b64encode(pdf).decode(),
             "felder": felder_liste,
-            "empfaenger_name": str(daten.get("empfaenger_name") or kontakt.get("name") or "").strip(),
-            "empfaenger_email": str(kontakt.get("email") or "").strip(),
-            "hubspot_kontakt_id": str(kontakt.get("id") or ""),
+            "personen": [
+                {
+                    "rolle": rollen[i],
+                    "name": str(p.get("name") or "").strip(),
+                    "email": str(p.get("email") or "").strip(),
+                    "telefon": str(p.get("telefon") or "").strip(),
+                    "code": str(p.get("code") or "").strip(),
+                    "hubspot_kontakt_id": str(p.get("hubspot_kontakt_id") or ""),
+                }
+                for i, p in enumerate(personen)
+            ],
+            "reihenfolge": bool(daten.get("reihenfolge")),
+            "hubspot_kontakt_id": str(kontakt.get("id") or personen[0].get("hubspot_kontakt_id") or ""),
             "hubspot_kontakt_name": str(kontakt.get("name") or ""),
             "hubspot_deal_id": str(daten.get("deal_id") or ""),
-            "code": str(daten.get("code") or "").strip(),
             "gueltig_tage": int(daten.get("gueltig_tage") or 14),
             "nachricht": str(daten.get("nachricht") or ""),
             "erstellt_von": absender(),
@@ -112,16 +139,21 @@ def einrichten(app: FastAPI, dokumente: DokumentSpeicher, benutzer: BenutzerSpei
         return await im_hintergrund(lambda: nas().get(f"/api/auftraege/{_id(auftrag_id)}"))
 
     @app.post("/api/signatur/auftraege/{auftrag_id}/{aktion}")
-    async def auftrag_aktion(auftrag_id: str, aktion: str):
+    async def auftrag_aktion(auftrag_id: str, aktion: str, nr: int = Query(0)):
         if aktion == "oeffnen":
             daten = await im_hintergrund(lambda: nas().anfrage("GET", f"/api/auftraege/{_id(auftrag_id)}/pdf", roh=True, zeit=60))
             info = await im_hintergrund(lambda: nas().get(f"/api/auftraege/{_id(auftrag_id)}"))
             name = f"{info['titel']} – unterschrieben.pdf"
+            if info["status"] != "unterschrieben":
+                raise DokumentFehler("Noch nicht von allen unterschrieben.")
             dok = await im_mupdf_thread(dokumente.oeffnen_bytes, daten, name)
             return await im_mupdf_thread(dokumente.info, dok.id)
         if aktion not in ("widerrufen", "entsperren", "hubspot"):
             raise DokumentFehler("Unbekannte Aktion.")
-        return await im_hintergrund(lambda: nas().post(f"/api/auftraege/{_id(auftrag_id)}/{aktion}", {"von": absender()} if aktion != "hubspot" else {}))
+        nutzlast = {"von": absender()} if aktion != "hubspot" else {}
+        if aktion == "entsperren":
+            nutzlast["nr"] = int(nr or 0)
+        return await im_hintergrund(lambda: nas().post(f"/api/auftraege/{_id(auftrag_id)}/{aktion}", nutzlast))
 
 
 def _id(auftrag_id: str) -> str:

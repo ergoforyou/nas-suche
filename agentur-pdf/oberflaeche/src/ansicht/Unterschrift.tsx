@@ -1,6 +1,6 @@
 // Online-Unterschrift über „Ergoforyou Sign“ auf dem NAS: Senden-Dialog
-// (HubSpot-Kontakt, Zugangscode, Link), Übersicht und Verbindung in den
-// Einstellungen.
+// (Vorschau der Felder, eine Person je Rolle, HubSpot-Kontakt, Zugangscode,
+// Links), Übersicht und Verbindung in den Einstellungen.
 
 import {
   CheckCircle2,
@@ -10,6 +10,7 @@ import {
   Eye,
   FileSignature,
   Link2,
+  ListOrdered,
   Lock,
   Mail,
   MessageCircle,
@@ -21,9 +22,9 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
-import type { HubSpotKontakt, SignaturAuftrag, SignaturStatus, SignaturStatusWert } from "../typen";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, bildUrl, mitToken } from "../api";
+import type { HubSpotKontakt, SignaturAuftrag, SignaturFeld, SignaturPerson, SignaturStatus, SignaturStatusWert } from "../typen";
 import { dokumentHinzufuegen, holen, melden, setzen, useZustand } from "../zustand/store";
 
 const zu = () => setzen({ dialog: null });
@@ -35,10 +36,16 @@ function fehlerText(e: unknown): string {
 export const STATUS_TEXT: Record<SignaturStatusWert, string> = {
   offen: "Versendet",
   geoeffnet: "Geöffnet",
+  teilweise: "Teilweise unterschrieben",
   unterschrieben: "Unterschrieben",
   abgelaufen: "Abgelaufen",
   widerrufen: "Zurückgezogen",
 };
+
+/** Farben der Rollen – in Vorschau, Formular-Editor und Übersicht gleich */
+export const ROLLEN_FARBEN = ["#B5121B", "#1E4FA8", "#1F7A3A", "#C27C00", "#6B3FA0", "#0E7C86", "#8A5A00", "#555555"];
+/** Vorschläge für die Rolle eines Unterschriftsfelds */
+export const ROLLEN_VORSCHLAEGE = ["Kunde", "Ehepartner", "Mitversicherte Person", "Kontoinhaber", "Makler"];
 
 function datum(iso: string, mitZeit = true): string {
   if (!iso) return "";
@@ -66,15 +73,16 @@ async function extern(url: string): Promise<void> {
   }
 }
 
-function emailText(a: SignaturAuftrag, mitCode: boolean): string {
-  const anrede = a.empfaenger.name ? `Hallo ${a.empfaenger.name},` : "Hallo,";
+function emailText(a: SignaturAuftrag, p: SignaturPerson, mitCode: boolean): string {
+  const anrede = p.name ? `Hallo ${p.name},` : "Hallo,";
+  const andere = a.personen.length > 1 ? ` Das Dokument unterschreiben insgesamt ${a.personen.length} Personen – jede mit eigenem Link.` : "";
   return [
     anrede,
     "",
     `bitte unterschreiben Sie „${a.titel}“ online über diesen persönlichen Link:`,
-    a.link ?? "",
+    p.link ?? "",
     "",
-    `Der Link ist gültig bis ${datum(a.gueltig_bis, false)}. Nach der Unterschrift können Sie sich sofort eine Kopie herunterladen.`,
+    `Der Link ist gültig bis ${datum(a.gueltig_bis, false)}.${andere} Sobald alle unterschrieben haben, können Sie sich über denselben Link die fertige PDF herunterladen.`,
     ...(mitCode ? ["Den Zugangscode erhalten Sie separat von uns."] : []),
     "",
     "Viele Grüße",
@@ -86,6 +94,11 @@ function zufallsCode(): string {
   const z = new Uint32Array(1);
   crypto.getRandomValues(z);
   return String(100000 + (z[0] % 900000));
+}
+
+function whatsapp(telefon: string, text: string): string {
+  const nummer = telefon.replace(/[^\d+]/g, "").replace(/^00/, "+").replace(/^0/, "+49").replace(/^\+/, "");
+  return `https://wa.me/${nummer}?text=${encodeURIComponent(text)}`;
 }
 
 // ------------------------------------------------------------ Verbindung
@@ -165,7 +178,7 @@ export function SignaturBereich() {
 }
 
 // ---------------------------------------------------------- Kontaktsuche
-function KontaktSuche({ wert, aendern }: { wert: HubSpotKontakt | null; aendern: (k: HubSpotKontakt | null) => void }) {
+function KontaktSuche({ wert, aendern, label }: { wert: HubSpotKontakt | null; aendern: (k: HubSpotKontakt | null) => void; label: string }) {
   const [suche, setSuche] = useState("");
   const [treffer, setTreffer] = useState<HubSpotKontakt[]>([]);
   const [laeuft, setLaeuft] = useState(false);
@@ -210,7 +223,7 @@ function KontaktSuche({ wert, aendern }: { wert: HubSpotKontakt | null; aendern:
     <div className="sig-suche">
       <span className="sig-suchfeld">
         <Search size={14} />
-        <input value={suche} onChange={(e) => setSuche(e.target.value)} placeholder="Name, E-Mail oder Firma in HubSpot suchen …" aria-label="HubSpot-Kontakt suchen" />
+        <input value={suche} onChange={(e) => setSuche(e.target.value)} placeholder="In HubSpot suchen (optional) …" aria-label={label} />
       </span>
       {laeuft && <p className="leise klein">Suche …</p>}
       {fehler && <p className="warnung">{fehler}</p>}
@@ -231,18 +244,75 @@ function KontaktSuche({ wert, aendern }: { wert: HubSpotKontakt | null; aendern:
   );
 }
 
+// ------------------------------------------------------------- Vorschau
+function FeldVorschau({ dokId, felder, rollen }: { dokId: string; felder: SignaturFeld[]; rollen: string[] }) {
+  const dok = useZustand((z) => z.dokumente.find((d) => d.id === dokId));
+  if (!dok) return null;
+  const seiten = [...new Set(felder.map((f) => f.seite))].sort((a, b) => a - b);
+  if (!seiten.length) {
+    return (
+      <div className="sig-vorschau leer">
+        <p className="hinweis-box">
+          Kein Unterschriftsfeld im Dokument – jede Person unterschreibt dann nur auf dem Prüfprotokoll. Tipp: <strong>Schützen → Unterschriftsfeld</strong>{" "}
+          aufziehen, wo unterschrieben werden soll.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="sig-vorschau" aria-label="Vorschau der Unterschriftsfelder">
+      {seiten.map((s) => {
+        const info = dok.seiten[s];
+        const verhaeltnis = info ? info.breite / info.hoehe : 0.707;
+        return (
+          <figure key={s} className="sig-vorschau-seite">
+            <div className="sig-vorschau-blatt" style={{ aspectRatio: String(verhaeltnis) }}>
+              <img src={mitToken(bildUrl({ dokId, seite: s, kennung: dok.kennungen[s], skala: 0.4, drehung: 0 }))} alt={`Seite ${s + 1}`} />
+              {felder
+                .filter((f) => f.seite === s)
+                .map((f, i) => {
+                  const farbe = ROLLEN_FARBEN[Math.max(0, rollen.indexOf(f.rolle)) % ROLLEN_FARBEN.length];
+                  const [x0, y0, x1, y1] = f.rechteck;
+                  return (
+                    <span
+                      key={i}
+                      className="sig-vorschau-feld"
+                      title={f.name}
+                      style={{ left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%`, borderColor: farbe, background: `${farbe}22`, color: farbe }}
+                    >
+                      {f.rolle}
+                    </span>
+                  );
+                })}
+            </div>
+            <figcaption>Seite {s + 1}</figcaption>
+          </figure>
+        );
+      })}
+    </div>
+  );
+}
+
 // ----------------------------------------------------------- Senden
+interface PersonEingabe {
+  name: string;
+  kontakt: HubSpotKontakt | null;
+  mitCode: boolean;
+  code: string;
+}
+
+const LEER: PersonEingabe = { name: "", kontakt: null, mitCode: false, code: "" };
+
 export function SignaturSendenDialog({ dokId }: { dokId: string }) {
   const dok = useZustand((z) => z.dokumente.find((d) => d.id === dokId));
   const [status, setStatus] = useState<SignaturStatus | null>(null);
-  const [felder, setFelder] = useState<{ seite: number; name: string }[] | null>(null);
+  const [felder, setFelder] = useState<SignaturFeld[] | null>(null);
+  const [rollen, setRollen] = useState<string[]>(["Kunde"]);
   const [titel, setTitel] = useState(() => (dok?.titel ?? "").replace(/\.pdf$/i, ""));
-  const [kontakt, setKontakt] = useState<HubSpotKontakt | null>(null);
+  const [personen, setPersonen] = useState<Record<string, PersonEingabe>>({});
+  const [reihenfolge, setReihenfolge] = useState(false);
   const [deals, setDeals] = useState<{ id: string; name: string }[]>([]);
   const [deal, setDeal] = useState("");
-  const [name, setName] = useState("");
-  const [mitCode, setMitCode] = useState(false);
-  const [code, setCode] = useState("");
   const [tage, setTage] = useState(14);
   const [nachricht, setNachricht] = useState("");
   const [laeuft, setLaeuft] = useState(false);
@@ -252,45 +322,68 @@ export function SignaturSendenDialog({ dokId }: { dokId: string }) {
     api.signaturStatus().then(setStatus).catch((e) => setStatus({ eingerichtet: false, fehler: fehlerText(e) }));
     api
       .signaturFelder(dokId)
-      .then((r) => setFelder(r.felder))
+      .then((r) => {
+        setFelder(r.felder);
+        setRollen(r.rollen.length ? r.rollen : ["Kunde"]);
+      })
       .catch(() => setFelder([]));
   }, [dokId]);
 
+  const person = (rolle: string): PersonEingabe => personen[rolle] ?? LEER;
+  const aendern = (rolle: string, neu: Partial<PersonEingabe>) => setPersonen((alt) => ({ ...alt, [rolle]: { ...(alt[rolle] ?? LEER), ...neu } }));
+
+  // Deals des ersten Kontakts (Kunde) zur Auswahl
+  const hauptKontakt = rollen.map((r) => personen[r]?.kontakt).find(Boolean) ?? null;
   useEffect(() => {
     setDeal("");
     setDeals([]);
-    if (!kontakt) return;
-    if (!name.trim()) setName(kontakt.name);
+    if (!hauptKontakt) return;
     api
-      .signaturDeals(kontakt.id)
+      .signaturDeals(hauptKontakt.id)
       .then((r) => {
         setDeals(r.deals);
         if (r.deals.length === 1) setDeal(r.deals[0].id);
       })
       .catch(() => undefined);
-  }, [kontakt?.id]);
+  }, [hauptKontakt?.id]);
+
+  const fehlend = useMemo(() => rollen.filter((r) => !person(r).name.trim() && !person(r).kontakt), [rollen, personen]);
 
   if (!dok) return null;
   const bereit = status?.eingerichtet && status.erreichbar;
+  const mehrere = rollen.length > 1;
 
   const senden = async () => {
-    if (mitCode && code.trim().length < 4) {
-      melden("Der Zugangscode braucht mindestens 4 Zeichen.", "fehler");
-      return;
+    for (const r of rollen) {
+      const p = person(r);
+      if (p.mitCode && p.code.trim().length < 4) {
+        melden(`Der Zugangscode für „${r}“ braucht mindestens 4 Zeichen.`, "fehler");
+        return;
+      }
     }
     setLaeuft(true);
     try {
       const a = await api.signaturSenden(dokId, {
         titel: titel.trim(),
-        kontakt,
+        kontakt: hauptKontakt,
         deal_id: deal,
-        empfaenger_name: name.trim(),
-        code: mitCode ? code.trim() : "",
+        personen: rollen.map((r) => {
+          const p = person(r);
+          return {
+            rolle: r,
+            name: p.name.trim() || p.kontakt?.name || "",
+            email: p.kontakt?.email ?? "",
+            telefon: p.kontakt?.telefon ?? "",
+            code: p.mitCode ? p.code.trim() : "",
+            hubspot_kontakt_id: p.kontakt?.id ?? "",
+          };
+        }),
+        reihenfolge: mehrere && reihenfolge,
         gueltig_tage: tage,
         nachricht: nachricht.trim(),
       });
       setErgebnis(a);
-      if (a.link) void navigator.clipboard?.writeText(a.link).catch(() => undefined);
+      if (a.personen.length === 1 && a.personen[0].link) void navigator.clipboard?.writeText(a.personen[0].link).catch(() => undefined);
     } catch (e) {
       melden(fehlerText(e), "fehler");
     } finally {
@@ -301,7 +394,7 @@ export function SignaturSendenDialog({ dokId }: { dokId: string }) {
   return (
     <div className="dialog-hintergrund" onMouseDown={zu}>
       <form
-        className="dialog breit sig-dialog"
+        className={`dialog sig-dialog${bereit && !ergebnis ? " sig-mit-vorschau" : ""}`}
         role="dialog"
         aria-label="Zur Unterschrift senden"
         onMouseDown={(e) => e.stopPropagation()}
@@ -327,137 +420,148 @@ export function SignaturSendenDialog({ dokId }: { dokId: string }) {
         )}
 
         {bereit && !ergebnis && (
-          <>
-            <label className="feld">
-              Titel (sieht der Kunde)
-              <input value={titel} onChange={(e) => setTitel(e.target.value)} aria-label="Titel" />
-            </label>
-            {status.hubspot ? (
-              <div className="feld">
-                <span>Kontakt in HubSpot (optional – dort wird das Ergebnis abgelegt)</span>
-                <KontaktSuche wert={kontakt} aendern={setKontakt} />
-              </div>
-            ) : (
-              <p className="leise">HubSpot ist auf dem NAS noch nicht verbunden – das Ergebnis wird nur auf dem NAS abgelegt.</p>
-            )}
-            {kontakt && deals.length > 0 && (
+          <div className="sig-spalten">
+            {felder ? <FeldVorschau dokId={dokId} felder={felder} rollen={rollen} /> : <div className="sig-vorschau leise">Vorschau lädt …</div>}
+            <div className="sig-formular">
               <label className="feld">
-                Deal (optional)
-                <select value={deal} onChange={(e) => setDeal(e.target.value)} aria-label="Deal">
-                  <option value="">– nur am Kontakt ablegen –</option>
-                  {deals.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+                Titel (sieht der Kunde)
+                <input value={titel} onChange={(e) => setTitel(e.target.value)} aria-label="Titel" />
               </label>
-            )}
-            <label className="feld">
-              Name des Unterzeichners (vorausgefüllt, der Kunde kann ihn ändern)
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Max Muster" aria-label="Name des Unterzeichners" />
-            </label>
-            <div className="sig-zeile">
-              <label className="auswahl-zeile">
-                <input
-                  type="checkbox"
-                  checked={mitCode}
-                  onChange={(e) => {
-                    setMitCode(e.target.checked);
-                    if (e.target.checked && !code) setCode(zufallsCode());
-                  }}
-                />
-                Zugangscode verlangen
+              {rollen.map((r, i) => {
+                const p = person(r);
+                const farbe = ROLLEN_FARBEN[i % ROLLEN_FARBEN.length];
+                return (
+                  <fieldset key={r} className="sig-person" style={{ borderLeftColor: farbe }} aria-label={`Unterzeichner ${r}`}>
+                    <legend style={{ color: farbe }}>
+                      {mehrere && reihenfolge ? `${i + 1}. ` : ""}
+                      {r}
+                    </legend>
+                    {status.hubspot && (
+                      <KontaktSuche
+                        wert={p.kontakt}
+                        label={`HubSpot-Kontakt ${r}`}
+                        aendern={(k) => aendern(r, { kontakt: k, name: k && !p.name.trim() ? k.name : p.name })}
+                      />
+                    )}
+                    <input value={p.name} onChange={(e) => aendern(r, { name: e.target.value })} placeholder="Name, z. B. Max Muster" aria-label={`Name ${r}`} />
+                    <div className="sig-zeile">
+                      <label className="auswahl-zeile">
+                        <input
+                          type="checkbox"
+                          checked={p.mitCode}
+                          onChange={(e) => aendern(r, { mitCode: e.target.checked, code: e.target.checked && !p.code ? zufallsCode() : p.code })}
+                          aria-label={`Zugangscode ${r} verlangen`}
+                        />
+                        Zugangscode
+                      </label>
+                      {p.mitCode && <input className="zahl breit" value={p.code} onChange={(e) => aendern(r, { code: e.target.value })} aria-label={`Zugangscode ${r}`} maxLength={32} />}
+                    </div>
+                  </fieldset>
+                );
+              })}
+              {mehrere && (
+                <label className="auswahl-zeile">
+                  <input type="checkbox" checked={reihenfolge} onChange={(e) => setReihenfolge(e.target.checked)} />
+                  <ListOrdered size={14} /> Der Reihe nach unterschreiben (wie oben aufgeführt)
+                </label>
+              )}
+              {!status.hubspot && <p className="leise klein">HubSpot ist auf dem NAS noch nicht verbunden – das Ergebnis wird nur auf dem NAS abgelegt.</p>}
+              {hauptKontakt && deals.length > 0 && (
+                <label className="feld">
+                  Deal in HubSpot (optional)
+                  <select value={deal} onChange={(e) => setDeal(e.target.value)} aria-label="Deal">
+                    <option value="">– nur an den Kontakten ablegen –</option>
+                    {deals.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <div className="sig-zeile">
+                <label className="feld">
+                  Link gültig
+                  <select value={tage} onChange={(e) => setTage(Number(e.target.value))} aria-label="Gültigkeit">
+                    {[3, 7, 14, 30, 60].map((t) => (
+                      <option key={t} value={t}>
+                        {t} Tage
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="feld">
+                Nachricht (optional, steht über dem Dokument)
+                <textarea rows={2} value={nachricht} onChange={(e) => setNachricht(e.target.value)} aria-label="Nachricht" />
               </label>
-              {mitCode && (
-                <>
-                  <input className="zahl breit" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Zugangscode" maxLength={32} />
-                  <span className="leise klein">dem Kunden separat nennen (z. B. am Telefon)</span>
-                </>
+              {felder && felder.length > 0 && (
+                <p className="leise klein">
+                  <PenLine size={12} /> {felder.length} Unterschriftsfeld{felder.length === 1 ? "" : "er"}
+                  {mehrere ? ` für ${rollen.length} Personen` : ""}. Rolle ändern: Feld anklicken → rechts „Unterzeichner“. Ausgefüllte Formularfelder werden fest
+                  eingebrannt.
+                </p>
               )}
             </div>
-            <label className="feld">
-              Link gültig
-              <select value={tage} onChange={(e) => setTage(Number(e.target.value))} aria-label="Gültigkeit">
-                {[3, 7, 14, 30, 60].map((t) => (
-                  <option key={t} value={t}>
-                    {t} Tage
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="feld">
-              Nachricht an den Kunden (optional, steht über dem Dokument)
-              <textarea rows={2} value={nachricht} onChange={(e) => setNachricht(e.target.value)} aria-label="Nachricht" />
-            </label>
-            {felder && (
-              <p className={felder.length ? "leise" : "hinweis-box"}>
-                {felder.length ? (
-                  <>
-                    <PenLine size={13} /> {felder.length} Unterschriftsfeld{felder.length === 1 ? "" : "er"} im Dokument (Seite{" "}
-                    {[...new Set(felder.map((f) => f.seite + 1))].join(", ")}). Ausgefüllte Formularfelder werden fest eingebrannt.
-                  </>
-                ) : (
-                  <>
-                    Kein Unterschriftsfeld im Dokument – der Kunde unterschreibt dann nur auf dem Prüfprotokoll. Tipp: <strong>Schützen → Unterschriftsfeld</strong>{" "}
-                    aufziehen, wo unterschrieben werden soll.
-                  </>
-                )}
-              </p>
-            )}
-          </>
+          </div>
         )}
 
         {ergebnis && (
           <div className="sig-ergebnis">
             <p>
-              <CheckCircle2 size={16} className="ok" /> Link erstellt{ergebnis.hubspot.kontakt_id ? " – in HubSpot vermerkt" : ""}. Er ist bereits in der
-              Zwischenablage.
+              <CheckCircle2 size={16} className="ok" /> {ergebnis.personen.length === 1 ? "Link erstellt – er ist bereits in der Zwischenablage." : `${ergebnis.personen.length} persönliche Links erstellt.`}
+              {ergebnis.hubspot.kontakt_id ? " In HubSpot vermerkt." : ""}
+              {ergebnis.reihenfolge ? " Es wird der Reihe nach unterschrieben." : ""}
             </p>
-            <div className="sig-link">
-              <input readOnly value={ergebnis.link ?? ""} aria-label="Link für den Kunden" onFocus={(e) => e.target.select()} />
-              <button type="button" className="umschalter" onClick={() => void kopieren(ergebnis.link ?? "", "Link")}>
-                <Copy size={14} /> Kopieren
-              </button>
-            </div>
-            {mitCode && (
-              <p className="leise">
-                <Lock size={13} /> Zugangscode: <strong>{code}</strong> – bitte separat mitteilen.
-              </p>
-            )}
-            <div className="sig-knoepfe">
-              <button type="button" className="umschalter" onClick={() => void kopieren(emailText(ergebnis, mitCode), "E-Mail-Text")}>
-                <Copy size={14} /> E-Mail-Text kopieren
-              </button>
-              {kontakt?.email && (
-                <button
-                  type="button"
-                  className="umschalter"
-                  onClick={() =>
-                    void extern(
-                      `mailto:${encodeURIComponent(kontakt.email)}?subject=${encodeURIComponent(`Bitte unterschreiben: ${ergebnis.titel}`)}&body=${encodeURIComponent(emailText(ergebnis, mitCode))}`,
-                    )
-                  }
-                >
-                  <Mail size={14} /> E-Mail öffnen
-                </button>
-              )}
-              <button
-                type="button"
-                className="umschalter"
-                onClick={() => {
-                  const nummer = (kontakt?.telefon ?? "").replace(/[^\d+]/g, "").replace(/^00/, "+").replace(/^0/, "+49").replace(/^\+/, "");
-                  void extern(`https://wa.me/${nummer}?text=${encodeURIComponent(emailText(ergebnis, mitCode))}`);
-                }}
-              >
-                <MessageCircle size={14} /> WhatsApp
-              </button>
-              {ergebnis.hubspot_url && (
-                <button type="button" className="umschalter" onClick={() => void extern(ergebnis.hubspot_url!)}>
-                  <ExternalLink size={14} /> In HubSpot öffnen
-                </button>
-              )}
-            </div>
+            {ergebnis.personen.map((p, i) => {
+              const eingabe = person(p.rolle);
+              const farbe = ROLLEN_FARBEN[i % ROLLEN_FARBEN.length];
+              return (
+                <div key={p.nr} className="sig-link-block" style={{ borderLeftColor: farbe }}>
+                  <strong style={{ color: farbe }}>
+                    {ergebnis.personen.length > 1 ? `${p.rolle}: ` : ""}
+                    {p.name || "ohne Namen"}
+                  </strong>
+                  <div className="sig-link">
+                    <input readOnly value={p.link ?? ""} aria-label={`Link für ${p.rolle}`} onFocus={(e) => e.target.select()} />
+                    <button type="button" className="umschalter" onClick={() => void kopieren(p.link ?? "", "Link")}>
+                      <Copy size={14} /> Kopieren
+                    </button>
+                  </div>
+                  {p.mit_code && (
+                    <p className="leise">
+                      <Lock size={13} /> Zugangscode: <strong>{eingabe.code}</strong> – bitte separat mitteilen.
+                    </p>
+                  )}
+                  <div className="sig-knoepfe">
+                    <button type="button" className="umschalter" onClick={() => void kopieren(emailText(ergebnis, p, p.mit_code), "E-Mail-Text")}>
+                      <Copy size={14} /> E-Mail-Text
+                    </button>
+                    {(p.email || eingabe.kontakt?.email) && (
+                      <button
+                        type="button"
+                        className="umschalter"
+                        onClick={() =>
+                          void extern(
+                            `mailto:${encodeURIComponent(p.email || eingabe.kontakt?.email || "")}?subject=${encodeURIComponent(`Bitte unterschreiben: ${ergebnis.titel}`)}&body=${encodeURIComponent(emailText(ergebnis, p, p.mit_code))}`,
+                          )
+                        }
+                      >
+                        <Mail size={14} /> E-Mail öffnen
+                      </button>
+                    )}
+                    <button type="button" className="umschalter" onClick={() => void extern(whatsapp(eingabe.kontakt?.telefon ?? "", emailText(ergebnis, p, p.mit_code)))}>
+                      <MessageCircle size={14} /> WhatsApp
+                    </button>
+                    {p.hubspot_url && (
+                      <button type="button" className="umschalter" onClick={() => void extern(p.hubspot_url!)}>
+                        <ExternalLink size={14} /> HubSpot
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -473,11 +577,12 @@ export function SignaturSendenDialog({ dokId }: { dokId: string }) {
             </>
           ) : (
             <>
+              {bereit && fehlend.length > 0 && <span className="leise klein sig-fehlt">Name fehlt: {fehlend.join(", ")}</span>}
               <button type="button" onClick={zu}>
                 Abbrechen
               </button>
-              <button type="submit" className="primaer" disabled={!bereit || laeuft || !titel.trim()}>
-                {laeuft ? "Wird erstellt …" : "Link erstellen"}
+              <button type="submit" className="primaer" disabled={!bereit || laeuft || !titel.trim() || fehlend.length > 0}>
+                {laeuft ? "Wird erstellt …" : rollen.length > 1 ? "Links erstellen" : "Link erstellen"}
               </button>
             </>
           )}
@@ -496,41 +601,77 @@ const VERLAUF_TEXT: Record<string, string> = {
   gesperrt: "Gesperrt (Fehlversuche)",
   entsperrt: "Wieder freigegeben",
   unterschrieben: "Unterschrieben",
+  abgeschlossen: "Alle Unterschriften vollständig",
   kopie: "Kopie heruntergeladen",
   widerrufen: "Zurückgezogen",
 };
 
+const PERSON_STATUS: Record<SignaturPerson["status"], string> = { offen: "Noch nicht geöffnet", geoeffnet: "Geöffnet", unterschrieben: "Unterschrieben" };
+
 function StatusChip({ status }: { status: SignaturStatusWert }) {
-  const Icon = status === "unterschrieben" ? CheckCircle2 : status === "abgelaufen" || status === "widerrufen" ? XCircle : status === "geoeffnet" ? Eye : Clock;
+  const Icon = status === "unterschrieben" ? CheckCircle2 : status === "abgelaufen" || status === "widerrufen" ? XCircle : status === "offen" ? Clock : Eye;
   return (
     <span className={`sig-status sig-${status}`}>
-      <Icon size={12} /> {STATUS_TEXT[status]}
+      <Icon size={12} /> {STATUS_TEXT[status] ?? status}
     </span>
   );
 }
 
 function AuftragDetail({ id, aktualisieren }: { id: string; aktualisieren: () => void }) {
   const [a, setA] = useState<SignaturAuftrag | null>(null);
-  const laden = () =>
+  useEffect(() => {
     api
       .signaturAuftrag(id)
       .then(setA)
       .catch((e) => melden(fehlerText(e), "fehler"));
-  useEffect(() => {
-    void laden();
   }, [id]);
   if (!a) return <div className="sig-detail leise">Lädt …</div>;
-  const aktion = async (art: "widerrufen" | "entsperren" | "hubspot") => {
+  const aktion = async (art: "widerrufen" | "entsperren" | "hubspot", nr = 0) => {
     try {
-      setA(await api.signaturAktion(a.id, art));
+      setA(await api.signaturAktion(a.id, art, nr));
       aktualisieren();
     } catch (e) {
       melden(fehlerText(e), "fehler");
     }
   };
-  const offen = a.status === "offen" || a.status === "geoeffnet";
+  const offen = a.status === "offen" || a.status === "geoeffnet" || a.status === "teilweise";
+  const namen = Object.fromEntries(a.personen.map((p) => [p.nr, p.unterschrieben_als || p.name || p.rolle]));
   return (
     <div className="sig-detail">
+      <ul className="sig-personen">
+        {a.personen.map((p, i) => (
+          <li key={p.nr} style={{ borderLeftColor: ROLLEN_FARBEN[i % ROLLEN_FARBEN.length] }}>
+            <span className="sig-titel">
+              <strong>
+                {a.personen.length > 1 ? `${a.reihenfolge ? `${p.nr}. ` : ""}${p.rolle}: ` : ""}
+                {p.unterschrieben_als || p.name || "ohne Namen"}
+              </strong>
+              <small>
+                {p.status === "unterschrieben" ? `Unterschrieben ${datum(p.unterschrieben)}` : PERSON_STATUS[p.status]}
+                {p.mit_code ? " · mit Code" : ""}
+                {p.gesperrt ? " · gesperrt" : ""}
+              </small>
+            </span>
+            <span className="sig-knoepfe">
+              {offen && p.status !== "unterschrieben" && (
+                <button type="button" className="umschalter" onClick={() => void kopieren(p.link ?? "", "Link")} aria-label={`Link ${p.rolle} kopieren`}>
+                  <Copy size={14} /> Link
+                </button>
+              )}
+              {offen && p.gesperrt && (
+                <button type="button" className="umschalter" onClick={() => void aktion("entsperren", p.nr)}>
+                  <Unlock size={14} /> Freigeben
+                </button>
+              )}
+              {p.hubspot_url && (
+                <button type="button" className="symbol" onClick={() => void extern(p.hubspot_url!)} title="In HubSpot öffnen" aria-label="In HubSpot öffnen">
+                  <ExternalLink size={14} />
+                </button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
       <div className="sig-knoepfe">
         {a.status === "unterschrieben" && (
           <button
@@ -549,23 +690,8 @@ function AuftragDetail({ id, aktualisieren }: { id: string; aktualisieren: () =>
           </button>
         )}
         {offen && (
-          <button type="button" className="umschalter" onClick={() => void kopieren(a.link ?? "", "Link")}>
-            <Copy size={14} /> Link kopieren
-          </button>
-        )}
-        {offen && a.code_gesperrt && (
-          <button type="button" className="umschalter" onClick={() => void aktion("entsperren")}>
-            <Unlock size={14} /> Wieder freigeben
-          </button>
-        )}
-        {offen && (
           <button type="button" className="umschalter" onClick={() => void aktion("widerrufen")}>
             <Undo2 size={14} /> Zurückziehen
-          </button>
-        )}
-        {a.hubspot_url && (
-          <button type="button" className="umschalter" onClick={() => void extern(a.hubspot_url!)}>
-            <ExternalLink size={14} /> HubSpot
           </button>
         )}
         {a.ablage.hubspot_fehler && (
@@ -579,6 +705,7 @@ function AuftragDetail({ id, aktualisieren }: { id: string; aktualisieren: () =>
         {(a.verlauf ?? []).map((e, i) => (
           <li key={i}>
             <time>{datum(e.zeit)}</time> <span>{VERLAUF_TEXT[e.art] ?? e.art}</span>
+            {e.nr && a.personen.length > 1 ? <small>{namen[e.nr]}</small> : null}
             {e.ip && <small>{e.ip}</small>}
             {e.text && <small>{e.text}</small>}
           </li>
@@ -611,9 +738,10 @@ export function SignaturUebersichtDialog() {
   }, []);
   const q = suche.trim().toLowerCase();
   const sichtbar = (liste ?? []).filter((a) => {
-    if (filter === "offen" && !(a.status === "offen" || a.status === "geoeffnet")) return false;
+    const istOffen = a.status === "offen" || a.status === "geoeffnet" || a.status === "teilweise";
+    if (filter === "offen" && !istOffen) return false;
     if (filter === "unterschrieben" && a.status !== "unterschrieben") return false;
-    return !q || [a.titel, a.empfaenger.name, a.hubspot.kontakt_name, a.erstellt_von].join(" ").toLowerCase().includes(q);
+    return !q || [a.titel, a.hubspot.kontakt_name, a.erstellt_von, ...a.personen.map((p) => `${p.name} ${p.rolle}`)].join(" ").toLowerCase().includes(q);
   });
   return (
     <div className="dialog-hintergrund" onMouseDown={zu}>
@@ -645,31 +773,35 @@ export function SignaturUebersichtDialog() {
         {liste && (
           <ul className="sig-liste">
             {sichtbar.length === 0 && <li className="leise">Noch nichts hier.</li>}
-            {sichtbar.map((a) => (
-              <li key={a.id} className={offen === a.id ? "offen" : ""}>
-                <button type="button" className="sig-eintrag" onClick={() => setOffen(offen === a.id ? null : a.id)} aria-expanded={offen === a.id}>
-                  <span className="sig-titel">
-                    <strong>{a.titel}</strong>
-                    <small>
-                      {a.empfaenger.name || a.hubspot.kontakt_name || "ohne Empfänger"} · {datum(a.erstellt)}
-                      {a.erstellt_von ? ` · ${a.erstellt_von}` : ""}
-                      {a.mit_code ? " · mit Code" : ""}
-                    </small>
-                  </span>
-                  <span className="sig-rechts">
-                    <StatusChip status={a.status} />
-                    <small>
-                      {a.status === "unterschrieben"
-                        ? datum(a.unterzeichnet)
-                        : a.status === "offen" || a.status === "geoeffnet"
-                          ? `bis ${datum(a.gueltig_bis, false)}`
-                          : ""}
-                    </small>
-                  </span>
-                </button>
-                {offen === a.id && <AuftragDetail id={a.id} aktualisieren={() => void laden()} />}
-              </li>
-            ))}
+            {sichtbar.map((a) => {
+              const fertig = a.personen.filter((p) => p.status === "unterschrieben").length;
+              return (
+                <li key={a.id} className={offen === a.id ? "offen" : ""}>
+                  <button type="button" className="sig-eintrag" onClick={() => setOffen(offen === a.id ? null : a.id)} aria-expanded={offen === a.id}>
+                    <span className="sig-titel">
+                      <strong>{a.titel}</strong>
+                      <small>
+                        {a.personen.map((p) => p.name || p.rolle).join(", ") || "ohne Empfänger"} · {datum(a.erstellt)}
+                        {a.erstellt_von ? ` · ${a.erstellt_von}` : ""}
+                      </small>
+                    </span>
+                    <span className="sig-rechts">
+                      <StatusChip status={a.status} />
+                      <small>
+                        {a.status === "unterschrieben"
+                          ? datum(a.fertig)
+                          : a.personen.length > 1 && a.status !== "abgelaufen" && a.status !== "widerrufen"
+                            ? `${fertig} von ${a.personen.length} · bis ${datum(a.gueltig_bis, false)}`
+                            : a.status === "offen" || a.status === "geoeffnet"
+                              ? `bis ${datum(a.gueltig_bis, false)}`
+                              : ""}
+                      </small>
+                    </span>
+                  </button>
+                  {offen === a.id && <AuftragDetail id={a.id} aktualisieren={() => void laden()} />}
+                </li>
+              );
+            })}
           </ul>
         )}
         <div className="dialog-knoepfe">

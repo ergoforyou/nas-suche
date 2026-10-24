@@ -173,6 +173,10 @@ def feld_aendern(doc: pymupdf.Document, seite_nr: int, xref: int, d: dict) -> No
         if r.width < 4 or r.height < 4:
             raise DokumentFehler("Das Feld ist zu klein.")
         w.rect = r
+    if "rolle" in d and typ == "unterschrift":
+        # Rolle = wer hier unterschreibt; gleiche Rolle → dieselbe Person
+        rolle = " ".join(str(d["rolle"] or "").split())[:40] or "Kunde"
+        w.field_name = _freier_name(doc, f"Unterschrift {rolle}", ausser=xref)
     if "name" in d:
         name = str(d["name"] or "").strip()
         if not name:

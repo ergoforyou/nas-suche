@@ -268,7 +268,30 @@ export interface HubSpotKontakt {
   telefon: string;
 }
 
-export type SignaturStatusWert = "offen" | "geoeffnet" | "unterschrieben" | "abgelaufen" | "widerrufen";
+export type SignaturStatusWert = "offen" | "geoeffnet" | "teilweise" | "unterschrieben" | "abgelaufen" | "widerrufen";
+
+export interface SignaturPerson {
+  nr: number;
+  rolle: string;
+  name: string;
+  email: string;
+  status: "offen" | "geoeffnet" | "unterschrieben";
+  unterschrieben: string;
+  unterschrieben_als: string;
+  mit_code: boolean;
+  gesperrt: boolean;
+  // nur in der Einzelansicht
+  link?: string;
+  hubspot_url?: string;
+}
+
+/** Unterschriftsfeld im Dokument (für Vorschau und Rollen) */
+export interface SignaturFeld {
+  seite: number;
+  name: string;
+  rolle: string;
+  rechteck: Rechteck;
+}
 
 export interface SignaturAuftrag {
   id: string;
@@ -277,21 +300,28 @@ export interface SignaturAuftrag {
   erstellt: string;
   erstellt_von: string;
   gueltig_bis: string;
-  empfaenger: { name: string; email: string };
+  reihenfolge: boolean;
   hubspot: { kontakt_id: string; deal_id: string; kontakt_name: string };
-  unterzeichnet: string;
-  unterzeichner: string;
+  personen: SignaturPerson[];
+  fertig: string;
   letzte_aktivitaet: string;
-  mit_code: boolean;
   ablage: { hubspot_gesendet: string; hubspot_fertig: string; hubspot_fehler: string; datei: string };
   // nur in der Einzelansicht
-  link?: string;
   seiten?: number;
-  felder?: { id: string; seite: number | null; art: string }[];
-  verlauf?: { zeit: string; art: string; ip: string; geraet: string; text: string }[];
-  code_gesperrt?: boolean;
+  felder?: { id: string; seite: number | null; art: string; person: number }[];
+  verlauf?: { zeit: string; art: string; ip: string; geraet: string; text: string; nr?: number }[];
   hubspot_url?: string;
   sha_ergebnis?: string;
+}
+
+/** Eine unterzeichnende Person im Senden-Dialog */
+export interface SignaturEmpfaenger {
+  rolle: string;
+  name: string;
+  email: string;
+  telefon: string;
+  code: string;
+  hubspot_kontakt_id: string;
 }
 
 export interface UpdateInfo {

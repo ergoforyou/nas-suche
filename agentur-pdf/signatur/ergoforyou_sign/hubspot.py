@@ -107,11 +107,12 @@ class HubSpot:
         )
         return str(ergebnis["id"])
 
-    def notiz(self, text_html: str, kontakt_id: str = "", deal_id: str = "", anhang: list[str] | None = None) -> str:
-        verknuepfungen = []
-        for ziel, typ in ((kontakt_id, NOTIZ_KONTAKT), (deal_id, NOTIZ_DEAL)):
-            if ziel:
-                verknuepfungen.append({"to": {"id": ziel}, "types": [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": typ}]})
+    def notiz(self, text_html: str, kontakte: list[str] | str = (), deal_id: str = "", anhang: list[str] | None = None) -> str:
+        """Notiz an einen oder mehrere Kontakte und optional einen Deal hängen."""
+        if isinstance(kontakte, str):
+            kontakte = [kontakte] if kontakte else []
+        ziele = [(k, NOTIZ_KONTAKT) for k in kontakte if k] + ([(deal_id, NOTIZ_DEAL)] if deal_id else [])
+        verknuepfungen = [{"to": {"id": ziel}, "types": [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": typ}]} for ziel, typ in ziele]
         eigenschaften = {"hs_timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"), "hs_note_body": text_html}
         if anhang:
             eigenschaften["hs_attachment_ids"] = ";".join(anhang)

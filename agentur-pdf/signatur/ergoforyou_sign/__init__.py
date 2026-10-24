@@ -8,5 +8,5 @@ Läuft als Container auf dem Synology-NAS (DS1517+). Zwei Ports:
   Dieser Port wird am Router NICHT freigegeben.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 PRODUKT = "Ergoforyou Sign"
