@@ -48,6 +48,9 @@ jobs:
           mkdir -p paket/ergoforyou-sign
           cp -r Dockerfile docker-compose.yml .dockerignore requirements.txt EINRICHTUNG.md ergoforyou_sign paket/ergoforyou-sign/
           find paket -name "__pycache__" -prune -exec rm -rf {} +
+          # Synology legt Bind-Mount-Ordner nicht selbst an
+          mkdir -p paket/ergoforyou-sign/daten
+          echo "Hier legt Ergoforyou Sign Aufträge, Einstellungen und unterschriebene PDFs ab." > paket/ergoforyou-sign/daten/LIESMICH.txt
           cd paket/ergoforyou-sign && zip -r ../../Ergoforyou-Sign-NAS.zip .
 
       - uses: actions/upload-artifact@v4

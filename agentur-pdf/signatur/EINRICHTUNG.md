@@ -19,7 +19,8 @@ Dabei wird der gemeinsame Ordner `docker` angelegt.
 
 ## 2. Dateien auf das NAS kopieren
 1. **File Station** → Ordner `docker` → **Erstellen → Ordner** → `ergoforyou-sign`.
-2. Den Inhalt von `Ergoforyou-Sign-NAS.zip` dort hineinladen. Danach liegen in `docker/ergoforyou-sign` die Dateien `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `EINRICHTUNG.md` und der Ordner `ergoforyou_sign`.
+2. Den Inhalt von `Ergoforyou-Sign-NAS.zip` dort hineinladen. Danach liegen in `docker/ergoforyou-sign` die Dateien `Dockerfile`, `docker-compose.yml`, `requirements.txt`, `EINRICHTUNG.md` und die Ordner `ergoforyou_sign` und `daten`.
+3. **Wichtig:** Der Ordner `daten` muss existieren, denn Synology legt ihn nicht selbst an. Fehlt er, legt ihr ihn in File Station an (Erstellen → Ordner erstellen → `daten`). Sonst meldet der Start „Bind mount failed … daten does not exist“.
 
 ## 3. Container starten
 1. **Container Manager** → **Projekt** → **Erstellen**.
@@ -104,6 +105,7 @@ Den Ordner `docker/ergoforyou-sign/daten` in **Hyper Backup** aufnehmen. Darin l
 - der Ordner `unterschrieben` mit den fertigen PDFs.
 
 ## Wenn etwas nicht klappt
+- **„Bind mount failed … /daten does not exist“:** Den Ordner `daten` in `docker/ergoforyou-sign` anlegen, dann Projekt → Aktion → Starten.
 - **Einrichtungsseite lädt nicht:** Läuft das Projekt im Container Manager? Unter Protokoll steht „Kundenseite auf Port 8480, Einrichtung auf Port 8481“.
 - **Kunde kann den Link nicht öffnen:** Portfreigabe 443, Reverse-Proxy-Eintrag und Zertifikat prüfen. Testen mit `…/gesundheit` am Handy ohne WLAN.
 - **HubSpot-Fehler in der Übersicht:** Token abgelaufen oder ein Bereich fehlt. Dann neues Token eintragen und in der Übersicht auf „Erneut an HubSpot“ klicken.
