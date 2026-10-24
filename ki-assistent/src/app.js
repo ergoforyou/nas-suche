@@ -8322,14 +8322,15 @@ async function semRun() {
   if (semRunning || !semOn()) return;
   // Mobilfunk: das Modell (einmalig ~120 MB) erst im WLAN laden
   if (!state.settings.semLoaded && navigator.connection?.type === 'cellular') return semKick(10 * 60e3);
-  if (state.busy || stt.listening) return semKick(15e3);
+  // gesperrt oder im Hintergrund: nichts Großes laden oder rechnen (Android beendet sonst ggf. die App)
+  if (state.busy || stt.listening || state.locked || document.hidden) return semKick(15e3);
   semRunning = true;
   try {
     await sem.load();
     let left = sem.sync(semDocs());
     const t0 = Date.now();
     while (left > 0 && semOn()) {
-      if (state.busy || stt.listening) return semKick(15e3);
+      if (state.busy || stt.listening || state.locked || document.hidden) return semKick(15e3);
       const n = await sem.pump();
       if (!n) break;
       if (!state.settings.semLoaded) ((state.settings.semLoaded = true), save());
@@ -9123,8 +9124,10 @@ async function startCheck() {
   return state.selfTest;
 }
 /** Beim allerersten Start: Ersteinrichtung; wer die App schon nutzt, bekommt sie nicht. */
+let onboardAfterUnlock = false;
 function maybeOnboard() {
   if (state.settings.onboarded) return applySimple();
+  if (state.locked) return void (onboardAfterUnlock = true);
   const used = Object.values(state.history ?? {}).some((h) => h?.length) || state.personas.length > 1;
   if (used) {
     state.settings.onboarded = 'vorher';
@@ -11299,24 +11302,38 @@ setInterval(() => {
 }, 2000);
 // läuft gerade eine Abfrage, nicht noch eine starten (das Android-Fenster pausiert die App kurz)
 let unlockAsking = false;
+let unlockAskedAt = 0;
 let unlockEndedAt = 0;
 function askUnlock({ auto = false } = {}) {
-  if (!state.locked || unlockAsking) return;
+  if (!state.locked) return;
+  // läuft schon eine Abfrage: nur warten, solange sie frisch ist. Kam keine Antwort (Abfrage von Android verworfen),
+  // fragt der Knopf „Entsperren“ nach ein paar Sekunden neu – er darf nie dauerhaft tot sein
+  if (unlockAsking && (auto || Date.now() - unlockAskedAt < 4000) && Date.now() - unlockAskedAt < 30e3) return;
+  if (unlockAsking) logEv('SPERRE', 'keine Antwort auf die letzte Abfrage – frage neu');
   // gerade abgebrochen: nach der Rückkehr nicht sofort wieder fragen (sonst Schleife) – Knopf „Entsperren“ geht immer
   if (auto && Date.now() - unlockEndedAt < 2000) return;
   const d = dev();
   if (!d?.unlock || !d.lockAvailable?.()) return window.__kiUnlocked(true, ''); // keine Bildschirmsperre am Handy
   unlockAsking = true;
+  unlockAskedAt = Date.now();
+  logEv('SPERRE', auto ? 'Abfrage (automatisch)' : 'Abfrage (Knopf)');
+  $('lockMsg').textContent = '';
   d.unlock('KI-Assistent entsperren');
 }
 window.__kiUnlocked = (ok, msg) => {
   unlockAsking = false;
   unlockEndedAt = Date.now();
+  if (!ok) logEv('SPERRE', `nicht entsperrt${msg ? ` (${msg})` : ''}`);
   if (ok) {
     if (!state.locked) return;
     state.locked = false;
     $('lockScreen').hidden = true;
     logEv('SPERRE', 'entsperrt');
+    if (onboardAfterUnlock) {
+      onboardAfterUnlock = false;
+      setTimeout(() => maybeOnboard(), 800);
+    }
+    semKick(60e3); // Suche nach Bedeutung erst, wenn die App eine Weile entsperrt läuft
     dev()?.setLocked?.(false);
     if (liveBeforeLock) setHandsFree(true);
     liveBeforeLock = false;

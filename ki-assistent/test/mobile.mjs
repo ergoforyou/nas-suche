@@ -2036,6 +2036,41 @@ check(
   'App-Sperre: nach Rückkehr gesperrt, Fingerabdruck/PIN entsperrt, Fehlschlag bleibt gesperrt, Verzögerung wirkt; Bildschirm aus sperrt sofort und pausiert Zuhören/Vorlesen (mit Auto/Headset läuft das Gespräch weiter)',
   JSON.stringify(lockRes),
 );
+// App-Sperre: verwirft Android die Abfrage (keine Antwort), darf „Entsperren“ nicht dauerhaft tot sein
+const lockLost = await page.evaluate(async () => {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let asks = 0;
+  let answerNext = false;
+  window.KIDevice = {
+    lockAvailable: () => true,
+    // erste Abfrage verschwindet ohne Antwort, die nächste klappt
+    unlock: () => { asks++; if (answerNext) setTimeout(() => window.__kiUnlocked(true, ''), 50); },
+    setSecure() {},
+    setLocked() {},
+  };
+  localStorage.setItem('ki-sperre', JSON.stringify({ on: true, delay: 0, talk: false }));
+  const ls = document.getElementById('lockScreen');
+  const realNow = Date.now;
+  window.__kiPause(Date.now());
+  window.__kiResume();
+  await wait(100);
+  const before = asks;
+  document.getElementById('lockBtn').click(); // Abfrage ohne Antwort
+  await wait(100);
+  const lockedNoAnswer = !ls.hidden && asks === before + 1;
+  document.getElementById('lockBtn').click(); // gleich danach: läuft noch – keine zweite Abfrage
+  const noDouble = asks === before + 1;
+  Date.now = () => realNow() + 5000; // ein paar Sekunden später
+  answerNext = true;
+  document.getElementById('lockBtn').click();
+  Date.now = realNow;
+  await wait(150);
+  const out = { lockedNoAnswer, noDouble, again: asks === before + 2, unlocked: ls.hidden };
+  localStorage.setItem('ki-sperre', JSON.stringify({ on: false }));
+  delete window.KIDevice;
+  return out;
+});
+check(lockLost.lockedNoAnswer && lockLost.noDouble && lockLost.again && lockLost.unlocked, 'App-Sperre: bleibt die Antwort von Android aus, fragt „Entsperren“ neu (Knopf nie dauerhaft tot)', JSON.stringify(lockLost));
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
 {
   const { default: qrcodeGen } = await import('qrcode-generator');

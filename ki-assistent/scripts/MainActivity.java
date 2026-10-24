@@ -118,9 +118,22 @@ public class MainActivity extends BridgeActivity {
         runJs("window.__kiUnlocked && window.__kiUnlocked(" + ok + "," + JSONObject.quote(msg == null ? "" : msg) + ")");
     }
 
+    // laufende Abfrage (eine neue ersetzt sie) und eine, die warten muss, bis die App im Vordergrund ist
+    private android.os.CancellationSignal unlockCancel;
+    private String pendingUnlock;
+
     void startUnlock(String title) {
+        // Android zeigt die Abfrage nur, wenn die App vorne ist – sonst kommt nie eine Antwort und der Knopf hängt
+        if (!resumed) {
+            pendingUnlock = title;
+            return;
+        }
+        pendingUnlock = null;
         try {
             if (Build.VERSION.SDK_INT >= 29) {
+                if (unlockCancel != null) unlockCancel.cancel();
+                final android.os.CancellationSignal sig = new android.os.CancellationSignal();
+                unlockCancel = sig;
                 android.hardware.biometrics.BiometricPrompt.Builder b = new android.hardware.biometrics.BiometricPrompt.Builder(this)
                     .setTitle(title)
                     .setSubtitle("Fingerabdruck, Gesicht oder Handy-PIN");
@@ -130,14 +143,18 @@ public class MainActivity extends BridgeActivity {
                 } else {
                     b.setDeviceCredentialAllowed(true);
                 }
-                b.build().authenticate(new android.os.CancellationSignal(), getMainExecutor(), new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                b.build().authenticate(sig, getMainExecutor(), new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
                     @Override
                     public void onAuthenticationSucceeded(android.hardware.biometrics.BiometricPrompt.AuthenticationResult r) {
+                        if (unlockCancel == sig) unlockCancel = null;
                         unlockDone(true, "");
                     }
 
                     @Override
                     public void onAuthenticationError(int code, CharSequence msg) {
+                        // von einer neueren Abfrage abgelöst: nicht als Fehlschlag melden
+                        if (unlockCancel != sig) return;
+                        unlockCancel = null;
                         unlockDone(false, String.valueOf(msg));
                     }
                 });
@@ -2024,6 +2041,11 @@ public class MainActivity extends BridgeActivity {
         runJs("window.__kiResume && window.__kiResume()");
         applyParams();
         current = new WeakReference<>(this);
+        // Entsperr-Abfrage, die kam, als die App nicht vorne war: jetzt zeigen
+        if (pendingUnlock != null) {
+            final String t = pendingUnlock;
+            bubbleHandler.postDelayed(() -> { if (resumed && pendingUnlock == t) startUnlock(t); }, 300);
+        }
     }
 
     @Override
