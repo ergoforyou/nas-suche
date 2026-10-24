@@ -8692,6 +8692,22 @@ async function handleIntents() {
   for (const ev of list) {
     window.__app.lastIntent = ev.action;
     logEv('EREIGNIS', ev.action);
+    if (ev.action === 'dictate') {
+      // Widget / Kachel / Verknüpfung „Diktat“
+      $('drawer').hidden = true;
+      startDictation();
+      continue;
+    }
+    if (ev.action === 'offen') {
+      // Widget / Verknüpfung „Was ist offen?“: die Figur fasst die offenen Punkte zusammen
+      $('drawer').hidden = true;
+      if (!PRIV) {
+        status('Offene Punkte gibt es im Bereich 🏠 Privat.');
+        continue;
+      }
+      if (!state.busy) send('Was ist bei mir gerade noch offen?');
+      continue;
+    }
     if (ev.action === 'note') {
       if (!PRIV) {
         status('Notizen gibt es im Bereich 🏠 Privat.');
@@ -8774,7 +8790,23 @@ async function receiveShare(ev) {
   }
   if (tooBig.length) status(`Zu groß (höchstens 30 MB): ${tooBig.join(', ')}`);
   else if (files.length || text) status('Geteilt – schreib oder sag deine Frage dazu und sende ab.');
+  // Privat: Geteiltes gleich ins Second Brain (die Figur fasst es zusammen und legt es als Notiz ab)
+  if (PRIV && (text || files.length)) offerShareNote(text, files.length);
   input.focus();
+}
+function offerShareNote(text, nFiles) {
+  const div = addBubble('note', `📥 Geteilt${nFiles ? ` (${nFiles} Datei${nFiles > 1 ? 'en' : ''})` : ''}. `);
+  const b = document.createElement('button');
+  b.textContent = '🧠 Als Notiz ablegen';
+  b.title = 'Die Figur fasst das Geteilte zusammen und legt es im Second Brain ab';
+  b.onclick = () => {
+    b.disabled = true;
+    const q = input.value.trim();
+    input.value = '';
+    autoGrow();
+    send(`Fass das Geteilte kurz zusammen und leg es als Notiz in meinem Second Brain ab (passender Titel, Ordner, Stichworte; Links behalten). Sag mir danach in einem Satz, worum es geht.\n\n${q || text}`);
+  };
+  div.append(b);
 }
 
 $('phWidget').onclick = () => {
@@ -10707,6 +10739,8 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  handleIntents: () => handleIntents(),
+  receiveShare: (ev) => receiveShare(ev),
   captureTop3,
   tidyOwnBrain,
   workOnVorhaben,

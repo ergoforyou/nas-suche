@@ -119,14 +119,15 @@ const APP_TOOLS = [
       'starten, Karte, Webseite, Wecker oder Timer in der Uhr-App, Musik steuern (play/pause/weiter/zurück), ' +
       'Lautstärke, Taschenlampe, Einstellungen (WLAN, Bluetooth, Ton, Akku …), Kamera, Text an die Claude-App übergeben ' +
       '(an_claude, wie am PC), teilen. Anruf (anrufen), SMS und WhatsApp werden nur VORBEREITET – gewählt bzw. gesendet ' +
-      'wird erst, wenn dein Gegenüber selbst tippt; sag das in einem kurzen Satz. Nummern nur, wenn genannt (kein ' +
-      'Adressbuch). Für eigene Erinnerungen weiter erinnerung_setzen nehmen. Sprich nicht über das Werkzeug.',
+      'wird erst, wenn dein Gegenüber selbst tippt; sag das in einem kurzen Satz. Statt einer Nummer geht auch ein Name ' +
+      '(kontakt) – die Nummer kommt dann aus dem Adressbuch; passen mehrere, frag kurz nach. Für eigene Erinnerungen ' +
+      'weiter erinnerung_setzen nehmen. Sprich nicht über das Werkzeug.',
     input_schema: {
       type: 'object',
       properties: {
         aktion: {
           type: 'string',
-          enum: ['app_oeffnen', 'apps', 'youtube', 'spotify', 'navigation', 'karte', 'webseite', 'wecker', 'timer', 'musik', 'lautstaerke', 'taschenlampe', 'einstellungen', 'kamera', 'an_claude', 'teilen', 'anrufen', 'sms', 'whatsapp'],
+          enum: ['app_oeffnen', 'apps', 'youtube', 'spotify', 'kontakt_suchen', 'navigation', 'karte', 'webseite', 'wecker', 'timer', 'musik', 'lautstaerke', 'taschenlampe', 'einstellungen', 'kamera', 'an_claude', 'teilen', 'anrufen', 'sms', 'whatsapp'],
         },
         app: { type: 'string', description: 'app_oeffnen: Name der App' },
         suche: { type: 'string', description: 'youtube/spotify: wonach gesucht werden soll (z. B. „Entspannungsmusik zum Arbeiten“)' },
@@ -135,6 +136,7 @@ const APP_TOOLS = [
         modus: { type: 'string', description: 'navigation: auto, zu_fuss, rad' },
         url: { type: 'string', description: 'webseite' },
         nummer: { type: 'string', description: 'anrufen/sms/whatsapp: Telefonnummer (falls genannt)' },
+        kontakt: { type: 'string', description: 'anrufen/sms/whatsapp/kontakt_suchen: Name aus dem Adressbuch (statt Nummer)' },
         text: { type: 'string', description: 'an_claude/teilen/sms/whatsapp: der Text; wecker/timer: Beschriftung' },
         stunde: { type: 'integer', description: 'wecker: Stunde 0–23' },
         minute: { type: 'integer', description: 'wecker: Minute 0–59' },

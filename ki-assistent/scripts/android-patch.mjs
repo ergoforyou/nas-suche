@@ -66,8 +66,14 @@ const RESOURCES = {
         android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp"
         android:text="@string/ki_sc_live_short" android:textColor="#9FC3FF" android:textSize="15sp" />
     <TextView android:id="@+id/ki_widget_note" android:layout_width="wrap_content" android:layout_height="match_parent"
-        android:gravity="center" android:paddingStart="8dp" android:paddingEnd="12dp"
+        android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp"
         android:text="@string/ki_sc_note_short" android:textColor="#FFD27F" android:textSize="15sp" />
+    <TextView android:id="@+id/ki_widget_dict" android:layout_width="wrap_content" android:layout_height="match_parent"
+        android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp"
+        android:text="@string/ki_sc_dict_short" android:textColor="#FF9F9F" android:textSize="15sp" />
+    <TextView android:id="@+id/ki_widget_open" android:layout_width="wrap_content" android:layout_height="match_parent"
+        android:gravity="center" android:paddingStart="8dp" android:paddingEnd="12dp"
+        android:text="@string/ki_sc_open_short" android:textColor="#B6F0B6" android:textSize="15sp" />
 </LinearLayout>
 `,
   'xml/ki_widget_info.xml': `<?xml version="1.0" encoding="utf-8"?>
@@ -77,7 +83,7 @@ const RESOURCES = {
     android:description="@string/ki_widget" />
 `,
   'xml/ki_shortcuts.xml': `<?xml version="1.0" encoding="utf-8"?>
-<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">${shortcut('sprechen', 'ki_sc_talk', 'listen')}${shortcut('live', 'ki_sc_live', 'live')}${shortcut('notiz', 'ki_sc_note', 'note')}
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">${shortcut('sprechen', 'ki_sc_talk', 'listen')}${shortcut('live', 'ki_sc_live', 'live')}${shortcut('notiz', 'ki_sc_note', 'note')}${shortcut('diktat', 'ki_sc_dict', 'dictate')}${shortcut('offen', 'ki_sc_open', 'offen')}
 </shortcuts>
 `,
   'values/ki_strings.xml': `<?xml version="1.0" encoding="utf-8"?>
@@ -89,6 +95,11 @@ const RESOURCES = {
     <string name="ki_sc_live_short">📞 Live</string>
     <string name="ki_sc_note_short">📝</string>
     <string name="ki_sc_note">Notiz</string>
+    <string name="ki_sc_dict">Diktat</string>
+    <string name="ki_sc_dict_short">✍ Diktat</string>
+    <string name="ki_sc_open">Was ist offen?</string>
+    <string name="ki_sc_open_short">⏳</string>
+    <string name="ki_tile_dict">KI Diktat</string>
     <string name="ki_notify">KI-Assistent: Nachrichten vorlesen</string>
 </resources>
 `,
@@ -120,6 +131,8 @@ const PERMS = [
   'android.permission.SYSTEM_ALERT_WINDOW',
   // Privat: Wecker/Timer auf Zuruf (Uhr-App des Handys)
   'com.android.alarm.permission.SET_ALARM',
+  // Privat: „Ruf Anna an“ – Nummer im Adressbuch nachschlagen (Android fragt beim ersten Mal)
+  'android.permission.READ_CONTACTS',
   'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   // Privat: Bildschirm fragen (ein Bildschirmfoto nach Android-Freigabe)
   'android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION',
@@ -183,6 +196,12 @@ if (!xml.includes('KIConversationService')) {
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <service android:name=".KITileDiktat" android:exported="true" android:label="@string/ki_tile_dict"
+            android:icon="@drawable/ic_ki_mic" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
         <service android:name=".KITile" android:exported="true" android:label="@string/ki_tile"
             android:icon="@drawable/ic_ki_mic" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>

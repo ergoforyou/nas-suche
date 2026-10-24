@@ -2964,6 +2964,38 @@ b74.tidy = await page.evaluate(async () => {
 check(b74.top3, 'Tagesbegleiter: drei wichtigste Dinge als offene Punkte für heute', JSON.stringify(b74));
 check(b74.vorhaben && b74.work && b74.answer, 'Vorhaben: Schritt mit Recherche erledigt, Ergebnis notiert, Neuigkeit als Thema, Rückfrage beantwortet', JSON.stringify(b74));
 check(b74.tidy.merged && b74.tidy.changed >= 1, 'Notizbuch selbst gepflegt: Doppeltes zusammengeführt', JSON.stringify(b74.tidy));
+// Beta 75 (Privat): Widget/Kachel „Diktat“ und „Was ist offen?“, Geteiltes als Notiz, Kontakte per Name
+const b75 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const had = window.KIDevice;
+  let intents = [];
+  const calls = [];
+  window.KIDevice = { ...(had ?? {}), takeIntents: () => JSON.stringify(intents.splice(0)), takeReminderActions: () => '[]', deviceAction: (j) => (calls.push(JSON.parse(j)), JSON.stringify({ ok: true, erledigt: 'Nummer eingetippt' })) };
+  // Diktat über das Widget
+  const keepListen = app.stt.listen;
+  app.stt.listen = () => new Promise(() => {});
+  intents = [{ action: 'dictate' }];
+  await app.handleIntents();
+  await new Promise((r) => setTimeout(r, 50));
+  out.dictate = !!app.dictation();
+  app.stt.listen = async () => null;
+  app.stopDictation();
+  await new Promise((r) => setTimeout(r, 300));
+  app.stt.listen = keepListen;
+  // Geteiltes: Knopf „Als Notiz ablegen“
+  await app.receiveShare({ text: 'https://example.com/artikel Spannender Artikel über Gartenteiche' });
+  const btn = [...document.querySelectorAll('.msg.note button')].find((b) => /Als Notiz ablegen/.test(b.textContent));
+  out.share = !!btn;
+  document.getElementById('input').value = '';
+  // Kontakt per Name (Android schlägt die Nummer nach)
+  await app.runAppTool('handy_steuern', { aktion: 'anrufen', kontakt: 'Anna' });
+  out.contact = calls.at(-1)?.kontakt === 'Anna' && calls.at(-1)?.aktion === 'anrufen';
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  return out;
+});
+check(b75.dictate && b75.share && b75.contact, 'Widget „Diktat“, Geteiltes als Notiz anbieten, Anruf per Name aus dem Adressbuch', JSON.stringify(b75));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

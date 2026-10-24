@@ -25,6 +25,8 @@ public class KIWidget extends AppWidgetProvider {
             v.setOnClickPendingIntent(R.id.ki_widget_talk, action(c, "listen", 30));
             v.setOnClickPendingIntent(R.id.ki_widget_live, action(c, "live", 31));
             v.setOnClickPendingIntent(R.id.ki_widget_note, action(c, "note", 32));
+            v.setOnClickPendingIntent(R.id.ki_widget_dict, action(c, "dictate", 33));
+            v.setOnClickPendingIntent(R.id.ki_widget_open, action(c, "offen", 34));
             m.updateAppWidget(id, v);
         }
     }

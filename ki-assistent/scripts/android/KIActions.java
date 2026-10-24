@@ -54,17 +54,19 @@ public class KIActions {
             }
             case "karte":
                 return start(a, new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(in.optString("ziel")))), "Karte geöffnet");
+            case "kontakt_suchen":
+                return findContacts(a, in.optString("kontakt"));
             case "anrufen": {
-                String nr = in.optString("nummer").replaceAll("[^0-9+*#]", "");
+                String nr = numberFor(a, in).replaceAll("[^0-9+*#]", "");
                 return start(a, new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(nr))), nr.isEmpty() ? "Telefon geöffnet" : "Nummer eingetippt – zum Anrufen auf den Hörer tippen");
             }
             case "sms": {
-                String nr = in.optString("nummer").replaceAll("[^0-9+]", "");
+                String nr = numberFor(a, in).replaceAll("[^0-9+]", "");
                 Intent sms = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + nr)).putExtra("sms_body", in.optString("text"));
                 return start(a, sms, "SMS vorbereitet – zum Senden auf Senden tippen");
             }
             case "whatsapp": {
-                String nr = in.optString("nummer").replaceAll("[^0-9]", "");
+                String nr = numberFor(a, in).replaceAll("[^0-9]", "");
                 String text = in.optString("text");
                 Intent wa = nr.isEmpty()
                     ? new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text).setPackage("com.whatsapp")
@@ -257,5 +259,72 @@ public class KIActions {
         if (b.contains("nicht storen") || b.contains("nicht stoeren")) return Settings.ACTION_ZEN_MODE_PRIORITY_SETTINGS;
         if (b.contains("mobile daten") || b.contains("datennutzung")) return Settings.ACTION_DATA_ROAMING_SETTINGS;
         return Settings.ACTION_SETTINGS;
+    }
+
+    // ---- Adressbuch („Ruf Anna an“): nur lesen, nur auf Zuruf; beim ersten Mal fragt Android um Erlaubnis
+    static boolean contactsAllowed(Activity a) {
+        if (a.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) return true;
+        a.runOnUiThread(() -> a.requestPermissions(new String[] { android.Manifest.permission.READ_CONTACTS }, 4721));
+        return false;
+    }
+
+    /** Kontakte mit diesem Namen (höchstens 5) mit ihren Telefonnummern. */
+    static JSONArray contactsNamed(Activity a, String name) throws Exception {
+        JSONArray out = new JSONArray();
+        String q = name == null ? "" : name.trim();
+        if (q.isEmpty()) return out;
+        android.database.Cursor c = a.getContentResolver().query(
+            android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            new String[] { android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER, android.provider.ContactsContract.CommonDataKinds.Phone.TYPE },
+            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?", new String[] { "%" + q + "%" },
+            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+        if (c == null) return out;
+        java.util.LinkedHashMap<String, JSONObject> byName = new java.util.LinkedHashMap<>();
+        try {
+            while (c.moveToNext() && byName.size() <= 5) {
+                String n = c.getString(0);
+                String nr = c.getString(1);
+                int type = c.getInt(2);
+                JSONObject o = byName.get(n);
+                if (o == null) {
+                    o = new JSONObject().put("name", n).put("nummern", new JSONArray());
+                    byName.put(n, o);
+                }
+                String kind = type == android.provider.ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE ? "mobil" : type == android.provider.ContactsContract.CommonDataKinds.Phone.TYPE_HOME ? "privat" : type == android.provider.ContactsContract.CommonDataKinds.Phone.TYPE_WORK ? "arbeit" : "andere";
+                o.getJSONArray("nummern").put(new JSONObject().put("nummer", nr).put("art", kind));
+            }
+        } finally {
+            c.close();
+        }
+        for (JSONObject o : byName.values()) out.put(o);
+        return out;
+    }
+
+    static JSONObject findContacts(Activity a, String name) throws Exception {
+        if (!contactsAllowed(a)) throw new Exception("Bitte den Zugriff aufs Adressbuch erlauben (Android fragt gerade) und dann noch einmal sagen");
+        JSONArray l = contactsNamed(a, name);
+        if (l.length() == 0) throw new Exception("Kein Kontakt „" + name + "“ im Adressbuch");
+        return new JSONObject().put("kontakte", l);
+    }
+
+    /** Nummer: genannt, sonst aus dem Adressbuch (eindeutiger Kontakt, Mobilnummer bevorzugt). */
+    static String numberFor(Activity a, JSONObject in) throws Exception {
+        String nr = in.optString("nummer");
+        String who = in.optString("kontakt");
+        if (!nr.trim().isEmpty() || who.trim().isEmpty()) return nr;
+        if (!contactsAllowed(a)) throw new Exception("Bitte den Zugriff aufs Adressbuch erlauben (Android fragt gerade) und dann noch einmal sagen");
+        JSONArray l = contactsNamed(a, who);
+        if (l.length() == 0) throw new Exception("Kein Kontakt „" + who + "“ im Adressbuch – bitte die Nummer nennen");
+        JSONObject pick = null;
+        for (int i = 0; i < l.length(); i++) if (l.getJSONObject(i).getString("name").equalsIgnoreCase(who.trim())) pick = l.getJSONObject(i);
+        if (pick == null && l.length() == 1) pick = l.getJSONObject(0);
+        if (pick == null) {
+            StringBuilder names = new StringBuilder();
+            for (int i = 0; i < l.length(); i++) names.append(i > 0 ? ", " : "").append(l.getJSONObject(i).getString("name"));
+            throw new Exception("Mehrere Kontakte passen: " + names + " – welcher?");
+        }
+        JSONArray nums = pick.getJSONArray("nummern");
+        for (int i = 0; i < nums.length(); i++) if ("mobil".equals(nums.getJSONObject(i).getString("art"))) return nums.getJSONObject(i).getString("nummer");
+        return nums.getJSONObject(0).getString("nummer");
     }
 }
