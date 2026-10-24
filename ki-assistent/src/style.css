@@ -597,3 +597,9 @@ body.dictating #input { outline: 2px solid var(--danger); }
 /* Sperrbildschirm: was beim Entsperren passiert (nur Technik, keine Inhalte) */
 .lock-details { max-width: min(520px, 92vw); font-size: 12px; opacity: 0.8; }
 .lock-details pre { white-space: pre-wrap; text-align: left; margin: 6px 0 0; max-height: 30vh; overflow: auto; }
+
+/* Handy: Textfeld in eigener, voller Zeile (mit Senden daneben), die übrigen Knöpfe darunter – sonst bleibt bei
+   vielen Knöpfen (📎 📷 📞 🎤 📥 📝 ✳) kaum Platz zum Mitlesen */
+.mobile .composer { flex-wrap: wrap; row-gap: 6px; }
+.mobile .composer textarea { order: -2; flex: 1 1 calc(100% - 50px); min-width: 0; }
+.mobile .composer #btnSend, .mobile .composer #btnStop { order: -1; }
