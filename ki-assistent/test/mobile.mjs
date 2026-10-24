@@ -3096,6 +3096,74 @@ const b78 = await page.evaluate(() => {
   return out;
 });
 check(b78.stil === 'klar' && b78.opts === 'glas,klar,dunkel', 'Widget-Stil (Glas / ganz durchsichtig / dunkel) geht ans Widget', JSON.stringify(b78));
+// Beta 79 (Privat): Videos – aus der Galerie teilen, Ausschnitt, verkleinern, Inhalt erkennen, Figur schaut mit
+claudeQueue.push(Object.assign(sayText('Eine Familie feiert draußen am See, Kuchen auf dem Tisch, fröhliche Stimmung.'), { match: /Standbilder aus einem privaten Video/ }));
+const b79 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const out = {};
+  const keep = p.avatar.clips;
+  p.avatar.clips = [];
+  // kleines Testvideo (3 s)
+  const cv = document.createElement('canvas');
+  cv.width = 320;
+  cv.height = 180;
+  const g = cv.getContext('2d');
+  const rec = new MediaRecorder(cv.captureStream(15), { mimeType: 'video/webm' });
+  const parts = [];
+  rec.ondataavailable = (e) => parts.push(e.data);
+  rec.start();
+  for (let i = 0; i < 30; i++) {
+    g.fillStyle = `hsl(${i * 12},70%,50%)`;
+    g.fillRect(0, 0, 320, 180);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await new Promise((r) => ((rec.onstop = r), rec.stop()));
+  const file = new File(parts, 'Geburtstag_am_See.webm', { type: 'video/webm' });
+  // geteilt aus der Galerie: Knopf „als Video der Figur aufnehmen“
+  app.offerShareClip([file]);
+  out.shareBtn = [...document.querySelectorAll('.msg.note button')].some((b) => /als Video der Figur aufnehmen/.test(b.textContent));
+  const c = await app.addClipFile(file, 'Geburtstag am See');
+  out.added = c?.name === 'Geburtstag am See' && p.avatar.clips.length === 1;
+  // Ausschnitt
+  c.start = 0.5;
+  c.end = 2.5;
+  app.renderClipList();
+  out.trimBtn = !!document.querySelector('#clipList .clip-row button.active');
+  // Figur schaut mit: Bühne im Video-Modus, freundlich
+  app.playClip(c);
+  await new Promise((r) => setTimeout(r, 300));
+  out.watching = document.getElementById('stage').classList.contains('clip-on') && app.avatarState.baseMood === 'freudig';
+  app.stopClip();
+  out.after = !document.getElementById('stage').classList.contains('clip-on');
+  // verkleinern (kürzt auf den Ausschnitt)
+  const before = c.video;
+  try {
+    await app.shrinkClip(c, { onProgress: () => {} });
+    out.shrunk = c.video !== before && c.size > 0 && c.start === undefined;
+  } catch (e) {
+    out.shrunk = `Fehler: ${e.message}`;
+  }
+  // Inhalt erkennen (3 Standbilder)
+  await window.desktop.setKey('anthropic', 'sk-ant-test-0000000000');
+  const prov = app.state.settings.provider;
+  app.state.settings.provider = 'anthropic';
+  try {
+    out.desc = await app.describeClip(c);
+  } catch (e) {
+    out.desc = `Fehler: ${e.message}`;
+  }
+  app.state.settings.provider = prov;
+  out.found = app.findClip('das Video am See mit Kuchen')?.id === c.id;
+  p.avatar.clips = keep;
+  return out;
+});
+const seeReq = claudeRequests.find((r) => /Standbilder aus einem privaten Video/.test(JSON.stringify(r.system ?? '')));
+b79.images = (JSON.stringify(seeReq?.messages ?? '').match(/"type":"image"/g) ?? []).length;
+check(b79.shareBtn && b79.added && b79.trimBtn, 'Video aus der Galerie teilen und als Video der Figur aufnehmen, Ausschnitt setzen', JSON.stringify(b79));
+check(b79.watching && b79.after, 'Video läuft: Figur bleibt klein sichtbar und schaut freundlich mit', JSON.stringify(b79));
+check(b79.shrunk === true, 'Video verkleinern und auf den Ausschnitt kürzen', JSON.stringify(b79));
+check(/See/.test(b79.desc) && b79.images === 3 && b79.found, 'Inhalt erkennen (3 Standbilder) – Video danach auch über Umschreibung gefunden', JSON.stringify(b79));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

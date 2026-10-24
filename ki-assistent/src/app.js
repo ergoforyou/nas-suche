@@ -7728,7 +7728,14 @@ function playClip(c) {
   box.onclick = () => (v.paused ? v.play().catch(() => {}) : v.pause());
   box.append(v, cap, close);
   $('stage').append(box);
+  // die Figur bleibt klein in der Ecke sichtbar und schaut mit (freundlich, nickt beim Zuhören)
+  $('stage').classList.add('clip-on');
+  avatarState.watchMood = avatarState.baseMood;
+  avatarState.baseMood = 'freudig';
   clipPlaying = { box, v, clip: c };
+  // nur der gewählte Ausschnitt (Anfang/Ende)
+  if (c.start > 0) v.addEventListener('loadedmetadata', () => (v.currentTime = c.start), { once: true });
+  if (c.end > 0) v.addEventListener('timeupdate', () => v.currentTime >= c.end && stopClip());
   v.onended = () => stopClip();
   v.onerror = () => {
     status('🎬 Das Video lässt sich nicht abspielen (Format?).');
@@ -7839,6 +7846,9 @@ function stopClip() {
   if (!clipPlaying) return;
   const { box, v } = clipPlaying;
   clipPlaying = null;
+  $('stage').classList.remove('clip-on');
+  avatarState.baseMood = avatarState.watchMood ?? null;
+  applyBaseMood();
   v.pause();
   v.removeAttribute('src');
   v.load();
@@ -7908,7 +7918,38 @@ function renderClipList() {
         save();
         renderClipList();
       };
-      row.append(name, info, play, del);
+      const trim = document.createElement('button');
+      trim.textContent = '✂';
+      trim.title = c.start || c.end ? 'Ausschnitt ändern (gesetzt)' : 'Ausschnitt wählen (Anfang/Ende)';
+      if (c.start || c.end) trim.classList.add('active');
+      trim.onclick = () => trimClip(c);
+      const shrink = document.createElement('button');
+      shrink.textContent = '📦';
+      shrink.title = `Verkleinern auf 720p${c.start || c.end ? ' und auf den Ausschnitt kürzen' : ''}${c.size ? ` (jetzt ${Math.round(c.size / 1e6)} MB)` : ''}`;
+      shrink.onclick = async () => {
+        shrink.disabled = true;
+        try {
+          await shrinkClip(c);
+        } catch (e) {
+          status(`Verkleinern: ${e.message}`);
+        }
+        shrink.disabled = false;
+      };
+      const see = document.createElement('button');
+      see.textContent = '🔎';
+      see.title = 'Inhalt erkennen lassen (schickt 3 Standbilder an Claude)';
+      see.onclick = async () => {
+        if (!confirm('Drei Standbilder aus dem Video an Claude schicken, damit die Figur weiß, was darauf zu sehen ist? (Das Video selbst bleibt auf dem Gerät.)')) return;
+        see.disabled = true;
+        try {
+          const d = await describeClip(c);
+          status(`🔎 Erkannt: ${d}`);
+        } catch (e) {
+          status(`Inhalt erkennen: ${e.message}`);
+        }
+        see.disabled = false;
+      };
+      row.append(name, info, play, trim, shrink, see, del);
       return row;
     }),
   );
@@ -7918,25 +7959,191 @@ $('clipAdd').onclick = () => $('clipFile').click();
 $('clipFile').onchange = async (e) => {
   const f = e.target.files?.[0];
   e.target.value = '';
-  if (!f) return;
+  if (f) await addClipFile(f);
+};
+const CLIP_SHRINK_FROM = 25 * 1024 * 1024; // größere Videos: Verkleinern anbieten
+/** Video als „Video auf Kommando“ übernehmen (aus der Auswahl oder geteilt); große Videos auf Wunsch verkleinern. */
+async function addClipFile(f, name) {
+  if (!PRIV) return status('Videos auf Kommando gibt es im Bereich Privat.');
   const clips = (persona().avatar.clips ??= []);
-  if (clips.length >= CLIP_MAX) return status(`Höchstens ${CLIP_MAX} Videos je Persona.`);
+  if (clips.length >= CLIP_MAX) return status(`Höchstens ${CLIP_MAX} Videos je Persona – erst eins entfernen.`);
   try {
     status('🎬 Übernehme das Video …');
     const ext = (f.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
     const url = await desktop.saveMedia(new Uint8Array(await f.arrayBuffer()), ext);
-    clips.push({ id: newId(), name: f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 60) || 'Video', info: '', video: url });
+    const c = { id: newId(), name: String(name || f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ')).trim().slice(0, 60) || 'Video', info: '', video: url, size: f.size };
+    clips.push(c);
     save();
     renderClipList();
-    status(
-      f.size > CLIP_BIG
-        ? '🎬 Video übernommen. Hinweis: über 80 MB – die Figur wird dann nicht mehr über die NAS übertragen (Export/WLAN geht).'
-        : '🎬 Video übernommen – gib ihm einen Namen, unter dem du es ansprichst.',
-    );
+    status('🎬 Video übernommen – gib ihm einen Namen, unter dem du es ansprichst.');
+    if (f.size > CLIP_SHRINK_FROM && confirm(`Das Video ist ${Math.round(f.size / 1e6)} MB groß. Auf 720p verkleinern? (Dauert so lange, wie das Video läuft – spart Platz und passt eher in den NAS-Abgleich.)`)) await shrinkClip(c);
+    return c;
   } catch (err) {
     status(`Video: ${err.message}`);
   }
-};
+}
+/**
+ * Video verkleinern (höchstens 1280 px, WebM) und dabei auf den gewählten Ausschnitt kürzen. Es wird in Echtzeit neu
+ * aufgenommen (Bild über eine Leinwand, Ton über WebAudio, ohne ihn abzuspielen).
+ */
+async function shrinkClip(c, { onProgress = (t) => status(t) } = {}) {
+  const v = document.createElement('video');
+  v.src = c.video;
+  v.playsInline = true;
+  v.crossOrigin = 'anonymous';
+  await new Promise((ok, bad) => ((v.onloadedmetadata = ok), (v.onerror = () => bad(new Error('Video lässt sich nicht lesen')))));
+  const start = c.start ?? 0;
+  const dur = await ensureDuration(v);
+  const end = c.end > 0 ? Math.min(c.end, dur || c.end) : dur;
+  const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(2, Math.round((v.videoWidth * k) / 2) * 2);
+  cv.height = Math.max(2, Math.round((v.videoHeight * k) / 2) * 2);
+  const g = cv.getContext('2d');
+  const stream = cv.captureStream(30);
+  let ac = null;
+  try {
+    ac = new AudioContext();
+    const dst = ac.createMediaStreamDestination();
+    ac.createMediaElementSource(v).connect(dst);
+    for (const t of dst.stream.getAudioTracks()) stream.addTrack(t);
+  } catch {}
+  const type = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((t) => MediaRecorder.isTypeSupported(t)) ?? 'video/webm';
+  const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 2_000_000 });
+  const parts = [];
+  rec.ondataavailable = (e) => e.data.size && parts.push(e.data);
+  v.currentTime = start;
+  await new Promise((ok) => (v.onseeked = ok));
+  let stop = false;
+  const draw = () => {
+    if (stop) return;
+    g.drawImage(v, 0, 0, cv.width, cv.height);
+    onProgress(`🎬 Verkleinere „${c.name}“ … ${Math.round(((v.currentTime - start) / Math.max(0.1, end - start)) * 100)} %`);
+    if (v.currentTime >= end || v.ended) return void finish();
+    requestAnimationFrame(draw);
+  };
+  let finish;
+  const done = new Promise((ok) => (finish = ok));
+  rec.start(1000);
+  await v.play();
+  draw();
+  await done;
+  stop = true;
+  v.pause();
+  await new Promise((ok) => ((rec.onstop = ok), rec.stop()));
+  ac?.close().catch(() => {});
+  const bytes = new Uint8Array(await new Blob(parts, { type: 'video/webm' }).arrayBuffer());
+  if (!bytes.length) throw new Error('Verkleinern hat nicht geklappt');
+  const old = c.video;
+  c.video = await desktop.saveMedia(bytes, 'webm');
+  c.size = bytes.length;
+  delete c.start;
+  delete c.end;
+  const av = persona().avatar;
+  if (!(av.poses ?? []).some((x) => x.video === old) && !(av.clips ?? []).some((x) => x !== c && x.video === old)) desktop.deleteMedia?.(old);
+  save();
+  renderClipList();
+  onProgress(`🎬 „${c.name}“ verkleinert: ${Math.round(bytes.length / 1e6)} MB.`);
+  return c;
+}
+/** Ausschnitt wählen: Anfang/Ende setzen (spielt dann nur diesen Teil; beim Verkleinern wird darauf gekürzt). */
+function trimClip(c) {
+  const box = document.createElement('div');
+  box.className = 'clip-trim';
+  const v = document.createElement('video');
+  v.src = c.video;
+  v.controls = true;
+  v.playsInline = true;
+  const info = document.createElement('p');
+  info.className = 'hint';
+  const fmt = (t) => (t > 0 ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : '–');
+  let a = c.start ?? 0;
+  let b = c.end ?? 0;
+  const show = () => (info.textContent = `Anfang ${fmt(a) === '–' ? '0:00' : fmt(a)} · Ende ${b > 0 ? fmt(b) : 'Schluss'}`);
+  const mk = (label, fn) => Object.assign(document.createElement('button'), { textContent: label, onclick: fn });
+  const row = document.createElement('div');
+  row.className = 'row wrap';
+  row.append(
+    mk('⏮ Anfang hier', () => ((a = v.currentTime), show())),
+    mk('Ende hier ⏭', () => ((b = v.currentTime), show())),
+    mk('↺ Ganzes Video', () => ((a = 0), (b = 0), show())),
+    mk('✔ Übernehmen', () => {
+      if (b > 0 && b <= a + 0.5) return void (info.textContent = 'Das Ende muss nach dem Anfang liegen.');
+      c.start = a > 0 ? a : undefined;
+      c.end = b > 0 ? b : undefined;
+      save();
+      renderClipList();
+      box.remove();
+      status(`✂ Ausschnitt für „${c.name}“ gesetzt.`);
+    }),
+    mk('Abbrechen', () => box.remove()),
+  );
+  show();
+  box.append(v, info, row);
+  $('clipList').after(box);
+}
+/**
+ * Inhalt erkennen (nur auf Knopfdruck, mit Rückfrage – es gehen 3 Standbilder an Claude): eine kurze Beschreibung, damit
+ * die Figur das Video auch über andere Worte findet („das Video am Strand“).
+ */
+const CLIP_SEE_PROMPT =
+  'Unten sind drei Standbilder aus einem privaten Video. Beschreibe in höchstens 20 Wörtern auf Deutsch, was zu sehen ist ' +
+  '(Ort, Anlass, Stimmung, Tätigkeit) – sachlich, ohne Namen zu raten. Nur die Beschreibung, sonst nichts.';
+async function describeClip(c) {
+  if (state.settings.provider !== 'anthropic') throw new Error('Inhalt erkennen geht mit Claude.');
+  const v = document.createElement('video');
+  v.src = c.video;
+  v.muted = true;
+  v.playsInline = true;
+  await new Promise((ok, bad) => ((v.onloadeddata = ok), (v.onerror = () => bad(new Error('Video lässt sich nicht lesen')))));
+  const a = c.start ?? 0;
+  const e = c.end > 0 ? c.end : await ensureDuration(v);
+  const shots = [];
+  for (const f of [0.15, 0.5, 0.85]) {
+    v.currentTime = a + (e - a) * f;
+    await new Promise((ok) => (v.onseeked = ok));
+    const k = Math.min(1, 768 / Math.max(v.videoWidth, v.videoHeight));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(v.videoWidth * k);
+    cv.height = Math.round(v.videoHeight * k);
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+    const blob = await new Promise((ok) => cv.toBlob(ok, 'image/jpeg', 0.8));
+    shots.push({ name: `bild${shots.length + 1}.jpg`, mime: 'image/jpeg', data: new Uint8Array(await blob.arrayBuffer()) });
+  }
+  const text = await new Promise((resolve) => {
+    let out = '';
+    chatRequest(
+      { id: newId(), ...llmParams('claude-haiku-5-5'), effort: 'low', messages: [{ role: 'system', content: CLIP_SEE_PROMPT }, { role: 'user', content: 'Was ist auf dem Video zu sehen?', attachments: shots }] },
+      (ev) => {
+        if (ev.type === 'delta') out += ev.payload;
+        else if (ev.type === 'done' || ev.type === 'error') resolve(ev.type === 'done' ? out : '');
+      },
+    );
+  });
+  const d = text.replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (!d) throw new Error('keine Beschreibung bekommen');
+  c.info = c.info ? `${c.info} – ${d}` : d;
+  save();
+  renderClipList();
+  return d;
+}
+/** Geteiltes Video: als Video der Figur übernehmen (Name abfragen). */
+function offerShareClip(files) {
+  const vids = files.filter((f) => /^video\//.test(f.type));
+  if (!PRIV || !vids.length) return;
+  const div = addBubble('note', `🎬 Geteiltes Video${vids.length > 1 ? 's' : ''}: `);
+  for (const f of vids.slice(0, 3)) {
+    const b = document.createElement('button');
+    b.textContent = `🎬 „${f.name}“ als Video der Figur aufnehmen`;
+    b.onclick = async () => {
+      const name = prompt('Unter welchem Namen soll die Figur es abspielen?', f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '));
+      if (name == null) return;
+      b.disabled = true;
+      await addClipFile(f, name);
+    };
+    div.append(b);
+  }
+}
 
 // ---- Second Brain (Privat): zwei Notizbücher – das deines Gegenübers (state.brain) und das eigene der Figur
 // (persona().brain, reist mit der Persona). Ordner, offene Punkte, Export/Import als Datei (siehe brain.js)
@@ -9057,7 +9264,10 @@ async function receiveShare(ev) {
     input.value = input.value.trim() ? `${input.value.trim()}\n${text}` : text;
     autoGrow();
   }
-  const files = (ev.files ?? []).filter((f) => f.data).map((f) => new File([fromB64(f.data)], f.name, { type: f.mime }));
+  const all = (ev.files ?? []).filter((f) => f.data).map((f) => new File([fromB64(f.data)], f.name, { type: f.mime }));
+  // Videos: nicht an Claude, sondern als „Video auf Kommando“ anbieten
+  offerShareClip(all);
+  const files = all.filter((f) => !/^video\//.test(f.type));
   const tooBig = (ev.files ?? []).filter((f) => f.tooBig).map((f) => f.name);
   if (files.length) {
     if (attachAllowed()) await addAttachments(files);
@@ -11020,6 +11230,12 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  addClipFile,
+  shrinkClip,
+  trimClip,
+  describeClip,
+  playClip,
+  offerShareClip,
   addZwischen,
   importQuickNotes,
   processZwischen,
