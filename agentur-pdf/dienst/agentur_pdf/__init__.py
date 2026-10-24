@@ -4,4 +4,4 @@
 PRODUKT = "Ergoforyou PDF"
 STAND = "Beta MK I"
 
-__version__ = "0.13.0-beta"
+__version__ = "0.13.1-beta"

@@ -79,15 +79,25 @@ export function layoutBerechnen(
 
 /** Zoom, bei dem die (breiteste) Seite die Viewportbreite ausfüllt. */
 export function zoomSeitenbreite(seiten: SeitenInfo[], modus: AnsichtsModus, drehung: number, vpBreite: number, referenz = 0): number {
-  const zeile = zeilenBilden(seiten.length, modus).find((z) => z.includes(referenz)) ?? [0];
-  const breitePt = zeile.reduce((s, i) => s + anzeigeGroesse(seiten[i], drehung)[0], 0);
-  const verfuegbar = vpBreite - 2 * RAND - ABSTAND * (zeile.length - 1) - 4;
-  return verfuegbar / (breitePt * PT_ZU_PX);
+  return Math.min(...bezugsZeilen(seiten.length, modus, referenz).map((zeile) => {
+    const breitePt = zeile.reduce((s, i) => s + anzeigeGroesse(seiten[i], drehung)[0], 0);
+    const verfuegbar = vpBreite - 2 * RAND - ABSTAND * (zeile.length - 1) - 4;
+    return verfuegbar / (breitePt * PT_ZU_PX);
+  }));
+}
+
+/** Zeilen, nach denen sich „Seitenbreite“/„Ganze Seite“ richten: fortlaufend
+ * alle (sonst hinge der Zoom an der gerade sichtbaren Seite – bei gemischten
+ * Seitengrößen springt er dann beim Scrollen hin und her), einzeln nur die
+ * Zeile der aktuellen Seite. */
+function bezugsZeilen(anzahl: number, modus: AnsichtsModus, referenz: number): number[][] {
+  const zeilen = zeilenBilden(anzahl, modus);
+  if (istFortlaufend(modus) && zeilen.length) return zeilen;
+  return [zeilen.find((z) => z.includes(referenz)) ?? [0]];
 }
 
 export function zoomGanzeSeite(seiten: SeitenInfo[], modus: AnsichtsModus, drehung: number, vpBreite: number, vpHoehe: number, referenz = 0): number {
-  const zeile = zeilenBilden(seiten.length, modus).find((z) => z.includes(referenz)) ?? [0];
-  const hoehePt = Math.max(...zeile.map((i) => anzeigeGroesse(seiten[i], drehung)[1]));
+  const hoehePt = Math.max(...bezugsZeilen(seiten.length, modus, referenz).flat().map((i) => anzeigeGroesse(seiten[i], drehung)[1]));
   const ausHoehe = (vpHoehe - 2 * RAND) / (hoehePt * PT_ZU_PX);
   return Math.min(ausHoehe, zoomSeitenbreite(seiten, modus, drehung, vpBreite, referenz));
 }

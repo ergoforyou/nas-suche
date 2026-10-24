@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { zuruecksetzen } from "./hilfen";
+import { join } from "node:path";
+import { DATEN, start, zuruecksetzen } from "./hilfen";
 
 const START = "/#t=e2e";
 
@@ -177,4 +178,23 @@ test("Lupe zeigt vergrößerten Ausschnitt", async ({ page }) => {
   await page.mouse.move(box.x + 200, box.y + 200);
   await page.mouse.move(box.x + 210, box.y + 205);
   await expect(page.locator(".lupe img")).toBeVisible({ timeout: 3000 });
+});
+
+test("Gemischte Seitengrößen: Seitenbreite bleibt stabil beim Scrollen", async ({ page }) => {
+  const fehler: string[] = [];
+  page.on("pageerror", (e) => fehler.push(e.message));
+  await start(page);
+  const auswahl = page.waitForEvent("filechooser");
+  await page.locator('[data-befehl="schnell.datei.oeffnen"]').click();
+  await (await auswahl).setFiles(join(DATEN, "gemischt.pdf"));
+  await expect(page.locator(".tab.aktiv")).toContainText("gemischt.pdf");
+  await page.locator('.miniatur[data-seite="1"]').click();
+  const box = (await page.locator(".dokumentansicht").boundingBox())!;
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, i < 6 ? 400 : -400);
+    await page.waitForTimeout(80);
+  }
+  await expect(page.locator('.seite-inhalt[data-seite="1"]')).toBeVisible();
+  expect(fehler).toEqual([]);
 });
