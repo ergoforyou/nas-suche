@@ -837,21 +837,24 @@
       </div>
       <div id="brainWrap" hidden>
         <h3>🧠 Second Brain <span class="beta-badge">Privat</span></h3>
-        <p class="hint">Deine persönliche Wissensablage: Gedanken, Ideen, Projekte, Menschen, offene Punkte. Sag z. B. „Leg das als
-          Notiz ab“, „Was hatte ich zu … notiert?“, „Was ist noch offen?“ – „Merk dir …“ und Diktate („… als Notiz“) landen im
-          Eingang, die Figur sortiert sie in Ordner ein. Liegt auf diesem Gerät, gleicht sich mit dem anderen Gerät ab und lässt
-          sich als <b>Obsidian-Ordner</b> (Markdown) exportieren und wieder importieren. Keine Kundendaten oder Firmenwissen.</p>
+        <p class="hint">Zwei Notizbücher: <b>deine Notizen</b> (Gedanken, Ideen, Projekte, Menschen, offene Punkte – sag z. B.
+          „Leg das als Notiz ab“, „Was hatte ich zu … notiert?“, „Was ist noch offen?“; „Merk dir …“ und Diktate „als Notiz“
+          landen im Eingang und werden einsortiert) und das <b>eigene Notizbuch der Figur</b>, in dem sie festhält, was sie sich
+          merken oder weiterverfolgen will. Alles liegt auf diesem Gerät, gleicht sich mit dem anderen Gerät ab und lässt sich
+          als Datei exportieren und am PC wieder importieren. Keine Kundendaten oder Firmenwissen.</p>
+        <div id="brainWho" class="row wrap chips"></div>
+        <p id="brainWhoHint" class="hint"></p>
         <div id="brainFolders" class="row wrap chips"></div>
         <input id="brainSearch" type="search" placeholder="In Notizen suchen …" />
         <div class="row wrap">
           <button id="brainNew">＋ Neue Notiz</button>
           <button id="brainSortNow" title="Neue Notizen im Eingang jetzt in Ordner einsortieren lassen">🗂 Eingang sortieren</button>
           <button id="brainWeekNow" title="Rückblick auf die Woche als Notiz im Tagebuch (neu, erledigt, offen, Vorschläge)">🗓 Wochenrückblick</button>
-          <button id="brainExport">📤 Als Obsidian-Ordner exportieren</button>
-          <button id="brainImport">📥 Importieren (ZIP / .md)</button>
+          <button id="brainExport" title="Alle Notizen (deine und die der Figuren) als eine Datei – zum Mitnehmen auf den PC">📤 Exportieren</button>
+          <button id="brainImport" title="Second-Brain-Datei (.kibrain) einlesen – auch Markdown (.md/ZIP) ins gezeigte Notizbuch">📥 Importieren</button>
         </div>
         <label class="check"><input id="brainWeekOn" type="checkbox" /> Jede Woche einen Rückblick als Notiz schreiben (neu, erledigt, offen, Vorschläge)</label>
-        <input id="brainImportFile" type="file" accept=".zip,.md" multiple hidden />
+        <input id="brainImportFile" type="file" accept=".kibrain,.json,.zip,.md" multiple hidden />
         <div id="brainList" class="brain-list"></div>
         <p id="brainCount" class="hint"></p>
       </div>

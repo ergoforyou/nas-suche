@@ -35,6 +35,7 @@ export async function packPersona(persona, { withMemory = false, version = '', o
     delete p.ziele;
     delete p.entwicklung;
     delete p.episoden;
+    delete p.brain; // eigenes Second Brain der Figur nur mit Gedächtnis
     delete p.episodeUntil;
     delete p.signale;
     delete p.weekReviewAt;

@@ -283,3 +283,21 @@ export const BRAIN_WEEK_PROMPT =
   'Schreib den Wochenrückblick für das Second Brain deines Gegenübers – kurz, klar, freundlich, auf Deutsch, als Markdown: ' +
   'zuerst 2–3 Sätze, was diese Woche los war und wo es vorangeht; dann „## Erledigt“, „## Noch offen“ (Fälliges zuerst) ' +
   'und „## Vorschlag für nächste Woche“ mit höchstens 3 konkreten Punkten. Nur, was unten steht – nichts erfinden.';
+
+// ---------------------------------------------------------------- Datei zum Mitnehmen (Handy ↔ PC)
+/**
+ * Second Brain als eine Datei (.kibrain): die Notizen deines Gegenübers und die eigenen Notizbücher der Figuren.
+ * figuren: { [personaId]: { name, notizen } }.
+ */
+export function brainFile({ nutzer = [], figuren = {}, bereich = 'privat', now = Date.now() } = {}) {
+  return { typ: 'ki-brain', version: 1, bereich, exportiert: now, nutzer, figuren };
+}
+/** .kibrain lesen (wirft bei fremden Dateien). */
+export function readBrainFile(text) {
+  const d = typeof text === 'string' ? JSON.parse(text) : text;
+  if (d?.typ !== 'ki-brain') throw new Error('Das ist keine Second-Brain-Datei (.kibrain).');
+  const fix = (l) => (Array.isArray(l) ? l.filter((n) => n?.id && n.titel != null).map((n) => ({ ...makeNote(n), ...n })) : []);
+  const figuren = {};
+  for (const [id, f] of Object.entries(d.figuren ?? {})) figuren[id] = { name: String(f?.name ?? ''), notizen: fix(f?.notizen) };
+  return { bereich: d.bereich, exportiert: d.exportiert, nutzer: fix(d.nutzer), figuren };
+}

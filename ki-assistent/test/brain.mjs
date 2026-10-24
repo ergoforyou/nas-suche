@@ -1,5 +1,5 @@
 // Second Brain (src/brain.js): Notizen anlegen, offene Punkte, Markdown/Obsidian hin und zurück, Zusammenführen.
-import { makeNote, openLoops, noteToMarkdown, markdownToNote, exportVault, importVault, mergeNotes, parseInbox, findNote, fileName, parsePick, brainPickInput, isoWeek, weekFacts, weekMarkdown } from '../src/brain.js';
+import { makeNote, openLoops, noteToMarkdown, markdownToNote, exportVault, importVault, mergeNotes, parseInbox, findNote, fileName, parsePick, brainPickInput, isoWeek, weekFacts, weekMarkdown, brainFile, readBrainFile } from '../src/brain.js';
 
 let failed = 0;
 const check = (ok, name, info = '') => {
@@ -46,5 +46,15 @@ check(isoWeek(Date.parse('2026-10-24T12:00')) === 'KW 43/2026' && isoWeek(Date.p
 const done = { ...c, erledigt: 5000 };
 const wf = weekFacts([a, b, done], 1500, 6000);
 check(wf.neu.length === 2 && wf.erledigt.length === 1 && wf.offen.length === 2 && /## Erledigt \(1\)/.test(weekMarkdown(wf)), 'Wochenrückblick: neu, erledigt, offen', JSON.stringify({ neu: wf.neu.length, erl: wf.erledigt.length, off: wf.offen.length }));
+const file = JSON.stringify(brainFile({ nutzer: [a, b], figuren: { p1: { name: 'Max', notizen: [c] } } }));
+const rd = readBrainFile(file);
+check(rd.nutzer.length === 2 && rd.figuren.p1.name === 'Max' && rd.figuren.p1.notizen[0].id === c.id && rd.nutzer[1].projekt === 'Urlaub 2027', 'Second-Brain-Datei: deine Notizen und das Notizbuch der Figur hin und zurück');
+let bad = '';
+try {
+  readBrainFile('{"typ":"ki-wissen"}');
+} catch (e) {
+  bad = e.message;
+}
+check(/keine Second-Brain-Datei/.test(bad), 'Fremde Datei wird abgelehnt', bad);
 console.log(failed ? `${failed} Prüfung(en) fehlgeschlagen` : 'Second Brain: alles in Ordnung');
 process.exit(failed ? 1 : 0);

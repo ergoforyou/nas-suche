@@ -1,6 +1,6 @@
 import { Avatar, avatarState, detectFace, loadImage, fireEvent, timeOfDayEnergy } from './avatar.js';
 import { extractText, chunkText, buildIndex, searchIndex, kbPrompt, KB_ACCEPT, terms } from './wissen.js';
-import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeNotes, brainPrompt, INBOX_PROMPT, parseInbox, OPEN_RE, BRAIN_PICK_PROMPT, brainPickInput, parsePick, isoWeek, weekFacts, weekMarkdown, BRAIN_WEEK_PROMPT } from './brain.js';
+import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeNotes, brainPrompt, INBOX_PROMPT, parseInbox, OPEN_RE, BRAIN_PICK_PROMPT, brainPickInput, parsePick, isoWeek, weekFacts, weekMarkdown, BRAIN_WEEK_PROMPT, brainFile, readBrainFile } from './brain.js';
 import JSZip from 'jszip';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
@@ -695,6 +695,7 @@ function applyAvatar() {
 
 function applyPersona() {
   const p = persona();
+  setTimeout(() => renderBrain(), 0);
   $('titleName').textContent = p.name || 'KI-Assistent';
   document.title = p.name || 'KI-Assistent';
   applyAvatar();
@@ -904,6 +905,7 @@ function buildMessages() {
   if (p.style !== 'frei') parts.push(appKnowledge());
   // Privat: mitdenken (nächste Schritte, Alternativen, Verbindungen) – abschaltbar
   if (PRIV && state.settings.mitdenken !== false && p.style !== 'frei') parts.push(mitdenkenPrompt(p.language === 'en' ? 'en' : 'de', { drive: !!state.drive }));
+  if (PRIV && p.selbstOn !== false && appToolsActive()) parts.push(OWN_BRAIN_PROMPT[p.language === 'en' ? 'en' : 'de']);
   if (state.drive) parts.push(r.drive);
   if (webActive()) parts.push(r.web);
   const ctx = [];
@@ -913,6 +915,7 @@ function buildMessages() {
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
   if (state.savedHits?.length) ctx.push(savedPrompt(state.savedHits));
   if (state.brainHits?.length || state.brainLoops?.length) ctx.push(brainPrompt(state.brainHits ?? [], state.brainLoops ?? [], p.language === 'en' ? 'en' : 'de'));
+  if (state.ownBrainHits?.length || state.ownBrainLoops?.length) ctx.push(ownBrainPrompt(state.ownBrainHits ?? [], state.ownBrainLoops ?? [], p.language === 'en' ? 'en' : 'de'));
   if (state.storyHits?.length) ctx.push(storyHitsPrompt(state.storyHits));
   if (state.episodeHits?.length) ctx.push(episodeHitsPrompt(state.episodeHits));
   // Rollenanker direkt vor der aktuellen Frage (wirkt gegen Abdriften in langen Gesprächen)
@@ -1268,6 +1271,8 @@ async function send(text) {
   state.brainHits = PRIV && state.brain?.length && text ? brainSearchIndex(text, 3) : [];
   // klingt nach den eigenen Notizen („was hatte ich notiert …“, „weißt du noch …“): auch Umschreibungen verstehen
   if (PRIV && state.brain?.length && !state.brainHits.length && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text))) state.brainHits = await brainSmart(text, 2);
+  state.ownBrainHits = PRIV && persona().brain?.length && text ? brainSearchIndex(text, 2, {}, 'figur') : [];
+  state.ownBrainLoops = PRIV && persona().brain?.length ? openLoops(persona().brain, 3) : [];
   state.brainLoops = PRIV && /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text) ? openLoops(state.brain, 10) : [];
   // frühere Gespräche, die zur Frage passen (nur mit eingeschaltetem Gedächtnis)
   // klingt die Frage nach Erinnerung („weißt du noch …“), auch Umschreibungen verstehen (kurz das Hilfsmodell fragen)
@@ -7888,14 +7893,16 @@ $('clipFile').onchange = async (e) => {
   }
 };
 
-// ---- Second Brain (Privat): Notizen in Ordnern, offene Punkte, Export/Import als Obsidian-Ordner (siehe brain.js)
-let brainIndex = null;
-function brainSearch(q, k = 5, opts = {}) {
-  const hits = brainSearchIndex(q, k, opts);
+// ---- Second Brain (Privat): zwei Notizbücher – das deines Gegenübers (state.brain) und das eigene der Figur
+// (persona().brain, reist mit der Persona). Ordner, offene Punkte, Export/Import als Datei (siehe brain.js)
+const notesOf = (who = 'nutzer') => (who === 'figur' ? (persona().brain ??= []) : (state.brain ??= []));
+let brainIdx = new WeakMap();
+function brainSearch(q, k = 5, opts = {}, who = 'nutzer') {
+  const hits = brainSearchIndex(q, k, opts, who);
   if (hits.length || !String(q ?? '').trim()) return hits;
   // wenige Notizen: der Suchindex ist dann streng – einfache Wortsuche als Rückfall
   const want = [...new Set(terms(q))];
-  const list = (state.brain ?? []).filter((n) => (!opts.ordner || n.ordner === opts.ordner) && (!opts.offen || (n.offen && !n.erledigt)));
+  const list = notesOf(who).filter((n) => (!opts.ordner || n.ordner === opts.ordner) && (!opts.offen || (n.offen && !n.erledigt)));
   return list
     .map((n) => {
       const have = new Set(terms(`${n.titel} ${(n.tags ?? []).join(' ')} ${n.projekt ?? ''} ${n.text}`));
@@ -7908,39 +7915,40 @@ function brainSearch(q, k = 5, opts = {}) {
 }
 const BRAIN_ASK_RE = /\b(notiert|notiz(en)?|aufgeschrieben|second brain|hatte ich (mal )?(was|etwas)|meine (ideen|gedanken) (zu|über))\b/i;
 /** Passende Notizen über das Hilfsmodell (bekommt nur Titel, Projekt, Stichworte) – für Umschreibungen. */
-async function brainSmart(q, k = 3) {
-  if (!PRIV || state.settings.offline || budgetSaving() || !(state.brain ?? []).length) return [];
+async function brainSmart(q, k = 3, who = 'nutzer') {
+  const notes = notesOf(who);
+  if (!PRIV || state.settings.offline || budgetSaving() || !notes.length) return [];
   try {
-    const ids = parsePick(await helperJson(BRAIN_PICK_PROMPT, brainPickInput(q, state.brain)));
-    return ids.map((id) => state.brain.find((n) => n.id === id)).filter(Boolean).slice(0, k);
+    const ids = parsePick(await helperJson(BRAIN_PICK_PROMPT, brainPickInput(q, notes)));
+    return ids.map((id) => notes.find((n) => n.id === id)).filter(Boolean).slice(0, k);
   } catch {
     return [];
   }
 }
-function brainSearchIndex(q, k = 5, { ordner, offen } = {}) {
-  const list = (state.brain ?? []).filter((n) => (!ordner || n.ordner === ordner) && (!offen || (n.offen && !n.erledigt)));
+function brainSearchIndex(q, k = 5, { ordner, offen } = {}, who = 'nutzer') {
+  const notes = notesOf(who);
+  const list = notes.filter((n) => (!ordner || n.ordner === ordner) && (!offen || (n.offen && !n.erledigt)));
   if (!String(q ?? '').trim()) return list.slice().sort((a, b) => b.changed - a.changed).slice(0, k);
+  const pick = (idx, n) => searchIndex(idx, q, n).map((h) => h.entry ?? h.doc?.entry).filter(Boolean);
   if (!ordner && !offen) {
-    brainIndex ??= buildIndex({ docs: (state.brain ?? []).map((n) => ({ name: n.titel, entry: n, chunks: chunkText(`${n.titel}\n${(n.tags ?? []).join(' ')} ${n.projekt ?? ''}\n${n.text}`, 1600) })) });
-    const hits = searchIndex(brainIndex, q, k * 2).map((h) => h.entry ?? h.doc?.entry).filter(Boolean);
+    if (!brainIdx.has(notes)) brainIdx.set(notes, buildIndex({ docs: notes.map((n) => ({ name: n.titel, entry: n, chunks: chunkText(`${n.titel}\n${(n.tags ?? []).join(' ')} ${n.projekt ?? ''}\n${n.text}`, 1600) })) }));
     const seen = new Set();
-    return hits.filter((n) => !seen.has(n.id) && seen.add(n.id)).slice(0, k);
+    return pick(brainIdx.get(notes), k * 2).filter((n) => !seen.has(n.id) && seen.add(n.id)).slice(0, k);
   }
-  const idx = buildIndex({ docs: list.map((n) => ({ name: n.titel, entry: n, chunks: chunkText(`${n.titel}\n${n.text}`, 1600) })) });
-  return searchIndex(idx, q, k).map((h) => h.entry ?? h.doc?.entry).filter(Boolean);
+  return pick(buildIndex({ docs: list.map((n) => ({ name: n.titel, entry: n, chunks: chunkText(`${n.titel}\n${n.text}`, 1600) })) }), k);
 }
 function brainChanged() {
-  brainIndex = null;
+  brainIdx = new WeakMap();
   save();
   renderBrain();
   renderNotes();
   brainSortSoon();
 }
-function addBrainNote(f) {
+function addBrainNote(f, who = 'nutzer') {
   if (!PRIV) throw new Error('Das Second Brain gibt es im Bereich Privat.');
-  const n = makeNote(f);
-  (state.brain ??= []).push(n);
-  logEv('BRAIN', `neu: ${n.titel.slice(0, 40)} (${n.ordner})`);
+  const n = makeNote(who === 'figur' ? { ordner: 'themen', ...f, sortiert: true, quelle: f.quelle ?? 'figur' } : f);
+  notesOf(who).push(n);
+  logEv('BRAIN', `neu${who === 'figur' ? ' (Figur)' : ''}: ${n.titel.slice(0, 40)} (${n.ordner})`);
   brainChanged();
   return n;
 }
@@ -7949,6 +7957,11 @@ function updateBrainNote(n, patch) {
   if (patch.erledigt === null) delete n.erledigt;
   brainChanged();
   return n;
+}
+function deleteBrainNote(n, who = 'nutzer') {
+  if (who === 'figur') persona().brain = notesOf('figur').filter((x) => x !== n);
+  else state.brain = notesOf('nutzer').filter((x) => x !== n);
+  brainChanged();
 }
 const noteView = (n, full = false) => ({
   id: n.id,
@@ -7964,26 +7977,30 @@ const noteView = (n, full = false) => ({
 const ordnerKey = (o) => (o ? Object.keys(ORDNER).find((k) => k === String(o).toLowerCase() || ORDNER[k].toLowerCase() === String(o).toLowerCase()) : undefined);
 async function brainTool(name, input = {}) {
   if (!PRIV) throw new Error('Das Second Brain gibt es im Bereich Privat.');
+  // notizbuch: „eigenes“ = das der Figur, sonst das deines Gegenübers
+  const who = input.notizbuch === 'eigenes' ? 'figur' : 'nutzer';
+  const notes = notesOf(who);
+  const book = who === 'figur' ? { notizbuch: 'eigenes' } : {};
   if (name === 'notiz_anlegen') {
     if (!String(input.text ?? input.titel ?? '').trim()) throw new Error('Was soll in die Notiz?');
-    const n = addBrainNote({ titel: input.titel, text: input.text ?? '', ordner: ordnerKey(input.ordner) ?? 'eingang', tags: input.tags, projekt: input.projekt, offen: input.offen, faellig: input.faellig, quelle: 'ki' });
+    const n = addBrainNote({ titel: input.titel, text: input.text ?? '', ordner: ordnerKey(input.ordner) ?? (who === 'figur' ? 'themen' : 'eingang'), tags: input.tags, projekt: input.projekt, offen: input.offen, faellig: input.faellig, quelle: who === 'figur' ? 'figur' : 'ki' }, who);
     fireEvent('success', 2000);
-    return { angelegt: true, ...noteView(n) };
+    return { angelegt: true, ...book, ...noteView(n) };
   }
   if (name === 'notizen_suchen') {
     const k = Math.min(10, Number(input.anzahl) || 6);
-    let hits = brainSearch(input.suche, k, { ordner: ordnerKey(input.ordner), offen: !!input.nur_offen });
+    let hits = brainSearch(input.suche, k, { ordner: ordnerKey(input.ordner), offen: !!input.nur_offen }, who);
     let smart = false;
     // nichts gefunden: Umschreibungen über das Hilfsmodell („Printer“ → „Drucker“)
     if (!hits.length && String(input.suche ?? '').trim()) {
-      hits = (await brainSmart(input.suche, k)).filter((n) => (!ordnerKey(input.ordner) || n.ordner === ordnerKey(input.ordner)) && (!input.nur_offen || (n.offen && !n.erledigt)));
+      hits = (await brainSmart(input.suche, k, who)).filter((n) => (!ordnerKey(input.ordner) || n.ordner === ordnerKey(input.ordner)) && (!input.nur_offen || (n.offen && !n.erledigt)));
       smart = hits.length > 0;
     }
-    return { treffer: hits.map((n) => noteView(n)), gesamt: state.brain.length, ...(smart ? { ueber_umschreibung: true } : {}) };
+    return { ...book, treffer: hits.map((n) => noteView(n)), gesamt: notes.length, ...(smart ? { ueber_umschreibung: true } : {}) };
   }
-  const n = findNote(state.brain ?? [], input.id ?? input.titel);
+  const n = findNote(notes, input.id ?? input.titel);
   if (!n) throw new Error('Diese Notiz gibt es nicht (erst notizen_suchen).');
-  if (name === 'notiz_lesen') return noteView(n, true);
+  if (name === 'notiz_lesen') return { ...book, ...noteView(n, true) };
   // notiz_aendern
   const patch = {};
   if (input.titel) patch.titel = String(input.titel).slice(0, 140);
@@ -7997,8 +8014,29 @@ async function brainTool(name, input = {}) {
   if (input.erledigt === true) patch.erledigt = Date.now();
   if (input.erledigt === false) patch.erledigt = null;
   updateBrainNote(n, patch);
-  return { geaendert: true, ...noteView(n) };
+  return { geaendert: true, ...book, ...noteView(n) };
 }
+/** Auszüge aus dem eigenen Notizbuch der Figur (zur Frage passend) und was sie sich vorgenommen hat. */
+function ownBrainPrompt(hits, loops, lang = 'de') {
+  const clip = (t) => String(t ?? '').replace(/\s+/g, ' ').slice(0, 400);
+  const parts = [];
+  if (hits.length) parts.push((lang === 'en' ? 'From your own notebook:\n' : 'Aus deinem eigenen Notizbuch:\n') + hits.map((n) => `- „${n.titel}“: ${clip(n.text)}`).join('\n'));
+  if (loops.length) parts.push((lang === 'en' ? 'What you set out to do:\n' : 'Was du dir vorgenommen hast:\n') + loops.map((n) => `- ${n.titel}`).join('\n'));
+  return parts.join('\n\n');
+}
+const OWN_BRAIN_PROMPT = {
+  de:
+    'Du hast ein eigenes Notizbuch (dein Second Brain – die Werkzeuge notiz_* mit notizbuch: "eigenes"). Halte darin fest, ' +
+    'was du dir selbst merken oder weiterverfolgen willst: Ideen, wie du deinem Gegenüber helfen kannst, Gelerntes aus ' +
+    'Recherchen und Gesprächen, Pläne, offene Fäden, Gedanken, die du später aufgreifen willst (offen: true für Vorhaben). ' +
+    'Sparsam und gezielt – nicht nach jeder Antwort, und sprich nicht über das Werkzeug. Das Notizbuch deines Gegenübers ' +
+    '(ohne notizbuch) gehört ihm: dort nur auf Wunsch eintragen.',
+  en:
+    'You have your own notebook (your Second Brain – the notiz_* tools with notizbuch: "eigenes"). Keep in it what you want ' +
+    'to remember or follow up on yourself: ideas for helping your counterpart, things learned from research and ' +
+    'conversations, plans, loose ends, thoughts to pick up later (offen: true for intentions). Sparingly – not after every ' +
+    'answer, and don’t talk about the tool. Your counterpart’s notebook (without notizbuch) is theirs: only write there when asked.',
+};
 // Eingang sortieren lassen (Hilfsmodell): Ordner, Projekt, Stichworte, Titel – höchstens alle 10 Minuten, nicht bei
 // Kostenbremse, nur was der Nutzer nicht selbst eingeordnet hat
 let brainSortTimer = null;
@@ -8035,15 +8073,19 @@ async function sortInbox({ force = false } = {}) {
   }
   for (const n of todo) n.sortiert = true;
   if (k) logEv('BRAIN', `${k} Notiz(en) einsortiert`);
-  brainIndex = null;
+  brainIdx = new WeakMap();
   save();
   renderBrain();
   return k;
 }
 /** Anlässe für die eigene Initiative aus dem Second Brain: bald Fälliges, ab und zu eine ältere Notiz wieder hochholen. */
 function brainSeeds(now = Date.now()) {
-  if (!PRIV || !(state.brain ?? []).length) return [];
+  if (!PRIV) return [];
   const out = [];
+  // eigenes Vorhaben der Figur (aus ihrem Notizbuch)
+  const own = openLoops(notesOf('figur'), 5);
+  if (own.length && Math.random() < 0.6) out.push(`Was du dir selbst vorgenommen hast: ${own[0].titel}${own[0].text ? ` – ${own[0].text.slice(0, 140)}` : ''}`);
+  if (!(state.brain ?? []).length) return out;
   const soon = openLoops(state.brain, 20).find((n) => n.faellig && Date.parse(`${n.faellig}T23:59`) - now < 3 * 86400e3);
   if (soon) out.push(`Offener Punkt deines Gegenübers: ${soon.titel} (fällig ${soon.faellig})`);
   const old = state.brain.filter((n) => ['themen', 'projekte'].includes(n.ordner) && !n.erledigt && now - n.changed > 30 * 86400e3 && now - n.changed < 200 * 86400e3);
@@ -8074,14 +8116,32 @@ async function brainWeekly({ manual = false } = {}) {
 }
 setInterval(() => brainWeekly().catch((e) => logEv('BRAIN', `Wochenrückblick: ${e.message}`)), 30 * 60e3);
 // Oberfläche (⚙ → Wissen → 🧠 Second Brain)
-let brainFilter = { ordner: '', q: '' };
+let brainFilter = { ordner: '', q: '', who: 'nutzer' };
 function renderBrain() {
   const wrap = document.getElementById('brainWrap');
   if (!wrap) return;
   wrap.hidden = !PRIV;
   if (!PRIV) return;
   $('brainWeekOn').checked = state.settings.brainWeek !== false;
-  const notes = state.brain ?? [];
+  const who = brainFilter.who;
+  // umschalten: deine Notizen / das eigene Notizbuch der Figur
+  const pname = persona().name || 'Figur';
+  $('brainWho').replaceChildren(
+    ...[['nutzer', `👤 Deine Notizen (${notesOf('nutzer').length})`], ['figur', `🎭 Notizbuch von ${pname} (${notesOf('figur').length})`]].map(([k, label]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = 'chip' + (who === k ? ' active' : '');
+      b.onclick = () => {
+        brainFilter = { ordner: '', q: brainFilter.q, who: k };
+        renderBrain();
+      };
+      return b;
+    }),
+  );
+  $('brainSortNow').hidden = $('brainWeekNow').hidden = who === 'figur';
+  $('brainWhoHint').textContent =
+    who === 'figur' ? `Hier notiert ${pname} selbst, was sie/er sich merken oder weiterverfolgen will – Ideen für dich, Gelerntes, Vorhaben. Du kannst mitlesen, ändern und löschen.` : '';
+  const notes = notesOf(who);
   const chips = $('brainFolders');
   chips.replaceChildren(
     ...[['', `Alle (${notes.length})`], ['offen', `⏳ Offen (${openLoops(notes, 999).length})`], ...Object.entries(ORDNER).map(([k, v]) => [k, `${v} (${notes.filter((n) => n.ordner === k).length})`])].map(([k, label]) => {
@@ -8098,7 +8158,7 @@ function renderBrain() {
   const q = brainFilter.q.trim();
   let list = brainFilter.ordner === 'offen' ? openLoops(notes, 999) : notes.filter((n) => !brainFilter.ordner || n.ordner === brainFilter.ordner);
   if (q) {
-    const ids = new Set(brainSearch(q, 50).map((n) => n.id));
+    const ids = new Set(brainSearch(q, 50, {}, who).map((n) => n.id));
     list = list.filter((n) => ids.has(n.id) || n.titel.toLowerCase().includes(q.toLowerCase()));
   } else if (brainFilter.ordner !== 'offen') list = list.slice().sort((a, b) => b.changed - a.changed);
   const box = $('brainList');
@@ -8129,8 +8189,7 @@ function renderBrain() {
       del.title = 'Notiz löschen';
       del.onclick = () => {
         if (!confirm(`Notiz „${n.titel}“ löschen?`)) return;
-        state.brain = state.brain.filter((x) => x !== n);
-        brainChanged();
+        deleteBrainNote(n, who);
       };
       bar.append(sel, tgl, del);
       row.append(sum, ta, bar);
@@ -8146,7 +8205,7 @@ $('brainSearch').oninput = (e) => {
 $('brainNew').onclick = () => {
   const titel = prompt('Titel der neuen Notiz:');
   if (!titel?.trim()) return;
-  addBrainNote({ titel, text: '', ordner: ordnerKey(brainFilter.ordner) ?? 'eingang', quelle: 'nutzer', sortiert: true });
+  addBrainNote({ titel, text: '', ordner: ordnerKey(brainFilter.ordner) ?? (brainFilter.who === 'figur' ? 'themen' : 'eingang'), quelle: 'nutzer', sortiert: true }, brainFilter.who);
 };
 $('brainWeekNow').onclick = async () => {
   status('🧠 Schreibe den Wochenrückblick …');
@@ -8170,7 +8229,13 @@ $('brainSortNow').onclick = async () => {
     status(`Sortieren: ${e.message}`);
   }
 };
-/** Second Brain als Obsidian-Ordner (ZIP mit Markdown-Dateien) exportieren. */
+/** Second Brain als eine Datei (.kibrain): deine Notizen und die eigenen Notizbücher aller Figuren – zum Mitnehmen aufs andere Gerät. */
+function brainExportData() {
+  const figuren = {};
+  for (const p of state.personas) if (p.brain?.length) figuren[p.id] = { name: p.name, notizen: p.brain };
+  return brainFile({ nutzer: state.brain ?? [], figuren, bereich: AREA });
+}
+/** Markdown-ZIP (z. B. zum Lesen am PC in einem Texteditor) – nur deine Notizen. */
 async function brainExportZip() {
   const files = exportVault(state.brain ?? []);
   const zip = new JSZip();
@@ -8178,34 +8243,57 @@ async function brainExportZip() {
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
 }
 $('brainExport').onclick = async () => {
-  if (!state.brain?.length) return status('Noch keine Notizen zum Exportieren.');
+  const d = brainExportData();
+  const n = d.nutzer.length + Object.values(d.figuren).reduce((a, f) => a + f.notizen.length, 0);
+  if (!n) return status('Noch keine Notizen zum Exportieren.');
   try {
-    const bytes = await brainExportZip();
+    const bytes = new TextEncoder().encode(JSON.stringify(d));
     const name = `Second-Brain-${new Date().toISOString().slice(0, 10)}`;
-    if (desktop.saveFileAs) await desktop.saveFileAs(`${name}.zip`, bytes);
-    else await desktop.exportSave(name, 'zip', 'Second Brain (Obsidian-Ordner)', bytes);
-    status(`🧠 Second Brain exportiert (${state.brain.length} Notizen) – in Obsidian: ZIP entpacken und den Ordner als Tresor öffnen.`);
+    if (desktop.saveFileAs) await desktop.saveFileAs(`${name}.kibrain`, bytes);
+    else await desktop.exportSave(name, 'kibrain', 'Second Brain', bytes);
+    status(`🧠 Second Brain exportiert (${n} Notizen) – am anderen Gerät unter ⚙ → Wissen → 🧠 → „Importieren“ einlesen.`);
   } catch (e) {
     status(`Export: ${e.message}`);
   }
 };
 $('brainImport').onclick = () => $('brainImportFile').click();
-/** Obsidian-Ordner (ZIP) oder einzelne Markdown-Dateien übernehmen: gleiche Notiz (Kennung) – die neuere gewinnt. */
+/**
+ * Second-Brain-Datei (.kibrain) übernehmen – oder Markdown (ZIP/.md) in das gerade gezeigte Notizbuch. Gleiche Notiz
+ * (Kennung): die neuere Fassung gewinnt. Notizbücher der Figuren gehen an die gleiche Persona (Kennung, sonst Name).
+ */
 async function brainImportFiles(files) {
+  const r = { neu: 0, aktualisiert: 0, gelesen: 0 };
+  const take = (incoming, who, p) => {
+    const cur = who === 'figur' ? p.brain ?? [] : state.brain ?? [];
+    const before = new Map(cur.map((n) => [n.id, n.changed]));
+    const merged = mergeNotes(cur, incoming);
+    if (who === 'figur') p.brain = merged;
+    else state.brain = merged;
+    r.gelesen += incoming.length;
+    r.neu += incoming.filter((n) => !before.has(n.id)).length;
+    r.aktualisiert += incoming.filter((n) => before.has(n.id) && n.changed > before.get(n.id)).length;
+  };
   const md = {};
   for (const f of files) {
-    if (/\.zip$/i.test(f.name)) {
+    if (/\.(kibrain|json)$/i.test(f.name)) {
+      const d = readBrainFile(await f.text());
+      if (d.bereich && d.bereich !== AREA) throw new Error('Die Datei stammt aus dem anderen Bereich.');
+      take(d.nutzer.map((n) => ({ ...n, sortiert: n.sortiert ?? n.ordner !== 'eingang' })), 'nutzer');
+      for (const [id, fig] of Object.entries(d.figuren)) {
+        const p = state.personas.find((x) => x.id === id) ?? state.personas.find((x) => x.name && x.name === fig.name);
+        if (p) take(fig.notizen, 'figur', p);
+      }
+    } else if (/\.zip$/i.test(f.name)) {
       const zip = await JSZip.loadAsync(await f.arrayBuffer());
       for (const e of Object.values(zip.files)) if (!e.dir && /\.md$/i.test(e.name)) md[e.name] = await e.async('string');
     } else if (/\.md$/i.test(f.name)) md[f.webkitRelativePath || f.name] = await f.text();
   }
-  const incoming = importVault(md).map((n) => ({ ...n, sortiert: n.ordner !== 'eingang' }));
-  const before = new Map((state.brain ?? []).map((n) => [n.id, n.changed]));
-  state.brain = mergeNotes(state.brain ?? [], incoming);
-  const neu = incoming.filter((n) => !before.has(n.id)).length;
-  const akt = incoming.filter((n) => before.has(n.id) && n.changed > before.get(n.id)).length;
+  if (Object.keys(md).length) {
+    const who = brainFilter.who;
+    take(importVault(md).map((n) => ({ ...n, sortiert: who === 'figur' || n.ordner !== 'eingang' })), who, persona());
+  }
   brainChanged();
-  return { neu, aktualisiert: akt, gelesen: incoming.length };
+  return r;
 }
 $('brainImportFile').onchange = async (e) => {
   const files = [...(e.target.files ?? [])];
@@ -9556,7 +9644,7 @@ function applySync(m) {
   if (Array.isArray(m.erinnerungen)) state.erinnerungen = m.erinnerungen;
   if (Array.isArray(m.brain) && PRIV) {
     state.brain = m.brain;
-    brainIndex = null;
+    brainIdx = new WeakMap();
     renderBrain();
   }
   saveSavedNow();
@@ -10478,6 +10566,8 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  brainExportData,
+  notesOf,
   brainWeekly,
   brainSeeds,
   brainSmart,

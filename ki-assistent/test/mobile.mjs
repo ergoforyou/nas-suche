@@ -2891,6 +2891,43 @@ const b72 = await page.evaluate(async () => {
 });
 check(b72.mit && b72.mitOff, 'Mitdenken: nächste Schritte/Alternativen im Rollentext (abschaltbar)', JSON.stringify(b72));
 check(b72.smart && b72.week && b72.seed, 'Second Brain: Umschreibungen finden, Wochenrückblick als Notiz, Fälliges als Anlass', JSON.stringify(b72));
+// Beta 73 (Privat): eigenes Notizbuch der Figur, Export/Import als Datei (Handy → PC)
+const b73 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const out = {};
+  const userBefore = app.brainState().length;
+  const own = await app.runAppTool('notiz_anlegen', { notizbuch: 'eigenes', titel: 'Ostsee-Tipps sammeln', text: 'Für Jens: Strände und Cafés auf Rügen heraussuchen.', offen: true });
+  out.own = own.notizbuch === 'eigenes' && p.brain?.some((n) => n.titel === 'Ostsee-Tipps sammeln') && app.brainState().length === userBefore;
+  out.search = (await app.runAppTool('notizen_suchen', { notizbuch: 'eigenes', suche: 'Rügen' })).treffer?.[0]?.titel;
+  out.userSearch = (await app.runAppTool('notizen_suchen', { suche: 'Cafés' })).treffer.some((t) => t.titel === 'Ostsee-Tipps sammeln');
+  // im Gespräch: Hinweis aufs eigene Notizbuch und was sie sich vorgenommen hat
+  app.state.ownBrainLoops = [p.brain.at(-1)];
+  const sys = JSON.stringify(app.buildMessages());
+  out.prompt = /eigenes Notizbuch/.test(sys) && /Was du dir vorgenommen hast/.test(sys);
+  app.state.ownBrainLoops = [];
+  const rnd = Math.random;
+  Math.random = () => 0.1;
+  out.seed = app.brainSeeds().some((x) => /selbst vorgenommen hast: Ostsee-Tipps/.test(x));
+  Math.random = rnd;
+  // Datei zum Mitnehmen: alle Notizen, auch das Notizbuch der Figur
+  const d = app.brainExportData();
+  out.file = d.typ === 'ki-brain' && d.figuren[p.id]?.notizen.length >= 1 && d.nutzer.length === app.brainState().length;
+  const keep = p.brain;
+  p.brain = [];
+  const r = await app.brainImportFiles([new File([JSON.stringify(d)], 'Second-Brain.kibrain', { type: 'application/json' })]);
+  out.imported = p.brain.length === keep.length && r.neu >= keep.length;
+  out.snap = app.syncSnapshot().personas.find((x) => x.id === p.id)?.brain?.length === keep.length;
+  // Oberfläche: umschalten zwischen deinen Notizen und dem Notizbuch der Figur
+  app.renderBrain();
+  const chips = [...document.querySelectorAll('#brainWho .chip')];
+  chips[1]?.click();
+  out.ui = chips.length === 2 && [...document.querySelectorAll('#brainList summary')].some((x) => /Ostsee-Tipps/.test(x.textContent));
+  [...document.querySelectorAll('#brainWho .chip')][0]?.click();
+  return out;
+});
+check(b73.own && b73.search === 'Ostsee-Tipps sammeln' && !b73.userSearch && b73.prompt && b73.seed, 'Eigenes Notizbuch der Figur: getrennt von deinen Notizen, im Gespräch und als Anlass', JSON.stringify(b73));
+check(b73.file && b73.imported && b73.snap && b73.ui, 'Second Brain als Datei exportieren/importieren (mit Notizbuch der Figur), im Abgleich, umschaltbar', JSON.stringify(b73));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

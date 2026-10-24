@@ -155,10 +155,12 @@ const APP_TOOLS = [
       'Legt eine Notiz im Second Brain deines Gegenübers an (persönliche Wissensablage in Ordnern: eingang, projekte, ' +
       'themen, personen, tagebuch, archiv). Für Gedanken, Ideen, Pläne, Infos über Menschen, Projektnotizen und offene ' +
       'Punkte („Ich muss noch …“ → offen: true). Ohne Ordner landet sie im Eingang und wird später einsortiert. Für ' +
-      'Rechercheergebnisse weiter wissen_speichern, für Erinnerungen zu einer Uhrzeit erinnerung_setzen.',
+      'Rechercheergebnisse weiter wissen_speichern, für Erinnerungen zu einer Uhrzeit erinnerung_setzen. Mit notizbuch: ' +
+      '"eigenes" schreibst du in dein EIGENES Notizbuch (was du dir selbst merken oder vornehmen willst).',
     input_schema: {
       type: 'object',
       properties: {
+        notizbuch: { type: 'string', enum: ['gegenueber', 'eigenes'], description: 'eigenes = dein eigenes Notizbuch; sonst das deines Gegenübers' },
         titel: { type: 'string', description: 'Kurzer, treffender Titel' },
         text: { type: 'string', description: 'Inhalt (Markdown erlaubt), vollständig und für sich verständlich' },
         ordner: { type: 'string', enum: ['eingang', 'projekte', 'themen', 'personen', 'tagebuch', 'archiv'] },
@@ -180,6 +182,7 @@ const APP_TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
+        notizbuch: { type: 'string', enum: ['gegenueber', 'eigenes'], description: 'eigenes = dein eigenes Notizbuch; sonst das deines Gegenübers' },
         suche: { type: 'string' },
         ordner: { type: 'string', enum: ['eingang', 'projekte', 'themen', 'personen', 'tagebuch', 'archiv'] },
         nur_offen: { type: 'boolean' },
@@ -191,7 +194,7 @@ const APP_TOOLS = [
     name: 'notiz_lesen',
     privatOnly: true,
     description: 'Liest eine Notiz aus dem Second Brain vollständig (id aus notizen_suchen oder der Titel).',
-    input_schema: { type: 'object', properties: { id: { type: 'string' }, titel: { type: 'string' } } },
+    input_schema: { type: 'object', properties: { id: { type: 'string' }, titel: { type: 'string' }, notizbuch: { type: 'string', enum: ['gegenueber', 'eigenes'] } } },
   },
   {
     name: 'notiz_aendern',
@@ -203,6 +206,7 @@ const APP_TOOLS = [
       type: 'object',
       properties: {
         id: { type: 'string' },
+        notizbuch: { type: 'string', enum: ['gegenueber', 'eigenes'], description: 'eigenes = dein eigenes Notizbuch; sonst das deines Gegenübers' },
         titel: { type: 'string', description: 'neuer Titel (bzw. zum Finden, wenn keine id)' },
         text: { type: 'string', description: 'ersetzt den ganzen Text' },
         text_anhaengen: { type: 'string', description: 'wird unten angefügt' },
