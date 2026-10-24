@@ -1397,21 +1397,40 @@ public class MainActivity extends BridgeActivity {
         }
 
         /** Nachtschicht: Auftrag hinterlegen (JSON, leer = keiner) – läuft nachts beim Laden im WLAN. */
+        // Fehler hier dürfen nie bis in die Oberfläche durchschlagen (sie brachen dort den Start samt App-Sperre ab):
+        // abfangen, protokollieren und als Text zurückgeben
         @JavascriptInterface
-        public void nightPlan(String json) {
-            KINachtschicht.plan(MainActivity.this, json);
+        public String nightPlan(String json) {
+            try {
+                KINachtschicht.plan(MainActivity.this, json);
+                return "";
+            } catch (Throwable e) {
+                Log.w("KI-Assistent", "Nachtschicht planen", e);
+                return e.getClass().getSimpleName() + ": " + e.getMessage();
+            }
         }
 
         /** Ergebnis der Nachtschicht abholen ("" = keins). */
         @JavascriptInterface
         public String nightTake() {
-            return KINachtschicht.take(MainActivity.this);
+            try {
+                return KINachtschicht.take(MainActivity.this);
+            } catch (Throwable e) {
+                Log.w("KI-Assistent", "Nachtschicht abholen", e);
+                return "";
+            }
         }
 
         /** Erinnerungen an Orten: [{"id","name","lat","lon","radius","texte":[{"id","text"}]}]. */
         @JavascriptInterface
-        public void ortWatch(String json) {
-            KIOrt.store(MainActivity.this, json);
+        public String ortWatch(String json) {
+            try {
+                KIOrt.store(MainActivity.this, json);
+                return "";
+            } catch (Throwable e) {
+                Log.w("KI-Assistent", "Orte", e);
+                return e.getClass().getSimpleName() + ": " + e.getMessage();
+            }
         }
 
         /** Kopfzeile des Widgets: {"name","zwischen","offen"}. */

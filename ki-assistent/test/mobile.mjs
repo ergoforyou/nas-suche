@@ -2072,6 +2072,38 @@ const lockLost = await page.evaluate(async () => {
   return out;
 });
 check(lockLost.asking && lockLost.again && /Keine Antwort von Android/.test(lockLost.hint) && lockLost.log && lockLost.pins === 1 && lockLost.unlocked, 'App-Sperre: bleibt die Antwort von Android aus, fragt „Entsperren“ neu, Hinweis und Protokoll auf dem Sperrbildschirm, Ausweg über die Handy-PIN', JSON.stringify(lockLost));
+// App-Sperre: Sperrbildschirm sichtbar, aber der Start brach vor der Sperre ab (Fehler einer Gerätefunktion) –
+// „Entsperren“ muss trotzdem fragen; Fehler in Nachtschicht/Orten reißen nichts mit
+const lockRecover = await page.evaluate(async () => {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let asks = 0;
+  window.KIDevice = {
+    lockAvailable: () => true,
+    unlock: () => { asks++; setTimeout(() => window.__kiUnlocked(true, ''), 50); },
+    setSecure() {},
+    setLocked() {},
+    nightPlan: () => { throw new Error('Error invoking nightPlan: Java exception was raised during method invocation'); },
+    ortWatch: () => { throw new Error('Java exception'); },
+  };
+  const app = window.__app;
+  const ls = document.getElementById('lockScreen');
+  app.state.locked = false;
+  ls.hidden = false; // wie beim Laden mit eingeschalteter Sperre
+  document.getElementById('lockBtn').click();
+  await wait(150);
+  const out = { asks, unlocked: ls.hidden && !app.state.locked };
+  let threw = '';
+  try {
+    app.safely('Nachtschicht', app.planNight);
+    app.syncOrte();
+  } catch (e) {
+    threw = e.message;
+  }
+  out.safe = !threw;
+  delete window.KIDevice;
+  return out;
+});
+check(lockRecover.asks === 1 && lockRecover.unlocked && lockRecover.safe, 'App-Sperre: Start brach vorher ab – „Entsperren“ fragt trotzdem; Fehler der Nachtschicht/Orte reißen nichts mit', JSON.stringify(lockRecover));
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
 {
   const { default: qrcodeGen } = await import('qrcode-generator');

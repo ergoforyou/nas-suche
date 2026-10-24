@@ -1920,7 +1920,7 @@ for (const [id, key, type] of [['cRoundNotify', 'roundNotify', 'check'], ['cRoun
   $(id).onchange = (e) => {
     state.settings[key] = type === 'check' ? e.target.checked : e.target.value;
     save();
-    if (key === 'nightShift') planNight();
+    if (key === 'nightShift') safely('Nachtschicht', planNight);
     else syncReminders();
   };
 }
@@ -9770,6 +9770,15 @@ function roundNotifyItems(up) {
 }
 
 /** Nachtschicht vorbereiten: nächster Schritt eines Vorhabens als fertige Anfrage (ohne Schlüssel) an das Gerät. */
+/** Gerätefunktion aufrufen, ohne dass ein Fehler darin den Rest (Start, Sperre, Abgleich) mitreißt. */
+function safely(name, fn) {
+  try {
+    return fn();
+  } catch (e) {
+    logEv('FEHLER', `${name}: ${String(e?.message ?? e).slice(0, 200)}`);
+    return null;
+  }
+}
 function planNight() {
   const d = dev();
   if (!d?.nightPlan) return;
@@ -9789,7 +9798,8 @@ function planNight() {
     step: nextStep(n)?.text ?? '',
     tools: webActive() ? (desktop.claudeTools?.(model, { web: true }) ?? []) : [],
   });
-  d.nightPlan(JSON.stringify(job));
+  const err = d.nightPlan(JSON.stringify(job));
+  if (err) logEv('VORHABEN', `Nachtschicht nicht geplant: ${err}`);
   return job;
 }
 /** Ergebnis der Nachtschicht übernehmen (beim Öffnen): Schritt ins Vorhaben, Neuigkeit als offenes Thema, Kosten. */
@@ -9804,7 +9814,7 @@ function takeNight() {
   if (r.use.in || r.use.out) costs.add({ kind: 'chat', provider: 'anthropic', model: r.model || state.settings.claudeModel, in: r.use.in, out: r.use.out, cacheRead: r.use.cacheRead, cacheWrite: 0, searches: r.use.searches });
   if (r.error || !n) {
     logEv('VORHABEN', `Nachtschicht: ${r.error ?? 'Vorhaben nicht mehr da'}`);
-    planNight();
+    safely('Nachtschicht', planNight);
     return null;
   }
   const v = parseVorhaben(r.text);
@@ -9825,7 +9835,7 @@ function takeNight() {
 /** Gemerkte Orte (nur auf diesem Handy, nicht abgeglichen) und was dort erinnert werden soll. */
 const orte = () => (state.settings.orte ??= []);
 function syncOrte() {
-  dev()?.ortWatch?.(JSON.stringify(ortWatch(orte(), ownReminders())));
+  safely('Orte', () => dev()?.ortWatch?.(JSON.stringify(ortWatch(orte(), ownReminders()))));
 }
 function herePosition() {
   return new Promise((ok, fail) => {
@@ -11252,10 +11262,10 @@ window.__kiScreenOff = () => {
 };
 document.addEventListener('visibilitychange', () => {
   // App geht in den Hintergrund: Auftrag für die Nachtschicht auf den neuesten Stand
-  if (document.hidden) return void planNight();
+  if (document.hidden) return void safely('Nachtschicht', planNight);
   screenIsOff = false;
   // Ergebnis der Nachtschicht zuerst – die Morgenrunde kann dann davon erzählen
-  takeNight();
+  safely('Nachtschicht', takeNight);
   // App wieder geöffnet: ist gerade Morgen- oder Feierabendrunde fällig, kommt sie jetzt
   if (!state.locked && (morningDue() || eveningDue())) setTimeout(() => personalGreeting().catch(() => {}), 1500);
 });
@@ -11306,6 +11316,11 @@ let unlockAskedAt = 0;
 let unlockEndedAt = 0;
 let unlockWatch = null;
 function askUnlock({ auto = false, pin = false } = {}) {
+  // Sperrbildschirm sichtbar, aber der Start kam nicht bis zur Sperre (Fehler dazwischen): trotzdem entsperren lassen
+  if (!state.locked && !$('lockScreen').hidden) {
+    logEv('SPERRE', 'Sperrbildschirm ohne Sperrzustand – wird nachgeholt');
+    state.locked = true;
+  }
   if (!state.locked) return;
   // automatisch: nicht doppelt fragen und nach einem Abbruch nicht gleich wieder (sonst Schleife).
   // Antippen fragt immer neu – eine hängen gebliebene Abfrage ersetzt Android dann durch die neue
@@ -11735,8 +11750,8 @@ function startPhoneFeatures() {
   if (!MOBILE) return;
   refreshPriv();
   if (PRIV) {
-    takeNight();
-    planNight();
+    safely('Nachtschicht', takeNight);
+    safely('Nachtschicht', planNight);
   }
   window.KIFloat?.setDock?.(state.settings.floatDock !== false);
   refreshFloat();
@@ -11758,6 +11773,8 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  safely,
+  syncOrte,
   startCheck,
   startOnboarding,
   maybeOnboard,
@@ -11935,6 +11952,18 @@ window.__app = {
 
 init().then(() => {
   logEv('START', `Version ${APP_VERSION}, Bereich ${AREA === 'privat' ? 'Privat' : 'Dienstlich'}`);
+  // App-Sperre zuerst: beim Start entsperren lassen, Inhalt im App-Wechsler verbergen – nichts danach darf das verhindern
+  if (MOBILE) {
+    try {
+      renderLock();
+    } catch (e) {
+      logEv('FEHLER', `Sperre anzeigen: ${e.message}`);
+    }
+    if (lockCfg().on) {
+      dev()?.setSecure?.(true);
+      lockNow();
+    }
+  }
   if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
   refreshGoogle();
   startPhoneFeatures();
@@ -11945,14 +11974,6 @@ init().then(() => {
   startAutoSync();
   // Handy: Speicher der App als dauerhaft anfordern (Sprachmodelle sollen nicht vom System weggeräumt werden)
   if (MOBILE) navigator.storage?.persist?.().catch(() => {});
-  // App-Sperre: beim Start entsperren lassen, Inhalt im App-Wechsler verbergen
-  if (MOBILE) {
-    renderLock();
-    if (lockCfg().on) {
-      dev()?.setSecure?.(true);
-      lockNow();
-    }
-  }
   desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
   // Selbsttest: Einstellungen und Daten prüfen, Sicheres reparieren (Ergebnis unter „Läuft alles?“)
   startCheck().catch((e) => logEv('SELBSTTEST', `Fehler: ${e.message}`));
