@@ -2036,41 +2036,42 @@ check(
   'App-Sperre: nach Rückkehr gesperrt, Fingerabdruck/PIN entsperrt, Fehlschlag bleibt gesperrt, Verzögerung wirkt; Bildschirm aus sperrt sofort und pausiert Zuhören/Vorlesen (mit Auto/Headset läuft das Gespräch weiter)',
   JSON.stringify(lockRes),
 );
-// App-Sperre: verwirft Android die Abfrage (keine Antwort), darf „Entsperren“ nicht dauerhaft tot sein
+// App-Sperre: verwirft Android die Abfrage (keine Antwort), darf „Entsperren“ nie tot sein; Ausweg über die Handy-PIN
 const lockLost = await page.evaluate(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   let asks = 0;
-  let answerNext = false;
+  let pins = 0;
   window.KIDevice = {
     lockAvailable: () => true,
-    // erste Abfrage verschwindet ohne Antwort, die nächste klappt
-    unlock: () => { asks++; if (answerNext) setTimeout(() => window.__kiUnlocked(true, ''), 50); },
+    unlock: () => { asks++; }, // Fingerabdruck-Abfrage verschwindet ohne Antwort
+    unlockPin: () => { pins++; setTimeout(() => window.__kiUnlocked(true, ''), 50); },
     setSecure() {},
     setLocked() {},
   };
   localStorage.setItem('ki-sperre', JSON.stringify({ on: true, delay: 0, talk: false }));
   const ls = document.getElementById('lockScreen');
-  const realNow = Date.now;
   window.__kiPause(Date.now());
   window.__kiResume();
   await wait(100);
   const before = asks;
-  document.getElementById('lockBtn').click(); // Abfrage ohne Antwort
-  await wait(100);
-  const lockedNoAnswer = !ls.hidden && asks === before + 1;
-  document.getElementById('lockBtn').click(); // gleich danach: läuft noch – keine zweite Abfrage
-  const noDouble = asks === before + 1;
-  Date.now = () => realNow() + 5000; // ein paar Sekunden später
-  answerNext = true;
   document.getElementById('lockBtn').click();
-  Date.now = realNow;
+  const asking = /Frage Android/.test(document.getElementById('lockMsg').textContent);
+  document.getElementById('lockBtn').click(); // Antippen fragt immer neu
+  const again = asks === before + 2;
+  await wait(6300);
+  const hint = document.getElementById('lockMsg').textContent;
+  document.getElementById('lockDetails').open = true;
+  await wait(50);
+  const log = document.getElementById('lockLog').textContent;
+  document.getElementById('lockPin').click();
   await wait(150);
-  const out = { lockedNoAnswer, noDouble, again: asks === before + 2, unlocked: ls.hidden };
+  const out = { asking, again, hint, log: /SPERRE.*keine Antwort/.test(log), pins, unlocked: ls.hidden };
+  document.getElementById('lockDetails').open = false;
   localStorage.setItem('ki-sperre', JSON.stringify({ on: false }));
   delete window.KIDevice;
   return out;
 });
-check(lockLost.lockedNoAnswer && lockLost.noDouble && lockLost.again && lockLost.unlocked, 'App-Sperre: bleibt die Antwort von Android aus, fragt „Entsperren“ neu (Knopf nie dauerhaft tot)', JSON.stringify(lockLost));
+check(lockLost.asking && lockLost.again && /Keine Antwort von Android/.test(lockLost.hint) && lockLost.log && lockLost.pins === 1 && lockLost.unlocked, 'App-Sperre: bleibt die Antwort von Android aus, fragt „Entsperren“ neu, Hinweis und Protokoll auf dem Sperrbildschirm, Ausweg über die Handy-PIN', JSON.stringify(lockLost));
 // QR-Code aus einem Bild lesen (Ersatz, wenn die WebView keine Barcode-Erkennung hat)
 {
   const { default: qrcodeGen } = await import('qrcode-generator');

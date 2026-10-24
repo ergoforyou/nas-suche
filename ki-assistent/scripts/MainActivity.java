@@ -118,19 +118,18 @@ public class MainActivity extends BridgeActivity {
         runJs("window.__kiUnlocked && window.__kiUnlocked(" + ok + "," + JSONObject.quote(msg == null ? "" : msg) + ")");
     }
 
-    // laufende Abfrage (eine neue ersetzt sie) und eine, die warten muss, bis die App im Vordergrund ist
+    // laufende Fingerabdruck-Abfrage – eine neue ersetzt sie (auch wenn die alte unsichtbar hängen geblieben ist)
     private android.os.CancellationSignal unlockCancel;
-    private String pendingUnlock;
 
     void startUnlock(String title) {
-        // Android zeigt die Abfrage nur, wenn die App vorne ist – sonst kommt nie eine Antwort und der Knopf hängt
-        if (!resumed) {
-            pendingUnlock = title;
-            return;
-        }
-        pendingUnlock = null;
+        startUnlock(title, false);
+    }
+
+    /** pin = Bildschirmsperre des Handys (eigenes Android-Fenster) statt Fingerabdruck-Abfrage – der Ausweg, wenn die nicht erscheint. */
+    void startUnlock(String title, boolean pin) {
+        Log.i("KI-Assistent", "App-Sperre: Abfrage " + (pin ? "PIN" : "Fingerabdruck/PIN") + ", vorne=" + resumed);
         try {
-            if (Build.VERSION.SDK_INT >= 29) {
+            if (Build.VERSION.SDK_INT >= 29 && !pin) {
                 if (unlockCancel != null) unlockCancel.cancel();
                 final android.os.CancellationSignal sig = new android.os.CancellationSignal();
                 unlockCancel = sig;
@@ -160,7 +159,12 @@ public class MainActivity extends BridgeActivity {
                 });
                 return;
             }
-            // Android 7–9: Bildschirmsperre des Systems abfragen
+            // Android 7–9 (oder auf Wunsch): Bildschirmsperre des Systems abfragen
+            if (unlockCancel != null) {
+                android.os.CancellationSignal old = unlockCancel;
+                unlockCancel = null;
+                old.cancel();
+            }
             android.app.KeyguardManager km = (android.app.KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
             Intent i = km == null ? null : km.createConfirmDeviceCredentialIntent(title, "Handy-PIN, Muster oder Passwort");
             if (i == null) unlockDone(true, "");
@@ -1495,6 +1499,12 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(() -> startUnlock(title == null || title.isEmpty() ? "KI-Assistent entsperren" : title));
         }
 
+        /** Entsperren mit der Bildschirmsperre des Handys (PIN, Muster, Passwort) – eigenes Android-Fenster. */
+        @JavascriptInterface
+        public void unlockPin(String title) {
+            runOnUiThread(() -> startUnlock(title == null || title.isEmpty() ? "KI-Assistent entsperren" : title, true));
+        }
+
         /** App-Sperre an/aus: gesperrt verschwindet die schwebende Figur, Bild-im-Bild ist aus. */
         @JavascriptInterface
         public void setLocked(boolean on) {
@@ -2041,11 +2051,6 @@ public class MainActivity extends BridgeActivity {
         runJs("window.__kiResume && window.__kiResume()");
         applyParams();
         current = new WeakReference<>(this);
-        // Entsperr-Abfrage, die kam, als die App nicht vorne war: jetzt zeigen
-        if (pendingUnlock != null) {
-            final String t = pendingUnlock;
-            bubbleHandler.postDelayed(() -> { if (resumed && pendingUnlock == t) startUnlock(t); }, 300);
-        }
     }
 
     @Override

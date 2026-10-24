@@ -11304,26 +11304,48 @@ setInterval(() => {
 let unlockAsking = false;
 let unlockAskedAt = 0;
 let unlockEndedAt = 0;
-function askUnlock({ auto = false } = {}) {
+let unlockWatch = null;
+function askUnlock({ auto = false, pin = false } = {}) {
   if (!state.locked) return;
-  // läuft schon eine Abfrage: nur warten, solange sie frisch ist. Kam keine Antwort (Abfrage von Android verworfen),
-  // fragt der Knopf „Entsperren“ nach ein paar Sekunden neu – er darf nie dauerhaft tot sein
-  if (unlockAsking && (auto || Date.now() - unlockAskedAt < 4000) && Date.now() - unlockAskedAt < 30e3) return;
-  if (unlockAsking) logEv('SPERRE', 'keine Antwort auf die letzte Abfrage – frage neu');
-  // gerade abgebrochen: nach der Rückkehr nicht sofort wieder fragen (sonst Schleife) – Knopf „Entsperren“ geht immer
+  // automatisch: nicht doppelt fragen und nach einem Abbruch nicht gleich wieder (sonst Schleife).
+  // Antippen fragt immer neu – eine hängen gebliebene Abfrage ersetzt Android dann durch die neue
+  if (auto && unlockAsking && Date.now() - unlockAskedAt < 30e3) return;
   if (auto && Date.now() - unlockEndedAt < 2000) return;
   const d = dev();
   if (!d?.unlock || !d.lockAvailable?.()) return window.__kiUnlocked(true, ''); // keine Bildschirmsperre am Handy
+  if (unlockAsking && !auto) logEv('SPERRE', `letzte Abfrage ohne Antwort (${Math.round((Date.now() - unlockAskedAt) / 1000)} s) – frage neu`);
   unlockAsking = true;
   unlockAskedAt = Date.now();
-  logEv('SPERRE', auto ? 'Abfrage (automatisch)' : 'Abfrage (Knopf)');
-  $('lockMsg').textContent = '';
-  d.unlock('KI-Assistent entsperren');
+  logEv('SPERRE', `Abfrage ${pin ? 'Handy-PIN' : 'Fingerabdruck/PIN'} (${auto ? 'automatisch' : 'Knopf'})`);
+  $('lockMsg').textContent = auto ? '' : 'Frage Android …';
+  renderLockLog();
+  try {
+    if (pin && d.unlockPin) d.unlockPin('KI-Assistent entsperren');
+    else d.unlock('KI-Assistent entsperren');
+  } catch (e) {
+    logEv('SPERRE', `Abfrage fehlgeschlagen: ${e.message}`);
+    $('lockMsg').textContent = `Abfrage fehlgeschlagen: ${e.message}`;
+  }
+  // kommt nichts zurück: sagen, was man tun kann
+  clearTimeout(unlockWatch);
+  unlockWatch = setTimeout(() => {
+    if (!state.locked || !unlockAsking) return;
+    logEv('SPERRE', 'nach 6 s keine Antwort von Android');
+    $('lockMsg').textContent = 'Keine Antwort von Android. Tipp noch einmal auf „Entsperren“ oder auf „Mit Handy-PIN entsperren“.';
+    renderLockLog();
+  }, 6000);
+}
+/** Sperrbildschirm: letzte technische Ereignisse (Sperre, Fehler, Start) – keine Inhalte. */
+function renderLockLog() {
+  const box = document.getElementById('lockLog');
+  if (box) box.textContent = LOG.filter((l) => /SPERRE|FEHLER|SELBSTTEST|START/.test(l)).slice(-12).join('\n') || '–';
 }
 window.__kiUnlocked = (ok, msg) => {
   unlockAsking = false;
   unlockEndedAt = Date.now();
+  clearTimeout(unlockWatch);
   if (!ok) logEv('SPERRE', `nicht entsperrt${msg ? ` (${msg})` : ''}`);
+  renderLockLog();
   if (ok) {
     if (!state.locked) return;
     state.locked = false;
@@ -11353,6 +11375,8 @@ window.__kiResume = () => {
   lockHiddenAt = 0;
 };
 $('lockBtn').onclick = () => askUnlock();
+$('lockPin').onclick = () => askUnlock({ pin: true });
+$('lockDetails').ontoggle = () => renderLockLog();
 function renderLock() {
   if (!MOBILE) return;
   const c = lockCfg();
@@ -11910,6 +11934,7 @@ window.__app = {
 };
 
 init().then(() => {
+  logEv('START', `Version ${APP_VERSION}, Bereich ${AREA === 'privat' ? 'Privat' : 'Dienstlich'}`);
   if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
   refreshGoogle();
   startPhoneFeatures();
