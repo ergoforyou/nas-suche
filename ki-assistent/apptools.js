@@ -149,6 +149,73 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'notiz_anlegen',
+    privatOnly: true,
+    description:
+      'Legt eine Notiz im Second Brain deines Gegenübers an (persönliche Wissensablage in Ordnern: eingang, projekte, ' +
+      'themen, personen, tagebuch, archiv). Für Gedanken, Ideen, Pläne, Infos über Menschen, Projektnotizen und offene ' +
+      'Punkte („Ich muss noch …“ → offen: true). Ohne Ordner landet sie im Eingang und wird später einsortiert. Für ' +
+      'Rechercheergebnisse weiter wissen_speichern, für Erinnerungen zu einer Uhrzeit erinnerung_setzen.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titel: { type: 'string', description: 'Kurzer, treffender Titel' },
+        text: { type: 'string', description: 'Inhalt (Markdown erlaubt), vollständig und für sich verständlich' },
+        ordner: { type: 'string', enum: ['eingang', 'projekte', 'themen', 'personen', 'tagebuch', 'archiv'] },
+        projekt: { type: 'string', description: 'Name des Projekts, falls es zu einem gehört' },
+        tags: { type: 'array', items: { type: 'string' }, description: '2–5 kurze Stichworte' },
+        offen: { type: 'boolean', description: 'true = noch zu erledigen (offener Punkt)' },
+        faellig: { type: 'string', description: 'optional: Fälligkeit YYYY-MM-DD' },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'notizen_suchen',
+    privatOnly: true,
+    description:
+      'Sucht im Second Brain (Notizen deines Gegenübers): per Stichwort, in einem Ordner oder nur offene Punkte ' +
+      '(nur_offen). Ohne Suchbegriff: die neuesten. Nutze es bei „Was hatte ich zu … notiert?“, „Was ist noch offen?“, ' +
+      '„Was weiß ich über …?“.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        suche: { type: 'string' },
+        ordner: { type: 'string', enum: ['eingang', 'projekte', 'themen', 'personen', 'tagebuch', 'archiv'] },
+        nur_offen: { type: 'boolean' },
+        anzahl: { type: 'integer', description: 'höchstens so viele (Standard 6, max. 10)' },
+      },
+    },
+  },
+  {
+    name: 'notiz_lesen',
+    privatOnly: true,
+    description: 'Liest eine Notiz aus dem Second Brain vollständig (id aus notizen_suchen oder der Titel).',
+    input_schema: { type: 'object', properties: { id: { type: 'string' }, titel: { type: 'string' } } },
+  },
+  {
+    name: 'notiz_aendern',
+    privatOnly: true,
+    description:
+      'Ändert eine Notiz im Second Brain: Text ergänzen (text_anhaengen) oder ersetzen, Titel, Ordner, Projekt, ' +
+      'Stichworte, als erledigt abhaken (erledigt: true) oder wieder öffnen. id aus notizen_suchen oder der Titel.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        titel: { type: 'string', description: 'neuer Titel (bzw. zum Finden, wenn keine id)' },
+        text: { type: 'string', description: 'ersetzt den ganzen Text' },
+        text_anhaengen: { type: 'string', description: 'wird unten angefügt' },
+        ordner: { type: 'string', enum: ['eingang', 'projekte', 'themen', 'personen', 'tagebuch', 'archiv'] },
+        projekt: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+        offen: { type: 'boolean' },
+        erledigt: { type: 'boolean' },
+        faellig: { type: 'string' },
+      },
+    },
+  },
+  {
     name: 'erinnerung_setzen',
     privatOnly: true,
     description:
@@ -233,6 +300,10 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   verkehr: '🚗 Schaue nach dem Verkehr …',
   erinnerung_setzen: '⏰ Stelle die Erinnerung …',
   video_abspielen: '🎬 Hole das Video …',
+  notiz_anlegen: '🧠 Lege die Notiz ab …',
+  notizen_suchen: '🧠 Schaue in deine Notizen …',
+  notiz_lesen: '🧠 Lese die Notiz …',
+  notiz_aendern: '🧠 Ändere die Notiz …',
   handy_steuern: '📱 Mache das auf dem Handy …',
   erinnerungen_verwalten: '⏰ Schaue in die Erinnerungen …',
   nachrichten: '📰 Schaue in die Nachrichten …',

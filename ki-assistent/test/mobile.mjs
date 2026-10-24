@@ -40,7 +40,7 @@ await page.route('https://api.anthropic.com/**', (route) => {
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
   // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
   // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
-  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis|Wähle aus den früheren Gesprächen/.test(JSON.stringify(request.body.system ?? ''));
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis|Wähle aus den früheren Gesprächen|Du sortierst Notizen/.test(JSON.stringify(request.body.system ?? ''));
   const sysText = JSON.stringify(request.body.system ?? '');
   // gezielte Antworten (match) gehen nur an die passende Anfrage, sonst die nächste freie
   let qi = claudeQueue.findIndex((e) => !!e.helper === helper && e.match?.test(sysText));
@@ -2279,7 +2279,8 @@ const privF = await page.evaluate(async () => {
   document.querySelector('#input').value = 'Merk dir: Reifen wechseln bis Samstag';
   document.querySelector('#btnSend').click();
   await new Promise((r) => setTimeout(r, 600));
-  const notes = app.state.settings.notes ?? [];
+  // „Merk dir“ landet im Second Brain (Eingang, offener Punkt mit Fälligkeit)
+  const notes = (app.brainState() ?? []).filter((n) => n.quelle === 'notiz').map((n) => ({ text: n.titel, due: n.faellig })).reverse();
   const sat = new Date(`${notes[0]?.due}T12:00`).getDay();
   window.KIDevice = { appLog: () => 'Bearer abcdef sk-ant-geheim-1234567890 test@example.com', deviceInfo: () => '{"modell":"Test"}', power: () => '{}' };
   const savedName = [];
@@ -2771,6 +2772,101 @@ check(b68.inCall && b68.noListen && b68.after, 'Telefonat: Figur hält inne und 
 check(b68.yt.video === 'abcDEF12345' && /Entspannungsmusik/.test(b68.yt.laeuft) && b68.yt.weitere === 1 && b68.mediaPause && !b68.mediaOther, 'YouTube: passendes Video gesucht und abgespielt, Pause per Zuruf', JSON.stringify(b68));
 const b69 = await page.evaluate(() => ({ pause: window.__app.state.settings.livePauseMs, v2: window.__app.state.settings.pauseV2, opt: [...document.querySelectorAll('#sLivePause option')].map((o) => o.value).join() }));
 check(b69.pause >= 1200 && b69.v2 && b69.opt === '600,800,1200,2000', 'Spracheingabe: Grundeinstellung 1,2 s (alte 0,8 s umgestellt), Stufen bis 2 s', JSON.stringify(b69));
+// Beta 70: Diktat – durchgehend, abschnittsweise geschrieben, Ende mit „fertig“ (Text bleibt zum Prüfen)
+const b70 = await page.evaluate(async () => {
+  const app = window.__app;
+  const stt = app.stt;
+  const keepListen = stt.listen;
+  const texts = ['Erster Gedanke zu dem Projekt, das wir angehen wollen.', 'Zweiter Teil mit mehr Details zur Planung.', 'Das wäre es, fertig.'];
+  let i = 0;
+  stt.listen = async () => {
+    await new Promise((r) => setTimeout(r, 60));
+    return i < texts.length ? Object.assign(new Float32Array(16000 * 2), { n: i++ }) : null;
+  };
+  app.setTranscriber(async (audio) => {
+    await new Promise((r) => setTimeout(r, 30));
+    return texts[audio.n];
+  });
+  document.getElementById('input').value = '';
+  const busyBtn = document.getElementById('btnDictate');
+  const p = app.startDictation();
+  await new Promise((r) => setTimeout(r, 20));
+  const active = !!app.dictation() && busyBtn.classList.contains('listening');
+  await p;
+  const text = document.getElementById('input').value;
+  const out = { active, text, done: !app.dictation(), noEndWord: !/fertig/i.test(text), mic: !app.state.micActive };
+  // Antippen beendet: der laufende Abschnitt wird noch geschrieben
+  let release;
+  stt.listen = () => new Promise((r) => (release = r));
+  stt.stop = () => release(Object.assign(new Float32Array(16000), { n: 9 }));
+  const keepStop = stt.stop;
+  app.setTranscriber(async () => 'Kurzer Nachtrag');
+  document.getElementById('input').value = '';
+  const p2 = app.startDictation();
+  await new Promise((r) => setTimeout(r, 30));
+  app.stopDictation();
+  await p2;
+  out.tapped = document.getElementById('input').value;
+  out.sendWord = app.DICT_END_RE.test('So, das schicke ich jetzt. Abschicken.');
+  stt.listen = keepListen;
+  delete stt.stop;
+  app.setTranscriber(null);
+  document.getElementById('input').value = '';
+  void keepStop;
+  return out;
+});
+check(b70.active && b70.done && b70.mic && b70.noEndWord && /Erster Gedanke.*Zweiter Teil.*Das wäre es/.test(b70.text), 'Diktat: läuft durch, schreibt abschnittsweise mit, „fertig“ beendet (Text zum Prüfen)', JSON.stringify(b70));
+check(b70.tapped === 'Kurzer Nachtrag' && b70.sendWord, 'Diktat: Antippen beendet, letzter Abschnitt wird noch geschrieben', JSON.stringify(b70));
+// Beta 71 (Privat): Second Brain – Notizen per Werkzeug, „Merk dir“, Diktat „als Notiz“, Export/Import, Abgleich
+const b71 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const keep = app.brainState()?.slice() ?? [];
+  const made = await app.runAppTool('notiz_anlegen', { titel: 'Urlaub Ostsee', text: 'Ideen: Rügen oder Usedom, im Mai', ordner: 'projekte', projekt: 'Urlaub 2027', tags: ['urlaub'] });
+  const open = await app.runAppTool('notiz_anlegen', { text: 'Ich muss noch die Steuererklärung abgeben', faellig: '2027-05-31' });
+  out.made = made.angelegt && made.ordner === 'Projekte';
+  out.openAuto = open.offen === true && open.ordner === 'Eingang';
+  const found = await app.runAppTool('notizen_suchen', { suche: 'Rügen' });
+  out.found = found.treffer?.[0]?.titel;
+  const loops = await app.runAppTool('notizen_suchen', { nur_offen: true });
+  out.loops = loops.treffer.map((t) => t.titel);
+  const read = await app.runAppTool('notiz_lesen', { titel: 'Ostsee' });
+  out.read = /Usedom/.test(read.text);
+  await app.runAppTool('notiz_aendern', { id: made.id, text_anhaengen: 'Ferienwohnung in Binz angefragt.' });
+  await app.runAppTool('notiz_aendern', { id: open.id, erledigt: true });
+  out.changed = /Binz/.test(app.brainState().find((n) => n.id === made.id).text) && !!app.brainState().find((n) => n.id === open.id).erledigt;
+  // die Figur bekommt passende Notizen zur Frage mit
+  app.state.brainHits = [app.brainState().find((n) => n.id === made.id)];
+  out.ctx = JSON.stringify(app.buildMessages()).includes('Second Brain');
+  app.state.brainHits = [];
+  // Export als Obsidian-Ordner und wieder einlesen
+  const zip = await app.brainExportZip();
+  const before = app.brainState().length;
+  const r = await app.brainImportFiles([new File([zip], 'Second-Brain.zip', { type: 'application/zip' })]);
+  out.roundtrip = r.gelesen === before && r.neu === 0 && app.brainState().length === before;
+  out.md = await app.brainImportFiles([new File(['# Fremde Notiz\n\nAus Obsidian übernommen.'], 'Fremde Notiz.md')]);
+  // Abgleich: Notizen reisen mit, neuere Fassung gewinnt
+  const snap = app.syncSnapshot();
+  out.inSnap = snap.brain?.some((n) => n.id === made.id);
+  // Eingang einsortieren (Hilfsmodell nachgebildet)
+  const inbox = app.addBrainNote({ titel: 'Hecke', text: 'Hecke im Garten schneiden', ordner: 'eingang' });
+  out.sortId = inbox.id;
+  out.ui = !document.getElementById('brainWrap').hidden && document.querySelectorAll('#brainList .brain-note').length > 0;
+  return out;
+});
+claudeQueue.push(Object.assign(sayText(JSON.stringify([{ id: b71.sortId, ordner: 'projekte', projekt: 'Haus', tags: ['garten'], titel: 'Hecke schneiden' }])), { helper: true, match: /Du sortierst Notizen/ }));
+b71.sorted = await page.evaluate(async (id) => {
+  const app = window.__app;
+  await window.desktop.setKey('anthropic', 'sk-ant-test-0000000000');
+  const pre = { offline: app.state.settings.offline, provider: app.state.settings.provider, todo: app.brainState().filter((x) => x.ordner === 'eingang' && !x.sortiert).length };
+  let err = '';
+  const k = await app.sortInbox({ force: true }).catch((e) => ((err = e.message), -1));
+  const n = app.brainState().find((x) => x.id === id);
+  return { k, err, pre, ordner: n?.ordner, projekt: n?.projekt, titel: n?.titel, log: app.logTail(6) };
+}, b71.sortId);
+check(b71.made && b71.openAuto && b71.found === 'Urlaub Ostsee' && b71.loops.includes('Ich muss noch die Steuererklärung abgeben') && b71.read && b71.changed, 'Second Brain: Notizen anlegen, suchen, lesen, ergänzen, abhaken', JSON.stringify(b71));
+check(b71.sorted.ordner === 'projekte' && b71.sorted.projekt === 'Haus' && b71.sorted.titel === 'Hecke', 'Second Brain: Eingang wird in Ordner/Projekt einsortiert (eigener Titel bleibt)', JSON.stringify(b71.sorted));
+check(b71.ctx && b71.roundtrip && b71.md?.neu === 1 && b71.inSnap && b71.ui, 'Second Brain: Notizen im Gespräch, Obsidian-Export/-Import, im Abgleich, Liste', JSON.stringify(b71));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

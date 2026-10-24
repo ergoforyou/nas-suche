@@ -543,3 +543,16 @@ body.floating .stage { display: none; }
   flex: 1 1 140px;
   min-width: 0;
 }
+
+/* Diktat läuft */
+#btnDictate.listening { background: var(--danger); border-color: var(--danger); animation: pulse 1.2s infinite; }
+body.dictating #input { outline: 2px solid var(--danger); }
+
+/* Second Brain */
+.brain-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.brain-note { border: 1px solid var(--border, #2a2f3a); border-radius: 8px; padding: 4px 8px; }
+.brain-note summary { cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+.brain-note summary small { font-weight: 400; opacity: 0.7; }
+.brain-note textarea { width: 100%; margin: 6px 0; box-sizing: border-box; }
+.chips .chip { padding: 3px 9px; border-radius: 12px; font-size: 13px; }
+.chips .chip.active { background: var(--accent, #4c8dff); color: #fff; border-color: transparent; }

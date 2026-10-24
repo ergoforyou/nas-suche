@@ -1,5 +1,7 @@
 import { Avatar, avatarState, detectFace, loadImage, fireEvent, timeOfDayEnergy } from './avatar.js';
-import { extractText, chunkText, buildIndex, searchIndex, kbPrompt, KB_ACCEPT } from './wissen.js';
+import { extractText, chunkText, buildIndex, searchIndex, kbPrompt, KB_ACCEPT, terms } from './wissen.js';
+import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeNotes, brainPrompt, INBOX_PROMPT, parseInbox, OPEN_RE } from './brain.js';
+import JSZip from 'jszip';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
@@ -400,6 +402,7 @@ function save({ quiet = false } = {}) {
       history: state.history,
       abgleich: state.abgleich,
       erinnerungen: state.erinnerungen ?? [],
+      brain: state.brain ?? [],
     });
     if (saveLoud) {
       autoSyncSoon();
@@ -907,6 +910,7 @@ function buildMessages() {
   if (state.place) ctx.push(r.place(state.place));
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
   if (state.savedHits?.length) ctx.push(savedPrompt(state.savedHits));
+  if (state.brainHits?.length || state.brainLoops?.length) ctx.push(brainPrompt(state.brainHits ?? [], state.brainLoops ?? [], p.language === 'en' ? 'en' : 'de'));
   if (state.storyHits?.length) ctx.push(storyHitsPrompt(state.storyHits));
   if (state.episodeHits?.length) ctx.push(episodeHitsPrompt(state.episodeHits));
   // Rollenanker direkt vor der aktuellen Frage (wirkt gegen Abdriften in langen Gesprächen)
@@ -1259,6 +1263,8 @@ async function send(text) {
   state.kbHits = kbActive() ? searchIndex(kbIndex, text || attachments.map((a) => a.name).join(' '), 5) : [];
   state.storyHits = storyIsLong(persona().geschichte) ? searchIndex(storyIndex(persona()), text, 2) : [];
   state.savedHits = savedIndex?.n ? searchIndex(savedIndex, text, 3) : [];
+  state.brainHits = PRIV && state.brain?.length && text ? brainSearchIndex(text, 3) : [];
+  state.brainLoops = PRIV && /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text) ? openLoops(state.brain, 10) : [];
   // frühere Gespräche, die zur Frage passen (nur mit eingeschaltetem Gedächtnis)
   // klingt die Frage nach Erinnerung („weißt du noch …“), auch Umschreibungen verstehen (kurz das Hilfsmodell fragen)
   state.episodeHits = persona().memoryOn && persona().episoden?.length ? (RECALL_RE.test(text) ? await findEpisodesSmart(persona(), text, 2, 6) : findEpisodes(persona(), text, 2, 6)) : [];
@@ -1455,6 +1461,8 @@ async function morningContext(p) {
   y.setHours(0, 0, 0, 0);
   const open = (p.episoden ?? []).filter((e) => e.offen && (e.von ?? 0) >= y.getTime() - 86400e3).slice(-3);
   if (open.length) out.push(`Gestern offen geblieben:\n${open.map((e) => `- ${e.titel}: ${e.offen}`).join('\n')}`);
+  const loops = PRIV ? openLoops(state.brain, 5) : [];
+  if (loops.length) out.push(`Offene Punkte aus dem Second Brain:\n${loops.map((n) => `- ${n.titel}${n.faellig ? ` (fällig ${n.faellig})` : ''}`).join('\n')}`);
   return out;
 }
 
@@ -1480,6 +1488,8 @@ const eveningDue = () => PRIV && !budgetSaving() && state.settings.eveningBrief 
 /** Was die Feierabendrunde braucht: was heute besprochen wurde, der erste Termin morgen. */
 async function eveningContext(p) {
   const out = [];
+  const loops = PRIV ? openLoops(state.brain, 5) : [];
+  if (loops.length) out.push(`Offene Punkte aus dem Second Brain:\n${loops.map((n) => `- ${n.titel}${n.faellig ? ` (fällig ${n.faellig})` : ''}`).join('\n')}`);
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const today = (state.history[p.id] ?? []).filter((m) => (m.t ?? 0) >= start.getTime() && m.role === 'user' && typeof m.content === 'string');
@@ -1901,7 +1911,10 @@ async function helperJson(system, input) {
       },
       (ev) => {
         if (ev.type === 'delta') out += ev.payload;
-        else if (ev.type === 'done' || ev.type === 'error') resolve(ev.type === 'done' ? out : '');
+        else if (ev.type === 'done' || ev.type === 'error') {
+          if (ev.type === 'error') logEv('HELFER', `Fehler: ${String(ev.payload?.message ?? ev.payload ?? '').slice(0, 160)}`);
+          resolve(ev.type === 'done' ? out : '');
+        }
       },
     );
   });
@@ -2986,9 +2999,11 @@ async function warmupLocalStt(onProgress) {
 // fürs Aktivierungswort reicht ein kleines Modell auf dem Gerät (~40 MB) – die Sprache geht dafür nie in die Cloud
 const WAKE_MODEL = 'onnx-community/whisper-tiny';
 
+let transcribeOverride = null; // nur für Tests
 /** Spracherkennung; scheitert der Download des gewählten Modells, mit einem kleineren weiterversuchen. */
 const STT_FALLBACKS = ['onnx-community/whisper-base', 'onnx-community/whisper-tiny'];
 async function transcribeWithFallback(audio, { withConfidence = false } = {}) {
+  if (transcribeOverride) return transcribeOverride(audio);
   if (state.settings.sttEngine === 'cloud' && desktop.transcribeCloud) {
     const keys = await desktop.keyStatus().catch(() => ({}));
     if (keys.openai) {
@@ -3156,10 +3171,9 @@ async function listenOnce({ handsFree = false } = {}) {
       status('');
       if (!text) return;
     } else if (LONG_START_RE.test(text)) {
-      state.longTalk = { parts: [], finish: false };
-      addBubble('note', '🎙 Ich höre dir jetzt länger zu – erzähl in Ruhe, Pausen sind kein Problem. Sag „fertig“, wenn du fertig bist (oder tippe aufs Mikrofon).');
+      // „Hör mir mal länger zu“ / „Diktat starten“: Diktat-Modus (ohne Ende durch Pausen, Text erst zum Prüfen)
       fireEvent('ack', 1500);
-      again();
+      setTimeout(() => startDictation(), 50);
       return;
     } else if (unfinished(text)) {
       // Satz klingt unfertig („… und“, „… weil“): noch kurz weiter zuhören und das Nächste anhängen
@@ -3226,6 +3240,7 @@ function phoneCall(on) {
   logEv('TELEFON', on ? 'Anruf – Figur pausiert' : 'Anruf vorbei – weiter');
   if (on) {
     state.callPaused = { clip: !!clipPlaying && !clipPlaying.v.paused };
+    stopDictation();
     if (state.callPaused.clip) clipPlaying.v.pause();
     if (stt.listening) stt.cancel();
     if (state.micActive && !state.transcribing) state.micActive = false;
@@ -3260,7 +3275,7 @@ function maybeListenHandsFree(tries = 0) {
     // während eines Telefonats nicht zuhören (Mikrofon gehört dem Gespräch)
     // auch, solange die Figur über die gerade gestellte Frage nachdenkt: so kommt ein Weitersprechen noch dazu
     const thinking = state.busy && !tts.speaking && Date.now() - (state.lastSendAt ?? 0) < 12000;
-    const free = (liveBargeIn() || (!state.busy && !tts.speaking) || thinking) && !state.inCall;
+    const free = (liveBargeIn() || (!state.busy && !tts.speaking) || thinking) && !state.inCall && !state.dictation;
     // wartet gerade das Aktivierungswort aufs Mikrofon: freigeben, dann zuhören
     if (state.settings.handsFree && free && state.wakeListening && tries < 10) {
       stt.cancel();
@@ -3349,7 +3364,128 @@ function toggleMic() {
   tts.stop();
   listenOnce();
 }
-$('btnMic').onclick = toggleMic;
+$('btnMic').onclick = () => {
+  if (micLongPressed) return void (micLongPressed = false);
+  if (state.dictation) return stopDictation();
+  toggleMic();
+};
+
+// ---- Diktat (📝 bzw. Mikrofon lange drücken): nimmt durchgehend auf – ohne Ende durch Pausen –, schreibt
+// abschnittsweise (etwa alle 20 s an einer ruhigen Stelle) mit und stellt den Text ins Eingabefeld. Ende: antippen,
+// „fertig“ (Text bleibt zum Prüfen stehen) oder „abschicken“ (geht gleich an die Figur).
+const DICT_END_RE = /[\s,.]*\b(fertig|ende diktat|diktat ende|diktat beenden|abschicken|absenden|senden|schick (es|das) ab|als notiz( speichern| ablegen)?|ins second brain)[.!]*\s*$/i;
+const DICT_NOTE_RE = /\b(als notiz( speichern| ablegen)?|ins second brain)[.!]*\s*$/i;
+const DICT_SEND_RE = /\b(abschicken|absenden|senden|schick (es|das) ab)[.!]*\s*$/i;
+let micLongPressed = false;
+async function startDictation() {
+  if (state.dictation || state.inCall) return;
+  if (state.wakeListening || stt.listening) stt.cancel();
+  tts.stop();
+  const d = { parts: [], queue: Promise.resolve(), send: false, base: input.value.trim(), segments: 0 };
+  state.dictation = d;
+  state.micActive = true;
+  document.body.classList.add('dictating');
+  $('btnDictate')?.classList.add('listening');
+  $('btnMic').classList.add('listening');
+  logEv('DIKTAT', 'Start');
+  status('📝 Diktat läuft – sprich in Ruhe, Pausen sind kein Problem. Ende: 📝 antippen oder „fertig“ / „abschicken“ sagen.');
+  const show = () => {
+    input.value = [d.base, ...d.parts].filter(Boolean).join(d.base || d.parts.length > 1 ? ' ' : '');
+    autoGrow();
+    input.scrollTop = input.scrollHeight;
+  };
+  try {
+    while (state.dictation === d && !d.ending) {
+      // Abschnitt schließen (das Diktat läuft weiter): nach 3 s Pause, ab 12 s an einer kurzen Pause, ab 20 s an jeder,
+      // spätestens nach 25 s – so wird laufend mitgeschrieben und „fertig“ am Ende eines Abschnitts erkannt
+      const audio = await stt.listen({
+        waitForSpeech: true,
+        threshold: () => state.settings.sensitivity,
+        startMs: () => 150,
+        silenceMs: (spoken) => (d.ending ? 0 : spoken > 20000 ? 350 : spoken > 12000 ? 800 : 3000),
+        maxMs: () => 25000,
+      });
+      if (!audio || audio.length < 16000 * 0.4) continue;
+      const n = ++d.segments;
+      status(`📝 Diktat läuft – Abschnitt ${n} wird geschrieben …`);
+      // Abschnitte der Reihe nach schreiben, während schon weiter aufgenommen wird
+      d.queue = d.queue.then(async () => {
+        let text = '';
+        try {
+          const res = await transcribeWithFallback(audio);
+          text = (typeof res === 'string' ? res : res?.text ?? '').trim();
+        } catch (e) {
+          logEv('DIKTAT', `Abschnitt ${n}: ${e.message}`);
+          text = '[…]';
+        }
+        if (!text || NOISE.some((r) => r.test(text))) return;
+        if (DICT_END_RE.test(text)) {
+          d.send = DICT_SEND_RE.test(text);
+          d.note = DICT_NOTE_RE.test(text);
+          text = text.replace(DICT_END_RE, '').trim();
+          d.ending = true;
+          if (stt.listening) stt.cancel();
+        }
+        if (text) d.parts.push(text);
+        if (state.dictation === d) show();
+      });
+    }
+  } catch (e) {
+    addBubble('error', `Diktat: ${friendlyError(e)}`);
+  } finally {
+    await d.queue;
+    show();
+    state.dictation = null;
+    state.micActive = false;
+    document.body.classList.remove('dictating');
+    $('btnDictate')?.classList.remove('listening');
+    $('btnMic').classList.remove('listening');
+    const words = d.parts.join(' ').split(/\s+/).filter(Boolean).length;
+    logEv('DIKTAT', `Ende – ${d.segments} Abschnitt(e), ${words} Wörter`);
+    if (d.note && PRIV && d.parts.length) {
+      // „als Notiz“: Diktat landet im Second Brain (Eingang) statt im Gespräch
+      const text = d.parts.join(' ');
+      addBrainNote({ titel: '', text, ordner: 'eingang', quelle: 'diktat' });
+      input.value = d.base;
+      autoGrow();
+      status(`🧠 Diktat als Notiz im Second Brain abgelegt (${words} Wörter).`);
+    } else if (d.send && input.value.trim()) {
+      status('');
+      submit();
+    } else {
+      status(words ? `📝 Diktat fertig (${words} Wörter) – prüfen und mit ➤ abschicken.` : '📝 Diktat beendet – nichts verstanden.');
+      input.focus();
+    }
+    updateBadge();
+    maybeListenHandsFree();
+  }
+}
+/** Diktat beenden: der laufende Abschnitt wird noch geschrieben. */
+function stopDictation() {
+  const d = state.dictation;
+  if (!d) return;
+  d.ending = true;
+  stt.stop();
+}
+function toggleDictation() {
+  if (state.dictation) stopDictation();
+  else startDictation();
+}
+$('btnDictate').onclick = toggleDictation;
+// Mikrofon lange drücken (Handy und PC): Diktat
+{
+  let timer = null;
+  const down = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      micLongPressed = true;
+      startDictation();
+    }, 600);
+  };
+  const up = () => clearTimeout(timer);
+  $('btnMic').addEventListener('pointerdown', down);
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => $('btnMic').addEventListener(ev, up));
+}
 
 // ---------------------------------------------------------------- Freischwebende Figur & Ausgabefenster
 async function setFloating(on, { fromWindow = false } = {}) {
@@ -6539,6 +6675,13 @@ async function init() {
   if (!state.personas.some((p) => p.id === state.activeId)) state.activeId = state.personas[0].id;
   state.history = data.history ?? {};
   state.saved = Array.isArray(data.wissen) ? data.wissen : [];
+  // Second Brain (Privat); frühere „Merk dir“-Notizen einmalig als offene Punkte übernehmen
+  state.brain = PRIV && Array.isArray(data.brain) ? data.brain : [];
+  if (PRIV && state.settings.notes?.length) {
+    for (const n of state.settings.notes) state.brain.push(makeNote({ titel: n.text, text: '', ordner: 'eingang', offen: true, faellig: n.due, quelle: 'notiz', created: n.at }));
+    state.settings.notes = [];
+  }
+  setTimeout(() => renderBrain(), 0);
   state.erinnerungen = Array.isArray(data.erinnerungen) ? data.erinnerungen.filter((r) => r.at > Date.now() - 86400e3) : [];
   setTimeout(renderReminderBar, 0);
   state.abgleich = data.abgleich ?? { base: [], deleted: {} };
@@ -6973,6 +7116,7 @@ async function runAppToolInner(name, input) {
     if (!desktop.traffic) throw new Error('Verkehr ist hier nicht verfügbar');
     return desktop.traffic({ autobahn: input?.autobahn, ort: input?.ort });
   }
+  if (['notiz_anlegen', 'notizen_suchen', 'notiz_lesen', 'notiz_aendern'].includes(name)) return brainTool(name, input);
   if (name === 'gespraeche_suchen') {
     const p = persona();
     if (!p.memoryOn) return { hinweis: 'Das Gedächtnis ist für diese Persona ausgeschaltet.' };
@@ -7730,6 +7874,272 @@ $('clipFile').onchange = async (e) => {
     );
   } catch (err) {
     status(`Video: ${err.message}`);
+  }
+};
+
+// ---- Second Brain (Privat): Notizen in Ordnern, offene Punkte, Export/Import als Obsidian-Ordner (siehe brain.js)
+let brainIndex = null;
+function brainSearch(q, k = 5, opts = {}) {
+  const hits = brainSearchIndex(q, k, opts);
+  if (hits.length || !String(q ?? '').trim()) return hits;
+  // wenige Notizen: der Suchindex ist dann streng – einfache Wortsuche als Rückfall
+  const want = [...new Set(terms(q))];
+  const list = (state.brain ?? []).filter((n) => (!opts.ordner || n.ordner === opts.ordner) && (!opts.offen || (n.offen && !n.erledigt)));
+  return list
+    .map((n) => {
+      const have = new Set(terms(`${n.titel} ${(n.tags ?? []).join(' ')} ${n.projekt ?? ''} ${n.text}`));
+      return [n, want.filter((t) => have.has(t)).length];
+    })
+    .filter(([, c]) => c > 0)
+    .sort((a, b) => b[1] - a[1] || b[0].changed - a[0].changed)
+    .slice(0, k)
+    .map(([n]) => n);
+}
+function brainSearchIndex(q, k = 5, { ordner, offen } = {}) {
+  const list = (state.brain ?? []).filter((n) => (!ordner || n.ordner === ordner) && (!offen || (n.offen && !n.erledigt)));
+  if (!String(q ?? '').trim()) return list.slice().sort((a, b) => b.changed - a.changed).slice(0, k);
+  if (!ordner && !offen) {
+    brainIndex ??= buildIndex({ docs: (state.brain ?? []).map((n) => ({ name: n.titel, entry: n, chunks: chunkText(`${n.titel}\n${(n.tags ?? []).join(' ')} ${n.projekt ?? ''}\n${n.text}`, 1600) })) });
+    const hits = searchIndex(brainIndex, q, k * 2).map((h) => h.entry ?? h.doc?.entry).filter(Boolean);
+    const seen = new Set();
+    return hits.filter((n) => !seen.has(n.id) && seen.add(n.id)).slice(0, k);
+  }
+  const idx = buildIndex({ docs: list.map((n) => ({ name: n.titel, entry: n, chunks: chunkText(`${n.titel}\n${n.text}`, 1600) })) });
+  return searchIndex(idx, q, k).map((h) => h.entry ?? h.doc?.entry).filter(Boolean);
+}
+function brainChanged() {
+  brainIndex = null;
+  save();
+  renderBrain();
+  renderNotes();
+  brainSortSoon();
+}
+function addBrainNote(f) {
+  if (!PRIV) throw new Error('Das Second Brain gibt es im Bereich Privat.');
+  const n = makeNote(f);
+  (state.brain ??= []).push(n);
+  logEv('BRAIN', `neu: ${n.titel.slice(0, 40)} (${n.ordner})`);
+  brainChanged();
+  return n;
+}
+function updateBrainNote(n, patch) {
+  Object.assign(n, patch, { changed: Date.now() });
+  if (patch.erledigt === null) delete n.erledigt;
+  brainChanged();
+  return n;
+}
+const noteView = (n, full = false) => ({
+  id: n.id,
+  titel: n.titel,
+  ordner: ORDNER[n.ordner],
+  ...(n.projekt ? { projekt: n.projekt } : {}),
+  ...(n.tags?.length ? { tags: n.tags } : {}),
+  ...(n.offen ? { offen: !n.erledigt } : {}),
+  ...(n.faellig ? { faellig: n.faellig } : {}),
+  geaendert: new Date(n.changed).toLocaleDateString('de-DE'),
+  text: full ? n.text : n.text.slice(0, 300),
+});
+const ordnerKey = (o) => (o ? Object.keys(ORDNER).find((k) => k === String(o).toLowerCase() || ORDNER[k].toLowerCase() === String(o).toLowerCase()) : undefined);
+function brainTool(name, input = {}) {
+  if (!PRIV) throw new Error('Das Second Brain gibt es im Bereich Privat.');
+  if (name === 'notiz_anlegen') {
+    if (!String(input.text ?? input.titel ?? '').trim()) throw new Error('Was soll in die Notiz?');
+    const n = addBrainNote({ titel: input.titel, text: input.text ?? '', ordner: ordnerKey(input.ordner) ?? 'eingang', tags: input.tags, projekt: input.projekt, offen: input.offen, faellig: input.faellig, quelle: 'ki' });
+    fireEvent('success', 2000);
+    return { angelegt: true, ...noteView(n) };
+  }
+  if (name === 'notizen_suchen') {
+    const hits = brainSearch(input.suche, Math.min(10, Number(input.anzahl) || 6), { ordner: ordnerKey(input.ordner), offen: !!input.nur_offen });
+    return { treffer: hits.map((n) => noteView(n)), gesamt: state.brain.length };
+  }
+  const n = findNote(state.brain ?? [], input.id ?? input.titel);
+  if (!n) throw new Error('Diese Notiz gibt es nicht (erst notizen_suchen).');
+  if (name === 'notiz_lesen') return noteView(n, true);
+  // notiz_aendern
+  const patch = {};
+  if (input.titel) patch.titel = String(input.titel).slice(0, 140);
+  if (input.text != null) patch.text = String(input.text).slice(0, 20000);
+  if (input.text_anhaengen) patch.text = `${n.text}${n.text ? '\n\n' : ''}${String(input.text_anhaengen).slice(0, 8000)}`;
+  if (ordnerKey(input.ordner)) patch.ordner = ordnerKey(input.ordner);
+  if (Array.isArray(input.tags)) patch.tags = makeNote({ tags: input.tags }).tags;
+  if (input.projekt != null) patch.projekt = String(input.projekt).slice(0, 80) || undefined;
+  if (input.offen != null) patch.offen = !!input.offen;
+  if (input.faellig != null) patch.faellig = /^\d{4}-\d{2}-\d{2}$/.test(input.faellig) ? input.faellig : undefined;
+  if (input.erledigt === true) patch.erledigt = Date.now();
+  if (input.erledigt === false) patch.erledigt = null;
+  updateBrainNote(n, patch);
+  return { geaendert: true, ...noteView(n) };
+}
+// Eingang sortieren lassen (Hilfsmodell): Ordner, Projekt, Stichworte, Titel – höchstens alle 10 Minuten, nicht bei
+// Kostenbremse, nur was der Nutzer nicht selbst eingeordnet hat
+let brainSortTimer = null;
+function brainSortSoon(ms = 60000) {
+  if (!PRIV || state.settings.brainSort === false) return;
+  clearTimeout(brainSortTimer);
+  brainSortTimer = setTimeout(() => sortInbox().catch((e) => logEv('BRAIN', `Sortieren: ${e.message}`)), ms);
+}
+async function sortInbox({ force = false } = {}) {
+  if (!PRIV || state.settings.offline || (!force && (state.busy || budgetSaving()))) return 0;
+  if (!force && Date.now() - (state.brainSortedAt ?? 0) < 10 * 60e3) return 0;
+  const todo = (state.brain ?? []).filter((n) => n.ordner === 'eingang' && !n.sortiert).slice(0, 15);
+  if (!todo.length) return 0;
+  state.brainSortedAt = Date.now();
+  const projekte = [...new Set(state.brain.map((n) => n.projekt).filter(Boolean))].slice(0, 30);
+  const input = `Bestehende Projekte: ${projekte.join(', ') || '–'}\n\n` + todo.map((n) => JSON.stringify({ id: n.id, titel: n.titel, text: n.text.slice(0, 600) })).join('\n');
+  const raw = await helperJson(INBOX_PROMPT, input);
+  const res = parseInbox(raw);
+  if (!res.length) logEv('BRAIN', `Sortierer ohne Ergebnis: ${String(raw).slice(0, 120)}`);
+  let k = 0;
+  for (const r of res) {
+    const n = todo.find((x) => x.id === r.id);
+    if (!n) continue;
+    Object.assign(n, {
+      ordner: r.ordner,
+      ...(r.projekt ? { projekt: String(r.projekt).slice(0, 80) } : {}),
+      ...(Array.isArray(r.tags) ? { tags: makeNote({ tags: [...(n.tags ?? []), ...r.tags] }).tags } : {}),
+      ...(r.titel && n.quelle !== 'nutzer' ? { titel: String(r.titel).slice(0, 140) } : {}),
+      ...(r.offen && !n.erledigt ? { offen: true } : {}),
+      sortiert: true,
+      changed: Date.now(),
+    });
+    k++;
+  }
+  for (const n of todo) n.sortiert = true;
+  if (k) logEv('BRAIN', `${k} Notiz(en) einsortiert`);
+  brainIndex = null;
+  save();
+  renderBrain();
+  return k;
+}
+// Oberfläche (⚙ → Wissen → 🧠 Second Brain)
+let brainFilter = { ordner: '', q: '' };
+function renderBrain() {
+  const wrap = document.getElementById('brainWrap');
+  if (!wrap) return;
+  wrap.hidden = !PRIV;
+  if (!PRIV) return;
+  const notes = state.brain ?? [];
+  const chips = $('brainFolders');
+  chips.replaceChildren(
+    ...[['', `Alle (${notes.length})`], ['offen', `⏳ Offen (${openLoops(notes, 999).length})`], ...Object.entries(ORDNER).map(([k, v]) => [k, `${v} (${notes.filter((n) => n.ordner === k).length})`])].map(([k, label]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = 'chip' + (brainFilter.ordner === k ? ' active' : '');
+      b.onclick = () => {
+        brainFilter.ordner = k;
+        renderBrain();
+      };
+      return b;
+    }),
+  );
+  const q = brainFilter.q.trim();
+  let list = brainFilter.ordner === 'offen' ? openLoops(notes, 999) : notes.filter((n) => !brainFilter.ordner || n.ordner === brainFilter.ordner);
+  if (q) {
+    const ids = new Set(brainSearch(q, 50).map((n) => n.id));
+    list = list.filter((n) => ids.has(n.id) || n.titel.toLowerCase().includes(q.toLowerCase()));
+  } else if (brainFilter.ordner !== 'offen') list = list.slice().sort((a, b) => b.changed - a.changed);
+  const box = $('brainList');
+  box.replaceChildren(
+    ...list.slice(0, 100).map((n) => {
+      const row = document.createElement('details');
+      row.className = 'brain-note';
+      const sum = document.createElement('summary');
+      const done = n.offen ? (n.erledigt ? '☑ ' : '☐ ') : '';
+      sum.textContent = `${done}${n.titel}`;
+      const meta = document.createElement('small');
+      meta.textContent = ` · ${ORDNER[n.ordner]}${n.projekt ? ` · ${n.projekt}` : ''}${n.tags?.length ? ` · #${n.tags.join(' #')}` : ''}${n.faellig ? ` · fällig ${n.faellig}` : ''}`;
+      sum.append(meta);
+      const ta = document.createElement('textarea');
+      ta.value = n.text;
+      ta.rows = Math.min(12, Math.max(3, n.text.split('\n').length + 1));
+      ta.onchange = () => updateBrainNote(n, { text: ta.value });
+      const bar = document.createElement('div');
+      bar.className = 'row wrap';
+      const sel = document.createElement('select');
+      for (const [k, v] of Object.entries(ORDNER)) sel.add(new Option(v, k, false, k === n.ordner));
+      sel.onchange = () => updateBrainNote(n, { ordner: sel.value, sortiert: true });
+      const tgl = document.createElement('button');
+      tgl.textContent = n.offen && !n.erledigt ? '✓ Erledigt' : n.offen ? '↺ Wieder offen' : '⏳ Als offen markieren';
+      tgl.onclick = () => updateBrainNote(n, n.offen && !n.erledigt ? { erledigt: Date.now() } : n.offen ? { erledigt: null } : { offen: true });
+      const del = document.createElement('button');
+      del.textContent = '🗑';
+      del.title = 'Notiz löschen';
+      del.onclick = () => {
+        if (!confirm(`Notiz „${n.titel}“ löschen?`)) return;
+        state.brain = state.brain.filter((x) => x !== n);
+        brainChanged();
+      };
+      bar.append(sel, tgl, del);
+      row.append(sum, ta, bar);
+      return row;
+    }),
+  );
+  $('brainCount').textContent = list.length > 100 ? `${list.length} Notizen – die neuesten 100 werden gezeigt` : '';
+}
+$('brainSearch').oninput = (e) => {
+  brainFilter.q = e.target.value;
+  renderBrain();
+};
+$('brainNew').onclick = () => {
+  const titel = prompt('Titel der neuen Notiz:');
+  if (!titel?.trim()) return;
+  addBrainNote({ titel, text: '', ordner: ordnerKey(brainFilter.ordner) ?? 'eingang', quelle: 'nutzer', sortiert: true });
+};
+$('brainSortNow').onclick = async () => {
+  status('🧠 Sortiere den Eingang …');
+  try {
+    const k = await sortInbox({ force: true });
+    status(k ? `🧠 ${k} Notiz(en) einsortiert.` : '🧠 Im Eingang liegt nichts Neues zum Sortieren.');
+  } catch (e) {
+    status(`Sortieren: ${e.message}`);
+  }
+};
+/** Second Brain als Obsidian-Ordner (ZIP mit Markdown-Dateien) exportieren. */
+async function brainExportZip() {
+  const files = exportVault(state.brain ?? []);
+  const zip = new JSZip();
+  for (const [path, md] of Object.entries(files)) zip.file(`Second Brain/${path}`, md);
+  return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+}
+$('brainExport').onclick = async () => {
+  if (!state.brain?.length) return status('Noch keine Notizen zum Exportieren.');
+  try {
+    const bytes = await brainExportZip();
+    const name = `Second-Brain-${new Date().toISOString().slice(0, 10)}`;
+    if (desktop.saveFileAs) await desktop.saveFileAs(`${name}.zip`, bytes);
+    else await desktop.exportSave(name, 'zip', 'Second Brain (Obsidian-Ordner)', bytes);
+    status(`🧠 Second Brain exportiert (${state.brain.length} Notizen) – in Obsidian: ZIP entpacken und den Ordner als Tresor öffnen.`);
+  } catch (e) {
+    status(`Export: ${e.message}`);
+  }
+};
+$('brainImport').onclick = () => $('brainImportFile').click();
+/** Obsidian-Ordner (ZIP) oder einzelne Markdown-Dateien übernehmen: gleiche Notiz (Kennung) – die neuere gewinnt. */
+async function brainImportFiles(files) {
+  const md = {};
+  for (const f of files) {
+    if (/\.zip$/i.test(f.name)) {
+      const zip = await JSZip.loadAsync(await f.arrayBuffer());
+      for (const e of Object.values(zip.files)) if (!e.dir && /\.md$/i.test(e.name)) md[e.name] = await e.async('string');
+    } else if (/\.md$/i.test(f.name)) md[f.webkitRelativePath || f.name] = await f.text();
+  }
+  const incoming = importVault(md).map((n) => ({ ...n, sortiert: n.ordner !== 'eingang' }));
+  const before = new Map((state.brain ?? []).map((n) => [n.id, n.changed]));
+  state.brain = mergeNotes(state.brain ?? [], incoming);
+  const neu = incoming.filter((n) => !before.has(n.id)).length;
+  const akt = incoming.filter((n) => before.has(n.id) && n.changed > before.get(n.id)).length;
+  brainChanged();
+  return { neu, aktualisiert: akt, gelesen: incoming.length };
+}
+$('brainImportFile').onchange = async (e) => {
+  const files = [...(e.target.files ?? [])];
+  e.target.value = '';
+  if (!files.length) return;
+  try {
+    const r = await brainImportFiles(files);
+    status(`🧠 Import: ${r.gelesen} Notizen gelesen – ${r.neu} neu, ${r.aktualisiert} aktualisiert.`);
+  } catch (err) {
+    status(`Import: ${err.message}`);
   }
 };
 
@@ -8508,10 +8918,9 @@ async function saveNote(raw) {
   } catch (e) {
     logEv('NOTIZ', `Google: ${e.message}`);
   }
-  if (where === 'deinen Notizen') {
-    (state.settings.notes ??= []).unshift({ id: newId(), text: title, due, at: Date.now() });
-    save();
-  }
+  // immer auch ins Second Brain (Eingang): „Merk dir …“ ist meist etwas, das noch zu tun ist
+  addBrainNote({ titel: title, text: '', ordner: 'eingang', offen: !!due || OPEN_RE.test(raw) || undefined, faellig: due, quelle: 'notiz' });
+  if (where === 'deinen Notizen') where = 'deinem Second Brain';
   renderNotes();
   const when = due ? ` (fällig ${new Date(`${due}T12:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })})` : '';
   addBubble('assistant', `📝 Notiert${when}: ${title} – in ${where}.`);
@@ -8522,17 +8931,16 @@ function renderNotes() {
   const box = $('privNotes');
   if (!box) return;
   box.innerHTML = '';
-  for (const n of state.settings.notes ?? []) {
+  for (const n of openLoops(state.brain, 30)) {
     const row = document.createElement('div');
     row.className = 'kb-doc';
     const t = document.createElement('span');
-    t.textContent = `📝 ${n.text}${n.due ? ` · ${new Date(`${n.due}T12:00`).toLocaleDateString('de-DE')}` : ''}`;
+    t.textContent = `📝 ${n.titel}${n.faellig ? ` · ${new Date(`${n.faellig}T12:00`).toLocaleDateString('de-DE')}` : ''}`;
     const del = document.createElement('button');
     del.textContent = '✓';
-    del.title = 'Erledigt – entfernen';
+    del.title = 'Erledigt';
     del.onclick = () => {
-      state.settings.notes = state.settings.notes.filter((x) => x !== n);
-      save();
+      updateBrainNote(n, { erledigt: Date.now() });
       renderNotes();
     };
     row.append(t, del);
@@ -8663,7 +9071,7 @@ async function wakeLoopInner() {
   logEv('WACHWORT', `an („${wakeWord()}“)`);
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
   while (MOBILE && state.settings.wakeOn) {
-    if (state.inCall || state.locked || state.micActive || state.busy || tts.speaking || state.settings.handsFree || state.dnd || state.transcribing) {
+    if (state.inCall || state.dictation || state.locked || state.micActive || state.busy || tts.speaking || state.settings.handsFree || state.dnd || state.transcribing) {
       await pause(600);
       continue;
     }
@@ -9070,6 +9478,11 @@ function applySync(m) {
   state.activeId = state.personas.some((p) => p.id === wasActive) ? wasActive : state.personas[0].id;
   state.saved = m.saved;
   if (Array.isArray(m.erinnerungen)) state.erinnerungen = m.erinnerungen;
+  if (Array.isArray(m.brain) && PRIV) {
+    state.brain = m.brain;
+    brainIndex = null;
+    renderBrain();
+  }
   saveSavedNow();
   rebuildSaved();
   state.abgleich.deleted = m.deleted;
@@ -9989,6 +10402,19 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  logTail: (n = 20) => LOG.slice(-n),
+  brainTool,
+  addBrainNote,
+  sortInbox,
+  brainExportZip,
+  brainImportFiles,
+  renderBrain,
+  brainState: () => state.brain,
+  setTranscriber: (fn) => (transcribeOverride = fn),
+  startDictation,
+  stopDictation,
+  dictation: () => state.dictation,
+  DICT_END_RE,
   mediaCommand,
   mediaHoldForAnswer,
   phoneCall,

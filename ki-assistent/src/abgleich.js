@@ -1,8 +1,10 @@
 // Automatischer Abgleich PC ↔ Handy im eigenen WLAN: Personas (Texte, Stimme, Schnellbefehle), Gedächtnis, Selbstbild,
-// Chatverlauf und gespeichertes Wissen werden zusammengeführt statt überschrieben – was auf einem Gerät dazukommt,
+// Chatverlauf, gespeichertes Wissen, Erinnerungen und Second Brain werden zusammengeführt statt überschrieben – was auf einem Gerät dazukommt,
 // erscheint auch auf dem anderen; Gelöschtes wird als gelöscht vermerkt, damit es nicht vom anderen Gerät zurückkommt.
 // Die Figur (Bilder, Videos, Posen) geht nur, wenn sie sich geändert hat, als eigenes Paket hinterher.
 // Nie dabei: Einstellungen, API-Schlüssel, Google-Anmeldung, Firmenwissen.
+
+import { mergeNotes } from './brain.js';
 
 export const HISTORY_MAX = 400; // je Persona und Abgleich höchstens so viele Nachrichten übertragen
 const TOMB_DAYS = 90; // so lange merken, was gelöscht wurde
@@ -59,6 +61,7 @@ export function idsOf(data) {
   }
   for (const e of data.saved ?? []) if (e.id) ids.add(e.id);
   for (const e of data.erinnerungen ?? []) if (e.id) ids.add(e.id);
+  for (const e of data.brain ?? []) if (e.id) ids.add(e.id);
   return ids;
 }
 
@@ -86,6 +89,8 @@ export function snapshot(data, sync, { limit = HISTORY_MAX } = {}) {
     saved: data.saved ?? [],
     // eigene Erinnerungen (Privat): gestellt, angesagt, bestätigt oder verschoben – auf beiden Geräten derselbe Stand
     erinnerungen: data.erinnerungen ?? [],
+    // Second Brain (Privat): Notizen – die zuletzt geänderte Fassung gewinnt
+    brain: data.brain ?? [],
     deleted: { ...(sync?.deleted ?? {}) },
   };
 }
@@ -198,5 +203,6 @@ export function mergeSync(a, b) {
   const saved = mergeEntries(a.saved, b.saved, { dead, max: 500, same: (x, y) => x.title === y.title });
   // Erinnerungen: neuerer Stand gewinnt (changed) – „erledigt“ auf einem Gerät gilt damit auch auf dem anderen
   const erinnerungen = mergeEntries(a.erinnerungen, b.erinnerungen, { dead, max: 50 }).sort((x, y) => x.at - y.at);
-  return { personas: alive, history, saved, erinnerungen, deleted, rename };
+  const brain = mergeNotes(a.brain, b.brain, { dead });
+  return { personas: alive, history, saved, erinnerungen, brain, deleted, rename };
 }

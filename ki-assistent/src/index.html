@@ -58,7 +58,8 @@
     <button id="btnCamera" class="round" title="Foto aufnehmen und dazu fragen" hidden>📷</button>
     <input id="fileCamera" type="file" accept="image/*" capture="environment" hidden />
     <button id="btnLive" class="round" title="Live-Gespräch an/aus – einfach losreden, dazwischenreden erlaubt (überall: Strg+Alt+L)">📞</button>
-    <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste)">🎤</button>
+    <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste) – lange drücken: Diktat">🎤</button>
+    <button id="btnDictate" class="round" title="Diktat: längere Gedanken in Ruhe sprechen – ohne Abbruch bei Pausen; der Text kommt zum Prüfen ins Eingabefeld (Ende: antippen, „fertig“ oder „abschicken“)">📝</button>
     <select id="micQuick" class="mic-chip desktop-only" title="Mikrofon – zeigt, welches gerade aufnimmt; hier direkt wechseln"></select>
     <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
     <button id="btnClaude" class="round" title="An Claude übergeben – fügt den Text in die Claude-App ein (Chat oder Cowork) und schickt ihn ab. Per Sprache: „An Claude: …“" hidden>✳</button>
@@ -831,6 +832,24 @@
         <div class="row wrap"><button id="nasNow">🗄 Jetzt abgleichen</button><button id="nasBackups">↩ Sicherung zurückholen …</button></div>
         <div id="nasBackupList" class="hint" hidden></div>
         <p id="nasState" class="hint"></p>
+      </div>
+      <div id="brainWrap" hidden>
+        <h3>🧠 Second Brain <span class="beta-badge">Privat</span></h3>
+        <p class="hint">Deine persönliche Wissensablage: Gedanken, Ideen, Projekte, Menschen, offene Punkte. Sag z. B. „Leg das als
+          Notiz ab“, „Was hatte ich zu … notiert?“, „Was ist noch offen?“ – „Merk dir …“ und Diktate („… als Notiz“) landen im
+          Eingang, die Figur sortiert sie in Ordner ein. Liegt auf diesem Gerät, gleicht sich mit dem anderen Gerät ab und lässt
+          sich als <b>Obsidian-Ordner</b> (Markdown) exportieren und wieder importieren. Keine Kundendaten oder Firmenwissen.</p>
+        <div id="brainFolders" class="row wrap chips"></div>
+        <input id="brainSearch" type="search" placeholder="In Notizen suchen …" />
+        <div class="row wrap">
+          <button id="brainNew">＋ Neue Notiz</button>
+          <button id="brainSortNow" title="Neue Notizen im Eingang jetzt in Ordner einsortieren lassen">🗂 Eingang sortieren</button>
+          <button id="brainExport">📤 Als Obsidian-Ordner exportieren</button>
+          <button id="brainImport">📥 Importieren (ZIP / .md)</button>
+        </div>
+        <input id="brainImportFile" type="file" accept=".zip,.md" multiple hidden />
+        <div id="brainList" class="brain-list"></div>
+        <p id="brainCount" class="hint"></p>
       </div>
       <div id="savedWrap">
         <h3>💾 Gespeichertes Wissen</h3>
