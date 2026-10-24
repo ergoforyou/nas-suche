@@ -40,7 +40,7 @@ await page.route('https://api.anthropic.com/**', (route) => {
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
   // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
   // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
-  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis|Wähle aus den früheren Gesprächen|Du sortierst Notizen/.test(JSON.stringify(request.body.system ?? ''));
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis|Wähle aus den früheren Gesprächen|Du sortierst Notizen|Liste von Notizen|Wochenrückblick für das Second Brain/.test(JSON.stringify(request.body.system ?? ''));
   const sysText = JSON.stringify(request.body.system ?? '');
   // gezielte Antworten (match) gehen nur an die passende Anfrage, sonst die nächste freie
   let qi = claudeQueue.findIndex((e) => !!e.helper === helper && e.match?.test(sysText));
@@ -2867,6 +2867,30 @@ b71.sorted = await page.evaluate(async (id) => {
 check(b71.made && b71.openAuto && b71.found === 'Urlaub Ostsee' && b71.loops.includes('Ich muss noch die Steuererklärung abgeben') && b71.read && b71.changed, 'Second Brain: Notizen anlegen, suchen, lesen, ergänzen, abhaken', JSON.stringify(b71));
 check(b71.sorted.ordner === 'projekte' && b71.sorted.projekt === 'Haus' && b71.sorted.titel === 'Hecke', 'Second Brain: Eingang wird in Ordner/Projekt einsortiert (eigener Titel bleibt)', JSON.stringify(b71.sorted));
 check(b71.ctx && b71.roundtrip && b71.md?.neu === 1 && b71.inSnap && b71.ui, 'Second Brain: Notizen im Gespräch, Obsidian-Export/-Import, im Abgleich, Liste', JSON.stringify(b71));
+// Beta 72 (Privat): Mitdenken, Notizen über Umschreibungen, Wochenrückblick als Notiz, Notizen in der Initiative
+claudeQueue.push(Object.assign(sayText(JSON.stringify({ ids: [b71.sortId] })), { helper: true, match: /Liste von Notizen/ }));
+claudeQueue.push(Object.assign(sayText('Diese Woche ging es viel um Haus und Urlaub.\n\n## Erledigt\n- Steuererklärung\n\n## Noch offen\n- Reifen wechseln\n\n## Vorschlag für nächste Woche\n- Ferienwohnung buchen'), { helper: true, match: /Wochenrückblick für das Second Brain/ }));
+const b72 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const sys = () => JSON.stringify(app.buildMessages());
+  out.mit = /Denk mit/.test(sys());
+  app.state.settings.mitdenken = false;
+  out.mitOff = !/Denk mit/.test(sys());
+  app.state.settings.mitdenken = true;
+  // Umschreibung: „Garten“ steht in keiner Notiz wörtlich (Notiz heißt „Hecke“) – das Hilfsmodell findet sie
+  const r = await app.runAppTool('notizen_suchen', { suche: 'Grünschnitt' });
+  out.smart = r.ueber_umschreibung === true && r.treffer[0]?.titel === 'Hecke';
+  const w = await app.brainWeekly({ manual: true });
+  out.week = w?.ordner === 'tagebuch' && /^Wochenrückblick KW \d+\/\d{4}$/.test(w.titel) && /Vorschlag für nächste Woche/.test(w.text);
+  // bald fälliger offener Punkt wird Anlass für die eigene Initiative
+  const soon = new Date(Date.now() + 86400e3).toISOString().slice(0, 10);
+  app.addBrainNote({ titel: 'Zahnarzt anrufen', text: '', offen: true, faellig: soon });
+  out.seed = app.brainSeeds().some((x) => /Zahnarzt anrufen/.test(x));
+  return out;
+});
+check(b72.mit && b72.mitOff, 'Mitdenken: nächste Schritte/Alternativen im Rollentext (abschaltbar)', JSON.stringify(b72));
+check(b72.smart && b72.week && b72.seed, 'Second Brain: Umschreibungen finden, Wochenrückblick als Notiz, Fälliges als Anlass', JSON.stringify(b72));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

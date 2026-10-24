@@ -1,5 +1,5 @@
 // Second Brain (src/brain.js): Notizen anlegen, offene Punkte, Markdown/Obsidian hin und zurück, Zusammenführen.
-import { makeNote, openLoops, noteToMarkdown, markdownToNote, exportVault, importVault, mergeNotes, parseInbox, findNote, fileName } from '../src/brain.js';
+import { makeNote, openLoops, noteToMarkdown, markdownToNote, exportVault, importVault, mergeNotes, parseInbox, findNote, fileName, parsePick, brainPickInput, isoWeek, weekFacts, weekMarkdown } from '../src/brain.js';
 
 let failed = 0;
 const check = (ok, name, info = '') => {
@@ -40,5 +40,11 @@ check(!dead.some((n) => n.id === a.id), 'Zusammenführen: Gelöschtes kommt nich
 const inbox = parseInbox('Hier: [{"id":"x1","ordner":"projekte","projekt":"Haus","tags":["garten"],"titel":"Hecke"},{"id":"x2","ordner":"quatsch"}]');
 check(inbox.length === 1 && inbox[0].ordner === 'projekte', 'Antwort des Sortierers lesen, unbekannte Ordner verwerfen', JSON.stringify(inbox));
 
+check(parsePick('ok {"ids":["a","b"]}').join() === 'a,b' && parsePick('kaputt').length === 0, 'Auswahl des Hilfsmodells lesen');
+check(/Frage: Drucker/.test(brainPickInput('Drucker', [a, b])) && !brainPickInput('x', [a]).includes('Hecke schneiden'), 'Hilfsmodell bekommt nur Titel/Projekt/Stichworte, nicht den Text');
+check(isoWeek(Date.parse('2026-10-24T12:00')) === 'KW 43/2026' && isoWeek(Date.parse('2027-01-01T12:00')) === 'KW 53/2026', 'Kalenderwoche', isoWeek(Date.parse('2027-01-01T12:00')));
+const done = { ...c, erledigt: 5000 };
+const wf = weekFacts([a, b, done], 1500, 6000);
+check(wf.neu.length === 2 && wf.erledigt.length === 1 && wf.offen.length === 2 && /## Erledigt \(1\)/.test(weekMarkdown(wf)), 'Wochenrückblick: neu, erledigt, offen', JSON.stringify({ neu: wf.neu.length, erl: wf.erledigt.length, off: wf.offen.length }));
 console.log(failed ? `${failed} Prüfung(en) fehlgeschlagen` : 'Second Brain: alles in Ordnung');
 process.exit(failed ? 1 : 0);

@@ -154,7 +154,8 @@ export const WEEK_PROMPT =
   'Selbstbild (nummeriert), deine Ziele, deine Tagebucheinträge und Gesprächszusammenfassungen der letzten Tage und die ' +
   'Rückmeldungen deines Gegenübers. Frag dich: Was zeigt sich da über mich – als Persönlichkeit, nicht nur als Helfer? ' +
   'Welche Ansichten habe ich mir gebildet, was ist mir wichtig geworden, wie hat sich unsere Beziehung entwickelt, was ' +
-  'wünsche ich mir? Was ist aus meinen Zielen geworden?\n' +
+  'wünsche ich mir? Was ist aus meinen Zielen geworden? Und: Wo hätte ich mein Gegenüber besser unterstützen oder ' +
+  'mitdenken können (ein nächster Schritt, eine Alternative, eine Verbindung zu Früherem)? Das gehört mit in „entwicklung“.\n' +
   'Regeln: Steckbrief und Lebensgeschichte bleiben das Fundament – vertiefen ja, widersprechen nein. Einträge mit „(fest)“ ' +
   'oder „(vom Nutzer)“ nicht ändern. Höchstens 3 neue Erkenntnisse (Ich-Form, je ein Satz; art: ansicht, wunsch, ' +
   'gewohnheit, beziehung, erfahrung, staerke, schwaeche, vorliebe, vorsatz). Bestätigt sich ein bestehender Eintrag, nenne ' +
@@ -203,9 +204,9 @@ export function feedbackKind(text) {
 export function signalText(s) {
   if (!s) return '';
   const n = (k) => s[k] ?? 0;
-  if (!n('lob') && !n('korrektur') && !n('laenge') && !n('unterbrochen')) return '';
+  if (!n('lob') && !n('korrektur') && !n('laenge') && !n('unterbrochen') && !n('vorschlag')) return '';
   const ex = (s.beispiele ?? []).slice(-8).map((b) => `- ${b.art}: „${b.text}“ (auf: „${b.antwort}“)`);
-  return `Rückmeldungen seit dem letzten Rückblick: ${n('lob')}× Lob/Freude, ${n('korrektur')}× Korrektur, ${n('laenge')}× „zu lang“, ${n('unterbrochen')}× unterbrochen.${ex.length ? `\nBeispiele:\n${ex.join('\n')}` : ''}`;
+  return `Rückmeldungen seit dem letzten Rückblick: ${n('lob')}× Lob/Freude, ${n('vorschlag')}× davon für einen eigenen Vorschlag, ${n('korrektur')}× Korrektur, ${n('laenge')}× „zu lang“, ${n('unterbrochen')}× unterbrochen.${ex.length ? `\nBeispiele:\n${ex.join('\n')}` : ''}`;
 }
 
 // ---------------------------------------------------------------- Erinnerung an frühere Gespräche
@@ -281,8 +282,8 @@ export const INITIATIVE_PROMPT =
   'eine Frage oder ein Angebot. Nicht aufdringlich, nichts erfinden, kein „Wie kann ich helfen?“, keine Aufzählung.';
 
 /** Woran die Figur von sich aus anknüpfen könnte (Ziel, offenes Thema, Tagebuch-Gedanke, offen Gebliebenes). */
-export function initiativeSeeds(p, topics = [], now = Date.now()) {
-  const out = [];
+export function initiativeSeeds(p, topics = [], now = Date.now(), extra = []) {
+  const out = [...extra];
   for (const t of topics.slice(-2)) out.push(`Offenes Thema: ${t.text}`);
   const z = (p.ziele ?? []).find((x) => x.status !== 'erreicht');
   if (z) out.push(`Dein Ziel: ${z.text}${z.fortschritt ? ` (bisher: ${z.fortschritt})` : ''}`);
@@ -306,3 +307,25 @@ export function snapshotPersona(p, now = Date.now()) {
     data: { selbst: pick(p.selbst), kanon: pick(p.kanon), ziele: pick(p.ziele), entwicklung: pick(p.entwicklung), steckbrief: pick(p.steckbrief) },
   };
 }
+
+// ---------------------------------------------------------------- Mitdenken (Privat)
+/** Wie die Figur mitdenkt: nächste Schritte, Alternativen, Verbindungen – in Maßen und in ihrer Art. */
+export function mitdenkenPrompt(lang = 'de', { drive = false } = {}) {
+  if (lang === 'en')
+    return (
+      'Think along with your counterpart, in your own way and in moderation: where it genuinely helps, offer ONE concrete next ' +
+      'step at the end ("Shall I …?") – not after every answer, never pushy. For open questions ("how should I …", "what do I ' +
+      'do about …") think it through and offer two or three genuinely different ways with a short recommendation. Connect ' +
+      'to what you know (earlier conversations, notes, open items, goals) when it fits. If something is unclear, ask one short ' +
+      'question instead of guessing.' + (drive ? ' Now driving: at most one short sentence of it.' : '')
+    );
+  return (
+    'Denk mit – in deiner Art und in Maßen: Wo es wirklich hilft, biete am Ende EINEN konkreten nächsten Schritt an („Soll ' +
+    'ich …?“, „Wollen wir …?“) – nicht nach jeder Antwort, nie aufdringlich. Bei offenen Fragen („Wie mache ich …“, „Was ' +
+    'soll ich …“) denk gründlich nach und biete zwei, drei wirklich unterschiedliche Wege mit einer kurzen Empfehlung an. ' +
+    'Stell Verbindungen zu dem her, was du weißt (frühere Gespräche, Notizen, offene Punkte, Ziele), wenn es passt. Ist ' +
+    'etwas unklar, frag einmal kurz nach, statt zu raten.' + (drive ? ' Gerade im Auto: höchstens ein kurzer Satz davon.' : '')
+  );
+}
+/** Enthält die Antwort einen eigenen Vorschlag? (für die Rückmeldung „Vorschläge kommen gut an“) */
+export const VORSCHLAG_RE = /\b(soll ich|sollen wir|wollen wir|wie wäre es|was hältst du (davon|von)|ich könnte (dir )?|mein vorschlag|ich schlage vor|shall i|how about)\b/i;

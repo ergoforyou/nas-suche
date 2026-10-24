@@ -1,6 +1,6 @@
 import { Avatar, avatarState, detectFace, loadImage, fireEvent, timeOfDayEnergy } from './avatar.js';
 import { extractText, chunkText, buildIndex, searchIndex, kbPrompt, KB_ACCEPT, terms } from './wissen.js';
-import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeNotes, brainPrompt, INBOX_PROMPT, parseInbox, OPEN_RE } from './brain.js';
+import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeNotes, brainPrompt, INBOX_PROMPT, parseInbox, OPEN_RE, BRAIN_PICK_PROMPT, brainPickInput, parsePick, isoWeek, weekFacts, weekMarkdown, BRAIN_WEEK_PROMPT } from './brain.js';
 import JSZip from 'jszip';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
@@ -25,7 +25,7 @@ import { storyPrompt, storyHitsPrompt, storyIsLong, STORY_MAX, DRAFT_PROMPT, ANC
 import { isOutOfRole, isAiQuestion, stripOutOfRole, suspiciousSentences, rtReminder, EXAMPLES_PROMPT, REWRITE_PROMPT, SLIP_NOTE } from './rolle.js';
 import { selfPromptList, numberedSelf, fadeSelf, SELF_WEIGHT_MAX, isFixedSelf, promoteKern, kernPrompt } from './gedaechtnis.js';
 import { TIDY_PROMPT, SELF_TIDY_PROMPT, CATEGORIES, catOf, groupedText, nearDuplicate, parsePlan, applyPlan, reportText, looksLikeInstruction, trimMemory, matchForget, numbered as numberedMemory } from './gedaechtnis.js';
-import { EPISODE_PICK_PROMPT, RECALL_RE, moodFromFeeling, INITIATIVE_PROMPT, initiativeSeeds, SICHERUNG_MAX, snapshotPersona } from './figur.js';
+import { EPISODE_PICK_PROMPT, RECALL_RE, moodFromFeeling, INITIATIVE_PROMPT, initiativeSeeds, SICHERUNG_MAX, snapshotPersona, mitdenkenPrompt, VORSCHLAG_RE } from './figur.js';
 import { ZIELE_MAX, ENTWICKLUNG_MAX, zielePrompt, entwicklungPrompt, WEEK_PROMPT, parseWeek, feedbackKind, signalText, EPISODEN_MAX, EPISODE_PROMPT, parseEpisode, splitSessions, episodeHitsPrompt } from './figur.js';
 import { KANON_MAX, GEMEINSAM_MAX, TAGEBUCH_MAX, KANON_CHECK_PROMPT, parseKanonCheck, kanonPrompt, gemeinsamPrompt, tagebuchPrompt, stimmungPrompt, DIARY_PROMPT, parseDiary, inRoleError, ROLE_CHECK, judgeRoleAnswer } from './figur.js';
 import { TRAITS, TEXT_FIELDS, traitLabel, hasSteckbrief, steckbriefPrompt, FILL_PROMPT, parseSteckbrief, INTERVIEW_Q_PROMPT, INTERVIEW_A_PROMPT, REVIEW_PROMPT } from './steckbrief.js';
@@ -902,6 +902,8 @@ function buildMessages() {
   const gestures = availableGestures(p);
   if (state.settings.moodTags && gestures.length) parts.push(gesturePrompt(gestures, p.language === 'en' ? 'en' : 'de'));
   if (p.style !== 'frei') parts.push(appKnowledge());
+  // Privat: mitdenken (nächste Schritte, Alternativen, Verbindungen) – abschaltbar
+  if (PRIV && state.settings.mitdenken !== false && p.style !== 'frei') parts.push(mitdenkenPrompt(p.language === 'en' ? 'en' : 'de', { drive: !!state.drive }));
   if (state.drive) parts.push(r.drive);
   if (webActive()) parts.push(r.web);
   const ctx = [];
@@ -1264,6 +1266,8 @@ async function send(text) {
   state.storyHits = storyIsLong(persona().geschichte) ? searchIndex(storyIndex(persona()), text, 2) : [];
   state.savedHits = savedIndex?.n ? searchIndex(savedIndex, text, 3) : [];
   state.brainHits = PRIV && state.brain?.length && text ? brainSearchIndex(text, 3) : [];
+  // klingt nach den eigenen Notizen („was hatte ich notiert …“, „weißt du noch …“): auch Umschreibungen verstehen
+  if (PRIV && state.brain?.length && !state.brainHits.length && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text))) state.brainHits = await brainSmart(text, 2);
   state.brainLoops = PRIV && /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text) ? openLoops(state.brain, 10) : [];
   // frühere Gespräche, die zur Frage passen (nur mit eingeschaltetem Gedächtnis)
   // klingt die Frage nach Erinnerung („weißt du noch …“), auch Umschreibungen verstehen (kurz das Hilfsmodell fragen)
@@ -1779,6 +1783,7 @@ function renderTopics() {
   $('cEvening').checked = state.settings.eveningBrief !== false;
   $('cInitiative').checked = state.settings.initiative !== false;
   $('cRemGoogle').checked = !!state.settings.reminderGoogle;
+  $('cMitdenken').checked = state.settings.mitdenken !== false;
   $('privRounds').hidden = !PRIV;
   renderBudget();
   $('cThink').checked = state.settings.thinkSounds !== false;
@@ -1829,6 +1834,10 @@ $('cEvening').onchange = (e) => {
 };
 $('cInitiative').onchange = (e) => {
   state.settings.initiative = e.target.checked;
+  save();
+};
+$('cMitdenken').onchange = (e) => {
+  state.settings.mitdenken = e.target.checked;
   save();
 };
 $('cRemGoogle').onchange = (e) => {
@@ -2597,6 +2606,8 @@ function noteFeedback(p, text) {
   if (!kind) return;
   const s = (p.signale ??= {});
   s[kind] = (s[kind] ?? 0) + 1;
+  // gefiel ein eigener Vorschlag? Das merkt sie sich gesondert (mehr davon)
+  if (kind === 'lob' && VORSCHLAG_RE.test(last.content)) s.vorschlag = (s.vorschlag ?? 0) + 1;
   s.beispiele = [...(s.beispiele ?? []), { art: kind, text: String(text).slice(0, 120), antwort: last.content.slice(0, 120), t: Date.now() }].slice(-12);
 }
 
@@ -7895,6 +7906,17 @@ function brainSearch(q, k = 5, opts = {}) {
     .slice(0, k)
     .map(([n]) => n);
 }
+const BRAIN_ASK_RE = /\b(notiert|notiz(en)?|aufgeschrieben|second brain|hatte ich (mal )?(was|etwas)|meine (ideen|gedanken) (zu|über))\b/i;
+/** Passende Notizen über das Hilfsmodell (bekommt nur Titel, Projekt, Stichworte) – für Umschreibungen. */
+async function brainSmart(q, k = 3) {
+  if (!PRIV || state.settings.offline || budgetSaving() || !(state.brain ?? []).length) return [];
+  try {
+    const ids = parsePick(await helperJson(BRAIN_PICK_PROMPT, brainPickInput(q, state.brain)));
+    return ids.map((id) => state.brain.find((n) => n.id === id)).filter(Boolean).slice(0, k);
+  } catch {
+    return [];
+  }
+}
 function brainSearchIndex(q, k = 5, { ordner, offen } = {}) {
   const list = (state.brain ?? []).filter((n) => (!ordner || n.ordner === ordner) && (!offen || (n.offen && !n.erledigt)));
   if (!String(q ?? '').trim()) return list.slice().sort((a, b) => b.changed - a.changed).slice(0, k);
@@ -7940,7 +7962,7 @@ const noteView = (n, full = false) => ({
   text: full ? n.text : n.text.slice(0, 300),
 });
 const ordnerKey = (o) => (o ? Object.keys(ORDNER).find((k) => k === String(o).toLowerCase() || ORDNER[k].toLowerCase() === String(o).toLowerCase()) : undefined);
-function brainTool(name, input = {}) {
+async function brainTool(name, input = {}) {
   if (!PRIV) throw new Error('Das Second Brain gibt es im Bereich Privat.');
   if (name === 'notiz_anlegen') {
     if (!String(input.text ?? input.titel ?? '').trim()) throw new Error('Was soll in die Notiz?');
@@ -7949,8 +7971,15 @@ function brainTool(name, input = {}) {
     return { angelegt: true, ...noteView(n) };
   }
   if (name === 'notizen_suchen') {
-    const hits = brainSearch(input.suche, Math.min(10, Number(input.anzahl) || 6), { ordner: ordnerKey(input.ordner), offen: !!input.nur_offen });
-    return { treffer: hits.map((n) => noteView(n)), gesamt: state.brain.length };
+    const k = Math.min(10, Number(input.anzahl) || 6);
+    let hits = brainSearch(input.suche, k, { ordner: ordnerKey(input.ordner), offen: !!input.nur_offen });
+    let smart = false;
+    // nichts gefunden: Umschreibungen über das Hilfsmodell („Printer“ → „Drucker“)
+    if (!hits.length && String(input.suche ?? '').trim()) {
+      hits = (await brainSmart(input.suche, k)).filter((n) => (!ordnerKey(input.ordner) || n.ordner === ordnerKey(input.ordner)) && (!input.nur_offen || (n.offen && !n.erledigt)));
+      smart = hits.length > 0;
+    }
+    return { treffer: hits.map((n) => noteView(n)), gesamt: state.brain.length, ...(smart ? { ueber_umschreibung: true } : {}) };
   }
   const n = findNote(state.brain ?? [], input.id ?? input.titel);
   if (!n) throw new Error('Diese Notiz gibt es nicht (erst notizen_suchen).');
@@ -8011,6 +8040,39 @@ async function sortInbox({ force = false } = {}) {
   renderBrain();
   return k;
 }
+/** Anlässe für die eigene Initiative aus dem Second Brain: bald Fälliges, ab und zu eine ältere Notiz wieder hochholen. */
+function brainSeeds(now = Date.now()) {
+  if (!PRIV || !(state.brain ?? []).length) return [];
+  const out = [];
+  const soon = openLoops(state.brain, 20).find((n) => n.faellig && Date.parse(`${n.faellig}T23:59`) - now < 3 * 86400e3);
+  if (soon) out.push(`Offener Punkt deines Gegenübers: ${soon.titel} (fällig ${soon.faellig})`);
+  const old = state.brain.filter((n) => ['themen', 'projekte'].includes(n.ordner) && !n.erledigt && now - n.changed > 30 * 86400e3 && now - n.changed < 200 * 86400e3);
+  if (old.length && Math.random() < 0.5) {
+    const n = old[Math.floor(Math.random() * old.length)];
+    out.push(`Aus den Notizen deines Gegenübers (vor ${Math.round((now - n.changed) / (7 * 86400e3))} Wochen): „${n.titel}“ – ${n.text.slice(0, 160)}`);
+  }
+  return out;
+}
+/** Wochenrückblick als Notiz (Tagebuch): neu, erledigt, offen, Vorschläge – einmal pro Woche oder per Knopf. */
+async function brainWeekly({ manual = false } = {}) {
+  if (!PRIV) return null;
+  const now = Date.now();
+  if (!manual && (state.settings.brainWeek === false || now - (state.settings.brainWeekAt ?? 0) < 6.5 * 86400e3 || state.busy || document.hidden)) return null;
+  const since = Math.max(state.settings.brainWeekAt ?? 0, now - 7 * 86400e3);
+  const f = weekFacts(state.brain ?? [], since, now);
+  if (!manual && f.neu.length + f.erledigt.length < 3) return null;
+  state.settings.brainWeekAt = now;
+  let text = '';
+  if (!state.settings.offline && !budgetSaving()) {
+    const li = (l) => l.map((n) => `- ${n.titel}${n.projekt ? ` [${n.projekt}]` : ''}${n.faellig ? ` (fällig ${n.faellig})` : ''}: ${n.text.slice(0, 160)}`).join('\n') || '- –';
+    text = (await helperJson(BRAIN_WEEK_PROMPT, `Neu:\n${li(f.neu.slice(0, 25))}\n\nErledigt:\n${li(f.erledigt)}\n\nOffen:\n${li(f.offen)}`)).trim();
+  }
+  if (!text) text = weekMarkdown(f);
+  const n = addBrainNote({ titel: `Wochenrückblick ${isoWeek(now)}`, text, ordner: 'tagebuch', quelle: 'rueckblick', sortiert: true, offen: false });
+  logEv('BRAIN', `Wochenrückblick: ${f.neu.length} neu, ${f.erledigt.length} erledigt, ${f.offen.length} offen`);
+  return n;
+}
+setInterval(() => brainWeekly().catch((e) => logEv('BRAIN', `Wochenrückblick: ${e.message}`)), 30 * 60e3);
 // Oberfläche (⚙ → Wissen → 🧠 Second Brain)
 let brainFilter = { ordner: '', q: '' };
 function renderBrain() {
@@ -8018,6 +8080,7 @@ function renderBrain() {
   if (!wrap) return;
   wrap.hidden = !PRIV;
   if (!PRIV) return;
+  $('brainWeekOn').checked = state.settings.brainWeek !== false;
   const notes = state.brain ?? [];
   const chips = $('brainFolders');
   chips.replaceChildren(
@@ -8084,6 +8147,19 @@ $('brainNew').onclick = () => {
   const titel = prompt('Titel der neuen Notiz:');
   if (!titel?.trim()) return;
   addBrainNote({ titel, text: '', ordner: ordnerKey(brainFilter.ordner) ?? 'eingang', quelle: 'nutzer', sortiert: true });
+};
+$('brainWeekNow').onclick = async () => {
+  status('🧠 Schreibe den Wochenrückblick …');
+  try {
+    const n = await brainWeekly({ manual: true });
+    status(n ? `🧠 „${n.titel}“ liegt im Tagebuch.` : '🧠 Kein Rückblick möglich.');
+  } catch (e) {
+    status(`Wochenrückblick: ${e.message}`);
+  }
+};
+$('brainWeekOn').onchange = (e) => {
+  state.settings.brainWeek = e.target.checked;
+  save();
 };
 $('brainSortNow').onclick = async () => {
   status('🧠 Sortiere den Eingang …');
@@ -9965,7 +10041,7 @@ async function maybeInitiative({ force = false } = {}) {
   const last = Math.max(state.lastExchange ?? 0, history().at(-1)?.t ?? 0);
   const idle = Date.now() - last;
   if (!force && (idle < 20 * 60e3 || idle > 6 * 3600e3)) return null;
-  const seeds = initiativeSeeds(p, dueTopics(p));
+  const seeds = initiativeSeeds(p, dueTopics(p), Date.now(), brainSeeds());
   if (!seeds.length) return null;
   state.settings.initiativeDay = { day, n: cnt + 1 };
   save();
@@ -10402,6 +10478,9 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  brainWeekly,
+  brainSeeds,
+  brainSmart,
   logTail: (n = 20) => LOG.slice(-n),
   brainTool,
   addBrainNote,

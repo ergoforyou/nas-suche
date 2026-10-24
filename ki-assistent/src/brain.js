@@ -206,7 +206,9 @@ export function brainPrompt(hits, loops = [], lang = 'de') {
   const parts = [];
   if (hits.length) {
     parts.push(
-      (en ? 'From the user’s Second Brain (their own notes – use when relevant, cite the title):\n' : 'Aus dem Second Brain deines Gegenübers (eigene Notizen – nutze sie, wenn es passt, und nenne den Titel):\n') +
+      (en
+        ? 'From the user’s Second Brain (their own notes – if one clearly fits, bring it up yourself briefly, e.g. “you noted …”, naming the title):\n'
+        : 'Aus dem Second Brain deines Gegenübers (eigene Notizen – passt eine deutlich, bring sie von dir aus kurz ein, z. B. „Dazu hattest du notiert …“, mit Titel):\n') +
         hits.map((n) => `- „${n.titel}“ [${ORDNER[n.ordner] ?? n.ordner}${n.projekt ? ` · ${n.projekt}` : ''}]: ${clean(n.text, 500)}`).join('\n'),
     );
   }
@@ -234,3 +236,50 @@ export function parseInbox(text) {
     return [];
   }
 }
+
+/** Hilfsmodell: passende Notizen auch über Umschreibungen finden (bekommt nur Titel, Projekt und Stichworte). */
+export const BRAIN_PICK_PROMPT =
+  'Unten stehen eine Frage und eine Liste von Notizen (Kennung | Titel | Projekt | Stichworte). Welche Notizen passen ' +
+  'inhaltlich zur Frage – auch wenn andere Wörter benutzt werden (Synonyme, Oberbegriffe, andere Sprache)? Antworte NUR ' +
+  'mit JSON: {"ids": ["…", …]} – höchstens 5, die passendste zuerst, leere Liste, wenn nichts passt.';
+export function brainPickInput(q, notes, max = 300) {
+  const list = notes.slice(-max).map((n) => `${n.id} | ${n.titel} | ${n.projekt ?? ''} | ${(n.tags ?? []).join(', ')}`);
+  return `Frage: ${q}\n\nNotizen:\n${list.join('\n')}`;
+}
+export function parsePick(text) {
+  const m = String(text ?? '').match(/\{[\s\S]*\}/);
+  try {
+    const ids = JSON.parse(m?.[0] ?? '{}').ids;
+    return Array.isArray(ids) ? ids.map(String).slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Kalenderwoche (ISO) als „KW 43/2026“. */
+export function isoWeek(ms = Date.now()) {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const w1 = new Date(d.getFullYear(), 0, 4);
+  const w = 1 + Math.round(((d - w1) / 86400e3 - 3 + ((w1.getDay() + 6) % 7)) / 7);
+  return `KW ${w}/${d.getFullYear()}`;
+}
+/** Was in der Woche im Second Brain passiert ist (Grundlage für den Rückblick). */
+export function weekFacts(notes, since, now = Date.now()) {
+  const neu = notes.filter((n) => (n.created ?? 0) >= since && n.quelle !== 'rueckblick');
+  const erledigt = notes.filter((n) => (n.erledigt ?? 0) >= since);
+  const offen = openLoops(notes, 15);
+  const faellig = offen.filter((n) => n.faellig && Date.parse(`${n.faellig}T23:59`) < now + 7 * 86400e3);
+  const projekte = [...new Set(neu.map((n) => n.projekt).filter(Boolean))];
+  return { neu, erledigt, offen, faellig, projekte };
+}
+/** Rückblick als Markdown ohne Sprachmodell (Rückfall, wenn keines erreichbar ist). */
+export function weekMarkdown(f) {
+  const li = (l) => (l.length ? l.map((n) => `- ${n.titel}${n.faellig ? ` (fällig ${n.faellig})` : ''}`).join('\n') : '- –');
+  return [`## Neu (${f.neu.length})`, li(f.neu.slice(0, 20)), '', `## Erledigt (${f.erledigt.length})`, li(f.erledigt), '', `## Noch offen (${f.offen.length})`, li(f.offen), ...(f.projekte.length ? ['', `## Projekte mit Bewegung`, f.projekte.map((p) => `- ${p}`).join('\n')] : [])].join('\n');
+}
+export const BRAIN_WEEK_PROMPT =
+  'Schreib den Wochenrückblick für das Second Brain deines Gegenübers – kurz, klar, freundlich, auf Deutsch, als Markdown: ' +
+  'zuerst 2–3 Sätze, was diese Woche los war und wo es vorangeht; dann „## Erledigt“, „## Noch offen“ (Fälliges zuerst) ' +
+  'und „## Vorschlag für nächste Woche“ mit höchstens 3 konkreten Punkten. Nur, was unten steht – nichts erfinden.';

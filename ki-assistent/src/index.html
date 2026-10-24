@@ -425,6 +425,8 @@
         <label class="check"><input id="cInitiative" type="checkbox" /> 💬 Eigene Initiative <span class="hint">(höchstens zweimal am Tag
           meldet sich die Figur in einer Pause von selbst – zu ihrem Ziel, einem offenen Thema oder einem Gedanken aus dem Tagebuch;
           9–21 Uhr, nie im Fahrmodus)</span></label>
+        <label class="check"><input id="cMitdenken" type="checkbox" /> 💡 Mitdenken <span class="hint">(bietet, wo es hilft, einen
+          nächsten Schritt an, bei offenen Fragen zwei, drei Wege mit Empfehlung, und verbindet mit früheren Gesprächen und Notizen)</span></label>
         <label class="check"><input id="cRemGoogle" type="checkbox" /> 📅 Erinnerungen auch im Google-Kalender anbieten <span class="hint">(fragt
           bei jeder neuen Erinnerung kurz nach; mit Ja trägt sie einen kurzen Termin mit Benachrichtigung ein – dann meldet sich
           auch die Google-Kalender-App, selbst wenn der KI-Assistent ganz aus ist)</span></label>
@@ -844,9 +846,11 @@
         <div class="row wrap">
           <button id="brainNew">＋ Neue Notiz</button>
           <button id="brainSortNow" title="Neue Notizen im Eingang jetzt in Ordner einsortieren lassen">🗂 Eingang sortieren</button>
+          <button id="brainWeekNow" title="Rückblick auf die Woche als Notiz im Tagebuch (neu, erledigt, offen, Vorschläge)">🗓 Wochenrückblick</button>
           <button id="brainExport">📤 Als Obsidian-Ordner exportieren</button>
           <button id="brainImport">📥 Importieren (ZIP / .md)</button>
         </div>
+        <label class="check"><input id="brainWeekOn" type="checkbox" /> Jede Woche einen Rückblick als Notiz schreiben (neu, erledigt, offen, Vorschläge)</label>
         <input id="brainImportFile" type="file" accept=".zip,.md" multiple hidden />
         <div id="brainList" class="brain-list"></div>
         <p id="brainCount" class="hint"></p>
