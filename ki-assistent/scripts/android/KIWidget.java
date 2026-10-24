@@ -44,13 +44,20 @@ public class KIWidget extends AppWidgetProvider {
         String name = "KI-Assistent";
         int zwischen = KIQuickNote.pending(c);
         int offen = 0;
+        String stil = "glas";
         try {
             JSONObject o = new JSONObject(prefs(c).getString("info", "{}"));
             if (!o.optString("name").isEmpty()) name = o.optString("name");
             zwischen += o.optInt("zwischen");
             offen = o.optInt("offen");
+            stil = o.optString("stil", "glas");
         } catch (Exception ignored) {}
-        String status = zwischen == 0 && offen == 0 ? "Bereit – tippen zum Sprechen"
+        // Stil: Glas (halb durchsichtig), ganz durchsichtig (nur die Knöpfe) oder dunkel
+        int bg = "dunkel".equals(stil) ? R.drawable.ki_widget_bg : "klar".equals(stil) ? R.drawable.ki_widget_bg_clear : R.drawable.ki_widget_bg_glass;
+        int btn = "dunkel".equals(stil) ? R.drawable.ki_widget_btn : R.drawable.ki_widget_btn_glass;
+        v.setInt(R.id.ki_widget_root, "setBackgroundResource", bg);
+        for (int id : new int[] { R.id.ki_widget_talk, R.id.ki_widget_dict, R.id.ki_widget_quick, R.id.ki_widget_open }) v.setInt(id, "setBackgroundResource", btn);
+        String status = zwischen == 0 && offen == 0 ? "Bereit"
             : (zwischen > 0 ? "📥 " + zwischen + " für später" : "") + (zwischen > 0 && offen > 0 ? "  ·  " : "") + (offen > 0 ? "⏳ " + offen + " offen" : "");
         v.setTextViewText(R.id.ki_widget_name, name);
         v.setTextViewText(R.id.ki_widget_status, status);

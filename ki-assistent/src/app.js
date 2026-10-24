@@ -1825,6 +1825,7 @@ function renderTopics() {
   $('cVorhaben').checked = state.settings.vorhaben !== false;
   $('cOwnTidy').checked = state.settings.ownTidy !== false;
   $('cMoodEffect').checked = state.settings.moodEffect !== false;
+  if (document.getElementById('phWidgetStyle')) $('phWidgetStyle').value = state.settings.widgetStyle ?? 'glas';
   $('privRounds').hidden = !PRIV;
   renderBudget();
   $('cThink').checked = state.settings.thinkSounds !== false;
@@ -8213,7 +8214,7 @@ $('zwischenChip').onclick = () => !state.busy && processZwischen();
 function updateWidget() {
   if (!MOBILE || !dev()?.widgetInfo) return;
   try {
-    dev().widgetInfo(JSON.stringify({ name: persona().name || 'KI-Assistent', zwischen: PRIV ? zwischenItems().length : 0, offen: PRIV ? openLoops(state.brain ?? [], 99).filter((n) => !n.zwischen).length : 0 }));
+    dev().widgetInfo(JSON.stringify({ name: persona().name || 'KI-Assistent', zwischen: PRIV ? zwischenItems().length : 0, offen: PRIV ? openLoops(state.brain ?? [], 99).filter((n) => !n.zwischen).length : 0, stil: state.settings.widgetStyle ?? 'glas' }));
   } catch {}
 }
 
@@ -9083,6 +9084,12 @@ function offerShareNote(text, nFiles) {
   div.append(b);
 }
 
+$('phWidgetStyle').onchange = (e) => {
+  state.settings.widgetStyle = e.target.value;
+  save();
+  updateWidget();
+  status('Widget-Stil geändert.');
+};
 $('phWidget').onclick = () => {
   if (!dev()?.pinWidget?.()) status('Widget von Hand hinzufügen: lange auf den Startbildschirm drücken → Widgets → KI-Assistent.');
 };

@@ -3083,6 +3083,19 @@ const lastUser77 = JSON.stringify(claudeRequests.at(-1)?.messages?.at(-1) ?? "")
 b77.prompt = /Zwischenspeicher durchgehen \(3 Einträge/.test(lastUser77) && /Hochbeet/.test(lastUser77);
 check(b77.capture && b77.noLlm && b77.imported === 2 && b77.widget && b77.chip && b77.go && b77.sorted, 'Zwischenspeicher: „Für später: …“ ohne Antwort, Widget-Notizen übernommen, Zähler im Widget und an der Eingabe', JSON.stringify(b77));
 check(b77.prompt && b77.process.left === 1 && b77.process.firstDone && b77.process.moved === 'projekte', 'Zwischenspeicher mit der Figur durchgehen: Einträge abhaken oder einsortieren', JSON.stringify(b77));
+const b78 = await page.evaluate(() => {
+  const had = window.KIDevice;
+  const info = [];
+  window.KIDevice = { ...(had ?? {}), widgetInfo: (j) => info.push(JSON.parse(j)), takeQuickNotes: () => '[]' };
+  const sel = document.getElementById('phWidgetStyle');
+  sel.value = 'klar';
+  sel.dispatchEvent(new Event('change'));
+  const out = { stil: info.at(-1)?.stil, opts: [...sel.options].map((o) => o.value).join() };
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  return out;
+});
+check(b78.stil === 'klar' && b78.opts === 'glas,klar,dunkel', 'Widget-Stil (Glas / ganz durchsichtig / dunkel) geht ans Widget', JSON.stringify(b78));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

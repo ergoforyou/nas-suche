@@ -53,77 +53,136 @@ const RESOURCES = {
 </shape>
 `,
   'layout/ki_widget.xml': `<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent"
-    android:layout_height="match_parent" android:orientation="vertical" android:background="@drawable/ki_widget_bg"
-    android:padding="10dp">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/ki_widget_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:background="@drawable/ki_widget_bg_glass" android:padding="10dp">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
         android:gravity="center_vertical">
         <LinearLayout android:id="@+id/ki_widget_head" android:layout_width="0dp" android:layout_height="wrap_content"
             android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
-            <ImageView android:layout_width="34dp" android:layout_height="34dp" android:src="@mipmap/ic_launcher_round"
+            <ImageView android:layout_width="32dp" android:layout_height="32dp" android:src="@mipmap/ic_launcher_round"
                 android:contentDescription="@string/ki_widget" />
             <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical"
-                android:layout_marginStart="8dp">
+                android:layout_marginStart="9dp">
                 <TextView android:id="@+id/ki_widget_name" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="KI-Assistent" android:textColor="#FFFFFF" android:textSize="15sp" android:textStyle="bold"
-                    android:maxLines="1" />
+                    android:text="KI-Assistent" android:textColor="#FFFFFF" android:textSize="15sp" android:fontFamily="sans-serif-medium"
+                    android:maxLines="1" android:shadowColor="#AA000000" android:shadowRadius="3" android:shadowDy="1" />
                 <TextView android:id="@+id/ki_widget_status" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Bereit – tippen zum Sprechen" android:textColor="#9FB0C8" android:textSize="12sp" android:maxLines="1" />
+                    android:text="Bereit" android:textColor="#E1E7F0" android:textSize="12sp" android:maxLines="1" android:shadowColor="#AA000000" android:shadowRadius="3" android:shadowDy="1" />
             </LinearLayout>
         </LinearLayout>
-        <TextView android:id="@+id/ki_widget_live" android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:background="@drawable/ki_widget_pill" android:paddingStart="12dp" android:paddingEnd="12dp"
-            android:paddingTop="5dp" android:paddingBottom="5dp" android:text="@string/ki_sc_live_short"
-            android:textColor="#BFD8FF" android:textSize="13sp" />
+        <LinearLayout android:id="@+id/ki_widget_live" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/ki_widget_pill"
+            android:paddingStart="10dp" android:paddingEnd="12dp" android:paddingTop="5dp" android:paddingBottom="5dp">
+            <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_w_call"
+                android:contentDescription="Live" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="5dp"
+                android:text="Live" android:textColor="#FFFFFF" android:textSize="13sp" android:fontFamily="sans-serif-medium" />
+        </LinearLayout>
     </LinearLayout>
     <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
         android:layout_marginTop="8dp" android:orientation="horizontal">
         <LinearLayout android:id="@+id/ki_widget_talk" android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:orientation="vertical" android:gravity="center" android:layout_margin="3dp"
-            android:background="@drawable/ki_widget_btn">
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🎤"
-                android:textSize="20sp" />
+            android:background="@drawable/ki_widget_btn_glass">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_w_mic"
+                android:contentDescription="Sprechen" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sprechen"
-                android:textColor="#D7DEEA" android:textSize="11sp" android:layout_marginTop="2dp" />
+                android:textColor="#F2F5FA" android:textSize="11sp" android:layout_marginTop="3dp" android:maxLines="1"
+                android:shadowColor="#AA000000" android:shadowRadius="3" android:shadowDy="1" />
         </LinearLayout>
         <LinearLayout android:id="@+id/ki_widget_dict" android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:orientation="vertical" android:gravity="center" android:layout_margin="3dp"
-            android:background="@drawable/ki_widget_btn">
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="✍"
-                android:textSize="20sp" />
+            android:background="@drawable/ki_widget_btn_glass">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_w_edit"
+                android:contentDescription="Diktat" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Diktat"
-                android:textColor="#D7DEEA" android:textSize="11sp" android:layout_marginTop="2dp" />
+                android:textColor="#F2F5FA" android:textSize="11sp" android:layout_marginTop="3dp" android:maxLines="1"
+                android:shadowColor="#AA000000" android:shadowRadius="3" android:shadowDy="1" />
         </LinearLayout>
         <LinearLayout android:id="@+id/ki_widget_quick" android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:orientation="vertical" android:gravity="center" android:layout_margin="3dp"
-            android:background="@drawable/ki_widget_btn">
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📥"
-                android:textSize="20sp" />
+            android:background="@drawable/ki_widget_btn_glass">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_w_inbox"
+                android:contentDescription="Für später" />
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Für später"
-                android:textColor="#D7DEEA" android:textSize="11sp" android:layout_marginTop="2dp" />
+                android:textColor="#F2F5FA" android:textSize="11sp" android:layout_marginTop="3dp" android:maxLines="1"
+                android:shadowColor="#AA000000" android:shadowRadius="3" android:shadowDy="1" />
         </LinearLayout>
         <LinearLayout android:id="@+id/ki_widget_open" android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:orientation="vertical" android:gravity="center" android:layout_margin="3dp"
-            android:background="@drawable/ki_widget_btn">
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="⏳"
-                android:textSize="20sp" />
+            android:background="@drawable/ki_widget_btn_glass">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_w_list"
+                android:contentDescription="Offen" />
             <TextView android:id="@+id/ki_widget_open_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Offen"
-                android:textColor="#D7DEEA" android:textSize="11sp" android:layout_marginTop="2dp" />
+                android:textColor="#F2F5FA" android:textSize="11sp" android:layout_marginTop="3dp" android:maxLines="1"
+                android:shadowColor="#AA000000" android:shadowRadius="3" android:shadowDy="1" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
 `,
+  'drawable/ki_widget_bg_glass.xml': `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#5C0F1522" />
+    <stroke android:width="1dp" android:color="#2EFFFFFF" />
+    <corners android:radius="26dp" />
+</shape>
+`,
+  'drawable/ki_widget_bg_clear.xml': `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#00000000" />
+    <corners android:radius="26dp" />
+</shape>
+`,
+  'drawable/ki_widget_btn_glass.xml': `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#2EFFFFFF" />
+    <stroke android:width="1dp" android:color="#24FFFFFF" />
+    <corners android:radius="18dp" />
+</shape>
+`,
   'drawable/ki_widget_btn.xml': `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="#2A3344" />
-    <corners android:radius="16dp" />
+    <corners android:radius="18dp" />
 </shape>
 `,
   'drawable/ki_widget_pill.xml': `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#2B4A7A" />
-    <corners android:radius="14dp" />
+    <solid android:color="#5A3B82F6" />
+    <stroke android:width="1dp" android:color="#40FFFFFF" />
+    <corners android:radius="16dp" />
 </shape>
+`,
+  'drawable/ic_w_mic.xml': `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,14c1.66,0 3,-1.34 3,-3V5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17,11c0,2.76 -2.24,5 -5,5s-5,-2.24 -5,-5H5c0,3.53 2.61,6.43 6,6.92V21h2v-3.08c3.39,-0.49 6,-3.39 6,-6.92h-2z" />
+</vector>
+`,
+  'drawable/ic_w_edit.xml': `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M3,17.25V21h3.75L17.81,9.94l-3.75,-3.75L3,17.25zM20.71,7.04c0.39,-0.39 0.39,-1.02 0,-1.41l-2.34,-2.34c-0.39,-0.39 -1.02,-0.39 -1.41,0l-1.83,1.83 3.75,3.75 1.83,-1.83z" />
+</vector>
+`,
+  'drawable/ic_w_inbox.xml': `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M19,3H4.99C3.88,3 3.01,3.89 3.01,5L3,19c0,1.1 0.88,2 1.99,2H19c1.1,0 2,-0.9 2,-2V5c0,-1.11 -0.9,-2 -2,-2zM19,15h-4c0,1.66 -1.35,3 -3,3s-3,-1.34 -3,-3H4.99V5H19v10zM16,10h-2V7h-4v3H8l4,4 4,-4z" />
+</vector>
+`,
+  'drawable/ic_w_list.xml': `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M14,10H2v2h12v-2zM14,6H2v2h12V6zM2,16h8v-2H2v2zM21.5,11.5L23,13l-6.99,7 -4.51,-4.5L13,14l3.01,3 5.49,-5.5z" />
+</vector>
+`,
+  'drawable/ic_w_call.xml': `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z" />
+</vector>
 `,
   'xml/ki_widget_info.xml': `<?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" android:minWidth="250dp"
