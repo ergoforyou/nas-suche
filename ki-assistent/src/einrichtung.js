@@ -267,7 +267,9 @@ export function runOnboarding(deps) {
       nav.append(later, next);
       card.append(nav);
       box.append(card);
-      deps.speak(say.textContent);
+      // gesprochen wird erst nach dem ersten Antippen: vorher darf der Browser keinen Ton abspielen, und beim Start
+      // soll nichts Großes (Stimme) geladen werden
+      if (i > 0) deps.speak(say.textContent);
     };
     render();
   });

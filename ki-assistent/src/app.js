@@ -9088,7 +9088,10 @@ function startOnboarding() {
     overview: () => helpOverview(helpCtx()),
     done: (how) => {
       state.settings.onboarded = Date.now();
+      // wer die Einrichtung abschließt, sieht zunächst nur das Wichtigste („alle zeigen“ schaltet um)
+      if (how === 'fertig') state.settings.setSimple = true;
       save();
+      applySimple();
       tts.stop();
       logEv('EINRICHTUNG', how);
       if (how === 'fertig') fireEvent('greet', 2500);
@@ -9119,7 +9122,7 @@ async function startCheck() {
   logEv('SELBSTTEST', problems.length || repairs.length ? `${problems.join(' · ') || 'keine Probleme'}${repairs.length ? ` | repariert: ${repairs.join(' · ')}` : ''}` : 'alles in Ordnung');
   return state.selfTest;
 }
-/** Beim allerersten Start: einfacher Modus und Ersteinrichtung; wer die App schon nutzt, bekommt sie nicht. */
+/** Beim allerersten Start: Ersteinrichtung; wer die App schon nutzt, bekommt sie nicht. */
 function maybeOnboard() {
   if (state.settings.onboarded) return applySimple();
   const used = Object.values(state.history ?? {}).some((h) => h?.length) || state.personas.length > 1;
@@ -9128,7 +9131,6 @@ function maybeOnboard() {
     save();
     return applySimple();
   }
-  state.settings.setSimple = true;
   applySimple();
   startOnboarding();
 }

@@ -39,6 +39,9 @@ await page.addInitScript(() => {
 });
 await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
 await page.waitForFunction(() => window.__app);
+// Ersteinrichtung (erster Start) mit „Später“ schließen
+await page.waitForFunction(() => window.__app.state.settings.onboarded || document.getElementById('onboard'), null, { timeout: 15000 }).catch(() => {});
+await page.evaluate(() => [...document.querySelectorAll('#onboard button')].find((b) => b.textContent === 'Später')?.click());
 await page.click('#btnSettings');
 await page.click('#tabs [data-tab=avatar]');
 await page.click('#avVrmCreate');

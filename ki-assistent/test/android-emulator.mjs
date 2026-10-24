@@ -89,6 +89,13 @@ for (let i = 0; i < 40 && !ready; i++) {
   if (!ready) await sleep(500);
 }
 check(ready, 'Oberfläche vollständig gestartet (Anhang-Knopf sichtbar)');
+// Ersteinrichtung erscheint beim ersten Start – für die weiteren Prüfungen mit „Später“ schließen
+let onboard = false;
+for (let i = 0; i < 20 && !onboard; i++) {
+  onboard = await run(`return !!document.getElementById('onboard') || !!window.__app?.state?.settings?.onboarded`);
+  if (!onboard) await sleep(300);
+}
+check(await run(`const ob = document.getElementById('onboard'); [...(ob?.querySelectorAll('button') ?? [])].find((b) => b.textContent === 'Später')?.click(); return !!ob`), 'Ersteinrichtung beim ersten Start');
 const info = await run(`return { title: document.querySelector('#titleVersion')?.textContent, edition: window.__app?.edition,
   mobile: document.documentElement.classList.contains('mobile'), provider: window.__app?.state?.settings?.provider }`);
 console.log('  ', JSON.stringify(info));

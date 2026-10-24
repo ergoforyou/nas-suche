@@ -100,7 +100,7 @@ const firstStart = await page.evaluate(async () => {
   const ob = document.getElementById('onboard');
   return { shown: !!ob, text: ob?.textContent ?? '', simple: document.getElementById('drawer').classList.contains('simple') };
 });
-check(firstStart.shown && /Lass uns kurz alles einrichten/.test(firstStart.text) && firstStart.simple, 'Erster Start: Ersteinrichtung erscheint, Einstellungen im einfachen Modus', JSON.stringify(firstStart));
+check(firstStart.shown && /Lass uns kurz alles einrichten/.test(firstStart.text) && !firstStart.simple, 'Erster Start: Ersteinrichtung erscheint', JSON.stringify(firstStart));
 await skipOnboard();
 check((await page.evaluate(() => window.__app.edition)) === 'mobile', 'Android-Ausgabe aktiv');
 check((await page.evaluate(() => window.__app.state.settings.provider)) === 'anthropic', 'Claude ist Standard');
@@ -3393,13 +3393,15 @@ const b80b = await page.evaluate(async () => {
   out.user = p.memory.some((m) => /Mein Gegenüber heißt Jens/.test(m.text));
   out.key = (await window.desktop.keyStatus()).anthropic;
   out.closed = !document.getElementById('onboard');
+  out.simpleAfter = document.getElementById('drawer').classList.contains('simple');
+  document.getElementById('setAll').click();
   Object.assign(p, { name: keep.name, memory: keep.mem });
   app.state.settings.provider = keep.prov;
   return out;
 });
 check(b80b.simpleHides && b80b.jumped && b80b.voice && b80b.none, 'Einstellungen: einfacher Modus, Suche springt hin (auch zu Verborgenem)', JSON.stringify(b80b));
 check(/Timer/.test(b80b.timer ?? '') && b80b.groups.includes('Handy') && b80b.noPc && b80b.unknown, '„Was kannst du?“: Hilfe passend zu Gerät und Bereich, ehrlich bei Unbekanntem', JSON.stringify(b80b));
-check(b80b.how === 'fertig' && b80b.name === 'Lina' && b80b.user && b80b.key && b80b.keyHidden && b80b.closed && b80b.ideas >= 4 && b80b.steps.length >= 4, 'Ersteinrichtung: Namen, Anbieter und Schlüssel (verdeckt), Freigaben, Ideen', JSON.stringify(b80b));
+check(b80b.how === 'fertig' && b80b.name === 'Lina' && b80b.user && b80b.key && b80b.keyHidden && b80b.closed && b80b.simpleAfter && b80b.ideas >= 4 && b80b.steps.length >= 4, 'Ersteinrichtung: Namen, Anbieter und Schlüssel (verdeckt), Freigaben, Ideen; danach einfacher Modus', JSON.stringify(b80b));
 // Beta 80 (F): Selbsttest beim Start – kaputte Einstellung und verwaiste Orts-Erinnerung werden repariert
 const b80f = await page.evaluate(async () => {
   const app = window.__app;

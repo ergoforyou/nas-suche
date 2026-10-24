@@ -54,6 +54,9 @@ await page.addInitScript(() => {
 });
 await page.goto('http://localhost:8799/index.html');
 await page.waitForFunction(() => window.__app);
+// Ersteinrichtung (erster Start) mit „Später“ schließen
+await page.waitForFunction(() => window.__app.state.settings.onboarded || document.getElementById('onboard'), null, { timeout: 15000 }).catch(() => {});
+await page.evaluate(() => [...document.querySelectorAll('#onboard button')].find((b) => b.textContent === 'Später')?.click());
 // An Claude übergeben: Sprachbefehl und ✳-Knopf gehen an die Claude-App, nicht ans eigene Sprachmodell
 {
   const h = await page.evaluate(async () => {
