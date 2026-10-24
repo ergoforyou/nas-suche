@@ -556,3 +556,4 @@ body.dictating #input { outline: 2px solid var(--danger); }
 .brain-note textarea { width: 100%; margin: 6px 0; box-sizing: border-box; }
 .chips .chip { padding: 3px 9px; border-radius: 12px; font-size: 13px; }
 .chips .chip.active { background: var(--accent, #4c8dff); color: #fff; border-color: transparent; }
+.brain-steps { white-space: pre-line; font-size: 13px; margin: 6px 0 2px; opacity: 0.9; }

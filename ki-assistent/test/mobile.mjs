@@ -40,7 +40,7 @@ await page.route('https://api.anthropic.com/**', (route) => {
   const ev = (e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
   // Hintergrund-Anfragen (Lernen, Nachdenken, Begrüßung) bekommen nur dafür vorgesehene Antworten (helper) –
   // sonst schnappen sie je nach Timing einer Testfrage die vorbereitete Antwort weg
-  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis|Wähle aus den früheren Gesprächen|Du sortierst Notizen|Liste von Notizen|Wochenrückblick für das Second Brain/.test(JSON.stringify(request.body.system ?? ''));
+  const helper = /Langzeitgedächtnis|long-term memory|Denk ehrlich über dich nach|gerade die App geöffnet|Du ordnest dein eigenes Selbstbild|Du schreibst dein Tagebuch|Du prüfst, was du im Gespräch|Du hältst deinen Wochenrückblick|Fasse das folgende Gespräch für dein Gedächtnis|Wähle aus den früheren Gesprächen|Du sortierst Notizen|Liste von Notizen|Wochenrückblick für das Second Brain|Du pflegst dein eigenes Notizbuch|auf die Frage nach den wichtigsten Dingen/.test(JSON.stringify(request.body.system ?? ''));
   const sysText = JSON.stringify(request.body.system ?? '');
   // gezielte Antworten (match) gehen nur an die passende Anfrage, sonst die nächste freie
   let qi = claudeQueue.findIndex((e) => !!e.helper === helper && e.match?.test(sysText));
@@ -2928,6 +2928,42 @@ const b73 = await page.evaluate(async () => {
 });
 check(b73.own && b73.search === 'Ostsee-Tipps sammeln' && !b73.userSearch && b73.prompt && b73.seed, 'Eigenes Notizbuch der Figur: getrennt von deinen Notizen, im Gespräch und als Anlass', JSON.stringify(b73));
 check(b73.file && b73.imported && b73.snap && b73.ui, 'Second Brain als Datei exportieren/importieren (mit Notizbuch der Figur), im Abgleich, umschaltbar', JSON.stringify(b73));
+// Beta 74 (Privat): Tagesbegleiter, eigenes Notizbuch pflegen, Vorhaben Schritt für Schritt
+claudeQueue.push(Object.assign(sayText('{"heute":["Angebot Müller schicken","Zahnarzt anrufen","Joggen gehen"]}'), { helper: true, match: /wichtigsten Dingen/ }));
+claudeQueue.push(Object.assign(sayText('Ich habe gesucht.\n{"ergebnis":"- FeWo Binz, 95 €/Nacht (fewo-binz.de)\\n- FeWo Sellin, 110 €/Nacht","schritt_erledigt":true,"neue_schritte":["Verfügbarkeit im Mai prüfen"],"fertig":false,"frage":null,"nachricht":"Ich hab für Rügen schon zwei Ferienwohnungen gefunden."}'), { match: /arbeitest in einer ruhigen Minute selbstständig/ }));
+const b74 = await page.evaluate(async () => {
+  const app = window.__app;
+  const p = app.persona();
+  const out = {};
+  await window.desktop.setKey('anthropic', 'sk-ant-test-0000000000');
+  const made = await app.captureTop3('Heute muss ich das Angebot an Müller schicken, beim Zahnarzt anrufen und will joggen.');
+  out.top3 = made.length === 3 && app.heuteWichtig().length >= 3 && made.every((n) => n.offen && n.tags.includes('heute'));
+  // Vorhaben mit Schritten im eigenen Notizbuch
+  const v = await app.runAppTool('notiz_anlegen', { notizbuch: 'eigenes', titel: 'Rügen-Urlaub vorbereiten', text: 'Für Mai, 2 Personen', schritte: ['Ferienwohnungen auf Rügen suchen', 'Preise vergleichen'] });
+  out.vorhaben = v.ordner === 'Projekte' && v.offen === true && v.schritte?.length === 2;
+  const r = await app.workOnVorhaben({ force: true });
+  const n = p.brain.find((x) => x.id === v.id);
+  out.work = !!r?.erledigt && /FeWo Binz/.test(n.text) && !!n.schritte[0].erledigt && n.schritte.some((x) => /Verfügbarkeit/.test(x.text)) && (p.themen ?? []).some((t) => /zwei Ferienwohnungen/.test(t.text));
+  // Rückfrage beantworten
+  n.schritte[1].wartet = 'Welches Budget pro Nacht?';
+  await app.runAppTool('notiz_aendern', { notizbuch: 'eigenes', id: v.id, antwort: 'Höchstens 120 Euro' });
+  out.answer = !n.schritte[1].wartet && /Höchstens 120 Euro/.test(n.text);
+  // Notizbuch selbst pflegen: zwei doppelte Notizen werden zusammengeführt
+  const d1 = await app.runAppTool('notiz_anlegen', { notizbuch: 'eigenes', titel: 'Idee Kaffee', text: 'Jens mag Cappuccino' });
+  const d2 = await app.runAppTool('notiz_anlegen', { notizbuch: 'eigenes', titel: 'Kaffee', text: 'Cappuccino, ohne Zucker' });
+  window.__tidyIds = [d1.id, d2.id];
+  return out;
+});
+claudeQueue.push(Object.assign(sayText(JSON.stringify({ erledigt: [], archiv: [], zusammen: [{ ids: await page.evaluate(() => window.__tidyIds), titel: 'Kaffee für Jens', text: 'Cappuccino, ohne Zucker' }], aendern: [], ansprechen: null })), { helper: true, match: /Du pflegst dein eigenes Notizbuch/ }));
+b74.tidy = await page.evaluate(async () => {
+  const app = window.__app;
+  const r = await app.tidyOwnBrain({ force: true });
+  const own = app.persona().brain;
+  return { changed: r?.changed, merged: own.filter((n) => window.__tidyIds.includes(n.id)).length === 1 && own.some((n) => n.titel === 'Kaffee für Jens') };
+});
+check(b74.top3, 'Tagesbegleiter: drei wichtigste Dinge als offene Punkte für heute', JSON.stringify(b74));
+check(b74.vorhaben && b74.work && b74.answer, 'Vorhaben: Schritt mit Recherche erledigt, Ergebnis notiert, Neuigkeit als Thema, Rückfrage beantwortet', JSON.stringify(b74));
+check(b74.tidy.merged && b74.tidy.changed >= 1, 'Notizbuch selbst gepflegt: Doppeltes zusammengeführt', JSON.stringify(b74.tidy));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);

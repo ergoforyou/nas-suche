@@ -2,6 +2,7 @@ import { Avatar, avatarState, detectFace, loadImage, fireEvent, timeOfDayEnergy 
 import { extractText, chunkText, buildIndex, searchIndex, kbPrompt, KB_ACCEPT, terms } from './wissen.js';
 import { ORDNER, makeNote, openLoops, findNote, exportVault, importVault, mergeNotes, brainPrompt, INBOX_PROMPT, parseInbox, OPEN_RE, BRAIN_PICK_PROMPT, brainPickInput, parsePick, isoWeek, weekFacts, weekMarkdown, BRAIN_WEEK_PROMPT, brainFile, readBrainFile } from './brain.js';
 import JSZip from 'jszip';
+import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pickVorhaben, vorhabenPrompt, vorhabenInput, parseVorhaben, applyVorhaben, stepsFrom, TOP3_PROMPT, parseTop3, TOP3_ASK } from './vorhaben.js';
 import { SpeechInput } from './stt.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
@@ -1121,6 +1122,11 @@ async function send(text) {
   state.ttsErrorShown = false;
   state.busy = true;
   state.lastSendAt = Date.now();
+  // Antwort auf die Frage der Morgenrunde („drei wichtigste Dinge“): im Hintergrund als offene Punkte für heute festhalten
+  if (PRIV && state.top3Asked && Date.now() - state.top3Asked < 45 * 60e3 && text) {
+    state.top3Asked = 0;
+    captureTop3(text).catch((e) => logEv('TAG', e.message));
+  }
   setBusyUi(true);
 
   const attachments = pendingAttachments;
@@ -1497,6 +1503,8 @@ const eveningDue = () => PRIV && !budgetSaving() && state.settings.eveningBrief 
 /** Was die Feierabendrunde braucht: was heute besprochen wurde, der erste Termin morgen. */
 async function eveningContext(p) {
   const out = [];
+  const wichtig = PRIV ? heuteWichtig() : [];
+  if (wichtig.length) out.push(`Heute wichtig (vom Morgen):\n${wichtig.map((n) => `- ${n.titel}${n.erledigt ? ' (erledigt)' : ''}`).join('\n')}`);
   const loops = PRIV ? openLoops(state.brain, 5) : [];
   if (loops.length) out.push(`Offene Punkte aus dem Second Brain:\n${loops.map((n) => `- ${n.titel}${n.faellig ? ` (fällig ${n.faellig})` : ''}`).join('\n')}`);
   const start = new Date();
@@ -1570,7 +1578,12 @@ async function personalGreeting({ morning: forceMorning = false, evening: forceE
           : mode === 'initiative'
             ? `Du bist ${p.name}. ${INITIATIVE_PROMPT}`
             : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. ${avoid}`;
-  const sys = `${figure.join('\n\n')}\n\n${task}`;
+  // Tagesbegleiter (Privat): morgens nach den drei wichtigsten Dingen fragen, abends nachhaken
+  const top3 = PRIV && state.settings.tagesbegleiter !== false && lang === 'de';
+  const askTop3 = top3 && morning && state.settings.top3Day !== todayKey();
+  const todayTop3 = top3 && mode === 'evening' ? heuteWichtig() : [];
+  const extra = askTop3 ? ` ${TOP3_ASK}` : todayTop3.length ? ' Unten steht, was heute wichtig war – frag kurz nach, was davon geklappt hat.' : '';
+  const sys = `${figure.join('\n\n')}\n\n${task}${extra}`;
   // mit dem Gesprächsmodell: die Begrüßung ist der erste Eindruck der Figur (kurz, also günstig)
   const model = await ensureModel().catch(() => null);
   if (!model) return;
@@ -1599,6 +1612,7 @@ async function personalGreeting({ morning: forceMorning = false, evening: forceE
   // inzwischen hat jemand etwas gefragt oder die Persona gewechselt: Begrüßung verwerfen
   if (!clean || state.busy || persona() !== p || history().length !== before) return;
   for (const t of topics) t.asked = t.changed = Date.now();
+  if (askTop3) state.top3Asked = Date.now();
   const entry = { role: 'assistant', content: clean, t: Date.now(), greet: true, ...(mode !== 'greet' ? { runde: mode } : {}) };
   h.push(entry);
   decorateBubble(addBubble('assistant', clean), entry);
@@ -1789,6 +1803,9 @@ function renderTopics() {
   $('cInitiative').checked = state.settings.initiative !== false;
   $('cRemGoogle').checked = !!state.settings.reminderGoogle;
   $('cMitdenken').checked = state.settings.mitdenken !== false;
+  $('cTagesbegleiter').checked = state.settings.tagesbegleiter !== false;
+  $('cVorhaben').checked = state.settings.vorhaben !== false;
+  $('cOwnTidy').checked = state.settings.ownTidy !== false;
   $('privRounds').hidden = !PRIV;
   renderBudget();
   $('cThink').checked = state.settings.thinkSounds !== false;
@@ -1841,6 +1858,12 @@ $('cInitiative').onchange = (e) => {
   state.settings.initiative = e.target.checked;
   save();
 };
+for (const [id, key] of [['cTagesbegleiter', 'tagesbegleiter'], ['cVorhaben', 'vorhaben'], ['cOwnTidy', 'ownTidy']]) {
+  $(id).onchange = (e) => {
+    state.settings[key] = e.target.checked;
+    save();
+  };
+}
 $('cMitdenken').onchange = (e) => {
   state.settings.mitdenken = e.target.checked;
   save();
@@ -7972,6 +7995,7 @@ const noteView = (n, full = false) => ({
   ...(n.offen ? { offen: !n.erledigt } : {}),
   ...(n.faellig ? { faellig: n.faellig } : {}),
   geaendert: new Date(n.changed).toLocaleDateString('de-DE'),
+  ...(n.schritte?.length ? { schritte: n.schritte.map((x, i) => `${i + 1}. ${x.erledigt ? '✓' : x.wartet ? `wartet: ${x.wartet}` : 'offen'} – ${x.text}`) } : {}),
   text: full ? n.text : n.text.slice(0, 300),
 });
 const ordnerKey = (o) => (o ? Object.keys(ORDNER).find((k) => k === String(o).toLowerCase() || ORDNER[k].toLowerCase() === String(o).toLowerCase()) : undefined);
@@ -7983,7 +8007,12 @@ async function brainTool(name, input = {}) {
   const book = who === 'figur' ? { notizbuch: 'eigenes' } : {};
   if (name === 'notiz_anlegen') {
     if (!String(input.text ?? input.titel ?? '').trim()) throw new Error('Was soll in die Notiz?');
-    const n = addBrainNote({ titel: input.titel, text: input.text ?? '', ordner: ordnerKey(input.ordner) ?? (who === 'figur' ? 'themen' : 'eingang'), tags: input.tags, projekt: input.projekt, offen: input.offen, faellig: input.faellig, quelle: who === 'figur' ? 'figur' : 'ki' }, who);
+    const steps = stepsFrom(input.schritte);
+    const n = addBrainNote({ titel: input.titel, text: input.text ?? '', ordner: ordnerKey(input.ordner) ?? (steps.length ? 'projekte' : who === 'figur' ? 'themen' : 'eingang'), tags: input.tags, projekt: input.projekt, offen: input.offen ?? (steps.length ? true : undefined), faellig: input.faellig, quelle: who === 'figur' ? 'figur' : 'ki' }, who);
+    if (steps.length) {
+      n.schritte = steps;
+      save();
+    }
     fireEvent('success', 2000);
     return { angelegt: true, ...book, ...noteView(n) };
   }
@@ -8013,6 +8042,20 @@ async function brainTool(name, input = {}) {
   if (input.faellig != null) patch.faellig = /^\d{4}-\d{2}-\d{2}$/.test(input.faellig) ? input.faellig : undefined;
   if (input.erledigt === true) patch.erledigt = Date.now();
   if (input.erledigt === false) patch.erledigt = null;
+  // Schritte eines Vorhabens: abhaken, neue anfügen, Antwort auf eine Rückfrage
+  if (input.schritt_erledigt != null || input.schritte_neu || input.antwort) {
+    const steps = (n.schritte ??= []);
+    const ref = input.schritt_erledigt;
+    const st = typeof ref === 'number' ? steps[ref - 1] : steps.find((x) => !x.erledigt && x.text.toLowerCase().includes(String(ref ?? '').toLowerCase()));
+    if (ref != null && st) st.erledigt = Date.now();
+    for (const x of stepsFrom(input.schritte_neu)) steps.push(x);
+    if (input.antwort) {
+      const w = steps.find((x) => x.wartet);
+      patch.text = `${patch.text ?? n.text}${n.text ? '\n\n' : ''}Antwort${w ? ` zu „${w.wartet}“` : ''}: ${String(input.antwort).slice(0, 2000)}`;
+      if (w) delete w.wartet;
+    }
+    if (steps.length) patch.offen = patch.offen ?? !steps.every((x) => x.erledigt);
+  }
   updateBrainNote(n, patch);
   return { geaendert: true, ...book, ...noteView(n) };
 }
@@ -8029,6 +8072,9 @@ const OWN_BRAIN_PROMPT = {
     'Du hast ein eigenes Notizbuch (dein Second Brain – die Werkzeuge notiz_* mit notizbuch: "eigenes"). Halte darin fest, ' +
     'was du dir selbst merken oder weiterverfolgen willst: Ideen, wie du deinem Gegenüber helfen kannst, Gelerntes aus ' +
     'Recherchen und Gesprächen, Pläne, offene Fäden, Gedanken, die du später aufgreifen willst (offen: true für Vorhaben). ' +
+    'Für ein größeres Vorhaben, an dem du selbst weiterarbeiten kannst (z. B. etwas recherchieren und vergleichen), lege ' +
+    'eine Notiz mit „schritte“ an – du arbeitest dann in ruhigen Minuten Schritt für Schritt daran und erzählst, was du ' +
+    'herausgefunden hast. ' +
     'Sparsam und gezielt – nicht nach jeder Antwort, und sprich nicht über das Werkzeug. Das Notizbuch deines Gegenübers ' +
     '(ohne notizbuch) gehört ihm: dort nur auf Wunsch eintragen.',
   en:
@@ -8078,6 +8124,95 @@ async function sortInbox({ force = false } = {}) {
   renderBrain();
   return k;
 }
+// ---- Selbstständig (Privat): Tagesbegleiter, eigenes Notizbuch pflegen, an Vorhaben weiterarbeiten
+const heuteWichtig = () => (state.brain ?? []).filter((n) => n.tags?.includes('heute') && n.faellig === todayKey());
+async function captureTop3(text) {
+  const items = parseTop3(await helperJson(TOP3_PROMPT, text));
+  if (!items.length) return [];
+  state.settings.top3Day = todayKey();
+  const made = items.map((t) => addBrainNote({ titel: t, text: '', ordner: 'eingang', offen: true, faellig: todayKey(), tags: ['heute'], quelle: 'tagesbegleiter', sortiert: true }));
+  logEv('TAG', `heute wichtig: ${items.join(' | ')}`);
+  return made;
+}
+/** Eigenes Notizbuch aufräumen (höchstens einmal am Tag, in einer Pause): Erledigtes, Doppeltes, Altes ins Archiv. */
+async function tidyOwnBrain({ force = false } = {}) {
+  const p = persona();
+  const own = p.brain ?? [];
+  if (!PRIV || state.settings.offline || own.length < 3) return null;
+  if (!force && (state.settings.ownTidy === false || budgetSaving() || state.busy || tts.speaking || Date.now() - (p.brainTidyAt ?? 0) < 20 * 3600e3)) return null;
+  p.brainTidyAt = Date.now();
+  let res = null;
+  try {
+    const raw = await helperJson(OWN_TIDY_PROMPT, tidyInput(own));
+    res = JSON.parse(String(raw).match(/\{[\s\S]*\}/)?.[0] ?? 'null');
+  } catch {}
+  const r = applyTidy(own, res);
+  if (r.changed) p.brain = r.notes;
+  if (r.topic) addTopic(p, r.topic);
+  if (r.changed || r.topic) {
+    logEv('BRAIN', `Notizbuch gepflegt: ${r.changed} Änderung(en)${r.topic ? ' + Thema' : ''}`);
+    brainChanged();
+  } else save({ quiet: true });
+  return r;
+}
+/** An einem eigenen Vorhaben weiterarbeiten: einen Schritt, mit Internetsuche; höchstens VORHABEN_MAX_TAG am Tag. */
+async function workOnVorhaben({ force = false } = {}) {
+  const p = persona();
+  if (!PRIV || state.settings.offline) return null;
+  if (!force && (state.settings.vorhaben === false || budgetSaving() || state.busy || tts.speaking || state.micActive || state.drive || state.inCall)) return null;
+  const day = todayKey();
+  const cnt = state.settings.vorhabenDay?.day === day ? state.settings.vorhabenDay.n : 0;
+  if (!force && cnt >= VORHABEN_MAX_TAG) return null;
+  const n = pickVorhaben(p.brain ?? [], Date.now(), force ? 0 : 3 * 3600e3);
+  if (!n) return null;
+  const step = nextStep(n);
+  state.settings.vorhabenDay = { day, n: cnt + 1 };
+  const model = await ensureModel().catch(() => null);
+  if (!model) return null;
+  logEv('VORHABEN', `arbeite an „${n.titel}“: ${step.text}`);
+  const text = await new Promise((resolve) => {
+    let out = '';
+    chatRequest(
+      {
+        id: newId(),
+        ...llmParams(model),
+        ...(state.settings.provider === 'anthropic' ? { effort: 'low', web: webActive() } : {}),
+        messages: [
+          { role: 'system', content: vorhabenPrompt(p.name || 'die Figur') },
+          { role: 'user', content: vorhabenInput(n) },
+        ],
+      },
+      (ev) => {
+        if (ev.type === 'delta') out += ev.payload;
+        else if (ev.type === 'done' || ev.type === 'error') {
+          if (ev.type === 'error') logEv('VORHABEN', `Fehler: ${String(ev.payload?.message ?? ev.payload ?? '').slice(0, 160)}`);
+          resolve(ev.type === 'done' ? out : '');
+        }
+      },
+    );
+  });
+  const r = parseVorhaben(text);
+  if (!r) {
+    n.gearbeitet = Date.now();
+    save({ quiet: true });
+    return null;
+  }
+  applyVorhaben(n, r);
+  // Neuigkeit oder Rückfrage: als offenes Thema – die Figur spricht es bei der nächsten Gelegenheit an
+  if (r.frage) addTopic(p, `Zu „${n.titel}“: ${r.frage}`);
+  else if (r.nachricht) addTopic(p, r.nachricht);
+  if (n.erledigt) addTopic(p, `„${n.titel}“ ist fertig – Ergebnis erzählen`);
+  logEv('VORHABEN', `${r.erledigt ? 'Schritt erledigt' : 'Schritt offen'}${r.frage ? ', Rückfrage' : ''}${n.erledigt ? ', Vorhaben fertig' : ''}`);
+  brainChanged();
+  return r;
+}
+// alle 10 Minuten: erst aufräumen (einmal am Tag), sonst ein Arbeitsschritt (mit Pausen)
+setInterval(() => {
+  (async () => {
+    if ((await tidyOwnBrain()) == null) await workOnVorhaben();
+  })().catch((e) => logEv('VORHABEN', e.message));
+}, 10 * 60e3);
+
 /** Anlässe für die eigene Initiative aus dem Second Brain: bald Fälliges, ab und zu eine ältere Notiz wieder hochholen. */
 function brainSeeds(now = Date.now()) {
   if (!PRIV) return [];
@@ -8172,6 +8307,12 @@ function renderBrain() {
       const meta = document.createElement('small');
       meta.textContent = ` · ${ORDNER[n.ordner]}${n.projekt ? ` · ${n.projekt}` : ''}${n.tags?.length ? ` · #${n.tags.join(' #')}` : ''}${n.faellig ? ` · fällig ${n.faellig}` : ''}`;
       sum.append(meta);
+      if (n.schritte?.length) {
+        const st = document.createElement('div');
+        st.className = 'brain-steps';
+        st.textContent = n.schritte.map((x) => `${x.erledigt ? '☑' : x.wartet ? '⏳' : '☐'} ${x.text}${x.wartet ? ` – wartet auf dich: ${x.wartet}` : ''}`).join('\n');
+        row.append(st);
+      }
       const ta = document.createElement('textarea');
       ta.value = n.text;
       ta.rows = Math.min(12, Math.max(3, n.text.split('\n').length + 1));
@@ -10566,6 +10707,10 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  captureTop3,
+  tidyOwnBrain,
+  workOnVorhaben,
+  heuteWichtig,
   brainExportData,
   notesOf,
   brainWeekly,
