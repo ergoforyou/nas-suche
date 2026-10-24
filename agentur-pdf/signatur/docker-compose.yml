@@ -3,15 +3,41 @@
 services:
   ergoforyou-sign:
     build: .
-    image: ergoforyou-sign:0.2.0
+    image: ergoforyou-sign:0.3.0
     container_name: ergoforyou-sign
     restart: unless-stopped
     ports:
-      - "8480:8480" # Kundenseite – Ziel des DSM-Reverse-Proxys
+      - "8480:8480" # Kundenseite (nur im Büronetz; von außen über den Tunnel)
       - "8481:8481" # Einrichtung + Ergoforyou PDF – NICHT am Router freigeben
     volumes:
       - ./daten:/daten
+      - tunnel-socket:/var/run/tailscale
     environment:
       - TZ=Europe/Berlin
+      - SIGN_TAILSCALE_SOCKET=/var/run/tailscale/tailscaled.sock
     security_opt:
       - no-new-privileges:true
+
+  # Zugang von außen ohne Portfreigabe: baut eine ausgehende, verschlüsselte
+  # Verbindung auf und gibt NUR die Kundenseite (Port 8480) unter
+  # https://ergoforyou-sign.<name>.ts.net frei. Anmeldung einmalig über die
+  # Einrichtungsseite (http://<NAS>:8481).
+  tunnel:
+    image: tailscale/tailscale:stable
+    container_name: ergoforyou-sign-tunnel
+    restart: unless-stopped
+    environment:
+      - TS_HOSTNAME=ergoforyou-sign
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SOCKET=/var/run/tailscale/tailscaled.sock
+      - TS_SERVE_CONFIG=/config/funnel.json
+      - TS_USERSPACE=true
+    volumes:
+      - ./daten/tunnel:/var/lib/tailscale
+      - ./tunnel:/config:ro
+      - tunnel-socket:/var/run/tailscale
+    depends_on:
+      - ergoforyou-sign
+
+volumes:
+  tunnel-socket:

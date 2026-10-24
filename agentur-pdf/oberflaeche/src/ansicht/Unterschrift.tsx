@@ -253,9 +253,19 @@ function FeldVorschau({ dokId, felder, rollen }: { dokId: string; felder: Signat
     return (
       <div className="sig-vorschau leer">
         <p className="hinweis-box">
-          Kein Unterschriftsfeld im Dokument – jede Person unterschreibt dann nur auf dem Prüfprotokoll. Tipp: <strong>Schützen → Unterschriftsfeld</strong>{" "}
-          aufziehen, wo unterschrieben werden soll.
+          Kein Unterschriftsfeld im Dokument – der Kunde unterschreibt dann nur auf dem Prüfprotokoll. Besser: Feld dort aufziehen, wo unterschrieben werden
+          soll.
         </p>
+        <button
+          type="button"
+          className="umschalter"
+          onClick={() => {
+            setzen({ dialog: null, werkzeug: "formular", formularTyp: "unterschrift", anmAuswahl: null, rechtsOffen: true });
+            melden("Unterschriftsfeld aufziehen – danach wieder „Zur Unterschrift senden“.");
+          }}
+        >
+          <PenLine size={14} /> Unterschriftsfeld jetzt setzen
+        </button>
       </div>
     );
   }

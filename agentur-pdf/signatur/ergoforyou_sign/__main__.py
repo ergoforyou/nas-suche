@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
+import time
 
 import uvicorn
 
@@ -23,7 +25,20 @@ async def _laufen() -> None:
     print(f"{PRODUKT} {__version__}: Kundenseite auf Port {kunde_port}, Einrichtung auf Port {intern_port}", flush=True)
     if not dienst.konfig.get("kennwort"):
         print(f"Einrichtung: im Büro-Browser http://<NAS-Adresse>:{intern_port} öffnen und ein Kennwort vergeben.", flush=True)
+    threading.Thread(target=_wartung, args=(dienst,), daemon=True).start()
     await asyncio.gather(*(s.serve() for s in server))
+
+
+def _wartung(dienst: Dienst) -> None:
+    """Tunnel-Adresse alle 2 Minuten prüfen, HubSpot-Ablagen alle 30 Minuten nachholen."""
+    runde = 0
+    while True:
+        try:
+            dienst.wartung(mit_hubspot=runde % 15 == 0)
+        except Exception as fehler:  # noqa: BLE001 – Wartung darf den Dienst nie stoppen
+            print(f"[Wartung] {fehler.__class__.__name__}: {fehler}", flush=True)
+        runde += 1
+        time.sleep(120)
 
 
 def main() -> None:

@@ -4448,3 +4448,31 @@ body {
   max-height: 160px;
   overflow: auto;
 }
+
+.rollen-leiste {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.rollen-leiste > .umschalter,
+.rollen-leiste > input,
+.rollen-leiste > strong {
+  flex: none;
+}
+
+.rollen-leiste > input {
+  width: 120px;
+}
+
+.rollen-leiste > .leise {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rollen-leiste .umschalter {
+  padding: 2px 8px;
+}

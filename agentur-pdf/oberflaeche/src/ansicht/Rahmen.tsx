@@ -21,6 +21,7 @@ import { ART_NAMEN, auswahlLoeschen, farbpalette, stilAendern, stilFuer } from "
 import { useEffect, useRef, useState } from "react";
 import { dokumentSchliessen, oeffnenDialog } from "../zustand/aktionen";
 import { Kontextmenue } from "./Kontextmenue";
+import { ROLLEN_VORSCHLAEGE } from "./Unterschrift";
 import { istSeitenDrag, laufenderSeitenDrag, seitenDragDaten, zeigerInnerhalb } from "../zustand/seitenDrag";
 import { seitenUebertragen } from "../zustand/seitenaktionen";
 import {
@@ -217,6 +218,7 @@ export function Eigenschaftsleiste() {
   useZustand((z) => z.stile); // neu zeichnen, wenn sich ein Stil ändert
   const vorlagen = useZustand((z) => z.einstellungen?.stempel ?? KEINE_STEMPEL);
   const vorlage = useZustand((z) => z.stempelVorlage);
+  const formularTyp = useZustand((z) => z.formularTyp);
 
   const art = editor?.art ?? (auswahl && anm ? anm.art : werkzeug);
   if (werkzeug === "hand" && !anm && !editor) {
@@ -258,6 +260,7 @@ export function Eigenschaftsleiste() {
           <strong>Bereich zoomen:</strong> Rechteck aufziehen · Klick = 2× vergrößern · Umschalt+Klick = verkleinern
         </span>
       )}
+      {!anm && !editor && werkzeug === "formular" && formularTyp === "unterschrift" && <RollenLeiste />}
       {!anm && !editor && werkzeug === "lupe" && (
         <>
           <strong>Lupe:</strong>
@@ -326,7 +329,7 @@ export function Eigenschaftsleiste() {
           </select>
         </label>
       )}
-      {!anm && !editor && HINWEISE[werkzeug] && <span className="leise">{HINWEISE[werkzeug]}</span>}
+      {!anm && !editor && HINWEISE[werkzeug] && !(werkzeug === "formular" && formularTyp === "unterschrift") && <span className="leise">{HINWEISE[werkzeug]}</span>}
       <span className="abstand" />
       {anm && !editor && (
         <button className="umschalter" onClick={() => auswahlLoeschen()}>
@@ -545,5 +548,33 @@ export function Passwortdialog() {
         </div>
       </form>
     </div>
+  );
+}
+
+/** Beim Werkzeug „Unterschriftsfeld“: wer unterschreibt in den neuen Feldern? */
+function RollenLeiste() {
+  const rolle = useZustand((z) => z.signaturRolle);
+  const [eigene, setEigene] = useState("");
+  const istVorschlag = ROLLEN_VORSCHLAEGE.includes(rolle);
+  return (
+    <span className="rollen-leiste">
+      <strong>Unterschriftsfeld für:</strong>
+      {ROLLEN_VORSCHLAEGE.map((r) => (
+        <button key={r} type="button" className={`umschalter${r === rolle ? " an" : ""}`} aria-pressed={r === rolle} onClick={() => setzen({ signaturRolle: r })}>
+          {r}
+        </button>
+      ))}
+      <input
+        className="zahl breit"
+        value={istVorschlag ? eigene : rolle}
+        placeholder="andere Rolle …"
+        aria-label="Andere Rolle"
+        onChange={(e) => {
+          setEigene(e.target.value);
+          if (e.target.value.trim()) setzen({ signaturRolle: e.target.value.trim() });
+        }}
+      />
+      <span className="leise">Feld aufziehen · gleiche Rolle = dieselbe Person (eigener Link je Rolle) · Esc = fertig</span>
+    </span>
   );
 }

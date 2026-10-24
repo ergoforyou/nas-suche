@@ -393,7 +393,7 @@ function feldLokal(dokId: string, seite: number, id: number, teil: Partial<Formu
 
 export async function formularfeldAnlegen(dokId: string, seite: number, typ: FormularTyp, rechteck: Rechteck): Promise<number | null> {
   try {
-    const r = await api.formularfeldNeu(dokId, { seite, typ, rechteck });
+    const r = await api.formularfeldNeu(dokId, { seite, typ, rechteck, ...(typ === "unterschrift" ? { rolle: holen().signaturRolle } : {}) });
     anwenden(r);
     setzen({ formularAuswahl: { dokId, seite, id: r.id } });
     return r.id;

@@ -25,7 +25,7 @@ import { anmerkungenLaden } from "../zustand/anmerkungen";
 import { istSeitenDrag, laufenderSeitenDrag, seitenDragDaten, zeigerInnerhalb } from "../zustand/seitenDrag";
 import { seitenDrehen, seitenExtrahieren, seitenUebertragen, seitenVerschieben } from "../zustand/seitenaktionen";
 import { Kontextmenue, type MenuePunkt } from "./Kontextmenue";
-import { FileOutput, Printer, RotateCcw, RotateCw } from "lucide-react";
+import { FileOutput, FileSignature, Printer, RotateCcw, RotateCw } from "lucide-react";
 
 interface Anker {
   seite: number;
@@ -562,6 +562,8 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
         { titel: "Links drehen", icon: RotateCcw, aktion: () => void seitenDrehen(-90, nurSeite()) },
         { titel: "Rechts drehen", icon: RotateCw, aktion: () => void seitenDrehen(90, nurSeite()) },
         { titel: "Als neue PDF extrahieren", icon: FileOutput, aktion: () => void seitenExtrahieren(false, nurSeite()) },
+        "trenner",
+        { titel: "Zur Unterschrift senden …", icon: FileSignature, aktion: () => setzen({ dialog: { art: "signatur", dokId } }) },
       ]
     : [];
 

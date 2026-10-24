@@ -186,3 +186,15 @@ def test_zwei_personen_senden(c, nas):
     assert sorted((x["person"], x["seite"]) for x in a["felder"]) == [(1, 0), (1, 1), (2, 1)]
     assert [p["mit_code"] for p in a["personen"]] == [False, True]
     assert c.post(f"/api/signatur/auftraege/{a['id']}/oeffnen").status_code == 400
+
+
+def test_feld_mit_rolle_anlegen():
+    from agentur_pdf.kern import formulare
+
+    doc = pymupdf.open()
+    doc.new_page()
+    for rolle in ("Ehepartner", "Ehepartner", "Kunde"):
+        formulare.feld_anlegen(doc, 0, {"typ": "unterschrift", "rechteck": [0.1, 0.8, 0.4, 0.86], "rolle": rolle})
+    namen = sorted(w.field_name for w in doc[0].widgets())
+    assert namen == ["Unterschrift Ehepartner", "Unterschrift Ehepartner 2", "Unterschrift Kunde"]
+    assert signatur.rollen(signatur.felder_zaehlen(doc)) == ["Kunde", "Ehepartner"]

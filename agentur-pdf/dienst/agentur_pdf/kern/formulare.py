@@ -145,7 +145,10 @@ def feld_anlegen(doc: pymupdf.Document, seite_nr: int, d: dict) -> int:
     w = pymupdf.Widget()
     w.field_type = ANLEGBAR[typ]
     w.rect = rechteck
-    w.field_name = _freier_name(doc, (d.get("name") or "").strip() or _NAMEN[typ])
+    name = (d.get("name") or "").strip()
+    if typ == "unterschrift" and not name and str(d.get("rolle") or "").strip():
+        name = f"Unterschrift {' '.join(str(d['rolle']).split())[:40]}"
+    w.field_name = _freier_name(doc, name or _NAMEN[typ])
     w.border_color = RAHMEN
     w.border_width = 0.8
     w.fill_color = UNTERSCHRIFT_HINTERGRUND if typ == "unterschrift" else HINTERGRUND

@@ -8,6 +8,7 @@ import { Dialoge } from "./ansicht/Dialoge";
 import { Fehlergrenze } from "./ansicht/Fehlergrenze";
 import { OcrHinweis } from "./ansicht/OcrDialoge";
 import { textstatusBeobachten } from "./zustand/ocr";
+import { signaturenBeobachten } from "./zustand/signaturen";
 import { Menueband } from "./ansicht/Menueband";
 import { Eigenschaftsleiste, Meldungen, Passwortdialog, Statusleiste, Tabs } from "./ansicht/Rahmen";
 import { Panelleiste, Seitenleiste } from "./ansicht/Seitenleiste";
@@ -85,7 +86,8 @@ export function App() {
 
   useEffect(() => {
     void starten();
-    return textstatusBeobachten();
+    const ende = [textstatusBeobachten(), signaturenBeobachten()];
+    return () => ende.forEach((f) => f());
   }, []);
 
   // Sitzung bei jeder Änderung an Tabs/Ansicht (verzögert) sichern

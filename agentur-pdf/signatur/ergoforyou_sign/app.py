@@ -47,6 +47,7 @@ from .auftraege import (
 )
 from .hubspot import HubSpot, HubSpotFehler
 from .konfig import Konfig, kennwort_hash, kennwort_pruefen
+from .tunnel import Tunnel
 from .pdfwerk import abschliessen, felder_pruefen, png_aus_dataurl, pruefen, seite_png, stempeln
 
 STATISCH = Path(__file__).parent / "statisch"
@@ -65,12 +66,50 @@ CSP = "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-
 class Dienst:
     ordner: Path
     hubspot_transport: httpx.BaseTransport | None = None
+    tunnel_transport: httpx.BaseTransport | None = None
     konfig: Konfig = field(init=False)
     auftraege: Auftraege = field(init=False)
+    tunnel: Tunnel = field(init=False)
 
     def __post_init__(self) -> None:
         self.konfig = Konfig(self.ordner)
         self.auftraege = Auftraege(self.ordner)
+        self.tunnel = Tunnel(transport=self.tunnel_transport) if self.tunnel_transport else Tunnel()
+
+    # ------------------------------------------------------------ Wartung
+    def wartung(self, mit_hubspot: bool = True) -> dict:
+        """Regelmäßig (alle paar Minuten) im Hintergrund: Adresse des Tunnels
+        übernehmen, liegengebliebene HubSpot-Ablagen nachholen."""
+        t = self.tunnel.status()
+        if t.get("adresse") and t["zustand"] in ("bereit", "freigeben") and self.adresse_automatisch():
+            if self.konfig.oeffentliche_adresse != t["adresse"]:
+                self.konfig.setzen(oeffentliche_adresse=t["adresse"], adresse_quelle="tunnel")
+                print(f"[Tunnel] Öffentliche Adresse: {t['adresse']}", flush=True)
+        nachgeholt = 0
+        if mit_hubspot and self.konfig.get("hubspot_token"):
+            for z in self.auftraege.liste():
+                ablage = z["ablage"]
+                if z["status"] == "widerrufen":
+                    continue
+                if not ablage.get("hubspot_gesendet"):
+                    self.hubspot_ablegen(z["id"], "gesendet")
+                    nachgeholt += 1
+                if z["status"] == "unterschrieben" and not ablage.get("hubspot_fertig"):
+                    self.hubspot_ablegen(z["id"], "fertig")
+                    nachgeholt += 1
+        return {"tunnel": t, "nachgeholt": nachgeholt}
+
+    def adresse_automatisch(self) -> bool:
+        """Adresse darf vom Tunnel kommen: leer, schon vom Tunnel oder nur eine
+        Büronetz-Adresse aus dem Test (http://10.…, 192.168.…)."""
+        adresse = self.konfig.oeffentliche_adresse
+        if not adresse or self.konfig.get("adresse_quelle") == "tunnel":
+            return True
+        host = adresse.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        try:
+            return ipaddress.ip_address(host).is_private
+        except ValueError:
+            return host in ("localhost",) or host.endswith(".local")
 
     def hubspot(self) -> HubSpot:
         return HubSpot(self.konfig.get("hubspot_token"), self.hubspot_transport)
@@ -404,6 +443,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
     _fehlerbehandlung(app)
     konfig, auftraege = dienst.konfig, dienst.auftraege
     gesperrt = _gesperrt(auftraege)
+    pc_kontakt = {"zeit": 0.0}
 
     def angemeldet(request: Request) -> bool:
         wert = request.cookies.get("esign_admin", "")
@@ -425,6 +465,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
             gesendet = request.headers.get("x-sign-schluessel", "")
             if not secrets.compare_digest(gesendet, konfig.get("schluessel")):
                 return JSONResponse({"fehler": "Verbindungsschlüssel ungültig – bitte in Ergoforyou PDF neu verbinden."}, status_code=401)
+            pc_kontakt["zeit"] = time.time()
         elif pfad.startswith("/einrichtung/") and pfad not in ("/einrichtung/zustand", "/einrichtung/anmelden", "/einrichtung/kennwort"):
             if not angemeldet(request):
                 return JSONResponse({"fehler": "Bitte anmelden."}, status_code=401)
@@ -477,12 +518,15 @@ def intern_app(dienst: Dienst) -> FastAPI:
         code = base64.urlsafe_b64encode(json.dumps({"u": basis, "k": konfig.get("schluessel")}).encode()).decode().rstrip("=")
         return {
             "oeffentliche_adresse": konfig.oeffentliche_adresse,
+            "adresse_quelle": konfig.get("adresse_quelle") or ("manuell" if konfig.oeffentliche_adresse else ""),
+            "tunnel": dienst.tunnel.status(),
             "hubspot_verbunden": bool(token),
             "hubspot_token_ende": token[-4:] if token else "",
             "hubspot_portal": konfig.get("hubspot_portal") or "",
             "verbindungscode": f"EFY-SIGN:{code}",
             "intern_adresse": basis,
             "anzahl": len(auftraege.liste()),
+            "pc_kontakt_vor_s": int(time.time() - pc_kontakt["zeit"]) if pc_kontakt["zeit"] else None,
             "version": __version__,
         }
 
@@ -494,6 +538,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
             if adresse and not adresse.startswith(("https://", "http://")):
                 adresse = "https://" + adresse
             neu["oeffentliche_adresse"] = adresse
+            neu["adresse_quelle"] = "manuell" if adresse else ""
         if daten.get("hubspot_token") is not None:
             token = str(daten["hubspot_token"]).strip()
             if token:
@@ -504,6 +549,13 @@ def intern_app(dienst: Dienst) -> FastAPI:
                 neu.update(hubspot_token="", hubspot_portal="", hubspot_domain="")
         konfig.setzen(**neu)
         return {"ok": True}
+
+    @app.post("/einrichtung/tunnel")
+    def tunnel_pruefen():
+        """Zustand neu lesen und – falls bereit – die Adresse übernehmen."""
+        if dienst.tunnel.status().get("adresse"):
+            konfig.setzen(adresse_quelle="tunnel")
+        return dienst.wartung(mit_hubspot=False)["tunnel"]
 
     @app.post("/einrichtung/hubspot-test")
     def hubspot_test():
@@ -536,6 +588,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
             "oeffentliche_adresse": konfig.oeffentliche_adresse,
             "bereit": bool(konfig.oeffentliche_adresse),
             "mehrere_personen": True,
+            "tunnel": dienst.tunnel.status()["zustand"],
         }
 
     @app.post("/api/auftraege")

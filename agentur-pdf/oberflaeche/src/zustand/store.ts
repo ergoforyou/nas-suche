@@ -135,6 +135,8 @@ export interface Zustand {
   vergleich: { a: string; b: string; ergebnis: VergleichErgebnis; aktiv: number } | null;
   /** Formular gestalten: Typ neuer Felder und ausgewähltes Feld */
   formularTyp: FormularTyp;
+  /** Rolle neuer Unterschriftsfelder (wer dort online unterschreibt) */
+  signaturRolle: string;
   formularAuswahl: { dokId: string; seite: number; id: number } | null;
   editor: Editor | null;
   /** in der Ansicht ausgeblendete Anmerkungsgruppen */
@@ -189,6 +191,7 @@ let zustand: Zustand = {
   anmAuswahl: null,
   vergleich: null,
   formularTyp: "text",
+  signaturRolle: "Kunde",
   formularAuswahl: null,
   editor: null,
   ausblenden: [],

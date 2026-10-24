@@ -236,7 +236,7 @@ def test_intern_schutz_und_einrichtung(umgebung, tmp_path):
     assert roh.get("/api/auftraege").status_code == 401
     assert roh.get("/api/auftraege", headers={"X-Sign-Schluessel": "falsch"}).status_code == 401
     assert roh.get("/einrichtung/werte").status_code == 401
-    assert roh.get("/einrichtung/zustand").json() == {"kennwort_gesetzt": False, "angemeldet": False, "version": "0.2.0"}
+    assert roh.get("/einrichtung/zustand").json() == {"kennwort_gesetzt": False, "angemeldet": False, "version": "0.3.0"}
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "kurz"}).status_code == 400
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "geheim123"}).status_code == 200
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "anders123"}).status_code == 409

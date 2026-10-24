@@ -1,7 +1,9 @@
-// Ergoforyou Sign – Einrichtungsseite (intern)
+// Ergoforyou Sign – Einrichtungsassistent (intern)
 "use strict";
 (function () {
   const $ = (id) => document.getElementById(id);
+  let werte = null;
+  let timer = null;
 
   async function anfrage(pfad, daten) {
     const optionen = daten === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(daten) };
@@ -17,6 +19,20 @@
     $(id).className = `klein ${ok ? "ok" : "fehler"}`;
   }
 
+  function ampel(id, stufe, text) {
+    $(id).className = `ampel ${stufe}`;
+    $(id).querySelector("small").textContent = text;
+  }
+
+  function knopf(text, primaer, aktion) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    if (primaer) b.className = "primaer";
+    b.addEventListener("click", aktion);
+    return b;
+  }
+
   async function start() {
     const z = await anfrage("/einrichtung/zustand");
     $("version").textContent = `Version ${z.version}`;
@@ -27,13 +43,60 @@
     else (z.kennwort_gesetzt ? $("loginKw") : $("neuKw")).focus();
   }
 
+  function zeitText(s) {
+    if (s === null || s === undefined) return "noch nie verbunden";
+    if (s < 120) return "gerade eben verbunden";
+    if (s < 7200) return `zuletzt vor ${Math.round(s / 60)} Minuten`;
+    return `zuletzt vor ${Math.round(s / 3600)} Stunden`;
+  }
+
   async function laden() {
-    const w = await anfrage("/einrichtung/werte");
-    $("adresse").value = w.oeffentliche_adresse;
-    $("hsStatus").textContent = w.hubspot_verbunden ? `verbunden (Schlüssel …${w.hubspot_token_ende}${w.hubspot_portal ? `, Portal ${w.hubspot_portal}` : ""})` : "noch nicht verbunden";
-    $("hsStatus").className = w.hubspot_verbunden ? "ok" : "fehler";
-    $("verbindungscode").textContent = w.verbindungscode;
-    $("anzahl").textContent = w.anzahl;
+    werte = await anfrage("/einrichtung/werte");
+    const t = werte.tunnel;
+    const eigene = werte.adresse_quelle === "manuell" && werte.oeffentliche_adresse && !/^http:\/\/(10\.|192\.168\.|172\.)/.test(werte.oeffentliche_adresse);
+
+    // 1 · Zugang
+    $("tunnelText").textContent = eigene ? `Eigene Adresse aktiv: ${werte.oeffentliche_adresse}` : t.text;
+    const kn = $("tunnelKnoepfe");
+    kn.textContent = "";
+    if (!eigene && t.login_url) {
+      kn.appendChild(knopf(t.zustand === "anmelden" ? "Bei Tailscale anmelden" : "Jetzt freischalten", true, () => window.open(t.login_url, "_blank", "noopener")));
+    }
+    if (werte.oeffentliche_adresse) {
+      kn.appendChild(knopf("Erreichbarkeit testen", !t.login_url || eigene, testen));
+    }
+    $("tunnelAdresse").hidden = !werte.oeffentliche_adresse;
+    $("tunnelAdresse").textContent = werte.oeffentliche_adresse ? `Kundenadresse: ${werte.oeffentliche_adresse}` : "";
+    $("adresse").value = werte.oeffentliche_adresse;
+    const bereit = eigene || t.zustand === "bereit";
+    ampel("ampelTunnel", bereit ? "gruen" : t.zustand === "fehler" || t.zustand === "fehlt" ? "rot" : "gelb", bereit ? werte.oeffentliche_adresse : t.text);
+
+    // 2 · HubSpot
+    $("hsStatus").textContent = werte.hubspot_verbunden ? `verbunden (Schlüssel …${werte.hubspot_token_ende}${werte.hubspot_portal ? `, Portal ${werte.hubspot_portal}` : ""})` : "noch nicht verbunden";
+    $("hsStatus").className = werte.hubspot_verbunden ? "ok" : "grau";
+    $("hsAnleitung").open = !werte.hubspot_verbunden;
+    ampel("ampelHubspot", werte.hubspot_verbunden ? "gruen" : "grau", werte.hubspot_verbunden ? "verbunden" : "optional – noch nicht verbunden");
+
+    // 3 · PC
+    $("verbindungscode").textContent = werte.verbindungscode;
+    $("anzahl").textContent = werte.anzahl;
+    const pcOk = werte.pc_kontakt_vor_s !== null && werte.pc_kontakt_vor_s !== undefined;
+    ampel("ampelPc", pcOk ? "gruen" : "gelb", zeitText(werte.pc_kontakt_vor_s));
+
+    // solange der Tunnel noch nicht fertig ist, selbst nachsehen
+    clearTimeout(timer);
+    if (!bereit) timer = setTimeout(async () => {
+      try { await anfrage("/einrichtung/tunnel", {}); } catch (_) { /* später erneut */ }
+      laden().catch(() => undefined);
+    }, 5000);
+  }
+
+  async function testen() {
+    melden("adresseErgebnis", "Wird geprüft …", true);
+    try {
+      const r = await anfrage("/einrichtung/adresse-test", {});
+      melden("adresseErgebnis", `${r.hinweis} Zur Sicherheit auch am Handy ohne WLAN öffnen: ${werte.oeffentliche_adresse}/gesundheit`, r.ok);
+    } catch (f) { melden("adresseErgebnis", f.message, false); }
   }
 
   $("neuForm").addEventListener("submit", async (e) => {
@@ -60,11 +123,10 @@
     } catch (f) { melden("adresseErgebnis", f.message, false); }
   });
 
-  $("adresseTest").addEventListener("click", async () => {
-    melden("adresseErgebnis", "Wird geprüft …", true);
+  $("tunnelNutzen").addEventListener("click", async () => {
     try {
-      const r = await anfrage("/einrichtung/adresse-test", {});
-      melden("adresseErgebnis", r.hinweis, r.ok);
+      await anfrage("/einrichtung/tunnel", {});
+      await laden();
     } catch (f) { melden("adresseErgebnis", f.message, false); }
   });
 

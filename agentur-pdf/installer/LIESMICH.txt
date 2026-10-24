@@ -112,8 +112,9 @@ ONLINE-UNTERSCHRIFT (ERGOFORYOU SIGN, PROOF OF CONCEPT)
   „Ergoforyou-Sign-NAS.zip“.
   1. Register „Schützen“ → „Unterschriftsfeld“ aufziehen, wo unterschrieben
      werden soll (vorhandene Signaturfelder in PDFs werden erkannt).
-  2. Mehrere Unterzeichner: Feld anklicken → rechts „Unterzeichner“ die
-     Rolle wählen (Kunde, Ehepartner, Makler …). Felder mit derselben Rolle
+  2. Mehrere Unterzeichner: Beim Aufziehen oben in der Leiste die Rolle
+     wählen („Unterschriftsfeld für: Kunde / Ehepartner / …“), später auch
+     über Feld anklicken → rechts „Unterzeichner“. Felder mit derselben Rolle
      unterschreibt dieselbe Person.
   3. „Zur Unterschrift senden“: Vorschau der Felder links, rechts je Rolle
      Name (optional HubSpot-Kontakt) und auf Wunsch Zugangscode; optional
@@ -124,6 +125,8 @@ ONLINE-UNTERSCHRIFT (ERGOFORYOU SIGN, PROOF OF CONCEPT)
      Prüfprotokoll (Zeit, IP, Gerät, Prüfsumme je Person).
   6. „Unterschriften-Übersicht“: Status je Person, Verlauf, Link erneut
      kopieren, gesperrten Zugangscode freigeben, unterschriebene PDF öffnen.
+     Ergoforyou PDF meldet von selbst, wenn jemand unterschrieben hat.
+  Senden geht auch per Rechtsklick auf eine Seite → „Zur Unterschrift senden“.
   Einmalig verbinden: Einstellungen & Einrichtung → „Online-Unterschrift“ →
   Verbindungscode von der NAS-Einrichtungsseite einfügen (mit gemeinsamem
   Ordner gilt das für alle PCs).

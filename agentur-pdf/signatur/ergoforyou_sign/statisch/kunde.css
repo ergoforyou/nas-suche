@@ -117,3 +117,19 @@ button, .knopf {
 .einr td, .einr th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--linie); }
 #fertigKlein { word-break: break-all; }
 .rolle { display: inline-block; margin: 0 0 8px; padding: 2px 10px; border-radius: 12px; background: #fdecec; color: var(--marke); font-weight: 600; font-size: 14px; }
+.einr .ampeln { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 700px) { .einr .ampeln { grid-template-columns: 1fr; } }
+.einr .ampel { display: flex; gap: 10px; align-items: flex-start; }
+.einr .ampel span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.einr .ampel small { color: var(--grau); font-size: 12px; overflow-wrap: anywhere; }
+.einr .ampel .punkt { flex: none; width: 14px; height: 14px; border-radius: 50%; margin-top: 4px; background: #c5cad1; }
+.einr .ampel.gruen .punkt { background: #1f7a3a; }
+.einr .ampel.gelb .punkt { background: #e0a800; }
+.einr .ampel.rot .punkt { background: var(--marke); }
+.einr .schritt h2 { display: flex; align-items: center; gap: 10px; }
+.einr .nr { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--marke); color: #fff; font-size: 15px; }
+.einr .optional { font-size: 12px; font-weight: 500; color: var(--grau); border: 1px solid var(--linie); border-radius: 10px; padding: 1px 8px; }
+.einr .status-text { font-weight: 600; }
+.einr .adresse { font-family: ui-monospace, Consolas, monospace; font-size: 14px; background: var(--flaeche); padding: 8px 10px; border-radius: 8px; word-break: break-all; }
+.einr details { margin-top: 12px; }
+.einr .grau { color: var(--grau); }

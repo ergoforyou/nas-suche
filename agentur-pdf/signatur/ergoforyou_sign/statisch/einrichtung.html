@@ -35,23 +35,45 @@
   </section>
 
   <div id="haupt" hidden>
-    <section class="karte">
-      <h2>1 · Öffentliche Adresse</h2>
-      <p class="klein grau">Unter dieser Adresse erreichen Ihre Kunden die Unterschriftsseite – z. B. <code>https://ergoforyou.synology.me</code>. Der DSM-Reverse-Proxy leitet sie auf Port 8480 dieses Containers.</p>
-      <label for="adresse">Adresse</label>
-      <input id="adresse" type="text" placeholder="https://ergoforyou.synology.me" spellcheck="false">
-      <div class="zeile">
-        <button class="primaer" id="adresseSpeichern" type="button">Speichern</button>
-        <button id="adresseTest" type="button">Erreichbarkeit testen</button>
-      </div>
-      <p id="adresseErgebnis" class="klein"></p>
+    <section class="karte ampeln" aria-label="Überblick">
+      <div class="ampel" id="ampelTunnel"><span class="punkt"></span><span><strong>Zugang für Kunden</strong><small></small></span></div>
+      <div class="ampel" id="ampelHubspot"><span class="punkt"></span><span><strong>HubSpot</strong><small></small></span></div>
+      <div class="ampel" id="ampelPc"><span class="punkt"></span><span><strong>Ergoforyou PDF</strong><small></small></span></div>
     </section>
 
-    <section class="karte">
-      <h2>2 · HubSpot</h2>
+    <section class="karte schritt" id="schritt1">
+      <h2><span class="nr">1</span> Zugang für Kunden (von außen)</h2>
+      <p class="klein grau">Ein Tunnel macht <strong>nur die Unterschriftsseite</strong> sicher über HTTPS erreichbar – ohne Portfreigabe am Router. Die Einrichtung und alle Daten bleiben im Büronetz.</p>
+      <p id="tunnelText" class="status-text"></p>
+      <div class="zeile" id="tunnelKnoepfe"></div>
+      <p id="tunnelAdresse" class="adresse" hidden></p>
+      <p id="adresseErgebnis" class="klein"></p>
+      <details id="eigeneAdresse">
+        <summary class="klein">Eigene Adresse verwenden (fortgeschritten)</summary>
+        <p class="klein grau">Nur nötig, wenn die Kundenseite statt über den Tunnel über eine eigene Domain oder den DSM-Reverse-Proxy erreichbar ist.</p>
+        <label for="adresse">Adresse</label>
+        <input id="adresse" type="text" placeholder="https://sign.ergoforyou.de" spellcheck="false">
+        <div class="zeile">
+          <button id="adresseSpeichern" type="button">Speichern</button>
+          <button id="tunnelNutzen" type="button">Wieder die Tunnel-Adresse verwenden</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="karte schritt" id="schritt2">
+      <h2><span class="nr">2</span> HubSpot verbinden <span class="optional">optional</span></h2>
       <p class="klein">Status: <span id="hsStatus"></span></p>
-      <p class="klein grau">Zugriffsschlüssel der HubSpot-„Private App“ (beginnt mit <code>pat-eu1-</code>). Er bleibt nur hier auf dem NAS.</p>
-      <label for="hsToken">Neuer Zugriffsschlüssel</label>
+      <details id="hsAnleitung">
+        <summary class="klein">So bekommen Sie den Zugriffsschlüssel (5 Minuten, einmalig)</summary>
+        <ol class="klein schritte">
+          <li>In HubSpot oben rechts das <strong>Zahnrad (Einstellungen)</strong> öffnen.</li>
+          <li>Links <strong>Integrationen → Private Apps</strong> (in neuer Oberfläche: <strong>Entwicklung → Legacy-Apps</strong>) → <strong>Private App erstellen</strong>, Name „Ergoforyou Sign“.</li>
+          <li>Reiter <strong>Bereiche</strong>: <code>crm.objects.contacts.read</code>, <code>crm.objects.contacts.write</code>, <code>crm.objects.deals.read</code>, <code>crm.objects.deals.write</code>, <code>files</code> anhaken.</li>
+          <li><strong>App erstellen</strong> → <strong>Token anzeigen</strong> → kopieren und unten einfügen.</li>
+        </ol>
+        <p class="klein grau">Der Schlüssel läuft nicht ab und bleibt nur hier auf dem NAS. Klappt eine Ablage einmal nicht (z. B. Internet weg), holt der Dienst sie automatisch nach.</p>
+      </details>
+      <label for="hsToken">Zugriffsschlüssel</label>
       <input id="hsToken" type="password" autocomplete="off" spellcheck="false" placeholder="pat-eu1-…">
       <div class="zeile">
         <button class="primaer" id="hsSpeichern" type="button">Speichern &amp; prüfen</button>
@@ -61,9 +83,9 @@
       <p id="hsErgebnis" class="klein"></p>
     </section>
 
-    <section class="karte">
-      <h2>3 · Ergoforyou PDF verbinden</h2>
-      <p class="klein">In Ergoforyou PDF: oben rechts <strong>Beta MK I → Online-Unterschrift</strong> (oder direkt bei <strong>Schützen → Zur Unterschrift senden</strong>) → Verbindungscode einfügen → Verbinden. Ist der gemeinsame Einstellungsordner auf dem NAS eingerichtet, reicht das an <strong>einem</strong> PC – alle anderen sind dann automatisch verbunden.</p>
+    <section class="karte schritt" id="schritt3">
+      <h2><span class="nr">3</span> Ergoforyou PDF verbinden</h2>
+      <p class="klein">In Ergoforyou PDF: <strong>Schützen → Zur Unterschrift senden</strong> (oder oben rechts <strong>Beta MK I → Online-Unterschrift</strong>) → Code einfügen → <strong>Verbinden</strong>. Mit gemeinsamem Einstellungsordner auf dem NAS reicht das an <strong>einem</strong> PC.</p>
       <div class="code" id="verbindungscode"></div>
       <div class="zeile">
         <button class="primaer" id="codeKopieren" type="button">Code kopieren</button>
@@ -73,8 +95,7 @@
     </section>
 
     <section class="karte">
-      <h2>Übersicht</h2>
-      <p class="klein">Aufträge bisher: <strong id="anzahl">0</strong>. Unterschriebene Dokumente liegen zusätzlich im Ordner <code>daten/unterschrieben</code> dieses Projekts auf dem NAS.</p>
+      <p class="klein">Aufträge bisher: <strong id="anzahl">0</strong>. Unterschriebene PDFs liegen zusätzlich im Ordner <code>daten/unterschrieben</code> dieses Projekts auf dem NAS.</p>
       <div class="zeile"><button id="abmelden" type="button">Abmelden</button></div>
     </section>
   </div>

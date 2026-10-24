@@ -28,6 +28,11 @@ jobs:
           pip install -r requirements.txt pytest
           python -m pytest -q tests
 
+      - name: Compose-Datei prüfen (inkl. Tunnel)
+        run: |
+          docker compose config -q
+          python -c "import json; json.load(open('tunnel/funnel.json'))"
+
       - name: Container bauen und starten (wie auf der DS1517+, x86_64)
         run: |
           docker build -t ergoforyou-sign:test .
@@ -46,11 +51,12 @@ jobs:
       - name: Paket für das NAS
         run: |
           mkdir -p paket/ergoforyou-sign
-          cp -r Dockerfile docker-compose.yml .dockerignore requirements.txt EINRICHTUNG.md ergoforyou_sign paket/ergoforyou-sign/
+          cp -r Dockerfile docker-compose.yml .dockerignore requirements.txt EINRICHTUNG.md ergoforyou_sign tunnel paket/ergoforyou-sign/
           find paket -name "__pycache__" -prune -exec rm -rf {} +
           # Synology legt Bind-Mount-Ordner nicht selbst an
-          mkdir -p paket/ergoforyou-sign/daten
+          mkdir -p paket/ergoforyou-sign/daten/tunnel
           echo "Hier legt Ergoforyou Sign Aufträge, Einstellungen und unterschriebene PDFs ab." > paket/ergoforyou-sign/daten/LIESMICH.txt
+          echo "Anmeldung des Tunnels (nicht löschen, sonst neu bei Tailscale anmelden)." > paket/ergoforyou-sign/daten/tunnel/LIESMICH.txt
           cd paket/ergoforyou-sign && zip -r ../../Ergoforyou-Sign-NAS.zip .
 
       - uses: actions/upload-artifact@v4

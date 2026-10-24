@@ -3,12 +3,12 @@
 Ergoforyou Sign ist der kleine Dienst, über den Kunden Dokumente **per Link online unterschreiben**.
 Er läuft als Container auf eurem NAS. Alle Dokumente bleiben bei euch, und es entstehen keine laufenden Kosten.
 
-- **Kundenseite** (Port 8480): Über den DSM-Reverse-Proxy und HTTPS ist nur sie aus dem Internet erreichbar, und nur unter `/s/<Link>`.
+- **Kundenseite** (Port 8480): Über den mitgelieferten Tunnel (HTTPS, ohne Portfreigabe) ist nur sie aus dem Internet erreichbar, und nur unter `/s/<Link>`.
 - **Einrichtung und Schnittstelle für Ergoforyou PDF** (Port 8481): nur im Büronetz erreichbar, wird am Router **nicht** freigegeben.
 
 Die Einrichtung dauert einmalig etwa 30–45 Minuten. Ihr braucht:
 - Admin-Zugang zu DSM,
-- Zugang zum Router (z. B. FritzBox),
+- ein kostenloses Tailscale-Konto (wird in Schritt 5 per Klick angelegt),
 - einen HubSpot-Super-Admin.
 
 ---
@@ -28,30 +28,25 @@ Dabei wird der gemeinsame Ordner `docker` angelegt.
 3. **Weiter**. Das Web-Portal (Web Station) **nicht** einrichten. Dann **Fertig**.
 4. Der erste Start baut den Container. Das dauert auf der DS1517+ etwa 3–5 Minuten. Danach steht das Projekt auf „Wird ausgeführt“.
 
-## 4. Einrichtungsseite öffnen
+## 4. Einrichtungsseite öffnen (Assistent mit Ampeln)
 Im Büro-Browser `http://<NAS-IP>:8481` öffnen, z. B. `http://192.168.178.20:8481`.
 Dort ein **Einrichtungskennwort** festlegen (mind. 8 Zeichen) und gut aufbewahren.
 
-## 5. Von außen erreichbar machen (HTTPS)
-1. **Adresse anlegen:** Systemsteuerung → **Externer Zugriff** → **DDNS** → **Hinzufügen**.
-   - Dienstanbieter „Synology“, Hostname z. B. `ergoforyou-sign.synology.me`.
-   - Haken bei „Zertifikat von Let's Encrypt anfordern“ setzen, dann OK.
-2. **Reverse-Proxy:** Systemsteuerung → **Anmeldeportal** → **Erweitert** → **Reverse Proxy** → **Erstellen**.
-   - Beschreibung: `Ergoforyou Sign`
-   - Quelle: Protokoll **HTTPS**, Hostname `ergoforyou-sign.synology.me`, Port **443**, HSTS aktivieren
-   - Ziel: Protokoll **HTTP**, Hostname `localhost`, Port **8480**
-   - Reiter **Benutzerdefinierte Kopfzeile** → Erstellen → **Leer**, zwei Einträge:
-     - `X-Real-IP` = `$remote_addr`
-     - `X-Forwarded-For` = `$proxy_add_x_forwarded_for`
+## 5. Von außen erreichbar machen (Tunnel – ohne Router)
+Zum Projekt gehört ein zweiter Container `ergoforyou-sign-tunnel`. Er baut eine **ausgehende**, verschlüsselte Verbindung auf und gibt **nur die Kundenseite** frei.
+- Am Router muss kein Port geöffnet werden.
+- Es klappt auch bei Glasfaser- oder Kabelanschlüssen ohne eigene IPv4 (DS-Lite).
+- Einrichtung, DSM und Dateien bleiben im Büronetz.
 
-     Nur damit steht die echte IP des Kunden im Prüfprotokoll.
-3. **Zertifikat zuordnen:** Systemsteuerung → **Sicherheit** → **Zertifikat** → **Einstellungen**. Beim Dienst `ergoforyou-sign.synology.me` das Let's-Encrypt-Zertifikat auswählen.
-4. **Router:** Portfreigabe **TCP 443 → NAS-IP, Port 443**.
-   Bei der FritzBox: Internet → Freigaben → Portfreigaben → Gerät NAS → Neue Freigabe → HTTPS-Server.
-   Die Ports **8481, 5000 und 5001 NICHT freigeben.**
-5. Ist die **DSM-Firewall** aktiv, dort Port 443 erlauben und Port 8481 nur für das lokale Netz.
-6. Auf der Einrichtungsseite unter **1 · Öffentliche Adresse** `https://ergoforyou-sign.synology.me` eintragen, dann Speichern und „Erreichbarkeit testen“.
-   Zur Sicherheit auch am Handy **ohne WLAN** `https://ergoforyou-sign.synology.me/gesundheit` öffnen. Dort muss „ok“ stehen.
+1. Auf der Einrichtungsseite unter **1 · Zugang für Kunden** auf **„Bei Tailscale anmelden“** klicken.
+   - Mit Google, Microsoft oder E-Mail ein **kostenloses** Tailscale-Konto anlegen oder anmelden.
+   - Das Gerät „ergoforyou-sign“ bestätigen.
+2. Zurück zur Einrichtungsseite. Sie aktualisiert sich selbst.
+   - Erscheint **„Jetzt freischalten“**: einmal klicken und in Tailscale **Funnel** (öffentlicher Zugang) aktivieren.
+3. Die Ampel „Zugang für Kunden“ wird grün, und die Kundenadresse steht da, z. B. `https://ergoforyou-sign.tail1a2b.ts.net`. Der Dienst trägt sie selbst ein. Sie bleibt dauerhaft gleich, auch nach Neustarts.
+4. Zur Probe am Handy **ohne WLAN** die Adresse mit `/gesundheit` am Ende öffnen. Dort muss „ok“ stehen.
+
+**Alternative mit eigener Domain** (z. B. `sign.ergoforyou.de`) über DSM-Reverse-Proxy und Portfreigabe 443: Diese Adresse unter „Eigene Adresse verwenden“ eintragen. Der Tunnel wird dann nicht benutzt.
 
 ## 6. HubSpot verbinden
 1. In HubSpot: **Einstellungen (Zahnrad)** → **Integrationen** → **Private Apps**. In neueren Oberflächen heißt das „Entwicklung → Legacy-Apps → Private App“.
@@ -101,9 +96,18 @@ Ist in Ergoforyou PDF der **gemeinsame Einstellungsordner** auf dem NAS eingetra
 - Ein Zertifikatssiegel (PAdES) und eine SMS-TAN sind für später vorgesehen und bewusst noch nicht enthalten.
 - Rechtlich ist das eine **einfache elektronische Signatur mit Protokoll**. Sie reicht für Textform und formfreie Erklärungen (z. B. Maklervertrag, Vollmacht, Beratungsprotokoll), aber **nicht** dort, wo das Gesetz die Schriftform verlangt (§ 126 BGB). Dafür braucht man eine QES.
 
+## Pflege
+- **Kaum Pflege nötig.** Beide Container starten nach einem NAS-Neustart von selbst.
+- Der Dienst prüft alle 2 Minuten den Tunnel und holt nicht geklappte HubSpot-Ablagen alle 30 Minuten automatisch nach.
+- Der HubSpot-Schlüssel einer Private App läuft nicht ab.
+
 ## Updates
-1. Die neuen Dateien in `docker/ergoforyou-sign` überschreiben. Der Ordner `daten` bleibt unberührt.
-2. Container Manager → Projekt `ergoforyou-sign` → **Aktion → Erstellen**. Damit wird neu gebaut und gestartet.
+1. Container Manager → Projekt `ergoforyou-sign` → **Stopp**.
+2. File Station → in den Ordner `docker/ergoforyou-sign` wechseln → **Hochladen – Überschreiben** → die neue `Ergoforyou-Sign-NAS.zip` wählen.
+3. Rechtsklick auf die ZIP → **Extrahieren → Hierher extrahieren** → bei Rückfrage **Überschreiben**. Danach die ZIP löschen. Den Ordner `daten` nie löschen.
+4. Container Manager → Projekt → **Aktion → Erstellen**. Damit wird neu gebaut und gestartet, das dauert ein paar Minuten.
+
+Auf der Einrichtungsseite steht oben die laufende Version.
 
 ## Datensicherung
 Den Ordner `docker/ergoforyou-sign/daten` in **Hyper Backup** aufnehmen. Darin liegen:
@@ -114,5 +118,6 @@ Den Ordner `docker/ergoforyou-sign/daten` in **Hyper Backup** aufnehmen. Darin l
 ## Wenn etwas nicht klappt
 - **„Bind mount failed … /daten does not exist“:** Den Ordner `daten` in `docker/ergoforyou-sign` anlegen, dann Projekt → Aktion → Starten.
 - **Einrichtungsseite lädt nicht:** Läuft das Projekt im Container Manager? Unter Protokoll steht „Kundenseite auf Port 8480, Einrichtung auf Port 8481“.
-- **Kunde kann den Link nicht öffnen:** Portfreigabe 443, Reverse-Proxy-Eintrag und Zertifikat prüfen. Testen mit `…/gesundheit` am Handy ohne WLAN.
+- **Kunde kann den Link nicht öffnen:** Auf der Einrichtungsseite die Ampel „Zugang für Kunden“ prüfen. Ist sie gelb, dem angezeigten Schritt folgen. Steht dort „Tunnel-Container läuft nicht“: Container Manager → Projekt → Aktion → Erstellen.
+- **Tunnel neu anmelden** (z. B. anderes Tailscale-Konto): Projekt stoppen, Ordner `daten/tunnel` leeren, Projekt wieder erstellen.
 - **HubSpot-Fehler in der Übersicht:** Token abgelaufen oder ein Bereich fehlt. Dann neues Token eintragen und in der Übersicht auf „Erneut an HubSpot“ klicken.

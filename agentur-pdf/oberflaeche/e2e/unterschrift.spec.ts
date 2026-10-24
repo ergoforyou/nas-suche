@@ -59,18 +59,20 @@ test("Unterschriftsfeld setzen, senden, als Kunde unterschreiben, Ergebnis öffn
   await page.locator(".mb-reiter").getByRole("tab", { name: "Schützen" }).click();
   const box = (await page.locator('.seite-inhalt[data-seite="0"]').boundingBox())!;
   await page.locator('[data-befehl="signatur.feld"]').click();
-  for (const [x0, x1] of [
-    [0.12, 0.45],
-    [0.55, 0.88],
-  ]) {
+  const leiste = page.getByRole("toolbar", { name: "Werkzeugeinstellungen" });
+  await expect(leiste).toContainText("Unterschriftsfeld für:");
+  for (const [rolle, x0, x1] of [
+    ["Kunde", 0.12, 0.45],
+    ["Ehepartner", 0.55, 0.88],
+  ] as const) {
+    await leiste.getByRole("button", { name: rolle, exact: true }).click();
     await page.mouse.move(box.x + box.width * x0, box.y + box.height * 0.82);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * x1, box.y + box.height * 0.88, { steps: 5 });
     await page.mouse.up();
   }
   await expect(page.locator(".fg-feld.fg-unterschrift")).toHaveCount(2);
-  // zuletzt angelegtes Feld ist ausgewählt → Rolle rechts setzen
-  await page.getByRole("button", { name: "Ehepartner", exact: true }).click();
+  // zuletzt angelegtes Feld ist ausgewählt – rechts steht seine Rolle
   await expect(page.getByLabel("Rolle des Unterzeichners")).toHaveValue("Ehepartner");
   await page.keyboard.press("Escape");
 
