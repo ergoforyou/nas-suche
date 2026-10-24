@@ -4,6 +4,7 @@ import { PRODUKT, STAND } from "../marke";
 import { Camera, CheckCircle2, Download, Info, MonitorCog, MousePointerClick, RefreshCw, Settings, Users, XCircle } from "lucide-react";
 import { updateInstallieren, updatePruefen } from "../zustand/aktionen";
 import { ChromeBereich, DruckerBereich } from "./DruckerBereich";
+import { SignaturBereich } from "./Unterschrift";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { holen, melden, setzen, useZustand } from "../zustand/store";
@@ -110,6 +111,7 @@ function EinstellungenBereich() {
       <WindowsUndUpdates />
       <DruckerBereich />
       <ChromeBereich />
+      <SignaturBereich />
       <fieldset className="gruppe">
         <legend>
           <Camera size={13} /> Screenshot-Werkzeug

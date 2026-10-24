@@ -4036,3 +4036,239 @@ body {
 .anleitung li + li {
   margin-top: 2px;
 }
+
+/* ============================================= Online-Unterschrift (Sign) */
+.formular-feld.unterschrift {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  background: rgba(255, 214, 10, 0.22);
+  border: 1px dashed #c99700;
+  color: #7a5c00;
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.fg-feld.fg-unterschrift {
+  background: rgba(255, 214, 10, 0.2);
+  border-color: #c99700;
+}
+
+.sig-dialog {
+  width: 560px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.sig-uebersicht {
+  width: 720px;
+}
+
+.sig-zeile,
+.sig-knoepfe,
+.sig-filter,
+.sig-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sig-filter {
+  flex-wrap: nowrap;
+}
+
+.sig-link input {
+  flex: 1;
+  min-width: 240px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+
+.sig-suchfeld {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  padding: 0 8px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.sig-suchfeld input {
+  border: 0;
+  outline: 0;
+  flex: 1;
+  padding: 6px 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.sig-treffer {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sig-treffer button,
+.sig-kontakt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--linie);
+  color: var(--text);
+}
+
+.sig-treffer button:hover {
+  background: var(--akzent-hell);
+}
+
+.sig-kontakt {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--akzent-mittel);
+  background: var(--akzent-hell);
+  border-radius: 6px;
+}
+
+.sig-kontakt span,
+.sig-titel,
+.sig-rechts {
+  display: flex;
+  flex-direction: column;
+}
+
+.sig-treffer small,
+.sig-kontakt small,
+.sig-titel small,
+.sig-rechts small,
+.sig-verlauf small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.sig-ergebnis {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sig-ergebnis .ok {
+  color: #1f7a3a;
+  vertical-align: -3px;
+}
+
+.hinweis-box {
+  background: rgba(255, 214, 10, 0.15);
+  border: 1px solid rgba(201, 151, 0, 0.5);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.sig-liste {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+}
+
+.sig-liste > li {
+  border-bottom: 1px solid var(--linie);
+}
+
+.sig-liste > li.leise {
+  padding: 12px;
+}
+
+.sig-eintrag {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 8px 10px;
+  color: var(--text);
+}
+
+.sig-eintrag:hover,
+.sig-liste > li.offen > .sig-eintrag {
+  background: var(--akzent-hell);
+}
+
+.sig-rechts {
+  align-items: flex-end;
+  flex: none;
+}
+
+.sig-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 1px 8px;
+  background: #eceff3;
+  color: #4a5361;
+}
+
+.sig-status.sig-geoeffnet {
+  background: #e3ecff;
+  color: #1e4fa8;
+}
+
+.sig-status.sig-unterschrieben {
+  background: #e2f4e7;
+  color: #1f7a3a;
+}
+
+.sig-status.sig-abgelaufen,
+.sig-status.sig-widerrufen {
+  background: #f6e3e3;
+  color: #9b1c1c;
+}
+
+.sig-detail {
+  padding: 8px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sig-verlauf {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.sig-verlauf time {
+  color: var(--text-3);
+  margin-right: 6px;
+}
+
+.sig-verlauf small {
+  margin-left: 6px;
+}
+
+.sig-verbinden textarea {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}

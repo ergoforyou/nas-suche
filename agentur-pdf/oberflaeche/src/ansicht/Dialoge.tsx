@@ -14,6 +14,7 @@ import { DruckerDialog } from "./DruckerBereich";
 import { VergleichDialog } from "./Vergleich";
 import { BriefpapierDialog, DeckblattDialog, FreistellenDialog, HausfarbenDialog } from "./DesignDialoge";
 import { InfoDialog } from "./InfoDialog";
+import { SignaturSendenDialog, SignaturUebersichtDialog } from "./Unterschrift";
 import { BereichstextDialog, OcrDialog, UeberwachungDialog } from "./OcrDialoge";
 import {
   BildDialog,
@@ -38,6 +39,8 @@ export function Dialoge() {
   if (dialog.art === "ocr") return <OcrDialog dokId={dialog.dokId} />;
   if (dialog.art === "ueberwachung") return <UeberwachungDialog />;
   if (dialog.art === "info") return <InfoDialog />;
+  if (dialog.art === "signatur") return <SignaturSendenDialog dokId={dialog.dokId} />;
+  if (dialog.art === "signaturen") return <SignaturUebersichtDialog />;
   if (dialog.art === "bereichstext") return <BereichstextDialog text={dialog.text} sicherheit={dialog.sicherheit} />;
   if (dialog.art === "druck") return <DruckDialog dokId={dialog.dokId} alsExport={dialog.export} startBereich={dialog.bereich} startSeite={dialog.seite} />;
   if (dialog.art === "kennwort") return <KennwortDialog dokId={dialog.dokId} />;

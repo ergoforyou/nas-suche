@@ -104,6 +104,25 @@ ZUSAMMEN MIT DER ERGOFORYOU NAS-SUCHE (CHROME)
   groß. Ergoforyou PDF muss dafür laufen (Programm Ergoforyou PDF ab 0.12.1,
   NAS-Suche ab Erweiterungs-Version 1.3).
 
+ONLINE-UNTERSCHRIFT (ERGOFORYOU SIGN, PROOF OF CONCEPT)
+  Kunden unterschreiben Dokumente per Link – am Handy oder PC, ohne Konto
+  und ohne E-Mail-Bindung. Der Dienst läuft auf dem NAS (DS1517+),
+  unterschriebene PDFs liegen dort und werden in HubSpot am Kontakt/Deal
+  abgelegt. Einrichtung des NAS: siehe „EINRICHTUNG.md“ im Paket
+  „Ergoforyou-Sign-NAS.zip“.
+  1. Register „Schützen“ → „Unterschriftsfeld“ aufziehen, wo unterschrieben
+     werden soll (vorhandene Signaturfelder in PDFs werden automatisch erkannt).
+  2. „Zur Unterschrift senden“: HubSpot-Kontakt suchen (optional Deal),
+     auf Wunsch Zugangscode, Gültigkeit → „Link erstellen“.
+  3. Link per E-Mail, WhatsApp oder SMS schicken (Text wird vorbereitet).
+  4. Der Kunde unterschreibt und lädt sich sofort seine Kopie herunter.
+     Die PDF bekommt ein Prüfprotokoll (Zeit, IP, Gerät, Prüfsumme).
+  5. „Unterschriften-Übersicht“: Status, Verlauf, unterschriebene PDF öffnen,
+     Link zurückziehen.
+  Einmalig verbinden: Einstellungen & Einrichtung → „Online-Unterschrift“ →
+  Verbindungscode von der NAS-Einrichtungsseite einfügen (mit gemeinsamem
+  Ordner gilt das für alle PCs).
+
 GOOGLE CHROME: ERGOFORYOU-PDF-SEITENLEISTE
   Eine Leiste rechts in Chrome – neben Kundenportal, Webmailer & Co.:
   Dateien, Bilder und E-Mails (EML/MSG) hineinziehen → zu einer PDF

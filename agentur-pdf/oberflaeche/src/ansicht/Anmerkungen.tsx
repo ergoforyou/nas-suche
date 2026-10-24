@@ -871,6 +871,14 @@ function Feld({ feld, dokId, seite, pxProPt, ih }: { feld: Formularfeld; dokId: 
     if (neu === feld.wert) return;
     void formularfeldSetzen(dokId, seite, feld.id, neu);
   };
+  if (feld.typ === "unterschrift") {
+    // füllt der Kunde online aus („Zur Unterschrift senden“)
+    return (
+      <div className="formular-feld unterschrift" style={{ ...stil, pointerEvents: "none" }} title={feld.name}>
+        ✍ {feld.name}
+      </div>
+    );
+  }
   if (feld.typ === "ankreuzen" || feld.typ === "auswahlknopf") {
     return (
       <button

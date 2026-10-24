@@ -933,9 +933,10 @@ def erstelle_app(
         return {"verfuegbar": True, "pfade": pfade or []}
 
     # ------------------------- Kommentieren, Bearbeiten, Schützen, Ausgabe
-    from . import erweiterungen
+    from . import erweiterungen, signatur
 
     erweiterungen.einrichten(app, dokumente, bearbeitung, benutzer, antwort)
+    signatur.einrichten(app, dokumente, benutzer)
 
     # --------------------------------------------------------- Oberfläche
     if oberflaeche_ordner and (oberflaeche_ordner / "index.html").is_file():

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Ergoforyou Sign – Einrichtung</title>
+<link rel="stylesheet" href="/statisch/kunde.css">
+</head>
+<body>
+<header class="kopf">
+  <div class="marke"><span class="logo">E</span><span>Ergoforyou Sign</span></div>
+  <div class="kopf-titel">Einrichtung auf dem NAS · <span id="version"></span></div>
+</header>
+<main class="einr">
+  <section id="neu" class="karte schmal" hidden>
+    <h1>Willkommen</h1>
+    <p>Bitte zuerst ein <strong>Einrichtungskennwort</strong> festlegen. Es schützt diese Seite (nur im Büronetz erreichbar).</p>
+    <form id="neuForm">
+      <label for="neuKw">Kennwort (mind. 8 Zeichen)</label>
+      <input id="neuKw" type="password" autocomplete="new-password">
+      <div class="zeile"><button class="primaer" type="submit">Festlegen</button></div>
+    </form>
+    <p class="fehler" id="neuFehler"></p>
+  </section>
+
+  <section id="login" class="karte schmal" hidden>
+    <h1>Anmelden</h1>
+    <form id="loginForm">
+      <label for="loginKw">Einrichtungskennwort</label>
+      <input id="loginKw" type="password" autocomplete="current-password">
+      <div class="zeile"><button class="primaer" type="submit">Anmelden</button></div>
+    </form>
+    <p class="fehler" id="loginFehler"></p>
+  </section>
+
+  <div id="haupt" hidden>
+    <section class="karte">
+      <h2>1 · Öffentliche Adresse</h2>
+      <p class="klein grau">Unter dieser Adresse erreichen Ihre Kunden die Unterschriftsseite – z. B. <code>https://ergoforyou.synology.me</code>. Der DSM-Reverse-Proxy leitet sie auf Port 8480 dieses Containers.</p>
+      <label for="adresse">Adresse</label>
+      <input id="adresse" type="text" placeholder="https://ergoforyou.synology.me" spellcheck="false">
+      <div class="zeile">
+        <button class="primaer" id="adresseSpeichern" type="button">Speichern</button>
+        <button id="adresseTest" type="button">Erreichbarkeit testen</button>
+      </div>
+      <p id="adresseErgebnis" class="klein"></p>
+    </section>
+
+    <section class="karte">
+      <h2>2 · HubSpot</h2>
+      <p class="klein">Status: <span id="hsStatus"></span></p>
+      <p class="klein grau">Zugriffsschlüssel der HubSpot-„Private App“ (beginnt mit <code>pat-eu1-</code>). Er bleibt nur hier auf dem NAS.</p>
+      <label for="hsToken">Neuer Zugriffsschlüssel</label>
+      <input id="hsToken" type="password" autocomplete="off" spellcheck="false" placeholder="pat-eu1-…">
+      <div class="zeile">
+        <button class="primaer" id="hsSpeichern" type="button">Speichern &amp; prüfen</button>
+        <button id="hsTest" type="button">Verbindung testen</button>
+        <button id="hsTrennen" type="button">Trennen</button>
+      </div>
+      <p id="hsErgebnis" class="klein"></p>
+    </section>
+
+    <section class="karte">
+      <h2>3 · Ergoforyou PDF verbinden</h2>
+      <p class="klein">In Ergoforyou PDF: <strong>Datei → Einstellungen → Unterschriften</strong> → „Verbindungscode einfügen“. Ist der gemeinsame Einstellungsordner auf dem NAS eingerichtet, reicht das an <strong>einem</strong> PC – alle anderen sind dann automatisch verbunden.</p>
+      <div class="code" id="verbindungscode"></div>
+      <div class="zeile">
+        <button class="primaer" id="codeKopieren" type="button">Code kopieren</button>
+        <button id="schluesselNeu" type="button">Neuen Code erzeugen (alte Verbindung trennen)</button>
+      </div>
+      <p id="codeErgebnis" class="klein"></p>
+    </section>
+
+    <section class="karte">
+      <h2>Übersicht</h2>
+      <p class="klein">Aufträge bisher: <strong id="anzahl">0</strong>. Unterschriebene Dokumente liegen zusätzlich im Ordner <code>daten/unterschrieben</code> dieses Projekts auf dem NAS.</p>
+      <div class="zeile"><button id="abmelden" type="button">Abmelden</button></div>
+    </section>
+  </div>
+</main>
+<script src="/statisch/einrichtung.js"></script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+"""Zur Unterschrift senden: Ergoforyou PDF ↔ Ergoforyou Sign (NAS-Dienst echt
+gestartet, HubSpot nachgebaut)."""
+
+from __future__ import annotations
+
+import base64
+import socket
+import sys
+import threading
+import time
+from pathlib import Path
+
+import httpx
+import pymupdf
+import pytest
+import uvicorn
+from fastapi.testclient import TestClient
+
+from agentur_pdf.api.app import erstelle_app
+from agentur_pdf.benutzer.speicher import BenutzerSpeicher
+from agentur_pdf.kern import signatur
+from agentur_pdf.kern.dokumente import DokumentFehler
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "signatur"))
+from ergoforyou_sign.app import Dienst, intern_app, kunde_app  # noqa: E402
+
+
+def _hubspot(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/crm/v3/objects/contacts/search":
+        return httpx.Response(200, json={"results": [{"id": "501", "properties": {"firstname": "Max", "lastname": "Muster", "email": "max@example.org"}}]})
+    if request.url.path == "/crm/v4/objects/contacts/501/associations/deals":
+        return httpx.Response(200, json={"results": []})
+    return httpx.Response(201, json={"id": "1"})
+
+
+@pytest.fixture
+def nas(tmp_path):
+    dienst = Dienst(tmp_path / "nas", httpx.MockTransport(_hubspot))
+    dienst.konfig.setzen(oeffentliche_adresse="https://sign.example.org", hubspot_token="pat-eu1-test")
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(intern_app(dienst), host="127.0.0.1", port=port, log_level="error"))
+    faden = threading.Thread(target=server.run, daemon=True)
+    faden.start()
+    while not server.started:
+        time.sleep(0.02)
+    code = "EFY-SIGN:" + base64.urlsafe_b64encode(f'{{"u": "http://127.0.0.1:{port}", "k": "{dienst.konfig.get("schluessel")}"}}'.encode()).decode().rstrip("=")
+    yield dienst, code
+    server.should_exit = True
+    faden.join(5)
+
+
+@pytest.fixture
+def c(tmp_path):
+    c = TestClient(erstelle_app("t", benutzer=BenutzerSpeicher(tmp_path / "pc")))
+    c.headers.update({"X-Agentur-Token": "t"})
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 90), "Maklervertrag Max Muster", fontsize=14)
+    doc.new_page().insert_text((72, 90), "Seite 2", fontsize=14)
+    doc.save(tmp_path / "vertrag.pdf")
+    c.dok = c.post("/api/dokumente/oeffnen", json={"pfad": str(tmp_path / "vertrag.pdf")}).json()["id"]
+    return c
+
+
+def test_code_lesen():
+    roh = base64.urlsafe_b64encode(b'{"u": "http://192.168.1.20:8481/", "k": "abcdefghijklmnopqrstuvwxyz"}').decode().rstrip("=")
+    assert signatur.code_lesen(f"EFY-SIGN:{roh}\n") == {"url": "http://192.168.1.20:8481", "schluessel": "abcdefghijklmnopqrstuvwxyz"}
+    for falsch in ("", "irgendwas", "EFY-SIGN:%%%", "EFY-SIGN:" + base64.urlsafe_b64encode(b'{"u": "ftp://x", "k": "kurz"}').decode()):
+        with pytest.raises(DokumentFehler):
+            signatur.code_lesen(falsch)
+
+
+def test_unterschriftsfeld_anlegen_und_vorbereiten(c):
+    d = c.dok
+    r = c.post(f"/api/dokumente/{d}/formular", json={"seite": 1, "typ": "unterschrift", "rechteck": [0.1, 0.8, 0.45, 0.86]})
+    assert r.status_code == 200, r.text
+    feld = c.get(f"/api/dokumente/{d}/formular").json()["1"][0]
+    assert feld["typ"] == "unterschrift" and feld["name"] == "Unterschrift Kunde"
+    assert c.put(f"/api/dokumente/{d}/formular/{feld['id']}", json={"seite": 1, "wert": "x"}).status_code == 400
+    c.post(f"/api/dokumente/{d}/formular", json={"seite": 0, "typ": "text", "rechteck": [0.1, 0.2, 0.5, 0.24], "name": "Tarif"})
+    text_id = c.get(f"/api/dokumente/{d}/formular").json()["0"][0]["id"]
+    c.put(f"/api/dokumente/{d}/formular/{text_id}", json={"seite": 0, "wert": "Hausrat Komfort"})
+    assert c.get(f"/api/dokumente/{d}/signatur/felder").json()["felder"] == [{"seite": 1, "name": "Unterschrift Kunde"}]
+
+
+
+def test_vorbereiten_direkt():
+    doc = pymupdf.open()
+    seite = doc.new_page()
+    from agentur_pdf.kern import formulare
+
+    formulare.feld_anlegen(doc, 0, {"typ": "unterschrift", "rechteck": [0.1, 0.8, 0.45, 0.86]})
+    t = formulare.feld_anlegen(doc, 0, {"typ": "text", "rechteck": [0.1, 0.2, 0.5, 0.24], "name": "Tarif"})
+    formulare.feld_setzen(doc, 0, t, "Hausrat Komfort")
+    pdf, felder = signatur.vorbereiten(doc)
+    assert [f["art"] for f in felder] == ["unterschrift"] and felder[0]["seite"] == 0
+    assert abs(felder[0]["rechteck"][0] - 0.1) < 0.003 and abs(felder[0]["rechteck"][3] - 0.86) < 0.003
+    fertig = pymupdf.open("pdf", pdf)
+    assert not list(fertig[0].widgets()), "keine Formularfelder mehr – Inhalt eingebrannt"
+    assert "Hausrat Komfort" in fertig[0].get_text()
+    assert len(list(seite.widgets())) == 2, "Original bleibt unverändert"
+
+
+def test_verbinden_senden_unterschreiben_oeffnen(c, nas):
+    dienst, code = nas
+    assert c.get("/api/signatur/status").json() == {"eingerichtet": False}
+    assert c.post("/api/signatur/verbinden", json={"code": "Quatsch"}).status_code == 400
+    s = c.post("/api/signatur/verbinden", json={"code": code}).json()
+    assert s["eingerichtet"] and s["erreichbar"] and s["hubspot"] and s["bereit"]
+    assert c.get("/api/einstellungen").json()["signatur_verbindung"]["url"].startswith("http://127.0.0.1:")
+
+    k = c.get("/api/signatur/kontakte?q=Muster").json()["kontakte"]
+    assert k[0]["name"] == "Max Muster"
+    assert c.get("/api/signatur/kontakte/501/deals").json() == {"deals": []}
+
+    d = c.dok
+    c.post(f"/api/dokumente/{d}/formular", json={"seite": 1, "typ": "unterschrift", "rechteck": [0.1, 0.8, 0.45, 0.86]})
+    r = c.post(f"/api/dokumente/{d}/signatur/senden", json={"kontakt": k[0], "code": "4711", "gueltig_tage": 7, "nachricht": "Bitte unterschreiben."})
+    assert r.status_code == 200, r.text
+    a = r.json()
+    assert a["link"].startswith("https://sign.example.org/s/") and a["titel"] == "vertrag"
+    assert a["mit_code"] and a["empfaenger"] == {"name": "Max Muster", "email": "max@example.org"}
+    assert [f["art"] for f in a["felder"]] == ["unterschrift"] and a["felder"][0]["seite"] == 1
+    assert c.get("/api/signatur/auftraege").json()["auftraege"][0]["id"] == a["id"]
+
+    # Kunde unterschreibt (direkt am Kundenteil des NAS-Dienstes)
+    kunde = TestClient(kunde_app(dienst))
+    t = a["link"].rsplit("/", 1)[1]
+    zugang = kunde.post(f"/s/{t}/code", json={"code": "4711"}).json()["zugang"]
+    assert kunde.post(f"/s/{t}/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"f1": {"text": "Max Muster"}}, "zugang": zugang}).status_code == 200
+
+    detail = c.get(f"/api/signatur/auftraege/{a['id']}").json()
+    assert detail["status"] == "unterschrieben"
+    info = c.post(f"/api/signatur/auftraege/{a['id']}/oeffnen").json()
+    assert info["titel"] == "vertrag – unterschrieben.pdf" and len(info["seiten"]) == 3
+
+    zweiter = c.post(f"/api/dokumente/{d}/signatur/senden", json={"titel": "Vollmacht Max Muster"}).json()
+    assert c.post(f"/api/signatur/auftraege/{zweiter['id']}/widerrufen").json()["status"] == "widerrufen"
+    assert c.post(f"/api/signatur/auftraege/{zweiter['id']}/loeschen").status_code == 400
+    assert c.post("/api/signatur/trennen").json() == {"eingerichtet": False}
+    assert c.get("/api/signatur/auftraege").status_code == 400
+
+
+def test_nas_nicht_erreichbar(c):
+    roh = base64.urlsafe_b64encode(b'{"u": "http://127.0.0.1:9", "k": "abcdefghijklmnopqrstuvwxyz"}').decode()
+    r = c.post("/api/signatur/verbinden", json={"code": "EFY-SIGN:" + roh})
+    assert r.status_code == 400 and "nicht erreichbar" in r.json()["fehler"]

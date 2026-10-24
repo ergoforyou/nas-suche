@@ -107,6 +107,8 @@ export type Dialog =
   | { art: "ocr"; dokId: string }
   | { art: "ueberwachung" }
   | { art: "info" }
+  | { art: "signatur"; dokId: string }
+  | { art: "signaturen" }
   | { art: "bereichstext"; text: string; sicherheit: number };
 
 export interface Zustand {

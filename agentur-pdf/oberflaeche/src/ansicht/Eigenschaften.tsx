@@ -205,6 +205,7 @@ function AnmerkungsEigenschaften({ dokId, anm }: { dokId: string; anm: Anmerkung
 
 const TYP_NAMEN: Record<string, string> = {
   text: "Textfeld",
+  unterschrift: "Unterschriftsfeld (online)",
   ankreuzen: "Kontrollkästchen",
   auswahlknopf: "Optionsfeld",
   auswahlliste: "Auswahlliste",
@@ -291,7 +292,12 @@ function FormularfeldEigenschaften({ dokId, feld, seite }: { dokId: string; feld
           />
         </section>
       )}
-      {feld.typ !== "ankreuzen" && (
+      {feld.typ === "unterschrift" && (
+        <section className="eig-abschnitt">
+          <p className="leise">Hier unterschreibt der Kunde online – über „Zur Unterschrift senden“ (Register Schützen).</p>
+        </section>
+      )}
+      {feld.typ !== "ankreuzen" && feld.typ !== "unterschrift" && (
         <section className="eig-abschnitt">
           <h4>Darstellung</h4>
           <Zeile titel="Schriftgröße">

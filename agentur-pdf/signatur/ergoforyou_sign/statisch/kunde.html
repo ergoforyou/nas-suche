@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Dokument unterschreiben – Ergoforyou</title>
+<link rel="stylesheet" href="/statisch/kunde.css">
+</head>
+<body>
+<header class="kopf">
+  <div class="marke"><span class="logo">E</span><span>Ergoforyou</span></div>
+  <div class="kopf-titel" id="kopfTitel"></div>
+</header>
+
+<main id="inhalt">
+  <section id="laden" class="karte mittig"><div class="kreisel"></div><p>Dokument wird geladen …</p></section>
+
+  <section id="code" class="karte schmal" hidden>
+    <h1>Zugangscode</h1>
+    <p>Zum Schutz Ihrer Daten ist dieses Dokument mit einem Zugangscode gesichert. Sie haben ihn von uns erhalten.</p>
+    <form id="codeForm">
+      <input id="codeEingabe" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" aria-label="Zugangscode" placeholder="Zugangscode">
+      <button class="primaer" type="submit">Weiter</button>
+    </form>
+    <p class="fehler" id="codeFehler" role="alert"></p>
+  </section>
+
+  <section id="hinweis" class="karte schmal" hidden>
+    <h1 id="hinweisTitel"></h1>
+    <p id="hinweisText"></p>
+  </section>
+
+  <section id="dokument" hidden>
+    <div class="karte einleitung">
+      <h1 id="dokTitel"></h1>
+      <p id="nachricht" class="nachricht" hidden></p>
+      <p class="klein">Bitte lesen Sie das Dokument vollständig. Tippen Sie auf die <span class="markiert">markierten Felder</span>, um zu unterschreiben. Der Link ist gültig bis <span id="gueltig"></span>.</p>
+    </div>
+    <div id="seiten"></div>
+    <div class="karte abschluss" id="abschluss">
+      <h2>Unterschreiben</h2>
+      <div id="endeBereich" hidden>
+        <p class="klein">Ihre Unterschrift</p>
+        <button type="button" class="feld ende" id="endeFeld" data-feld="ende"><span>Hier tippen und unterschreiben</span></button>
+      </div>
+      <label class="eingabe">Ihr vollständiger Name
+        <input id="name" autocomplete="name" maxlength="120">
+      </label>
+      <label class="haken"><input type="checkbox" id="zustimmung"> <span>Ich habe das Dokument gelesen und unterschreibe es elektronisch.</span></label>
+      <button id="absenden" class="primaer gross" type="button" disabled>Verbindlich unterschreiben</button>
+      <p class="fehler" id="absendeFehler" role="alert"></p>
+      <p class="klein grau">Ihre Unterschrift wird mit Zeitpunkt, IP-Adresse und einer Prüfsumme des Dokuments protokolliert. Sie erhalten anschließend sofort eine Kopie.</p>
+    </div>
+    <div class="leiste" id="leiste">
+      <span id="fortschritt"></span>
+      <button type="button" id="weiter" class="primaer">Zum nächsten Feld</button>
+    </div>
+  </section>
+
+  <section id="fertig" class="karte schmal mittig" hidden>
+    <div class="haken-gross">✓</div>
+    <h1>Vielen Dank!</h1>
+    <p id="fertigText">Das Dokument wurde erfolgreich unterschrieben.</p>
+    <a id="kopie" class="knopf primaer gross" href="#" download>Kopie herunterladen (PDF)</a>
+    <p class="klein grau" id="fertigKlein"></p>
+  </section>
+</main>
+
+<div id="pad" class="pad" hidden role="dialog" aria-modal="true" aria-label="Unterschrift">
+  <div class="pad-karte">
+    <div class="pad-reiter">
+      <button type="button" data-modus="zeichnen" class="aktiv">Zeichnen</button>
+      <button type="button" data-modus="tippen">Tippen</button>
+    </div>
+    <div class="pad-flaeche" id="padZeichnen">
+      <canvas id="leinwand"></canvas>
+      <div class="pad-linie"></div>
+      <p class="pad-tipp" id="padTipp">Mit Finger oder Maus unterschreiben</p>
+    </div>
+    <div class="pad-flaeche" id="padTippen" hidden>
+      <input id="tippText" maxlength="80" placeholder="Ihr Name" autocomplete="name">
+      <div class="tipp-vorschau" id="tippVorschau"></div>
+    </div>
+    <div class="pad-knoepfe">
+      <button type="button" id="padLeeren">Löschen</button>
+      <span class="raum"></span>
+      <button type="button" id="padAbbrechen">Abbrechen</button>
+      <button type="button" id="padOk" class="primaer">Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<footer class="fuss">Ergoforyou · elektronische Unterschrift · Ihre Daten werden nur zur Abwicklung dieses Dokuments verarbeitet.</footer>
+<script src="/statisch/kunde.js"></script>
+</body>
+</html>

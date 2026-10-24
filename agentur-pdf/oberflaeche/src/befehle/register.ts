@@ -42,7 +42,7 @@ export const REGISTER: { id: RegisterId; titel: string; geplant?: string }[] = [
 ];
 
 /** Reihenfolge der Gruppen im Register „Start“ */
-export const START_GRUPPEN = ["Werkzeuge", "Zoom", "Kommentieren", "Bearbeiten", "Seiten", "PDF erstellen", "Schützen", "Suchen"];
+export const START_GRUPPEN = ["Werkzeuge", "Zoom", "Kommentieren", "Bearbeiten", "Seiten", "PDF erstellen", "Schützen", "Unterschrift", "Suchen"];
 
 const befehle = new Map<string, Befehl>();
 

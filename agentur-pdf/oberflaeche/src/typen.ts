@@ -102,7 +102,7 @@ export interface Textzeile {
 }
 
 /** Feldtypen, die sich anlegen lassen */
-export type FormularTyp = "text" | "ankreuzen" | "auswahlliste" | "liste";
+export type FormularTyp = "text" | "ankreuzen" | "auswahlliste" | "liste" | "unterschrift";
 
 export type Gruppe = "kommentar" | "eintragung" | "stempel" | "schwaerzung";
 export type Rechteck = [number, number, number, number];
@@ -154,7 +154,7 @@ export interface StempelVorlage {
 export interface Formularfeld {
   id: number;
   name: string;
-  typ: "text" | "ankreuzen" | "auswahlknopf" | "auswahlliste" | "liste";
+  typ: "text" | "ankreuzen" | "auswahlknopf" | "auswahlliste" | "liste" | "unterschrift";
   rechteck: Rechteck;
   wert: string | boolean;
   nur_lesen: boolean;
@@ -244,6 +244,54 @@ export interface Einstellungen {
   gemeinsamer_ordner: string;
   /** Hausfarben (Design) – für alle Arbeitsplätze gleich */
   hausfarben: string[];
+  /** Ergoforyou Sign auf dem NAS (aus dem Verbindungscode) */
+  signatur_verbindung?: { url?: string; schluessel?: string };
+}
+
+// ------------------------------------------------- Online-Unterschrift
+export interface SignaturStatus {
+  eingerichtet: boolean;
+  erreichbar?: boolean;
+  url?: string;
+  fehler?: string;
+  version?: string;
+  hubspot?: boolean;
+  oeffentliche_adresse?: string;
+  bereit?: boolean;
+}
+
+export interface HubSpotKontakt {
+  id: string;
+  name: string;
+  email: string;
+  firma: string;
+  telefon: string;
+}
+
+export type SignaturStatusWert = "offen" | "geoeffnet" | "unterschrieben" | "abgelaufen" | "widerrufen";
+
+export interface SignaturAuftrag {
+  id: string;
+  titel: string;
+  status: SignaturStatusWert;
+  erstellt: string;
+  erstellt_von: string;
+  gueltig_bis: string;
+  empfaenger: { name: string; email: string };
+  hubspot: { kontakt_id: string; deal_id: string; kontakt_name: string };
+  unterzeichnet: string;
+  unterzeichner: string;
+  letzte_aktivitaet: string;
+  mit_code: boolean;
+  ablage: { hubspot_gesendet: string; hubspot_fertig: string; hubspot_fehler: string; datei: string };
+  // nur in der Einzelansicht
+  link?: string;
+  seiten?: number;
+  felder?: { id: string; seite: number | null; art: string }[];
+  verlauf?: { zeit: string; art: string; ip: string; geraet: string; text: string }[];
+  code_gesperrt?: boolean;
+  hubspot_url?: string;
+  sha_ergebnis?: string;
 }
 
 export interface UpdateInfo {

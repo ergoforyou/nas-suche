@@ -1,6 +1,7 @@
 // Register „Schützen“: Schwärzen, Kennwort, Metadaten, Drucken/Exportieren,
 // Komprimieren, Ebenen.
 
+import { FileSignature, ListChecks, PenLine } from "lucide-react";
 import { Eraser, FileArchive, FileImage, FileOutput, FileText, KeyRound, Layers3, Printer, ScanSearch, ShieldCheck, UserX } from "lucide-react";
 import { registrieren } from "../befehle/register";
 import { api } from "../api";
@@ -20,6 +21,50 @@ function oeffnen(dialog: (dokId: string) => Dialog): void {
 }
 
 registrieren(
+  // ------------------------------------------- Online-Unterschrift (NAS)
+  {
+    id: "signatur.senden",
+    titel: "Zur Unterschrift senden",
+    register: "schuetzen",
+    gruppe: "Online-Unterschrift",
+    icon: FileSignature,
+    gross: true,
+    start: "Unterschrift",
+    startGross: true,
+    farbe: "#B5121B",
+    stichworte: ["signatur", "unterschreiben lassen", "e-signatur", "digital unterschreiben", "pandadoc", "hubspot", "link senden", "kunde unterschreibt"],
+    beschreibung: "Link erzeugen, über den der Kunde das Dokument online unterschreibt – Ergebnis auf dem NAS und in HubSpot.",
+    ausfuehren: () => oeffnen((dokId) => ({ art: "signatur", dokId })),
+    aktiv: mitDokument,
+  },
+  {
+    id: "signatur.feld",
+    titel: "Unterschriftsfeld",
+    register: "schuetzen",
+    gruppe: "Online-Unterschrift",
+    icon: PenLine,
+    start: "Unterschrift",
+    stichworte: ["unterschrift platzieren", "signaturfeld", "hier unterschreiben"],
+    beschreibung: "Feld aufziehen, in dem der Kunde online unterschreibt.",
+    ausfuehren: () => {
+      const z = holen();
+      if (z.werkzeug === "formular" && z.formularTyp === "unterschrift") setzen({ werkzeug: "hand", formularAuswahl: null });
+      else setzen({ werkzeug: "formular", formularTyp: "unterschrift", anmAuswahl: null, rechtsOffen: true });
+    },
+    aktiv: mitDokument,
+    gewaehlt: (z) => z.werkzeug === "formular" && z.formularTyp === "unterschrift",
+  },
+  {
+    id: "signatur.uebersicht",
+    titel: "Unterschriften-Übersicht",
+    register: "schuetzen",
+    gruppe: "Online-Unterschrift",
+    icon: ListChecks,
+    start: "Unterschrift",
+    stichworte: ["status unterschrift", "offene unterschriften", "unterschrieben", "signaturen"],
+    beschreibung: "Was ist versendet, geöffnet, unterschrieben? Unterschriebene PDFs öffnen, Links zurückziehen.",
+    ausfuehren: () => setzen({ dialog: { art: "signaturen" } }),
+  },
   {
     id: "werkzeug.schwaerzen",
     titel: "Bereich schwärzen",

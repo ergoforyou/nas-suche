@@ -167,6 +167,7 @@ registrieren(
       ["ankreuzen", "Kontrollkästchen", CheckSquare, ["checkbox", "ankreuzfeld", "häkchen", "ja nein"]],
       ["auswahlliste", "Auswahlliste", ChevronDownSquare, ["dropdown", "combobox", "auswahl"]],
       ["liste", "Listenfeld", List, ["listbox", "liste"]],
+      ["unterschrift", "Unterschriftsfeld", PenLine, ["signaturfeld", "online unterschreiben", "hier unterschreiben"]],
     ] as const
   ).map(
     ([typ, titel, icon, stichworte]): Befehl => ({

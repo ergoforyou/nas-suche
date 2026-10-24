@@ -1,0 +1,17 @@
+# Ergoforyou Sign – im DSM: Container Manager → Projekt → Erstellen →
+# diesen Ordner wählen. Alles Weitere steht in EINRICHTUNG.md.
+services:
+  ergoforyou-sign:
+    build: .
+    image: ergoforyou-sign:0.1.0
+    container_name: ergoforyou-sign
+    restart: unless-stopped
+    ports:
+      - "8480:8480" # Kundenseite – Ziel des DSM-Reverse-Proxys
+      - "8481:8481" # Einrichtung + Ergoforyou PDF – NICHT am Router freigeben
+    volumes:
+      - ./daten:/daten
+    environment:
+      - TZ=Europe/Berlin
+    security_opt:
+      - no-new-privileges:true

@@ -1,0 +1,68 @@
+name: Ergoforyou Sign (NAS-Container)
+
+on:
+  push:
+    branches: [claude/happy-cerf-jpm98y]
+    paths: ["agentur-pdf/signatur/**", ".github/workflows/ergoforyou-sign.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: agentur-pdf/signatur
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tests
+        run: |
+          pip install -r requirements.txt pytest
+          python -m pytest -q tests
+
+      - name: Container bauen und starten (wie auf der DS1517+, x86_64)
+        run: |
+          docker build -t ergoforyou-sign:test .
+          mkdir -p "$RUNNER_TEMP/daten"
+          docker run -d --name sign -p 8480:8480 -p 8481:8481 -v "$RUNNER_TEMP/daten:/daten" ergoforyou-sign:test
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8480/gesundheit && break; sleep 1; done
+          test "$(curl -fs http://127.0.0.1:8480/gesundheit)" = "ok"
+          curl -fs http://127.0.0.1:8481/einrichtung/zustand | grep -q '"kennwort_gesetzt":false'
+          # interne Schnittstelle ohne Schlüssel gesperrt, Kundenseite kennt sie nicht
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8481/api/auftraege)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8480/api/auftraege)" = "404"
+          test -f "$RUNNER_TEMP/daten/konfig.json"
+          docker logs sign
+          docker rm -f sign
+
+      - name: Paket für das NAS
+        run: |
+          mkdir -p paket/ergoforyou-sign
+          cp -r Dockerfile docker-compose.yml .dockerignore requirements.txt EINRICHTUNG.md ergoforyou_sign paket/ergoforyou-sign/
+          find paket -name "__pycache__" -prune -exec rm -rf {} +
+          cd paket/ergoforyou-sign && zip -r ../../Ergoforyou-Sign-NAS.zip .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ergoforyou-Sign-NAS
+          path: agentur-pdf/signatur/Ergoforyou-Sign-NAS.zip
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ergoforyou-sign-${{ github.run_number }}
+          name: Ergoforyou Sign für die Synology (Build ${{ github.run_number }})
+          prerelease: true
+          target_commitish: ${{ github.sha }}
+          files: agentur-pdf/signatur/Ergoforyou-Sign-NAS.zip
+          body: |
+            Ergoforyou Sign – Online-Unterschrift per Link (Proof of Concept), läuft als Container auf der DS1517+.
+            Einrichtung: EINRICHTUNG.md im ZIP (Container Manager → Projekt → Erstellen).

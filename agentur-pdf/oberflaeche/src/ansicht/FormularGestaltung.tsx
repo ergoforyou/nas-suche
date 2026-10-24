@@ -1,7 +1,7 @@
 // Formular gestalten: Felder aufziehen (oder klicken), anklicken, verschieben,
 // an den Griffen in der Größe ändern, Entf löscht. Eigenschaften rechts.
 
-import { CheckSquare, ChevronDownSquare, List, TextCursorInput } from "lucide-react";
+import { CheckSquare, ChevronDownSquare, List, PenLine, TextCursorInput } from "lucide-react";
 import { useEffect, useState, type RefObject } from "react";
 import type { Formularfeld, FormularTyp, Punkt, Rechteck } from "../typen";
 import { formularfeldAendern, formularfeldAnlegen } from "../zustand/anmerkungen";
@@ -19,9 +19,10 @@ const STANDARD_PT: Record<FormularTyp, [number, number]> = {
   ankreuzen: [13, 13],
   auswahlliste: [150, 20],
   liste: [150, 60],
+  unterschrift: [180, 42],
 };
 
-const SYMBOL = { text: TextCursorInput, ankreuzen: CheckSquare, auswahlknopf: CheckSquare, auswahlliste: ChevronDownSquare, liste: List };
+const SYMBOL = { text: TextCursorInput, ankreuzen: CheckSquare, auswahlknopf: CheckSquare, auswahlliste: ChevronDownSquare, liste: List, unterschrift: PenLine };
 
 function verschoben(r: Rechteck, dx: number, dy: number): Rechteck {
   // im Blatt halten

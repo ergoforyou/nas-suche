@@ -16,7 +16,7 @@ _TYPEN = {
     pymupdf.PDF_WIDGET_TYPE_RADIOBUTTON: "auswahlknopf",
     pymupdf.PDF_WIDGET_TYPE_COMBOBOX: "auswahlliste",
     pymupdf.PDF_WIDGET_TYPE_LISTBOX: "liste",
-    pymupdf.PDF_WIDGET_TYPE_SIGNATURE: "signatur",
+    pymupdf.PDF_WIDGET_TYPE_SIGNATURE: "unterschrift",
     pymupdf.PDF_WIDGET_TYPE_BUTTON: "knopf",
 }
 
@@ -29,7 +29,7 @@ def felder(doc: pymupdf.Document) -> dict[str, list[dict]]:
         liste = []
         for w in seite.widgets():
             typ = _TYPEN.get(w.field_type)
-            if typ in (None, "knopf", "signatur"):
+            if typ in (None, "knopf"):
                 continue
             eintrag = {
                 "id": w.xref,
@@ -63,6 +63,8 @@ def feld_setzen(doc: pymupdf.Document, seite_nr: int, xref: int, wert) -> None:
         if w.field_flags & pymupdf.PDF_FIELD_IS_READ_ONLY:
             raise DokumentFehler("Dieses Feld ist schreibgeschützt.")
         typ = _TYPEN.get(w.field_type)
+        if typ == "unterschrift":
+            raise DokumentFehler("Unterschriftsfelder füllt der Kunde online aus („Zur Unterschrift senden“).")
         if typ in ("ankreuzen", "auswahlknopf"):
             w.field_value = w.on_state() if wert else "Off"
         else:
@@ -78,8 +80,11 @@ ANLEGBAR = {
     "ankreuzen": pymupdf.PDF_WIDGET_TYPE_CHECKBOX,
     "auswahlliste": pymupdf.PDF_WIDGET_TYPE_COMBOBOX,
     "liste": pymupdf.PDF_WIDGET_TYPE_LISTBOX,
+    # Platzhalter für die Online-Unterschrift (Ergoforyou Sign)
+    "unterschrift": pymupdf.PDF_WIDGET_TYPE_SIGNATURE,
 }
-_NAMEN = {"text": "Textfeld", "ankreuzen": "Kontrollkästchen", "auswahlliste": "Auswahl", "liste": "Liste"}
+_NAMEN = {"text": "Textfeld", "ankreuzen": "Kontrollkästchen", "auswahlliste": "Auswahl", "liste": "Liste", "unterschrift": "Unterschrift Kunde"}
+UNTERSCHRIFT_HINTERGRUND = (1.0, 0.97, 0.8)
 RAHMEN = (0.45, 0.52, 0.62)
 HINTERGRUND = (0.93, 0.96, 1.0)
 
@@ -143,7 +148,7 @@ def feld_anlegen(doc: pymupdf.Document, seite_nr: int, d: dict) -> int:
     w.field_name = _freier_name(doc, (d.get("name") or "").strip() or _NAMEN[typ])
     w.border_color = RAHMEN
     w.border_width = 0.8
-    w.fill_color = HINTERGRUND
+    w.fill_color = UNTERSCHRIFT_HINTERGRUND if typ == "unterschrift" else HINTERGRUND
     w.text_font = "Helv"
     w.text_fontsize = 0  # automatisch passend
     if typ == "ankreuzen":
