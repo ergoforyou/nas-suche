@@ -18,7 +18,7 @@ from ..kern.mupdf_thread import im_mupdf_thread
 
 
 def einrichten(app: FastAPI, dokumente: DokumentSpeicher, benutzer: BenutzerSpeicher) -> None:
-    def nas() -> signatur.NasSign:
+    def nas() -> signatur.NasSign:  # wählt die erreichbare Adresse (kurz gemerkt)
         return signatur.NasSign(benutzer.einstellungen().get("signatur_verbindung"))
 
     async def im_hintergrund(fn, *args: Any):
@@ -38,10 +38,11 @@ def einrichten(app: FastAPI, dokumente: DokumentSpeicher, benutzer: BenutzerSpei
         if not verbindung.get("url"):
             return {"eingerichtet": False}
         try:
-            info = await im_hintergrund(lambda: signatur.NasSign(verbindung).anfrage("GET", "/api/status", zeit=5))
+            nas_sign = await im_hintergrund(lambda: signatur.NasSign(verbindung))
+            info = await im_hintergrund(lambda: nas_sign.anfrage("GET", "/api/status", zeit=5))
         except DokumentFehler as fehler:
             return {"eingerichtet": True, "erreichbar": False, "url": verbindung["url"], "fehler": str(fehler)}
-        return {"eingerichtet": True, "erreichbar": True, "url": verbindung["url"], **info}
+        return {"eingerichtet": True, "erreichbar": True, "url": nas_sign.url, **info}
 
     @app.post("/api/signatur/verbinden")
     async def verbinden(code: str = Body(..., embed=True)):
@@ -59,6 +60,14 @@ def einrichten(app: FastAPI, dokumente: DokumentSpeicher, benutzer: BenutzerSpei
     async def kontakte(q: str = Query("")):
         return await im_hintergrund(lambda: nas().get("/api/hubspot/kontakte", q=q))
 
+    @app.get("/api/signatur/hubspot/{objekt}/{objekt_id}")
+    async def hubspot_start(objekt: str, objekt_id: str):
+        """Start aus HubSpot (Chrome-Knopf): Kontakt bzw. Deal mit Kontakten."""
+        if objekt not in ("kontakt", "deal") or not objekt_id.isdigit():
+            raise DokumentFehler("Unbekannter HubSpot-Eintrag.")
+        pfad = f"/api/hubspot/kontakte/{objekt_id}" if objekt == "kontakt" else f"/api/hubspot/deals/{objekt_id}"
+        return await im_hintergrund(lambda: nas().get(pfad))
+
     @app.get("/api/signatur/kontakte/{kontakt_id}/deals")
     async def deals(kontakt_id: str):
         if not kontakt_id.isdigit():
@@ -72,7 +81,7 @@ def einrichten(app: FastAPI, dokumente: DokumentSpeicher, benutzer: BenutzerSpei
 
     @app.post("/api/dokumente/{dok_id}/signatur/senden")
     async def senden(dok_id: str, daten: dict = Body(...)):
-        verbindung = nas()  # früh prüfen, bevor die PDF aufbereitet wird
+        verbindung = await im_hintergrund(nas)  # früh prüfen, bevor die PDF aufbereitet wird
         dok = dokumente.get(dok_id)
         pdf, felder_liste = await im_mupdf_thread(signatur.vorbereiten, dok.doc)
         kontakt = daten.get("kontakt") or {}

@@ -11,6 +11,8 @@ from __future__ import annotations
 import base64
 import json
 import re
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,11 +34,21 @@ def code_lesen(code: str) -> dict:
     try:
         daten = json.loads(base64.urlsafe_b64decode(roh + "=" * (-len(roh) % 4)))
         url, schluessel = str(daten["u"]).rstrip("/"), str(daten["k"])
-    except (ValueError, KeyError, TypeError):
+        weitere = [str(a).rstrip("/") for a in daten.get("a") or []]
+    except (ValueError, KeyError, TypeError, AttributeError):
         raise DokumentFehler("Der Verbindungscode ist unvollständig – bitte erneut kopieren.") from None
-    if not url.startswith(("http://", "https://")) or len(schluessel) < 20:
+    urls = list(dict.fromkeys([url, *weitere]))
+    if not all(u.startswith(("http://", "https://")) for u in urls) or len(schluessel) < 20:
         raise DokumentFehler("Der Verbindungscode ist ungültig.")
-    return {"url": url, "schluessel": schluessel}
+    return {"url": url, "schluessel": schluessel, "urls": urls}
+
+
+# Zuletzt erreichbare Adresse je Verbindung (Büro direkt oder unterwegs über
+# Tailscale) – wird für eine Minute gemerkt, dann neu geprüft.
+_ERREICHBAR: dict[str, tuple[str, float]] = {}
+_ERREICHBAR_LOCK = threading.Lock()
+MERKEN_S = 60
+PRUEF_ZEIT_S = 3
 
 
 def rolle(feldname: str) -> str:
@@ -85,10 +97,33 @@ def rollen(felder: list[dict]) -> list[str]:
 class NasSign:
     def __init__(self, verbindung: dict | None) -> None:
         verbindung = verbindung or {}
-        self.url = str(verbindung.get("url") or "").rstrip("/")
+        self.urls = [str(u).rstrip("/") for u in verbindung.get("urls") or [verbindung.get("url") or ""] if u]
         self.schluessel = str(verbindung.get("schluessel") or "")
-        if not self.url or not self.schluessel:
-            raise DokumentFehler("Online-Unterschrift ist noch nicht eingerichtet (Einstellungen → Unterschriften).")
+        if not self.urls or not self.schluessel:
+            raise DokumentFehler("Online-Unterschrift ist noch nicht eingerichtet – oben rechts „Beta MK I“ → Online-Unterschrift → Verbindungscode einfügen.")
+        self.url = self._erreichbare_adresse() if len(self.urls) > 1 else self.urls[0]
+
+    def _erreichbare_adresse(self) -> str:
+        """Erste erreichbare Adresse (Büronetz zuerst, dann Tailscale)."""
+        merk = self.schluessel[:16]
+        with _ERREICHBAR_LOCK:
+            gemerkt = _ERREICHBAR.get(merk)
+        if gemerkt and gemerkt[0] in self.urls and time.time() - gemerkt[1] < MERKEN_S:
+            return gemerkt[0]
+        for url in self.urls:
+            try:
+                anfrage = urllib.request.Request(url + "/api/status", headers={"X-Sign-Schluessel": self.schluessel})
+                with urllib.request.urlopen(anfrage, timeout=PRUEF_ZEIT_S):  # noqa: S310
+                    pass
+            except (urllib.error.URLError, TimeoutError, OSError):
+                continue
+            with _ERREICHBAR_LOCK:
+                _ERREICHBAR[merk] = (url, time.time())
+            return url
+        raise DokumentFehler(
+            "Ergoforyou Sign auf dem NAS ist nicht erreichbar"
+            + (" – im Büronetz oder (unterwegs) mit eingeschalteter Tailscale-App versuchen." if len(self.urls) > 1 else f" ({self.urls[0]}).")
+        )
 
     def anfrage(self, methode: str, pfad: str, daten: dict | None = None, roh: bool = False, zeit: float = 30):
         kopf = {"X-Sign-Schluessel": self.schluessel, "Accept": "application/json"}

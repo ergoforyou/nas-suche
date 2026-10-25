@@ -64,17 +64,16 @@
       <h2><span class="nr">2</span> HubSpot verbinden <span class="optional">optional</span></h2>
       <p class="klein">Status: <span id="hsStatus"></span></p>
       <details id="hsAnleitung">
-        <summary class="klein">So bekommen Sie den Zugriffsschlüssel (5 Minuten, einmalig)</summary>
+        <summary class="klein">So bekommen Sie den Service-Schlüssel (5 Minuten, einmalig)</summary>
         <ol class="klein schritte">
-          <li>In HubSpot oben rechts das <strong>Zahnrad (Einstellungen)</strong> öffnen.</li>
-          <li>Links <strong>Integrationen → Private Apps</strong> (in neuer Oberfläche: <strong>Entwicklung → Legacy-Apps</strong>) → <strong>Private App erstellen</strong>, Name „Ergoforyou Sign“.</li>
-          <li>Reiter <strong>Bereiche</strong>: <code>crm.objects.contacts.read</code>, <code>crm.objects.contacts.write</code>, <code>crm.objects.deals.read</code>, <code>crm.objects.deals.write</code>, <code>files</code> anhaken.</li>
-          <li><strong>App erstellen</strong> → <strong>Token anzeigen</strong> → kopieren und unten einfügen.</li>
+          <li>In HubSpot links das Symbol <strong>Entwicklung</strong> (&lt;/&gt;) → <strong>Schlüssel → Service-Schlüssel</strong> → <strong>Service-Schlüssel erstellen</strong>, Name „Ergoforyou Sign“.</li>
+          <li><strong>Neuen Bereich hinzufügen</strong> und diese 8 anhaken: <code>crm.objects.contacts.read</code>, <code>crm.objects.contacts.write</code>, <code>crm.objects.deals.read</code>, <code>crm.objects.deals.write</code>, <code>files.read</code>, <code>files.write</code>, <code>crm.schemas.contacts.write</code>, <code>crm.schemas.deals.write</code>.</li>
+          <li><strong>Erstellen</strong> → Schlüssel anzeigen → kopieren und unten einfügen.</li>
         </ol>
-        <p class="klein grau">Der Schlüssel läuft nicht ab und bleibt nur hier auf dem NAS. Klappt eine Ablage einmal nicht (z. B. Internet weg), holt der Dienst sie automatisch nach.</p>
+        <p class="klein grau">Ergebnis in HubSpot: Notizen „Zur Unterschrift gesendet“ und „✔ Unterschrieben“ (mit PDF) am Kontakt/Deal, dazu die Felder <em>Unterschrift Status</em>, <em>Unterschrift Dokument</em>, <em>gesendet am</em> und <em>Unterschrieben am</em> (Gruppe „Ergoforyou Sign“ – für Listen, Filter und Workflows). Der Schlüssel bleibt nur hier auf dem NAS; klappt eine Ablage einmal nicht, holt der Dienst sie automatisch nach. Ein Token einer alten „Private App“ funktioniert ebenfalls.</p>
       </details>
       <label for="hsToken">Zugriffsschlüssel</label>
-      <input id="hsToken" type="password" autocomplete="off" spellcheck="false" placeholder="pat-eu1-…">
+      <input id="hsToken" type="password" autocomplete="off" spellcheck="false" placeholder="Service-Schlüssel einfügen">
       <div class="zeile">
         <button class="primaer" id="hsSpeichern" type="button">Speichern &amp; prüfen</button>
         <button id="hsTest" type="button">Verbindung testen</button>
@@ -87,6 +86,7 @@
       <h2><span class="nr">3</span> Ergoforyou PDF verbinden</h2>
       <p class="klein">In Ergoforyou PDF: <strong>Schützen → Zur Unterschrift senden</strong> (oder oben rechts <strong>Beta MK I → Online-Unterschrift</strong>) → Code einfügen → <strong>Verbinden</strong>. Mit gemeinsamem Einstellungsordner auf dem NAS reicht das an <strong>einem</strong> PC.</p>
       <div class="code" id="verbindungscode"></div>
+      <p class="klein grau" id="unterwegs" hidden></p>
       <div class="zeile">
         <button class="primaer" id="codeKopieren" type="button">Code kopieren</button>
         <button id="schluesselNeu" type="button">Neuen Code erzeugen (alte Verbindung trennen)</button>

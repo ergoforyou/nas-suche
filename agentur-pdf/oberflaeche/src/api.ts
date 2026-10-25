@@ -23,6 +23,24 @@ function chromeModusErmitteln(): { aktiv: boolean; dok: string | null } {
 
 export const CHROME_MODUS = chromeModusErmitteln();
 
+/** Start aus HubSpot (Knopf der Chrome-Erweiterung auf Kontakt-/Deal-Seiten):
+ * ``#…&hs=kontakt:501`` bzw. ``hs=deal:77`` – nach dem Öffnen eines Dokuments
+ * erscheint gleich „Zur Unterschrift senden“ mit dem Kunden vorbelegt. */
+function hubspotStartErmitteln(): { objekt: "kontakt" | "deal"; id: string } | null {
+  const anker = new URLSearchParams(window.location.hash.slice(1));
+  let wert = anker.get("hs");
+  try {
+    if (wert) sessionStorage.setItem("agentur-pdf-hubspot", wert);
+    else wert = sessionStorage.getItem("agentur-pdf-hubspot");
+  } catch {
+    /* privat */
+  }
+  const m = /^(kontakt|deal):(\d+)$/.exec(wert ?? "");
+  return m ? { objekt: m[1] as "kontakt" | "deal", id: m[2] } : null;
+}
+
+export const HUBSPOT_START = hubspotStartErmitteln();
+
 function tokenErmitteln(): string {
   const anker = new URLSearchParams(window.location.hash.slice(1));
   const ausAnker = anker.get("t");
@@ -135,6 +153,8 @@ export const api = {
   signaturTrennen: () => anfrage<SignaturStatus>("POST", "/api/signatur/trennen"),
   signaturKontakte: (q: string, signal?: AbortSignal) =>
     anfrage<{ kontakte: HubSpotKontakt[] }>("GET", `/api/signatur/kontakte?q=${enc(q)}`, undefined, signal),
+  signaturHubspot: (objekt: "kontakt" | "deal", id: string) =>
+    anfrage<{ kontakte: HubSpotKontakt[]; deal: { id: string; name: string } | null }>("GET", `/api/signatur/hubspot/${objekt}/${enc(id)}`),
   signaturDeals: (kontakt: string) => anfrage<{ deals: { id: string; name: string; phase: string }[] }>("GET", `/api/signatur/kontakte/${enc(kontakt)}/deals`),
   signaturFelder: (id: string) => anfrage<{ felder: SignaturFeld[]; rollen: string[] }>("GET", `/api/dokumente/${id}/signatur/felder`),
   signaturSenden: (

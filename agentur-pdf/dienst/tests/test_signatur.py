@@ -4,6 +4,7 @@ gestartet, HubSpot nachgebaut)."""
 from __future__ import annotations
 
 import base64
+import json
 import socket
 import sys
 import threading
@@ -28,6 +29,8 @@ from ergoforyou_sign.app import Dienst, intern_app, kunde_app  # noqa: E402
 def _hubspot(request: httpx.Request) -> httpx.Response:
     if request.url.path == "/crm/v3/objects/contacts/search":
         return httpx.Response(200, json={"results": [{"id": "501", "properties": {"firstname": "Max", "lastname": "Muster", "email": "max@example.org"}}]})
+    if request.url.path == "/crm/v3/objects/contacts/501":
+        return httpx.Response(200, json={"id": "501", "properties": {"firstname": "Max", "lastname": "Muster", "email": "max@example.org"}})
     if request.url.path == "/crm/v4/objects/contacts/501/associations/deals":
         return httpx.Response(200, json={"results": []})
     return httpx.Response(201, json={"id": "1"})
@@ -65,7 +68,9 @@ def c(tmp_path):
 
 def test_code_lesen():
     roh = base64.urlsafe_b64encode(b'{"u": "http://192.168.1.20:8481/", "k": "abcdefghijklmnopqrstuvwxyz"}').decode().rstrip("=")
-    assert signatur.code_lesen(f"EFY-SIGN:{roh}\n") == {"url": "http://192.168.1.20:8481", "schluessel": "abcdefghijklmnopqrstuvwxyz"}
+    assert signatur.code_lesen(f"EFY-SIGN:{roh}\n") == {"url": "http://192.168.1.20:8481", "schluessel": "abcdefghijklmnopqrstuvwxyz", "urls": ["http://192.168.1.20:8481"]}
+    mit = base64.urlsafe_b64encode(b'{"u": "http://192.168.1.20:8481", "k": "abcdefghijklmnopqrstuvwxyz", "a": ["https://ergoforyou-sign.tail1a2b.ts.net:8481/"]}').decode()
+    assert signatur.code_lesen("EFY-SIGN:" + mit)["urls"] == ["http://192.168.1.20:8481", "https://ergoforyou-sign.tail1a2b.ts.net:8481"]
     for falsch in ("", "irgendwas", "EFY-SIGN:%%%", "EFY-SIGN:" + base64.urlsafe_b64encode(b'{"u": "ftp://x", "k": "kurz"}').decode()):
         with pytest.raises(DokumentFehler):
             signatur.code_lesen(falsch)
@@ -198,3 +203,23 @@ def test_feld_mit_rolle_anlegen():
     namen = sorted(w.field_name for w in doc[0].widgets())
     assert namen == ["Unterschrift Ehepartner", "Unterschrift Ehepartner 2", "Unterschrift Kunde"]
     assert signatur.rollen(signatur.felder_zaehlen(doc)) == ["Kunde", "Ehepartner"]
+
+
+def test_unterwegs_zweite_adresse(c, nas):
+    """Büro-Adresse nicht erreichbar (z. B. zu Hause) → automatisch die zweite."""
+    dienst, code = nas
+    roh = code.split(":", 1)[1]
+    inhalt = json.loads(base64.urlsafe_b64decode(roh + "=" * (-len(roh) % 4)))
+    umgedreht = {"u": "http://127.0.0.1:9", "k": inhalt["k"], "a": [inhalt["u"]]}
+    neu = "EFY-SIGN:" + base64.urlsafe_b64encode(json.dumps(umgedreht).encode()).decode()
+    s = c.post("/api/signatur/verbinden", json={"code": neu}).json()
+    assert s["erreichbar"] and s["url"] == inhalt["u"]
+    assert c.get("/api/signatur/kontakte?q=Muster").json()["kontakte"][0]["name"] == "Max Muster"
+    signatur._ERREICHBAR.clear()
+
+
+def test_hubspot_start(c, nas):
+    _, code = nas
+    c.post("/api/signatur/verbinden", json={"code": code})
+    assert c.get("/api/signatur/hubspot/kontakt/501").json()["kontakte"][0]["name"] == "Max Muster"
+    assert c.get("/api/signatur/hubspot/firma/1").status_code == 400

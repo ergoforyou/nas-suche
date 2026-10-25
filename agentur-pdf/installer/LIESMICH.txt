@@ -127,6 +127,13 @@ ONLINE-UNTERSCHRIFT (ERGOFORYOU SIGN, PROOF OF CONCEPT)
      kopieren, gesperrten Zugangscode freigeben, unterschriebene PDF öffnen.
      Ergoforyou PDF meldet von selbst, wenn jemand unterschrieben hat.
   Senden geht auch per Rechtsklick auf eine Seite → „Zur Unterschrift senden“.
+  Aus HubSpot: Mit der Chrome-Erweiterung steht auf jeder Kontakt- und
+  Deal-Seite unten rechts „✍ Unterschrift anfordern“ – Dokument hineinziehen,
+  der Kunde ist im Senden-Dialog schon ausgewählt. In HubSpot pflegt der
+  Dienst die Felder „Unterschrift Status“, „Unterschrift Dokument“,
+  „gesendet am“ und „Unterschrieben am“ (Gruppe „Ergoforyou Sign“).
+  Von zu Hause/unterwegs: Tailscale-App auf dem PC (gleiches Konto wie auf
+  dem NAS) – Ergoforyou PDF wählt automatisch die erreichbare Adresse.
   Einmalig verbinden: Einstellungen & Einrichtung → „Online-Unterschrift“ →
   Verbindungscode von der NAS-Einrichtungsseite einfügen (mit gemeinsamem
   Ordner gilt das für alle PCs).

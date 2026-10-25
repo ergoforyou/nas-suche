@@ -89,14 +89,12 @@ class Dienst:
         if mit_hubspot and self.konfig.get("hubspot_token"):
             for z in self.auftraege.liste():
                 ablage = z["ablage"]
-                if z["status"] == "widerrufen":
-                    continue
-                if not ablage.get("hubspot_gesendet"):
-                    self.hubspot_ablegen(z["id"], "gesendet")
-                    nachgeholt += 1
+                if z["status"] != "widerrufen" and not ablage.get("hubspot_gesendet"):
+                    nachgeholt += self.hubspot_ablegen(z["id"], "gesendet")
                 if z["status"] == "unterschrieben" and not ablage.get("hubspot_fertig"):
-                    self.hubspot_ablegen(z["id"], "fertig")
-                    nachgeholt += 1
+                    nachgeholt += self.hubspot_ablegen(z["id"], "fertig")
+                if ablage.get("hubspot_status") != HUBSPOT_STATUS.get(z["status"]):
+                    nachgeholt += self.hubspot_status(z["id"])
         return {"tunnel": t, "nachgeholt": nachgeholt}
 
     def adresse_automatisch(self) -> bool:
@@ -124,21 +122,84 @@ class Dienst:
         return f"https://{domain}/contacts/{portal}/record/0-1/{kontakt_id}" if portal and kontakt_id else ""
 
     # ------------------------------------------------------ HubSpot-Ablage
-    def hubspot_im_hintergrund(self, auftrag_id: str, art: str) -> None:
+    def hubspot_im_hintergrund(self, auftrag_id: str, art: str = "status") -> None:
+        """art = „gesendet“/„fertig“ (Notiz) – danach immer die Felder am
+        Kontakt/Deal aktualisieren; „status“ nur die Felder."""
         if not self.konfig.get("hubspot_token"):
             return
-        threading.Thread(target=self.hubspot_ablegen, args=(auftrag_id, art), daemon=True).start()
 
-    def hubspot_ablegen(self, auftrag_id: str, art: str) -> None:
+        def ablauf() -> None:
+            if art != "status":
+                self.hubspot_ablegen(auftrag_id, art)
+            self.hubspot_status(auftrag_id)
+
+        threading.Thread(target=ablauf, daemon=True).start()
+
+    def _hubspot_ziele(self, a: dict) -> tuple[list[str], str]:
+        hs = a["hubspot"]
+        kontakte = list(dict.fromkeys(x for x in [hs.get("kontakt_id", "")] + [p.get("hubspot_kontakt_id", "") for p in a["personen"]] if x))
+        return kontakte, hs.get("deal_id", "")
+
+    def hubspot_status(self, auftrag_id: str) -> bool:
+        """Eigene Felder (Status, Dokument, Daten) an Kontakten und Deal setzen.
+        Legt die Felder beim ersten Mal selbst an. Liefert True, wenn versucht."""
+        a = self.auftraege.laden(auftrag_id)
+        kontakte, deal = self._hubspot_ziele(a)
+        wert = HUBSPOT_STATUS.get(a["status"])
+        if not (kontakte or deal) or not wert or a["ablage"].get("hubspot_status") == wert:
+            return False
+        werte = {
+            "ergoforyou_signatur_status": wert,
+            "ergoforyou_signatur_dokument": a["titel"],
+            "ergoforyou_signatur_auftrag": a["id"],
+            "ergoforyou_signatur_gesendet": _ms(a["erstellt"]),
+        }
+        if a.get("fertig"):
+            werte["ergoforyou_signatur_unterschrieben"] = _ms(a["fertig"])
+        # Kontakte und Deal getrennt: fehlt z. B. nur der Bereich für Deals,
+        # bekommen die Kontakte ihre Felder trotzdem.
+        fehler_liste: list[str] = []
+        try:
+            with self.hubspot() as h:
+                for objekt, ids in (("contacts", kontakte), ("deals", [deal] if deal else [])):
+                    if not ids:
+                        continue
+                    try:
+                        stand = self.konfig.get("hubspot_felder") or {}
+                        stand = stand if isinstance(stand, dict) else {}
+                        if stand.get(objekt) != FELDER_STAND:
+                            h.felder_einrichten(objekt)
+                            self.konfig.setzen(hubspot_felder={**stand, objekt: FELDER_STAND})
+                        for i in ids:
+                            h.felder_setzen(objekt, i, werte)
+                    except HubSpotFehler as fehler:
+                        fehler_liste.append(f"Felder {'Kontakt' if objekt == 'contacts' else 'Deal'}: {fehler}")
+        except HubSpotFehler as fehler:
+            fehler_liste.append(f"Felder: {fehler}")
+        except Exception as fehler:  # noqa: BLE001
+            fehler_liste.append(f"Felder: unerwarteter Fehler {fehler.__class__.__name__}")
+        fehler_text = " · ".join(fehler_liste)
+        with self.auftraege.sperre:
+            a = self.auftraege.laden(auftrag_id)
+            if not fehler_text:
+                a["ablage"]["hubspot_status"] = wert
+            elif not a["ablage"].get("hubspot_fehler"):
+                a["ablage"]["hubspot_fehler"] = fehler_text
+            self.auftraege.speichern(a)
+        if fehler_text:
+            print(f"[HubSpot] {auftrag_id}: {fehler_text}", flush=True)
+        return True
+
+    def hubspot_ablegen(self, auftrag_id: str, art: str) -> bool:
         """art = „gesendet“ (Notiz mit Links) oder „fertig“ (PDF + Notiz).
         Die HubSpot-Aufrufe laufen ohne Sperre; nur das Ergebnis wird unter
         der Sperre in den (neu gelesenen) Auftrag geschrieben."""
         schluessel = "hubspot_gesendet" if art == "gesendet" else "hubspot_fertig"
         a = self.auftraege.laden(auftrag_id)
         hs = a["hubspot"]
-        kontakte = list(dict.fromkeys(x for x in [hs.get("kontakt_id", "")] + [p.get("hubspot_kontakt_id", "") for p in a["personen"]] if x))
+        kontakte, _ = self._hubspot_ziele(a)
         if not (kontakte or hs.get("deal_id")) or a["ablage"].get(schluessel):
-            return
+            return False
         ergebnis, fehler_text = "", ""
         try:
             with self.hubspot() as h:
@@ -178,6 +239,23 @@ class Dienst:
             self.auftraege.speichern(a)
         if fehler_text:
             print(f"[HubSpot] {auftrag_id}: {fehler_text}", flush=True)
+        return True
+
+
+HUBSPOT_STATUS = {
+    "offen": "versendet",
+    "geoeffnet": "geoeffnet",
+    "teilweise": "teilweise",
+    "unterschrieben": "unterschrieben",
+    "abgelaufen": "abgelaufen",
+    "widerrufen": "zurueckgezogen",
+}
+FELDER_STAND = 1  # erhöhen, wenn neue Felder dazukommen
+
+
+def _ms(zeit_iso: str) -> str:
+    """Zeitpunkt für HubSpot-Datumsfelder (Millisekunden seit 1970)."""
+    return str(int(aus_iso(zeit_iso).timestamp() * 1000))
 
 
 def _fehlerbehandlung(app: FastAPI) -> None:
@@ -304,6 +382,8 @@ def kunde_app(dienst: Dienst) -> FastAPI:
             if p["status"] == "offen":
                 p["status"] = "geoeffnet"
             auftraege.ereignis(a, "geoeffnet", ip, geraet, nr=p["nr"])
+            if status_aktualisieren(a)["status"] != kopf["status"]:
+                dienst.hubspot_im_hintergrund(a["id"])
         return {
             **kopf,
             "nachricht": a["nachricht"],
@@ -404,8 +484,8 @@ def kunde_app(dienst: Dienst) -> FastAPI:
                 a["ablage"]["datei"] = auftraege.fertig_ablegen(a, pdf).name
             auftraege.speichern(a)
         print(f"[Sign] {a['id']} unterschrieben von {name} ({p['rolle']})", flush=True)
+        dienst.hubspot_im_hintergrund(a["id"], "fertig" if a["status"] == "unterschrieben" else "status")
         if a["status"] == "unterschrieben":
-            dienst.hubspot_im_hintergrund(a["id"], "fertig")
             return {"ok": True, "fertig": True, "sha": a["sha_ergebnis"], "unterzeichnet": ortszeit(zeit), "kopie_bis": ortszeit(a["kopie_bis"], False)}
         return {"ok": True, "fertig": False, "unterzeichnet": ortszeit(zeit), "fortschritt": fortschritt(a)}
 
@@ -515,11 +595,15 @@ def intern_app(dienst: Dienst) -> FastAPI:
     async def werte(request: Request):
         token = str(konfig.get("hubspot_token") or "")
         basis = str(request.base_url).rstrip("/")
-        code = base64.urlsafe_b64encode(json.dumps({"u": basis, "k": konfig.get("schluessel")}).encode()).decode().rstrip("=")
+        tunnel = dienst.tunnel.status()
+        weitere = [f"{tunnel['adresse']}:8481"] if tunnel.get("adresse") else []
+        weitere = [w for w in weitere if not basis.startswith(w)]
+        code = base64.urlsafe_b64encode(json.dumps({"u": basis, "k": konfig.get("schluessel"), "a": weitere}).encode()).decode().rstrip("=")
         return {
             "oeffentliche_adresse": konfig.oeffentliche_adresse,
             "adresse_quelle": konfig.get("adresse_quelle") or ("manuell" if konfig.oeffentliche_adresse else ""),
-            "tunnel": dienst.tunnel.status(),
+            "tunnel": tunnel,
+            "unterwegs_adresse": weitere[0] if weitere else "",
             "hubspot_verbunden": bool(token),
             "hubspot_token_ende": token[-4:] if token else "",
             "hubspot_portal": konfig.get("hubspot_portal") or "",
@@ -571,7 +655,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
             antwort = httpx.get(f"{adresse}/gesundheit", timeout=8)
             ok = antwort.status_code == 200 and antwort.text == "ok"
         except httpx.HTTPError as fehler:
-            return {"ok": False, "hinweis": f"Nicht erreichbar ({fehler.__class__.__name__}). Vom NAS selbst klappt das manchmal nicht – bitte zusätzlich am Handy (ohne WLAN) prüfen: {adresse}/gesundheit"}
+            return {"ok": False, "hinweis": f"Vom NAS aus nicht erreichbar ({fehler.__class__.__name__}). Das klappt vom NAS selbst manchmal nicht – entscheidend ist der Test am Handy ohne WLAN: {adresse}/gesundheit"}
         return {"ok": ok, "hinweis": "Erreichbar." if ok else f"Antwort {antwort.status_code} – zeigt der Reverse-Proxy auf Port 8480?"}
 
     @app.post("/einrichtung/schluessel-neu")
@@ -642,6 +726,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
             raise AuftragFehler("Bereits unterschrieben – kann nicht mehr zurückgezogen werden.", 409)
         a["status"] = "widerrufen"
         auftraege.ereignis(a, "widerrufen", text=f"von {von or 'Büro'}")
+        dienst.hubspot_im_hintergrund(a["id"])
         return _detail(a)
 
     @app.post("/api/auftraege/{auftrag_id}/entsperren")
@@ -657,9 +742,14 @@ def intern_app(dienst: Dienst) -> FastAPI:
     @app.post("/api/auftraege/{auftrag_id}/hubspot")
     def hubspot_erneut(auftrag_id: str):
         a = auftraege.laden(auftrag_id)
+        with auftraege.sperre:
+            frisch = auftraege.laden(a["id"])
+            frisch["ablage"]["hubspot_fehler"] = ""
+            auftraege.speichern(frisch)
         dienst.hubspot_ablegen(a["id"], "gesendet")
         if a["status"] == "unterschrieben":
             dienst.hubspot_ablegen(a["id"], "fertig")
+        dienst.hubspot_status(a["id"])
         return _detail(auftraege.laden(auftrag_id))
 
     @app.get("/api/hubspot/kontakte")
@@ -669,6 +759,22 @@ def intern_app(dienst: Dienst) -> FastAPI:
             return {"kontakte": []}
         with dienst.hubspot() as h:
             return {"kontakte": h.kontakte_suchen(q)}
+
+    @app.get("/api/hubspot/kontakte/{kontakt_id}")
+    def kontakt(kontakt_id: str):
+        """Start aus HubSpot (Kontaktseite): Kontakt für die Vorbelegung."""
+        if not kontakt_id.isdigit():
+            raise AuftragFehler("Unbekannter Kontakt.", 404)
+        with dienst.hubspot() as h:
+            return {"kontakte": [h.kontakt(kontakt_id)], "deal": None}
+
+    @app.get("/api/hubspot/deals/{deal_id}")
+    def deal(deal_id: str):
+        """Start aus HubSpot (Deal-Seite): Deal und seine Kontakte."""
+        if not deal_id.isdigit():
+            raise AuftragFehler("Unbekannter Deal.", 404)
+        with dienst.hubspot() as h:
+            return {"kontakte": h.deal_kontakte(deal_id), "deal": h.deal(deal_id)}
 
     @app.get("/api/hubspot/kontakte/{kontakt_id}/deals")
     def deals(kontakt_id: str):

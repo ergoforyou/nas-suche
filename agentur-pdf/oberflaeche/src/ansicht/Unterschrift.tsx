@@ -339,6 +339,22 @@ export function SignaturSendenDialog({ dokId }: { dokId: string }) {
       .catch(() => setFelder([]));
   }, [dokId]);
 
+  // Start aus HubSpot: Kontakte der Reihe nach den Rollen zuordnen (sobald geladen)
+  const start = useZustand((z) => z.signaturStart);
+  const vorbelegt = useRef(false);
+  useEffect(() => {
+    if (vorbelegt.current || !felder || !start?.kontakte.length) return;
+    vorbelegt.current = true;
+    setPersonen((alt) => {
+      const neu = { ...alt };
+      rollen.forEach((r, i) => {
+        const k = start.kontakte[i];
+        if (k && !neu[r]?.kontakt) neu[r] = { ...(neu[r] ?? LEER), kontakt: k, name: neu[r]?.name || k.name };
+      });
+      return neu;
+    });
+  }, [felder, rollen, start?.kontakte]);
+
   const person = (rolle: string): PersonEingabe => personen[rolle] ?? LEER;
   const aendern = (rolle: string, neu: Partial<PersonEingabe>) => setPersonen((alt) => ({ ...alt, [rolle]: { ...(alt[rolle] ?? LEER), ...neu } }));
 
@@ -351,8 +367,11 @@ export function SignaturSendenDialog({ dokId }: { dokId: string }) {
     api
       .signaturDeals(hauptKontakt.id)
       .then((r) => {
+        const vorgabe = holen().signaturStart?.deal;
+        if (vorgabe && !r.deals.some((d) => d.id === vorgabe.id)) r.deals.unshift({ ...vorgabe, phase: "" });
         setDeals(r.deals);
-        if (r.deals.length === 1) setDeal(r.deals[0].id);
+        if (vorgabe) setDeal(vorgabe.id);
+        else if (r.deals.length === 1) setDeal(r.deals[0].id);
       })
       .catch(() => undefined);
   }, [hauptKontakt?.id]);
@@ -819,6 +838,26 @@ export function SignaturUebersichtDialog() {
             Schließen
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Chrome-Tab aus HubSpot gestartet, noch kein Dokument offen: Hinweis, was zu tun ist. */
+export function SignaturStartKarte() {
+  const start = useZustand((z) => z.signaturStart);
+  if (!start) return null;
+  const wer = start.deal ? `Deal „${start.deal.name}“` : start.kontakte[0]?.name ?? (start.fehler ? "" : "Kontakt wird geladen …");
+  return (
+    <div className="sig-start" role="status">
+      <FileSignature size={28} />
+      <div>
+        <strong>Unterschrift anfordern{wer ? ` – ${wer}` : ""}</strong>
+        <p>
+          Dokument hierher ziehen oder über <em>Öffnen</em> wählen (PDF, Word, Bild, E-Mail). Danach Unterschriftsfelder setzen – der Kunde ist im Senden-Dialog
+          schon ausgewählt.
+        </p>
+        {start.fehler && <p className="warnung">HubSpot: {start.fehler}</p>}
       </div>
     </div>
   );

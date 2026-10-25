@@ -48,23 +48,39 @@ Zum Projekt gehört ein zweiter Container `ergoforyou-sign-tunnel`. Er baut eine
 
 **Alternative mit eigener Domain** (z. B. `sign.ergoforyou.de`) über DSM-Reverse-Proxy und Portfreigabe 443: Diese Adresse unter „Eigene Adresse verwenden“ eintragen. Der Tunnel wird dann nicht benutzt.
 
-## 6. HubSpot verbinden
-1. In HubSpot: **Einstellungen (Zahnrad)** → **Integrationen** → **Private Apps**. In neueren Oberflächen heißt das „Entwicklung → Legacy-Apps → Private App“.
-2. **Private App erstellen**, Name `Ergoforyou Sign`.
-3. Reiter **Bereiche (Scopes)**, diese fünf anhaken:
-   - `crm.objects.contacts.read`
-   - `crm.objects.contacts.write`
-   - `crm.objects.deals.read`
-   - `crm.objects.deals.write`
-   - `files`
-4. **App erstellen** → **Zugriffstoken anzeigen** → kopieren. Das Token beginnt mit `pat-eu1-…`.
-5. Auf der Einrichtungsseite unter **2 · HubSpot** einfügen und auf **Speichern & prüfen** klicken.
+## 6. HubSpot verbinden (Service-Schlüssel)
+1. In HubSpot links das Symbol **Entwicklung** (`</>`) → **Schlüssel → Service-Schlüssel** → **Service-Schlüssel erstellen**.
+2. Name `Ergoforyou Sign` → **Neuen Bereich hinzufügen** und diese **8 Bereiche** anhaken:
+   - `crm.objects.contacts.read`, `crm.objects.contacts.write`
+   - `crm.objects.deals.read`, `crm.objects.deals.write`
+   - `files.read`, `files.write`
+   - `crm.schemas.contacts.write`, `crm.schemas.deals.write`
+3. **Erstellen** → bei „Service-Schlüssel“ **Kopieren**.
+4. Einrichtungsseite → **2 · HubSpot verbinden** → einfügen → **Speichern & prüfen**. Die Ampel wird grün.
+
+**Was dann in HubSpot passiert:**
+- Am Kontakt (und am Deal) erscheinen die Notizen **„Zur Unterschrift gesendet“** und **„✔ Unterschrieben“**. Die zweite hat die fertige PDF als Anhang, die PDF liegt zusätzlich unter Dateien im Ordner „Ergoforyou Sign“.
+- Der Dienst legt selbst eine Feldgruppe **„Ergoforyou Sign“** an und hält diese Felder aktuell:
+  - **Unterschrift Status** (Versendet / Geöffnet / Teilweise unterschrieben / Unterschrieben / Abgelaufen / Zurückgezogen)
+  - **Unterschrift Dokument**
+  - **Unterschrift gesendet am**
+  - **Unterschrieben am**
+  - **Auftragsnummer**
+
+  Damit lassen sich Listen filtern („noch nicht unterschrieben“) und Workflows bauen, z. B. eine Erinnerung nach 3 Tagen.
+- **Start direkt aus HubSpot:** Mit der Chrome-Erweiterung von Ergoforyou PDF erscheint auf jeder Kontakt- und Deal-Seite unten rechts **„✍ Unterschrift anfordern“**. Klicken, Dokument hineinziehen, Felder setzen, senden. Der Kunde ist dabei schon ausgewählt.
 
 ## 7. Ergoforyou PDF verbinden
 1. Auf der Einrichtungsseite unter **3 · Ergoforyou PDF verbinden** auf **Code kopieren** klicken.
-2. In Ergoforyou PDF oben rechts auf **Beta MK I** klicken (Einstellungen & Einrichtung) → **Online-Unterschrift** → Code einfügen → **Verbinden**.
+2. In Ergoforyou PDF oben rechts **Beta MK I** → **Online-Unterschrift** (oder direkt **Schützen → Zur Unterschrift senden**) → Code einfügen → **Verbinden**.
 
 Ist in Ergoforyou PDF der **gemeinsame Einstellungsordner** auf dem NAS eingetragen, reicht das an **einem** PC. Alle anderen sind dann automatisch verbunden.
+
+**Von zu Hause oder unterwegs:**
+- Auf dem PC oder Laptop die **Tailscale-App** installieren und mit demselben Konto anmelden wie in Schritt 5.
+- Ergoforyou PDF erreicht das NAS dann automatisch über `https://ergoforyou-sign.<name>.ts.net:8481`. Diese Adresse ist **nur für eure eigenen Tailscale-Geräte** erreichbar, nicht öffentlich.
+- Im Büro wird weiterhin direkt die Büro-Adresse genutzt. Umstellen muss man nichts.
+- Dafür den Verbindungscode einmal **neu kopieren und eintragen**, nachdem der Tunnel eingerichtet ist. Erst dann enthält der Code beide Adressen.
 
 ## 8. Ausprobieren
 1. Ein Test-PDF öffnen.

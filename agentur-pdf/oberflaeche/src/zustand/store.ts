@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type {
   Anmerkung,
+  HubSpotKontakt,
   Formularfeld,
   Gruppe,
   Punkt,
@@ -111,6 +112,16 @@ export type Dialog =
   | { art: "signaturen" }
   | { art: "bereichstext"; text: string; sicherheit: number };
 
+export interface SignaturStart {
+  objekt: "kontakt" | "deal";
+  id: string;
+  kontakte: HubSpotKontakt[];
+  deal: { id: string; name: string } | null;
+  fehler?: string;
+  /** Dialog wurde schon einmal automatisch geöffnet */
+  benutzt?: boolean;
+}
+
 export interface Zustand {
   dokumente: Dokument[];
   aktiv: string | null;
@@ -137,6 +148,8 @@ export interface Zustand {
   formularTyp: FormularTyp;
   /** Rolle neuer Unterschriftsfelder (wer dort online unterschreibt) */
   signaturRolle: string;
+  /** Start aus HubSpot: Kunde/Deal für den Senden-Dialog vorbelegen */
+  signaturStart: SignaturStart | null;
   formularAuswahl: { dokId: string; seite: number; id: number } | null;
   editor: Editor | null;
   /** in der Ansicht ausgeblendete Anmerkungsgruppen */
@@ -192,6 +205,7 @@ let zustand: Zustand = {
   vergleich: null,
   formularTyp: "text",
   signaturRolle: "Kunde",
+  signaturStart: null,
   formularAuswahl: null,
   editor: null,
   ausblenden: [],

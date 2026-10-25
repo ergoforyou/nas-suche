@@ -37,6 +37,18 @@ class FakeHubSpot:
             return httpx.Response(201, json={"id": "9001"})
         if pfad == "/crm/v3/objects/notes":
             return httpx.Response(201, json={"id": str(8000 + len(self.anfragen))})
+        if pfad.startswith("/crm/v3/properties/"):
+            return httpx.Response(201, json={})
+        if request.method == "PATCH" and pfad.startswith("/crm/v3/objects/"):
+            return httpx.Response(200, json={"id": pfad.rsplit("/", 1)[1]})
+        if pfad == "/crm/v3/objects/contacts/501":
+            return httpx.Response(200, json={"id": "501", "properties": {"firstname": "Max", "lastname": "Muster", "email": "max@example.org"}})
+        if pfad == "/crm/v3/objects/deals/77":
+            return httpx.Response(200, json={"id": "77", "properties": {"dealname": "Hausrat Muster"}})
+        if pfad == "/crm/v4/objects/deals/77/associations/contacts":
+            return httpx.Response(200, json={"results": [{"toObjectId": 501}]})
+        if pfad == "/crm/v3/objects/contacts/batch/read":
+            return httpx.Response(200, json={"results": [{"id": "501", "properties": {"firstname": "Max", "lastname": "Muster"}}]})
         return httpx.Response(404, json={"message": "unbekannt"})
 
     def pfade(self) -> list[str]:
@@ -236,7 +248,7 @@ def test_intern_schutz_und_einrichtung(umgebung, tmp_path):
     assert roh.get("/api/auftraege").status_code == 401
     assert roh.get("/api/auftraege", headers={"X-Sign-Schluessel": "falsch"}).status_code == 401
     assert roh.get("/einrichtung/werte").status_code == 401
-    assert roh.get("/einrichtung/zustand").json() == {"kennwort_gesetzt": False, "angemeldet": False, "version": "0.3.0"}
+    assert roh.get("/einrichtung/zustand").json() == {"kennwort_gesetzt": False, "angemeldet": False, "version": "0.4.0"}
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "kurz"}).status_code == 400
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "geheim123"}).status_code == 200
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "anders123"}).status_code == 409
@@ -387,3 +399,71 @@ def test_alter_auftrag_wird_uebernommen(tmp_path):
     z = kunde.post("/s/" + "t" * 43 + "/code", json={"code": "4711"}).json()["zugang"]
     r = kunde.post("/s/" + "t" * 43 + "/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"f1": {"png": PNG}}, "zugang": z})
     assert r.json()["fertig"] is True
+
+
+def test_hubspot_felder_und_status(umgebung):
+    dienst, intern, kunde, hs = umgebung
+    a = anlegen(intern)
+    warten(lambda: dienst.auftraege.laden(a["id"])["ablage"].get("hubspot_status") == "versendet")
+    pfade = hs.pfade()
+    assert "/crm/v3/properties/contacts/groups" in pfade and "/crm/v3/properties/deals" in pfade
+    felder = [json.loads(c)["name"] for m, p, c in hs.anfragen if p == "/crm/v3/properties/contacts"]
+    assert "ergoforyou_signatur_status" in felder and "ergoforyou_signatur_unterschrieben" in felder
+    patch = [(p, json.loads(c)["properties"]) for m, p, c in hs.anfragen if m == "PATCH"]
+    assert {p for p, _ in patch} == {"/crm/v3/objects/contacts/501", "/crm/v3/objects/deals/77"}
+    assert patch[0][1]["ergoforyou_signatur_status"] == "versendet" and patch[0][1]["ergoforyou_signatur_dokument"] == "Maklervertrag Max Muster"
+
+    t = token(a)
+    kunde.get(f"/s/{t}/daten")
+    warten(lambda: dienst.auftraege.laden(a["id"])["ablage"].get("hubspot_status") == "geoeffnet")
+    kunde.post(f"/s/{t}/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"f1": {"png": PNG}}})
+    warten(lambda: dienst.auftraege.laden(a["id"])["ablage"].get("hubspot_status") == "unterschrieben")
+    letzte = [json.loads(c)["properties"] for m, p, c in hs.anfragen if m == "PATCH" and p.endswith("/501")][-1]
+    assert letzte["ergoforyou_signatur_status"] == "unterschrieben" and letzte["ergoforyou_signatur_unterschrieben"].isdigit()
+    # Felder werden nur einmal angelegt
+    assert hs.pfade().count("/crm/v3/properties/contacts/groups") == 1
+    # Wartung: nichts mehr offen
+    assert dienst.wartung()["nachgeholt"] == 0
+
+
+def test_hubspot_start_kontakt_und_deal(umgebung):
+    _, intern, _, _ = umgebung
+    k = intern.get("/api/hubspot/kontakte/501").json()
+    assert k["kontakte"][0]["name"] == "Max Muster" and k["deal"] is None
+    d = intern.get("/api/hubspot/deals/77").json()
+    assert d["deal"]["name"] == "Hausrat Muster" and d["kontakte"][0]["id"] == "501"
+    assert intern.get("/api/hubspot/deals/abc").status_code == 404
+
+
+def test_verbindungscode_mit_unterwegs_adresse(tmp_path):
+    from test_tunnel import BEREIT, lokal
+
+    dienst = Dienst(tmp_path, tunnel_transport=lokal(BEREIT))
+    c = TestClient(intern_app(dienst), base_url="http://10.10.2.29:8481")
+    c.post("/einrichtung/kennwort", json={"kennwort": "geheim123"})
+    w = c.get("/einrichtung/werte").json()
+    code = w["verbindungscode"].split(":", 1)[1]
+    inhalt = json.loads(base64.urlsafe_b64decode(code + "=" * (-len(code) % 4)))
+    assert inhalt["u"] == "http://10.10.2.29:8481"
+    assert inhalt["a"] == ["https://ergoforyou-sign.tail1a2b.ts.net:8481"]
+    assert w["unterwegs_adresse"] == "https://ergoforyou-sign.tail1a2b.ts.net:8481"
+
+
+def test_deal_bereich_fehlt_kontakt_klappt(tmp_path):
+    """Fehlt dem Schlüssel crm.schemas.deals.write, bekommt der Kontakt trotzdem seine Felder."""
+    hs = FakeHubSpot()
+
+    def ohne_deal_schema(request: httpx.Request) -> httpx.Response:
+        if request.url.path.startswith("/crm/v3/properties/deals"):
+            hs.anfragen.append((request.method, request.url.path, request.content))
+            return httpx.Response(403, json={"message": "missing scope crm.schemas.deals.write"})
+        return hs(request)
+
+    dienst = Dienst(tmp_path, httpx.MockTransport(ohne_deal_schema))
+    dienst.konfig.setzen(hubspot_token="pat-eu1-test")
+    intern = TestClient(intern_app(dienst))
+    intern.headers["X-Sign-Schluessel"] = dienst.konfig.get("schluessel")
+    a = anlegen(intern)
+    warten(lambda: "Felder Deal" in dienst.auftraege.laden(a["id"])["ablage"].get("hubspot_fehler", ""))
+    assert any(m == "PATCH" and p == "/crm/v3/objects/contacts/501" for m, p, _ in hs.anfragen)
+    assert not any(m == "PATCH" and p.startswith("/crm/v3/objects/deals") for m, p, _ in hs.anfragen)

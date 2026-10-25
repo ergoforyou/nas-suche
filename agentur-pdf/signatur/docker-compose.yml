@@ -3,7 +3,7 @@
 services:
   ergoforyou-sign:
     build: .
-    image: ergoforyou-sign:0.3.0
+    image: ergoforyou-sign:0.4.0
     container_name: ergoforyou-sign
     restart: unless-stopped
     ports:

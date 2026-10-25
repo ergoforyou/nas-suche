@@ -4476,3 +4476,32 @@ body {
 .rollen-leiste .umschalter {
   padding: 2px 8px;
 }
+
+.sig-start {
+  position: absolute;
+  z-index: 5;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(760px, calc(100% - 32px));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 18px;
+  border: 1px solid var(--akzent-mittel);
+  border-left: 4px solid var(--akzent);
+  border-radius: 8px;
+  background: var(--hg-flaeche, #fff);
+  color: var(--text);
+}
+
+.sig-start svg {
+  color: var(--akzent);
+  flex: none;
+}
+
+.sig-start p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}

@@ -104,6 +104,24 @@ chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
   return true; // Antwort kommt asynchron
 });
 
+// ------------------------------------------- HubSpot: „Unterschrift anfordern“ (hubspot.js)
+chrome.runtime.onMessage.addListener((nachricht, absender, antworten) => {
+  if (nachricht?.art !== "signatur") return false;
+  if (!["kontakt", "deal"].includes(nachricht.objekt) || !/^\d+$/.test(String(nachricht.id))) return false;
+  (async () => {
+    try {
+      await Agentur.verbinden();
+    } catch {
+      antworten({ fehler: "Ergoforyou PDF läuft nicht – bitte das Programm starten und erneut klicken." });
+      return;
+    }
+    const index = absender.tab?.index;
+    await chrome.tabs.create({ url: Agentur.signaturUrl(nachricht.objekt, nachricht.id), index: index !== undefined ? index + 1 : undefined });
+    antworten({ ok: true });
+  })();
+  return true;
+});
+
 // ------------------------------------------- Rechtsklick auf Link/Bild
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   const url = info.srcUrl || info.linkUrl || info.pageUrl;

@@ -1,6 +1,6 @@
 // Aktionen mit Dienst-Anbindung (Öffnen, Schließen, Suchen, Sitzung).
 
-import { api, ApiFehler, CHROME_MODUS } from "../api";
+import { api, ApiFehler, CHROME_MODUS, HUBSPOT_START } from "../api";
 import { PRODUKT } from "../marke";
 import type { Ansicht, DokumentInfo, Sitzung, UpdateInfo } from "../typen";
 import { brauchtUmwandlung, DATEIAUSWAHL, ereignisschleifeStarten, umwandelnStarten, umwandelnUndOeffnen } from "./konvertieren";
@@ -263,6 +263,7 @@ async function chromeStarten(): Promise<void> {
     }
   }
   ereignisschleifeStarten();
+  if (HUBSPOT_START) hubspotStartVorbereiten();
   const titel = () => {
     const d = aktivesDokument();
     document.title = d ? `${d.geaendert ? "● " : ""}${d.titel} – ${PRODUKT}` : PRODUKT;
@@ -275,4 +276,23 @@ async function chromeStarten(): Promise<void> {
       e.returnValue = "";
     }
   });
+}
+
+/** Start aus HubSpot: Kunde bzw. Deal laden; sobald ein Dokument offen ist,
+ * „Zur Unterschrift senden“ öffnen (einmal). */
+function hubspotStartVorbereiten(): void {
+  const start = HUBSPOT_START!;
+  setzen({ signaturStart: { ...start, kontakte: [], deal: null } });
+  api
+    .signaturHubspot(start.objekt, start.id)
+    .then((r) => setzen((z) => ({ signaturStart: z.signaturStart && { ...z.signaturStart, kontakte: r.kontakte, deal: r.deal } })))
+    .catch((e) => setzen((z) => ({ signaturStart: z.signaturStart && { ...z.signaturStart, fehler: fehlerText(e) } })));
+  const pruefen = () => {
+    const z = holen();
+    const d = aktivesDokument(z);
+    if (!d || !z.signaturStart || z.signaturStart.benutzt || z.dialog) return;
+    setzen({ signaturStart: { ...z.signaturStart, benutzt: true }, dialog: { art: "signatur", dokId: d.id } });
+  };
+  pruefen();
+  abonnieren(pruefen);
 }

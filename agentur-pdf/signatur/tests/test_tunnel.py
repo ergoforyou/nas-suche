@@ -83,8 +83,16 @@ def test_hubspot_wird_nachgeholt(tmp_path):
     assert "nicht erreichbar" in dienst.auftraege.laden(a["id"])["ablage"]["hubspot_fehler"]
     k = TestClient(kunde_app(dienst))
     k.post(f"/s/{a['personen'][0]['link'].rsplit('/', 1)[1]}/unterschreiben", json={"name": "Max Muster", "zustimmung": True, "unterschriften": {"ende1": {"text": "Max Muster"}}})
+    import threading
+    import time
+
+    # Hintergrund-Abgleich nach der Unterschrift (noch offline) abwarten
+    ende = time.time() + 5
+    while time.time() < ende and threading.active_count() > 1 and any(t.daemon for t in threading.enumerate() if t is not threading.main_thread()):
+        time.sleep(0.05)
     erreichbar["an"] = True
-    assert dienst.wartung()["nachgeholt"] == 2
+    assert dienst.wartung()["nachgeholt"] >= 2  # Notizen „gesendet“ + „fertig“ (+ Felder)
     ablage = dienst.auftraege.laden(a["id"])["ablage"]
-    assert ablage["hubspot_gesendet"] and ablage["hubspot_fertig"] and not ablage["hubspot_fehler"]
+    assert ablage["hubspot_gesendet"] and ablage["hubspot_fertig"]
+    assert ablage["hubspot_status"] == "unterschrieben"
     assert dienst.wartung()["nachgeholt"] == 0

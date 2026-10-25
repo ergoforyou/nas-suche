@@ -79,6 +79,10 @@
 
     // 3 · PC
     $("verbindungscode").textContent = werte.verbindungscode;
+    $("unterwegs").hidden = !werte.unterwegs_adresse;
+    $("unterwegs").textContent = werte.unterwegs_adresse
+      ? `Von unterwegs/zu Hause: Auf dem PC die Tailscale-App installieren und mit demselben Konto anmelden – Ergoforyou PDF nutzt dann automatisch ${werte.unterwegs_adresse} (nur für Ihre eigenen Geräte, nicht öffentlich).`
+      : "";
     $("anzahl").textContent = werte.anzahl;
     const pcOk = werte.pc_kontakt_vor_s !== null && werte.pc_kontakt_vor_s !== undefined;
     ampel("ampelPc", pcOk ? "gruen" : "gelb", zeitText(werte.pc_kontakt_vor_s));
@@ -95,7 +99,7 @@
     melden("adresseErgebnis", "Wird geprüft …", true);
     try {
       const r = await anfrage("/einrichtung/adresse-test", {});
-      melden("adresseErgebnis", `${r.hinweis} Zur Sicherheit auch am Handy ohne WLAN öffnen: ${werte.oeffentliche_adresse}/gesundheit`, r.ok);
+      melden("adresseErgebnis", r.ok ? `${r.hinweis} Zur Sicherheit auch am Handy ohne WLAN öffnen: ${werte.oeffentliche_adresse}/gesundheit` : r.hinweis, r.ok);
     } catch (f) { melden("adresseErgebnis", f.message, false); }
   }
 
