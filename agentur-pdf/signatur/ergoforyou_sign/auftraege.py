@@ -303,6 +303,7 @@ def zusammenfassung(a: dict) -> dict:
                 "rolle": p["rolle"],
                 "name": p["name"],
                 "email": p["email"],
+                "hubspot_kontakt_id": p.get("hubspot_kontakt_id", ""),
                 "status": p["status"],
                 "unterschrieben": (p.get("unterschrift") or {}).get("zeit", ""),
                 "unterschrieben_als": (p.get("unterschrift") or {}).get("name", ""),

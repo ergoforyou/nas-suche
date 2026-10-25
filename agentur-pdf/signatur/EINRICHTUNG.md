@@ -68,10 +68,28 @@ Zum Projekt gehört ein zweiter Container `ergoforyou-sign-tunnel`. Er baut eine
   - **Auftragsnummer**
 
   Damit lassen sich Listen filtern („noch nicht unterschrieben“) und Workflows bauen, z. B. eine Erinnerung nach 3 Tagen.
-- **Start direkt aus HubSpot:** Mit der Chrome-Erweiterung von Ergoforyou PDF erscheint auf jeder Kontakt- und Deal-Seite unten rechts **„✍ Unterschrift anfordern“**. Klicken, Dokument hineinziehen, Felder setzen, senden. Der Kunde ist dabei schon ausgewählt.
+- **Start direkt aus HubSpot:** siehe Schritt 7 – die Karte „Ergoforyou Sign“ in der rechten Seitenleiste.
 
-## 7. Ergoforyou PDF verbinden
-1. Auf der Einrichtungsseite unter **3 · Ergoforyou PDF verbinden** auf **Code kopieren** klicken.
+## 7. HubSpot-Karte (rechte Seitenleiste, wie PandaDoc/Dropbox Sign)
+Danach hat jeder Kontakt und jeder Deal rechts die Karte **„Ergoforyou Sign“**:
+- großer Knopf **„✍ Neue Unterschrift anfordern“** → Fenster in HubSpot: PDF hineinziehen **oder** einen PDF-Anhang des Datensatzes wählen → Unterschriftsfelder setzen (✍ Unterschrift / 📅 Datum / Aa Name) → Personen (aus HubSpot vorbelegt) → **Zur Unterschrift senden** → Links kopieren oder per E-Mail schicken.
+- darunter die letzten Anfragen mit Status, **Link kopieren**, **Details** (Links, Verlauf, Zurückziehen) und **PDF öffnen**.
+- Niemand braucht dafür Ergoforyou PDF oder eine Chrome-Erweiterung – nur HubSpot.
+
+Einmalig einrichten (ca. 10 Minuten, nur eine Person):
+1. **Persönlicher Zugriffsschlüssel:** in HubSpot <https://app-eu1.hubspot.com/l/personal-access-key> öffnen → **Persönlichen Zugriffsschlüssel generieren** (Bereich **Developer Projects** anhaken) → **Kopieren**.
+2. **Bei GitHub hinterlegen:** im Projekt `ergoforyou/nas-suche` → **Settings → Secrets and variables → Actions → New repository secret** → Name `HUBSPOT_PERSONAL_ACCESS_KEY`, Wert einfügen → **Add secret**.
+3. **Karte hochladen:** **Actions → „HubSpot-Karte“ → Run workflow** → Branch `claude/happy-cerf-jpm98y`, bei *Öffentliche Adresse* die Adresse aus der Einrichtungsseite (Schritt 1, z. B. `https://ergoforyou-sign.tail1234.ts.net`) → **Run workflow**. Nach 2–3 Minuten ist der Lauf grün; die App „Ergoforyou Sign“ ist dann im HubSpot-Konto installiert.
+4. **Client-Secret auf das NAS:** in HubSpot **Entwicklung (`</>`) → Projekte → ergoforyou-sign → Ergoforyou Sign** → Reiter **Authentifizierung** → **Client-Secret** anzeigen und kopieren → Einrichtungsseite **3 · HubSpot-Karte** → einfügen → **Speichern**.
+5. **Karte einblenden:** einen Kontakt öffnen → oben **Datensatz anpassen** (bzw. Ansicht bearbeiten) → rechte Seitenleiste → **Karte hinzufügen → App-Karten → Ergoforyou Sign** → nach oben ziehen → **Speichern**. Dasselbe einmal bei einem Deal. Das gilt dann für alle Kollegen.
+6. Kontakt neu laden – die Ampel „HubSpot-Karte“ auf der Einrichtungsseite wird grün.
+
+Ändert sich die Adresse des NAS-Dienstes (z. B. Umzug auf die DS718+ mit anderem Tailscale-Namen), Schritt 3 einfach mit der neuen Adresse wiederholen.
+
+**Sicherheit:** Die Karte ruft das NAS über HubSpot auf; HubSpot unterschreibt jede Anfrage mit dem Client-Secret der App (Signatur v3, max. 5 Minuten alt). Ohne gültige Unterschrift liefert das NAS nichts. Das Fenster bekommt daraus einen Schlüssel, der 8 Stunden und nur für diesen einen Kontakt/Deal gilt.
+
+## 8. Ergoforyou PDF verbinden (optional)
+1. Auf der Einrichtungsseite unter **4 · Ergoforyou PDF verbinden** auf **Code kopieren** klicken.
 2. In Ergoforyou PDF oben rechts **Beta MK I** → **Online-Unterschrift** (oder direkt **Schützen → Zur Unterschrift senden**) → Code einfügen → **Verbinden**.
 
 Ist in Ergoforyou PDF der **gemeinsame Einstellungsordner** auf dem NAS eingetragen, reicht das an **einem** PC. Alle anderen sind dann automatisch verbunden.
@@ -82,10 +100,10 @@ Ist in Ergoforyou PDF der **gemeinsame Einstellungsordner** auf dem NAS eingetra
 - Im Büro wird weiterhin direkt die Büro-Adresse genutzt. Umstellen muss man nichts.
 - Dafür den Verbindungscode einmal **neu kopieren und eintragen**, nachdem der Tunnel eingerichtet ist. Erst dann enthält der Code beide Adressen.
 
-## 8. Ausprobieren
-1. Ein Test-PDF öffnen.
-2. **Schützen → Unterschriftsfeld** aufziehen.
-3. **Zur Unterschrift senden**: Kontakt „Max Muster“ (Testkontakt), dann **Link erstellen**.
+## 9. Ausprobieren
+1. In HubSpot einen Testkontakt „Max Muster“ öffnen → Karte **Ergoforyou Sign** → **Neue Unterschrift anfordern**.
+2. Test-PDF hineinziehen, **✍ Unterschrift** wählen und auf die Stelle im Dokument klicken.
+3. **Zur Unterschrift senden** → **Link kopieren**. (Aus Ergoforyou PDF geht es genauso: **Schützen → Unterschriftsfeld**, dann **Zur Unterschrift senden**.)
 4. Den Link am Handy öffnen, unterschreiben und die Kopie herunterladen.
 5. In HubSpot am Kontakt erscheinen zwei Notizen: „Zur Unterschrift gesendet“ und „✔ Unterschrieben“, letztere mit der PDF.
 6. Auf dem NAS liegt die PDF unter `docker/ergoforyou-sign/daten/unterschrieben/`.
@@ -136,4 +154,7 @@ Den Ordner `docker/ergoforyou-sign/daten` in **Hyper Backup** aufnehmen. Darin l
 - **Einrichtungsseite lädt nicht:** Läuft das Projekt im Container Manager? Unter Protokoll steht „Kundenseite auf Port 8480, Einrichtung auf Port 8481“.
 - **Kunde kann den Link nicht öffnen:** Auf der Einrichtungsseite die Ampel „Zugang für Kunden“ prüfen. Ist sie gelb, dem angezeigten Schritt folgen. Steht dort „Tunnel-Container läuft nicht“: Container Manager → Projekt → Aktion → Erstellen.
 - **Tunnel neu anmelden** (z. B. anderes Tailscale-Konto): Projekt stoppen, Ordner `daten/tunnel` leeren, Projekt wieder erstellen.
+- **Karte zeigt „nicht erreichbar“:** NAS oder Tunnel aus? Ampel „Zugang für Kunden“ prüfen. Stimmt die Adresse aus Schritt 7.3 noch mit der auf der Einrichtungsseite überein?
+- **Karte zeigt „Client-Secret“ oder Ampel „HubSpot-Karte“ rot:** Client-Secret aus Schritt 7.4 neu kopieren und speichern.
+- **Karte fehlt in der Kartenauswahl:** War der Lauf „HubSpot-Karte“ grün? In HubSpot unter Entwicklung → Projekte → ergoforyou-sign prüfen, ob die App installiert ist (sonst dort **Installieren** klicken).
 - **HubSpot-Fehler in der Übersicht:** Token abgelaufen oder ein Bereich fehlt. Dann neues Token eintragen und in der Übersicht auf „Erneut an HubSpot“ klicken.

@@ -11,6 +11,7 @@ import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 
+from ergoforyou_sign import __version__
 from ergoforyou_sign.app import Dienst, intern_app, kunde_app
 
 
@@ -248,7 +249,7 @@ def test_intern_schutz_und_einrichtung(umgebung, tmp_path):
     assert roh.get("/api/auftraege").status_code == 401
     assert roh.get("/api/auftraege", headers={"X-Sign-Schluessel": "falsch"}).status_code == 401
     assert roh.get("/einrichtung/werte").status_code == 401
-    assert roh.get("/einrichtung/zustand").json() == {"kennwort_gesetzt": False, "angemeldet": False, "version": "0.4.0"}
+    assert roh.get("/einrichtung/zustand").json() == {"kennwort_gesetzt": False, "angemeldet": False, "version": __version__}
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "kurz"}).status_code == 400
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "geheim123"}).status_code == 200
     assert roh.post("/einrichtung/kennwort", json={"kennwort": "anders123"}).status_code == 409

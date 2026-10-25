@@ -56,6 +56,38 @@ def pruefen(pdf: bytes) -> list[dict]:
         return [{"b": round(s.rect.width, 2), "h": round(s.rect.height, 2)} for s in doc]
 
 
+def entwurf_vorbereiten(pdf: bytes) -> tuple[bytes, list[dict], list[dict]]:
+    """PDF für das Studio in HubSpot: prüfen und vorhandene (leere)
+    Unterschriftsfelder als Vorschlag übernehmen. Die Formular-Unterschriftsfelder
+    selbst werden entfernt – sonst stünden leere Kästen im Ergebnis.
+    Feldname „Unterschrift Ehepartner“ → Rolle „Ehepartner“."""
+    seiten = pruefen(pdf)
+    vorschlaege: list[dict] = []
+    with pymupdf.open("pdf", pdf) as doc:
+        geaendert = False
+        for nr, seite in enumerate(doc):
+            for w in list(seite.widgets() or []):
+                if w.field_type != pymupdf.PDF_WIDGET_TYPE_SIGNATURE:
+                    continue
+                r = w.rect * seite.rotation_matrix
+                b, h = seite.rect.width, seite.rect.height
+                name = re.sub(r"\s*\[\d+\]$", "", str(w.field_name or "")).strip()
+                rolle = re.sub(r"^(unterschrift|signatur|signature)\s*", "", name, flags=re.I).strip(" _-:")
+                vorschlaege.append(
+                    {
+                        "seite": nr,
+                        "rechteck": [round(max(0.0, min(1.0, x)), 5) for x in (r.x0 / b, r.y0 / h, r.x1 / b, r.y1 / h)],
+                        "art": "unterschrift",
+                        "rolle": rolle if rolle and not rolle.isdigit() else "",
+                    }
+                )
+                seite.delete_widget(w)
+                geaendert = True
+        if geaendert:
+            pdf = doc.tobytes(garbage=1, deflate=True)
+    return pdf, seiten, vorschlaege[:MAX_FELDER]
+
+
 def felder_pruefen(felder: list, seiten: list[dict], personen: int = 1) -> list[dict]:
     """Felder vom PC übernehmen (``person`` = 1 … Anzahl Personen). Wer kein
     eigenes Unterschriftsfeld hat, unterschreibt nur auf dem Prüfprotokoll."""

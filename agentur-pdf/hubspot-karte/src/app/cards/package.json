@@ -1,0 +1,18 @@
+{
+  "name": "ergoforyou-sign-karte",
+  "version": "0.5.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "pruefen": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hubspot/ui-extensions": "^0.18.0",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18",
+    "typescript": "^5"
+  }
+}

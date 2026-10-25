@@ -107,7 +107,6 @@ const Agentur = (() => {
   const editorUrl = (dokId) => `${BASIS}/#t=${encodeURIComponent(token || "")}&chrome=1&dok=${encodeURIComponent(dokId)}`;
 
   /** Editor ohne Dokument, vorbereitet für „Zur Unterschrift senden“ (Start aus HubSpot) */
-  const signaturUrl = (objekt, id) => `${BASIS}/#t=${encodeURIComponent(token || "")}&chrome=1&dok=&hs=${encodeURIComponent(`${objekt}:${id}`)}`;
 
-  return { BASIS, editorUrl, signaturUrl, verbinden, anfrage, json, hochladen, abwarten, bildUrl, holen, dateiname, driveAdresse, driveDownload, token: () => token };
+  return { BASIS, editorUrl, verbinden, anfrage, json, hochladen, abwarten, bildUrl, holen, dateiname, driveAdresse, driveDownload, token: () => token };
 })();

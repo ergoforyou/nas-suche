@@ -1,0 +1,89 @@
+name: HubSpot-Karte
+
+# Prüft die Karte bei jeder Änderung. Hochladen in HubSpot per Hand:
+# Actions → „HubSpot-Karte“ → Run workflow → Adresse des NAS-Dienstes eintragen.
+# Voraussetzung (einmalig): Repository-Secret HUBSPOT_PERSONAL_ACCESS_KEY
+# (siehe agentur-pdf/signatur/EINRICHTUNG.md, Abschnitt „HubSpot-Karte“).
+
+on:
+  push:
+    branches: [claude/happy-cerf-jpm98y]
+    paths: ["agentur-pdf/hubspot-karte/**", ".github/workflows/hubspot-karte.yml"]
+  workflow_dispatch:
+    inputs:
+      nas_adresse:
+        description: "Öffentliche Adresse des NAS-Dienstes (Einrichtungsseite, Schritt 1), z. B. https://ergoforyou-sign.tail1234.ts.net"
+        required: true
+        type: string
+      hubspot_konto:
+        description: "HubSpot-Kontonummer (Hub-ID)"
+        required: true
+        default: "146305116"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: agentur-pdf/hubspot-karte
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Typen prüfen
+        working-directory: agentur-pdf/hubspot-karte/src/app/cards
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit -p .
+      - name: Adress-Skript prüfen
+        run: |
+          node adresse-setzen.mjs https://ergoforyou-sign.test.ts.net
+          grep -q "ergoforyou-sign.test.ts.net" src/app/cards/nas.ts
+          ! node adresse-setzen.mjs http://unsicher.example 2>/dev/null
+
+  hochladen:
+    if: github.event_name == 'workflow_dispatch'
+    needs: pruefen
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: agentur-pdf/hubspot-karte
+    env:
+      HUBSPOT_ACCOUNT_ID: ${{ inputs.hubspot_konto }}
+      HUBSPOT_PERSONAL_ACCESS_KEY: ${{ secrets.HUBSPOT_PERSONAL_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Schlüssel vorhanden?
+        run: |
+          if [ -z "$HUBSPOT_PERSONAL_ACCESS_KEY" ]; then
+            echo "::error::Repository-Secret HUBSPOT_PERSONAL_ACCESS_KEY fehlt (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+      - name: NAS-Adresse eintragen
+        env:
+          NAS_ADRESSE: ${{ inputs.nas_adresse }}
+        run: node adresse-setzen.mjs "$NAS_ADRESSE"
+      - name: NAS erreichbar?
+        env:
+          NAS_ADRESSE: ${{ inputs.nas_adresse }}
+        run: |
+          if curl -fsS --max-time 15 "${NAS_ADRESSE%/}/gesundheit"; then echo " – NAS antwortet."
+          else echo "::warning::Der NAS-Dienst ist unter dieser Adresse gerade nicht erreichbar. Die Karte wird trotzdem hochgeladen."; fi
+      - name: HubSpot-CLI
+        run: npm install -g @hubspot/cli@8
+      - name: Hochladen und bereitstellen
+        run: hs project upload --use-env --force --message "Ergoforyou Sign ${GITHUB_SHA::7}"
+      - name: App im Konto installieren
+        run: |
+          hs project install-app --use-env --force || echo "::warning::Installation bitte einmal in HubSpot bestätigen (Entwicklung → Projekte → ergoforyou-sign)."
+          hs project app-install-status --use-env || true

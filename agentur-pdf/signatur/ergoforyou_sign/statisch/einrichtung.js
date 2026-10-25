@@ -85,6 +85,17 @@
       : "";
     $("anzahl").textContent = werte.anzahl;
     const pcOk = werte.pc_kontakt_vor_s !== null && werte.pc_kontakt_vor_s !== undefined;
+    // 3 · HubSpot-Karte
+    $("karteAdresse").textContent = werte.oeffentliche_adresse || "(erst Schritt 1 abschließen)";
+    let karteStufe = "grau", karteText = "noch nicht eingerichtet";
+    if (werte.karte_fehler) { karteStufe = "rot"; karteText = werte.karte_fehler; }
+    else if (werte.karte_kontakt_vor_s !== null) { karteStufe = "gruen"; karteText = `aktiv – ${zeitText(werte.karte_kontakt_vor_s).replace(" verbunden", "")}`; }
+    else if (werte.karte_geheimnis_gesetzt) { karteStufe = "gelb"; karteText = "Client-Secret gespeichert – Karte hat sich noch nicht gemeldet"; }
+    ampel("ampelKarte", karteStufe, karteText);
+    $("karteStatus").textContent = karteText;
+    $("karteStatus").className = karteStufe === "gruen" ? "ok" : karteStufe === "rot" ? "fehler" : "grau";
+    $("karteAnleitung").open = karteStufe !== "gruen";
+    $("karteGeheimnis").placeholder = werte.karte_geheimnis_gesetzt ? "gespeichert – zum Ändern neu einfügen" : "z. B. 1a2b3c4d-…";
     ampel("ampelPc", pcOk ? "gruen" : "gelb", zeitText(werte.pc_kontakt_vor_s));
 
     // solange der Tunnel noch nicht fertig ist, selbst nachsehen
@@ -156,6 +167,15 @@
     await anfrage("/einrichtung/werte", { hubspot_token: "" });
     await laden();
     melden("hsErgebnis", "Getrennt.", true);
+  });
+
+  $("karteSpeichern").addEventListener("click", async () => {
+    try {
+      await anfrage("/einrichtung/werte", { hubspot_app_geheimnis: $("karteGeheimnis").value });
+      $("karteGeheimnis").value = "";
+      await laden();
+      melden("karteErgebnis", "Gespeichert. Jetzt einen Kontakt in HubSpot öffnen – die Karte meldet sich dann hier.", true);
+    } catch (f) { melden("karteErgebnis", f.message, false); }
   });
 
   $("codeKopieren").addEventListener("click", async () => {

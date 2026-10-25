@@ -54,6 +54,7 @@ class HubSpot:
     def __init__(self, token: str, transport: httpx.BaseTransport | None = None) -> None:
         if not token:
             raise HubSpotFehler("HubSpot ist noch nicht verbunden (Einrichtung auf dem NAS).")
+        self._transport = transport
         self._client = httpx.Client(
             base_url=BASIS,
             headers={"Authorization": f"Bearer {token}"},
@@ -142,6 +143,60 @@ class HubSpot:
         )
         nach_id = {str(k["id"]): _kontakt(k) for k in daten.get("results", [])}
         return [nach_id[i] for i in ids if i in nach_id]
+
+    def anhaenge(self, objekt: str, objekt_id: str, grenze: int = 20) -> list[dict]:
+        """PDF-Anhänge am Kontakt/Deal (aus den Notizen, neueste zuerst)."""
+        verkn = self._anfrage("GET", f"/crm/v4/objects/{objekt}/{objekt_id}/associations/notes", params={"limit": 100})
+        ids = [str(v["toObjectId"]) for v in verkn.get("results", [])][:100]
+        if not ids:
+            return []
+        notizen = self._anfrage(
+            "POST",
+            "/crm/v3/objects/notes/batch/read",
+            json={"inputs": [{"id": i} for i in ids], "properties": ["hs_attachment_ids", "hs_timestamp"]},
+        ).get("results", [])
+        notizen.sort(key=lambda n: n.get("properties", {}).get("hs_timestamp") or "", reverse=True)
+        ergebnis: list[dict] = []
+        gesehen: set[str] = set()
+        for n in notizen:
+            zeit = n.get("properties", {}).get("hs_timestamp") or ""
+            for datei_id in str(n.get("properties", {}).get("hs_attachment_ids") or "").split(";"):
+                datei_id = datei_id.strip()
+                if not datei_id.isdigit() or datei_id in gesehen:
+                    continue
+                gesehen.add(datei_id)
+                try:
+                    d = self._anfrage("GET", f"/files/v3/files/{datei_id}")
+                except HubSpotFehler:
+                    continue
+                name = str(d.get("name") or f"Datei {datei_id}")
+                endung = str(d.get("extension") or "").lower()
+                if endung != "pdf" and not name.lower().endswith(".pdf"):
+                    continue
+                ergebnis.append({"id": datei_id, "name": name if name.lower().endswith(".pdf") else f"{name}.pdf", "groesse": d.get("size") or 0, "zeit": zeit})
+                if len(ergebnis) >= grenze:
+                    return ergebnis
+        return ergebnis
+
+    def datei_laden(self, datei_id: str, max_bytes: int = 40_000_000) -> tuple[str, bytes]:
+        """Datei aus HubSpot herunterladen (über eine kurzlebige, signierte Adresse)."""
+        d = self._anfrage("GET", f"/files/v3/files/{datei_id}")
+        signiert = self._anfrage("GET", f"/files/v3/files/{datei_id}/signed-url")
+        adresse = str(signiert.get("url") or "")
+        if not adresse.startswith("https://"):
+            raise HubSpotFehler("HubSpot liefert keine Download-Adresse für die Datei.")
+        try:
+            # eigener Client: der Zugriffsschlüssel geht nicht an den Datei-Server
+            with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), transport=self._transport, follow_redirects=True) as c:
+                antwort = c.get(adresse)
+        except httpx.HTTPError as fehler:
+            raise HubSpotFehler(f"Datei nicht ladbar ({fehler.__class__.__name__}).") from None
+        if antwort.status_code != 200:
+            raise HubSpotFehler(f"Datei nicht ladbar (Fehler {antwort.status_code}).")
+        if len(antwort.content) > max_bytes:
+            raise HubSpotFehler("Die Datei ist zu groß (max. 40 MB).")
+        name = str(d.get("name") or "Dokument")
+        return (name if name.lower().endswith(".pdf") else f"{name}.pdf"), antwort.content
 
     # ------------------------------------------------------- Eigene Felder
     def felder_einrichten(self, objekt: str) -> None:

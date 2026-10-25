@@ -1,0 +1,25 @@
+{
+  "uid": "ergoforyou_sign_app",
+  "type": "app",
+  "config": {
+    "name": "Ergoforyou Sign",
+    "description": "Online-Unterschriften über den eigenen NAS-Dienst der Agentur – direkt am Kontakt und Deal.",
+    "distribution": "private",
+    "auth": {
+      "type": "static",
+      "requiredScopes": ["oauth", "crm.objects.contacts.read", "crm.objects.deals.read"],
+      "optionalScopes": [],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": ["https://ergoforyou-sign.beispiel.ts.net"],
+      "iframe": ["https://ergoforyou-sign.beispiel.ts.net"],
+      "img": []
+    },
+    "support": {
+      "supportEmail": "jens@ergoforyou.de",
+      "documentationUrl": "https://ergoforyou.de",
+      "supportUrl": "https://ergoforyou.de"
+    }
+  }
+}

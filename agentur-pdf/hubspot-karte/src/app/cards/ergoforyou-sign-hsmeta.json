@@ -1,0 +1,11 @@
+{
+  "uid": "ergoforyou_sign_karte",
+  "type": "card",
+  "config": {
+    "name": "Ergoforyou Sign",
+    "description": "Unterschriften anfordern und verfolgen.",
+    "location": "crm.record.sidebar",
+    "entrypoint": "/app/cards/ErgoforyouSign.tsx",
+    "objectTypes": ["contacts", "deals"]
+  }
+}

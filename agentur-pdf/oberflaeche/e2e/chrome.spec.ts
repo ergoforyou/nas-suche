@@ -133,29 +133,3 @@ test("Fremde Webseite bekommt kein Token", async () => {
   const r = await seite.request.post("http://127.0.0.1:47851/chrome/verbinden", { headers: { Origin: "https://example.com" } });
   expect(r.status()).toBe(403);
 });
-
-test("HubSpot: Knopf „Unterschrift anfordern“ öffnet den Editor mit Senden-Dialog", async () => {
-  await kontext.route("https://app-eu1.hubspot.com/**", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Max Muster | HubSpot</title><h1>Max Muster</h1>" }),
-  );
-  const hubspot = await kontext.newPage();
-  await hubspot.goto("https://app-eu1.hubspot.com/contacts/146305116/record/0-2/9");
-  await hubspot.waitForTimeout(1200);
-  await expect(hubspot.getByRole("button", { name: /Unterschrift anfordern/ })).toBeHidden(); // Firma, kein Kontakt
-  await hubspot.goto("https://app-eu1.hubspot.com/contacts/146305116/record/0-1/501");
-  const knopf = hubspot.getByRole("button", { name: /Unterschrift anfordern/ });
-  await expect(knopf).toBeVisible();
-  const neu = kontext.waitForEvent("page");
-  await knopf.click();
-  const editor = await neu;
-  await expect(editor).toHaveURL(/127\.0\.0\.1:47851\//);
-  await expect(editor.locator(".sig-start")).toContainText("Unterschrift anfordern");
-  await editor.screenshot({ path: join(process.env.E2E_BILDER ?? tmpdir(), "hubspot-start.png") });
-  // Dokument öffnen → Senden-Dialog geht von selbst auf
-  const auswahl = editor.waitForEvent("filechooser");
-  await editor.locator('[data-befehl="schnell.datei.oeffnen"]').click();
-  await (await auswahl).setFiles(join(DATEN, "brief.pdf"));
-  await expect(editor.getByRole("dialog", { name: "Zur Unterschrift senden" })).toBeVisible();
-  await Promise.all([hubspot.close(), editor.close()]);
-  await kontext.unroute("https://app-eu1.hubspot.com/**");
-});

@@ -1,6 +1,7 @@
 """Die beiden Web-Anwendungen des NAS-Dienstes.
 
-``kunde``  – öffentlich (Reverse-Proxy): nur die Unterschriftsseite ``/s/<link>``.
+``kunde``  – öffentlich (Tunnel): die Unterschriftsseite ``/s/<link>`` und die
+            HubSpot-Karte ``/hs/…`` (nur mit Unterschrift von HubSpot).
 ``intern`` – nur im Büronetz: Einrichtung und Schnittstelle für Ergoforyou PDF
             (Kopf ``X-Sign-Schluessel``).
 """
@@ -47,6 +48,7 @@ from .auftraege import (
 )
 from .hubspot import HubSpot, HubSpotFehler
 from .konfig import Konfig, kennwort_hash, kennwort_pruefen
+from .karte import CSP_STUDIO, entwuerfe_aufraeumen, karte_routen
 from .tunnel import Tunnel
 from .pdfwerk import abschliessen, felder_pruefen, png_aus_dataurl, pruefen, seite_png, stempeln
 
@@ -86,6 +88,7 @@ class Dienst:
                 self.konfig.setzen(oeffentliche_adresse=t["adresse"], adresse_quelle="tunnel")
                 print(f"[Tunnel] Öffentliche Adresse: {t['adresse']}", flush=True)
         nachgeholt = 0
+        entwuerfe_aufraeumen(self.ordner)
         if mit_hubspot and self.konfig.get("hubspot_token"):
             for z in self.auftraege.liste():
                 ablage = z["ablage"]
@@ -120,6 +123,49 @@ class Dienst:
         portal = self.konfig.get("hubspot_portal")
         domain = self.konfig.get("hubspot_domain") or "app-eu1.hubspot.com"
         return f"https://{domain}/contacts/{portal}/record/0-1/{kontakt_id}" if portal and kontakt_id else ""
+
+    # ----------------------------------------------------------- Aufträge
+    def auftrag_anlegen(self, pdf: bytes, daten: dict) -> dict:
+        """Gemeinsamer Weg für Ergoforyou PDF und die HubSpot-Karte."""
+        if not pdf:
+            raise AuftragFehler("PDF fehlt oder ist beschädigt.")
+        if len(pdf) > 40_000_000:
+            raise AuftragFehler("Die PDF ist zu groß (max. 40 MB).")
+        personen = daten.get("personen") or []
+        if not 1 <= len(personen) <= MAX_PERSONEN:
+            raise AuftragFehler(f"Es sind 1 bis {MAX_PERSONEN} unterzeichnende Personen möglich.")
+        seiten = pruefen(pdf)
+        felder = felder_pruefen(daten.get("felder") or [], seiten, len(personen))
+        a = self.auftraege.anlegen(pdf, daten, seiten, felder, personen)
+        self.hubspot_im_hintergrund(a["id"], "gesendet")
+        return a
+
+    def detail(self, a: dict) -> dict:
+        d = zusammenfassung(a)
+        basis = self.konfig.oeffentliche_adresse
+        for eintrag, p in zip(d["personen"], a["personen"]):
+            eintrag["link"] = link(basis, p)
+            eintrag["hubspot_url"] = self.hubspot_kontakt_url(p.get("hubspot_kontakt_id", ""))
+        d.update(
+            felder=a["felder"],
+            seiten=len(a["seiten"]),
+            verlauf=a["verlauf"],
+            sha_original=a["sha_original"],
+            sha_ergebnis=a["sha_ergebnis"],
+            hubspot_url=self.hubspot_kontakt_url(a["hubspot"].get("kontakt_id", "")),
+        )
+        return d
+
+    def widerrufen(self, auftrag_id: str, von: str) -> dict:
+        with self.auftraege.sperre:
+            a = self.auftraege.laden(auftrag_id)
+            if a["status"] == "unterschrieben":
+                raise AuftragFehler("Bereits unterschrieben – kann nicht mehr zurückgezogen werden.", 409)
+            if a["status"] != "widerrufen":
+                a["status"] = "widerrufen"
+                self.auftraege.ereignis(a, "widerrufen", text=f"von {von or 'Büro'}")
+        self.hubspot_im_hintergrund(a["id"])
+        return a
 
     # ------------------------------------------------------ HubSpot-Ablage
     def hubspot_im_hintergrund(self, auftrag_id: str, art: str = "status") -> None:
@@ -310,9 +356,11 @@ def kunde_app(dienst: Dienst) -> FastAPI:
     @app.middleware("http")
     async def kopfzeilen(request: Request, weiter: Callable):
         antwort = await weiter(request)
+        studio = request.url.path.startswith("/hs/")  # darf als Fenster in HubSpot laufen
         for k, v in SICHER.items():
-            antwort.headers.setdefault(k, v)
-        antwort.headers.setdefault("Content-Security-Policy", CSP)
+            if not (studio and k == "X-Frame-Options"):
+                antwort.headers.setdefault(k, v)
+        antwort.headers.setdefault("Content-Security-Policy", CSP_STUDIO if studio else CSP)
         if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https":
             antwort.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         return antwort
@@ -505,6 +553,7 @@ def kunde_app(dienst: Dienst) -> FastAPI:
             headers={"Content-Disposition": _anhang(name)},
         )
 
+    karte_routen(app, dienst)
     return app
 
 
@@ -524,6 +573,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
     konfig, auftraege = dienst.konfig, dienst.auftraege
     gesperrt = _gesperrt(auftraege)
     pc_kontakt = {"zeit": 0.0}
+    _detail = dienst.detail
 
     def angemeldet(request: Request) -> bool:
         wert = request.cookies.get("esign_admin", "")
@@ -611,6 +661,9 @@ def intern_app(dienst: Dienst) -> FastAPI:
             "intern_adresse": basis,
             "anzahl": len(auftraege.liste()),
             "pc_kontakt_vor_s": int(time.time() - pc_kontakt["zeit"]) if pc_kontakt["zeit"] else None,
+            "karte_geheimnis_gesetzt": bool(konfig.get("hubspot_app_geheimnis")),
+            "karte_kontakt_vor_s": int(time.time() - float(konfig.get("karte_kontakt"))) if konfig.get("karte_kontakt") else None,
+            "karte_fehler": konfig.get("karte_fehler") or "",
             "version": __version__,
         }
 
@@ -623,6 +676,8 @@ def intern_app(dienst: Dienst) -> FastAPI:
                 adresse = "https://" + adresse
             neu["oeffentliche_adresse"] = adresse
             neu["adresse_quelle"] = "manuell" if adresse else ""
+        if daten.get("hubspot_app_geheimnis") is not None:
+            neu.update(hubspot_app_geheimnis=str(daten["hubspot_app_geheimnis"]).strip(), karte_fehler="")
         if daten.get("hubspot_token") is not None:
             token = str(daten["hubspot_token"]).strip()
             if token:
@@ -681,8 +736,6 @@ def intern_app(dienst: Dienst) -> FastAPI:
             pdf = base64.b64decode(str(daten.get("pdf") or ""), validate=True)
         except ValueError:
             raise AuftragFehler("PDF fehlt oder ist beschädigt.") from None
-        if len(pdf) > 40_000_000:
-            raise AuftragFehler("Die PDF ist zu groß (max. 40 MB).")
         personen = daten.get("personen") or [
             {  # eine Person – Schnittstelle von Version 0.1.0
                 "name": daten.get("empfaenger_name"),
@@ -691,13 +744,7 @@ def intern_app(dienst: Dienst) -> FastAPI:
                 "hubspot_kontakt_id": daten.get("hubspot_kontakt_id"),
             }
         ]
-        if not 1 <= len(personen) <= MAX_PERSONEN:
-            raise AuftragFehler(f"Es sind 1 bis {MAX_PERSONEN} unterzeichnende Personen möglich.")
-        seiten = pruefen(pdf)
-        felder = felder_pruefen(daten.get("felder") or [], seiten, len(personen))
-        a = auftraege.anlegen(pdf, daten, seiten, felder, personen)
-        dienst.hubspot_im_hintergrund(a["id"], "gesendet")
-        return _detail(a)
+        return _detail(dienst.auftrag_anlegen(pdf, {**daten, "personen": personen}))
 
     @app.get("/api/auftraege")
     def auftraege_liste():
@@ -719,15 +766,8 @@ def intern_app(dienst: Dienst) -> FastAPI:
         return Response(pfad.read_bytes(), media_type="application/pdf")
 
     @app.post("/api/auftraege/{auftrag_id}/widerrufen")
-    @gesperrt
     def widerrufen(auftrag_id: str, von: str = Body("", embed=True)):
-        a = auftraege.laden(auftrag_id)
-        if a["status"] == "unterschrieben":
-            raise AuftragFehler("Bereits unterschrieben – kann nicht mehr zurückgezogen werden.", 409)
-        a["status"] = "widerrufen"
-        auftraege.ereignis(a, "widerrufen", text=f"von {von or 'Büro'}")
-        dienst.hubspot_im_hintergrund(a["id"])
-        return _detail(a)
+        return _detail(dienst.widerrufen(auftrag_id, von))
 
     @app.post("/api/auftraege/{auftrag_id}/entsperren")
     @gesperrt
@@ -782,21 +822,5 @@ def intern_app(dienst: Dienst) -> FastAPI:
             raise AuftragFehler("Unbekannter Kontakt.", 404)
         with dienst.hubspot() as h:
             return {"deals": h.deals(kontakt_id)}
-
-    def _detail(a: dict) -> dict:
-        d = zusammenfassung(a)
-        basis = konfig.oeffentliche_adresse
-        for eintrag, p in zip(d["personen"], a["personen"]):
-            eintrag["link"] = link(basis, p)
-            eintrag["hubspot_url"] = dienst.hubspot_kontakt_url(p.get("hubspot_kontakt_id", ""))
-        d.update(
-            felder=a["felder"],
-            seiten=len(a["seiten"]),
-            verlauf=a["verlauf"],
-            sha_original=a["sha_original"],
-            sha_ergebnis=a["sha_ergebnis"],
-            hubspot_url=dienst.hubspot_kontakt_url(a["hubspot"].get("kontakt_id", "")),
-        )
-        return d
 
     return app

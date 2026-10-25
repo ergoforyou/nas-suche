@@ -38,6 +38,7 @@
     <section class="karte ampeln" aria-label="Überblick">
       <div class="ampel" id="ampelTunnel"><span class="punkt"></span><span><strong>Zugang für Kunden</strong><small></small></span></div>
       <div class="ampel" id="ampelHubspot"><span class="punkt"></span><span><strong>HubSpot</strong><small></small></span></div>
+      <div class="ampel" id="ampelKarte"><span class="punkt"></span><span><strong>HubSpot-Karte</strong><small></small></span></div>
       <div class="ampel" id="ampelPc"><span class="punkt"></span><span><strong>Ergoforyou PDF</strong><small></small></span></div>
     </section>
 
@@ -82,8 +83,28 @@
       <p id="hsErgebnis" class="klein"></p>
     </section>
 
+    <section class="karte schritt" id="schrittKarte">
+      <h2><span class="nr">3</span> HubSpot-Karte (rechte Seitenleiste) <span class="optional">empfohlen</span></h2>
+      <p class="klein">Status: <span id="karteStatus"></span></p>
+      <details id="karteAnleitung">
+        <summary class="klein">So kommt die Karte in HubSpot (einmalig, ca. 10 Minuten)</summary>
+        <ol class="klein schritte">
+          <li><strong>Karte hochladen:</strong> auf GitHub im Projekt unter <strong>Actions → „HubSpot-Karte“ → Run workflow</strong>, dort diese Adresse eintragen: <code id="karteAdresse"></code> (die Anleitung <code>EINRICHTUNG.md</code> beschreibt den einmaligen Persönlichen Zugriffsschlüssel).</li>
+          <li><strong>Client-Secret holen:</strong> in HubSpot <strong>Entwicklung → Projekte → ergoforyou-sign → Ergoforyou Sign</strong> (App) → Reiter <strong>Authentifizierung</strong> → <strong>Client-Secret</strong> anzeigen, kopieren und unten einfügen.</li>
+          <li><strong>Karte einblenden:</strong> einen Kontakt öffnen → <strong>Datensatz anpassen</strong> → rechte Seitenleiste → <strong>Karte hinzufügen → App-Karten → Ergoforyou Sign</strong> → Speichern. Dasselbe einmal bei einem Deal.</li>
+        </ol>
+        <p class="klein grau">Die Karte spricht nur mit unterschriebenen Anfragen von HubSpot mit dem NAS – ohne das richtige Client-Secret gibt es keine Daten.</p>
+      </details>
+      <label for="karteGeheimnis">Client-Secret der HubSpot-App</label>
+      <input id="karteGeheimnis" type="password" autocomplete="off" spellcheck="false" placeholder="z. B. 1a2b3c4d-…">
+      <div class="zeile">
+        <button class="primaer" id="karteSpeichern" type="button">Speichern</button>
+      </div>
+      <p id="karteErgebnis" class="klein"></p>
+    </section>
+
     <section class="karte schritt" id="schritt3">
-      <h2><span class="nr">3</span> Ergoforyou PDF verbinden</h2>
+      <h2><span class="nr">4</span> Ergoforyou PDF verbinden <span class="optional">optional</span></h2>
       <p class="klein">In Ergoforyou PDF: <strong>Schützen → Zur Unterschrift senden</strong> (oder oben rechts <strong>Beta MK I → Online-Unterschrift</strong>) → Code einfügen → <strong>Verbinden</strong>. Mit gemeinsamem Einstellungsordner auf dem NAS reicht das an <strong>einem</strong> PC.</p>
       <div class="code" id="verbindungscode"></div>
       <p class="klein grau" id="unterwegs" hidden></p>

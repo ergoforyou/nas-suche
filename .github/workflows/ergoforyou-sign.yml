@@ -44,6 +44,10 @@ jobs:
           # interne Schnittstelle ohne Schlüssel gesperrt, Kundenseite kennt sie nicht
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8481/api/auftraege)" = "401"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8480/api/auftraege)" = "404"
+          # HubSpot-Karte nur mit Unterschrift von HubSpot, Studio nur mit Schlüssel
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:8480/hs/karte?objekt=0-1&id=1')" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:8480/hs/studio?t=x')" = "401"
+          curl -fs http://127.0.0.1:8480/hs/statisch/studio.js | grep -q "Ergoforyou Sign"
           test -f "$RUNNER_TEMP/daten/konfig.json"
           docker logs sign
           docker rm -f sign

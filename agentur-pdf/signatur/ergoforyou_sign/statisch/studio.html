@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Ergoforyou Sign</title>
+<link rel="stylesheet" href="/hs/statisch/studio.css">
+</head>
+<body>
+<header class="kopf">
+  <div class="marke"><span class="logo">E</span><span>Ergoforyou Sign</span></div>
+  <div class="schritte" id="schritte" hidden>
+    <span data-schritt="1">1 Dokument</span><span data-schritt="2">2 Felder &amp; Personen</span><span data-schritt="3">3 Versenden</span>
+  </div>
+  <div class="kopf-rechts"><span class="grau klein" id="kopfInfo"></span><button type="button" class="schlicht" id="schliessen">Schließen</button></div>
+</header>
+
+<div class="meldung" id="meldung" role="alert" hidden><span id="meldungText"></span><button type="button" class="schlicht" id="meldungZu" aria-label="Meldung schließen">×</button></div>
+
+<main>
+  <section id="laden" class="mittig voll"><div class="kreisel"></div><p class="grau">Einen Moment …</p></section>
+
+  <!-- 1: Dokument wählen -->
+  <section id="wahl" class="wahl" hidden>
+    <h1>Welches Dokument soll unterschrieben werden?</h1>
+    <label class="ablage" id="ablage" tabindex="0">
+      <input type="file" id="datei" accept="application/pdf,.pdf" hidden>
+      <span class="ablage-symbol">📄</span>
+      <strong>PDF hierher ziehen</strong>
+      <span class="grau">oder klicken und vom Computer wählen</span>
+    </label>
+    <div id="anhaengeBox" hidden>
+      <h2>Oder aus diesem Datensatz in HubSpot</h2>
+      <ul class="anhaenge" id="anhaenge"></ul>
+    </div>
+    <p class="grau klein" id="wahlHinweis"></p>
+  </section>
+
+  <!-- 2: Felder und Personen -->
+  <section id="editor" class="editor" hidden>
+    <div class="dokument-spalte">
+      <div class="werkzeuge" id="werkzeuge">
+        <span class="grau klein">Feld setzen für</span>
+        <select id="feldPerson" aria-label="Person für neue Felder"></select>
+        <button type="button" class="werkzeug" data-art="unterschrift">✍ Unterschrift</button>
+        <button type="button" class="werkzeug" data-art="datum">📅 Datum</button>
+        <button type="button" class="werkzeug" data-art="name">Aa Name</button>
+        <span class="grau klein" id="setzHinweis"></span>
+      </div>
+      <div class="seiten" id="seiten"></div>
+    </div>
+    <aside class="leiste">
+      <label class="feldzeile"><span>Dokumenttitel</span><input id="titel" maxlength="200"></label>
+      <h2>Wer unterschreibt?</h2>
+      <div id="personen"></div>
+      <button type="button" class="schlicht plus" id="personDazu">+ Weitere Person</button>
+      <label class="haken" id="reihenfolgeZeile" hidden><input type="checkbox" id="reihenfolge"> Der Reihe nach unterschreiben</label>
+      <details class="mehr">
+        <summary>Weitere Optionen</summary>
+        <label class="feldzeile"><span>Gültig</span>
+          <select id="gueltig"><option value="7">7 Tage</option><option value="14" selected>14 Tage</option><option value="30">30 Tage</option><option value="60">60 Tage</option></select>
+        </label>
+        <label class="feldzeile" id="dealZeile" hidden><span>Deal zuordnen</span><select id="deal"><option value="">– kein Deal –</option></select></label>
+        <label class="feldzeile"><span>Nachricht an die Unterzeichner (optional)</span><textarea id="nachricht" rows="3" maxlength="2000"></textarea></label>
+      </details>
+      <p class="grau klein" id="ohneFeldHinweis"></p>
+      <div class="aktionen">
+        <button type="button" class="schlicht" id="andereDatei">Anderes Dokument</button>
+        <button type="button" class="primaer" id="senden">Zur Unterschrift senden</button>
+      </div>
+    </aside>
+  </section>
+
+  <!-- 3: Versendet -->
+  <section id="fertig" class="schmal" hidden>
+    <div class="erfolg">✔</div>
+    <h1 class="mittig">Unterschrift angefordert</h1>
+    <p class="mittig grau" id="fertigText"></p>
+    <div id="fertigLinks"></div>
+    <div class="aktionen mittig"><button type="button" class="primaer" id="fertigZu">Fertig</button></div>
+  </section>
+
+  <!-- Einzelner Auftrag -->
+  <section id="detail" class="schmal" hidden>
+    <div class="detail-kopf"><h1 id="detailTitel"></h1><span class="status" id="detailStatus"></span></div>
+    <p class="grau klein" id="detailInfo"></p>
+    <div id="detailPersonen"></div>
+    <div class="aktionen">
+      <a class="knopf primaer" id="detailPdf" target="_blank" rel="noopener" hidden>Unterschriebenes PDF öffnen</a>
+      <a class="knopf schlicht" id="detailOriginal" target="_blank" rel="noopener">Original ansehen</a>
+      <button type="button" class="gefahr" id="detailWiderrufen" hidden>Zurückziehen</button>
+    </div>
+    <p class="grau klein" id="detailAblage"></p>
+    <details class="mehr"><summary>Verlauf</summary><ul class="verlauf" id="detailVerlauf"></ul></details>
+  </section>
+</main>
+<script src="/hs/statisch/studio.js"></script>
+</body>
+</html>
