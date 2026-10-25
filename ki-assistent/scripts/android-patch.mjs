@@ -231,6 +231,8 @@ const PERMS = [
   // Erinnerungen (nur wenn eingeschaltet)
   'android.permission.POST_NOTIFICATIONS',
   'android.permission.RECEIVE_BOOT_COMPLETED',
+  // Nachtschicht: Auftrag nur im WLAN – Android verlangt dafür den Netzwerkstatus (keine Rückfrage beim Nutzer)
+  'android.permission.ACCESS_NETWORK_STATE',
   'android.permission.USE_EXACT_ALARM',
   ['android.permission.SCHEDULE_EXACT_ALARM', 32],
   // Gespräch im Hintergrund (nur wenn eingeschaltet)
