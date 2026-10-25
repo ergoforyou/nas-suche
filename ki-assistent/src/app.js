@@ -6,6 +6,7 @@ import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pick
 import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
+import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
 import { markSections, indexSettings, searchSettings, runOnboarding } from './einrichtung.js';
 import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS } from './begleiter.js';
 import { EMBED_MODEL, createSemantik, combine, docText, sourcesLine, idbStore } from './suche.js';
@@ -392,6 +393,15 @@ const lockCfg = () => {
 };
 // gleich beim Laden verdecken – sonst blitzen die Chats kurz auf
 if (MOBILE && lockCfg().on) document.getElementById('lockScreen').hidden = false;
+// Startschutz (siehe startschutz.js): nach mehreren Fehlstarts hintereinander nur das Nötigste starten
+const BOOT = (() => {
+  try {
+    return bootStart(localStorage);
+  } catch {
+    return { n: 1, safe: false };
+  }
+})();
+const SAFE = BOOT.safe;
 
 const persona = () => state.personas.find((p) => p.id === state.activeId) ?? state.personas[0];
 const history = () => (state.history[persona().id] ??= []);
@@ -8315,7 +8325,7 @@ let semRunning = false;
 /** Bestand neu abgleichen und das Berechnen anstoßen (gebündelt). */
 function semKick(delay = 3000) {
   clearTimeout(semTimer);
-  if (!semOn()) return;
+  if (!semOn() || SAFE) return;
   semTimer = setTimeout(semRun, delay);
 }
 async function semRun() {
@@ -9006,6 +9016,8 @@ async function healthChecks() {
   }
   const lastBackup = state.settings.autoBackupAt;
   add(lastBackup && Date.now() - lastBackup < 9 * 86400e3 ? 'ok' : 'warn', 'Sicherung', lastBackup ? `zuletzt ${new Date(lastBackup).toLocaleDateString('de-DE')}` : 'noch keine', ['Jetzt sichern', () => autoBackup({ force: true }).then(() => renderBackupsLocal())]);
+  if (SAFE) add('warn', 'Sicherer Modus', 'Extras ruhen', ['Normal neu starten', () => (bootNext(localStorage, 'normal'), location.reload())]);
+  else add('ok', 'Start', BOOT.n > 1 ? `gelungen (${BOOT.n - 1} Fehlstart(s) davor)` : 'gelungen', ['Sicher neu starten', () => (bootNext(localStorage, 'sicher'), location.reload())]);
   const st = state.selfTest;
   if (st) add(st.problems.length ? 'warn' : 'ok', 'Selbsttest beim Start', st.problems.length ? st.problems.join(' · ') : st.repairs.length ? `repariert: ${st.repairs.join(' · ')}` : 'alles in Ordnung');
   const errs = LOG.filter((l) => /Fehler|nicht erreichbar|fehlgeschlagen/i.test(l)).slice(-3);
@@ -10149,7 +10161,10 @@ const PRIV = MOBILE && AREA === 'privat';
 // ---- Fehlerprotokoll: letzte Ereignisse der App, ohne Gesprächsinhalte und ohne Schlüssel
 const LOG = [];
 function logEv(kind, msg) {
-  LOG.push(`${new Date().toISOString().slice(11, 23)} ${kind} ${String(msg ?? '').replace(/\s+/g, ' ').slice(0, 300)}`);
+  const line = `${new Date().toISOString().slice(11, 23)} ${kind} ${String(msg ?? '').replace(/\s+/g, ' ').slice(0, 300)}`;
+  LOG.push(line);
+  // Fehler für den nächsten Start aufheben (Startschutz zeigt sie im sicheren Modus)
+  if (kind === 'FEHLER') rememberError(localStorage, `${new Date().toLocaleDateString('de-DE')} ${line}`);
   if (LOG.length > 600) LOG.splice(0, LOG.length - 600);
 }
 for (const k of ['error', 'warn']) {
@@ -11746,10 +11761,28 @@ $('privScreen').onclick = () => {
   status('Wechsle in die App, um die es geht, und tippe in der schwebenden Figur lange → „Bildschirm fragen“.');
 };
 
+/** Sicherer Modus: Hinweis im Chat mit den letzten Fehlern und „Normal neu starten“. */
+function showSafeMode() {
+  const errs = lastErrors(localStorage).slice(-6);
+  const box = addBubble(
+    'note',
+    `🛟 **Sicherer Modus** – die App ist ${BOOT.forced ? 'auf Wunsch' : `mehrmals hintereinander nicht richtig gestartet`}. Chat, Sprache und ` +
+      'Einstellungen gehen, die Extras (Nachtschicht, Orte, Suche nach Bedeutung, Abgleich, Begrüßung) ruhen.' +
+      (errs.length ? `\n\nZuletzt im Protokoll:\n${errs.map((e) => `- ${e}`).join('\n')}` : ''),
+  );
+  const again = document.createElement('button');
+  again.textContent = '🔄 Normal neu starten';
+  again.onclick = () => {
+    bootNext(localStorage, 'normal');
+    location.reload();
+  };
+  box.append(again);
+  logEv('START', `sicherer Modus (${BOOT.forced ? 'auf Wunsch' : `${BOOT.n - 1} Fehlstarts`})`);
+}
 function startPhoneFeatures() {
   if (!MOBILE) return;
   refreshPriv();
-  if (PRIV) {
+  if (PRIV && !SAFE) {
     safely('Nachtschicht', takeNight);
     safely('Nachtschicht', planNight);
   }
@@ -11773,6 +11806,9 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  logLines: () => LOG.slice(),
+  SAFE,
+  BOOT,
   safely,
   syncOrte,
   startCheck,
@@ -11951,7 +11987,7 @@ window.__app = {
 };
 
 init().then(() => {
-  logEv('START', `Version ${APP_VERSION}, Bereich ${AREA === 'privat' ? 'Privat' : 'Dienstlich'}`);
+  logEv('START', `Version ${APP_VERSION}, Bereich ${AREA === 'privat' ? 'Privat' : 'Dienstlich'}${SAFE ? ', SICHERER MODUS' : BOOT.n > 1 ? `, ${BOOT.n - 1} Fehlstart(s) davor` : ''}`);
   // App-Sperre zuerst: beim Start entsperren lassen, Inhalt im App-Wechsler verbergen – nichts danach darf das verhindern
   if (MOBILE) {
     try {
@@ -11964,28 +12000,40 @@ init().then(() => {
       lockNow();
     }
   }
-  if (MOBILE) desktop.pipSetEnabled?.(state.settings.pipOnLeave);
-  refreshGoogle();
-  startPhoneFeatures();
-  startOffice();
-  if (!MOBILE) fillMics(); // 🎙-Auswahl im Chatfenster
-  loadKb();
-  refreshSyncUi();
-  startAutoSync();
+  // jeder weitere Schritt für sich: scheitert einer, laufen die anderen trotzdem (Fehler steht im Protokoll)
+  const step = (name, fn) => {
+    const r = safely(`Start ${name}`, fn);
+    r?.catch?.((e) => logEv('FEHLER', `Start ${name}: ${String(e?.message ?? e).slice(0, 200)}`));
+  };
+  if (MOBILE) step('Bild-im-Bild', () => desktop.pipSetEnabled?.(state.settings.pipOnLeave));
+  step('Handy', startPhoneFeatures);
+  step('Büro', startOffice);
+  if (!MOBILE) step('Mikrofone', fillMics); // 🎙-Auswahl im Chatfenster
+  step('Firmenwissen', loadKb);
+  step('Abgleich-Anzeige', refreshSyncUi);
   // Handy: Speicher der App als dauerhaft anfordern (Sprachmodelle sollen nicht vom System weggeräumt werden)
-  if (MOBILE) navigator.storage?.persist?.().catch(() => {});
-  desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden');
+  if (MOBILE) step('Speicher', () => navigator.storage?.persist?.());
+  step('Schließen', () => desktop.setCloseMode?.(state.settings.closeMode ?? 'beenden'));
   // Selbsttest: Einstellungen und Daten prüfen, Sicheres reparieren (Ergebnis unter „Läuft alles?“)
-  startCheck().catch((e) => logEv('SELBSTTEST', `Fehler: ${e.message}`));
+  step('Selbsttest', startCheck);
+  // nach STABLE_MS ohne Absturz gilt der Start als gelungen
+  setTimeout(() => {
+    try {
+      bootStable(localStorage);
+    } catch {}
+  }, STABLE_MS);
+  if (SAFE) return showSafeMode();
+  step('Google', refreshGoogle);
+  step('Abgleich', startAutoSync);
   // allererster Start: Ersteinrichtung (sonst nur den gewählten Modus der Einstellungen)
-  maybeOnboard();
+  step('Einrichtung', maybeOnboard);
   // Begrüßen, sobald die Figur steht
-  if (state.settings.greet !== false) setTimeout(() => fireEvent('greet', 4500), 800);
+  if (state.settings.greet !== false) setTimeout(() => safely('Begrüßung', () => fireEvent('greet', 4500)), 800);
   // persönliche Begrüßung (nach längerer Pause), sobald die Figur steht
-  setTimeout(() => personalGreeting().catch(() => {}), 2500);
-  ensureFaceRig();
+  setTimeout(() => step('Begrüßung', personalGreeting), 2500);
+  step('Gesicht', ensureFaceRig);
   // Bedeutungssuche: Bestand im Hintergrund erfassen, wenn die App zur Ruhe gekommen ist
   semKick(20e3);
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
-  if (!state.settings.offline && state.settings.handsFree) setTimeout(() => warmupLocalStt().catch(() => {}), 3000);
+  if (!state.settings.offline && state.settings.handsFree) setTimeout(() => step('Spracherkennung', warmupLocalStt), 3000);
 });

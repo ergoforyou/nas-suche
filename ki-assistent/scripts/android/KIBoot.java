@@ -12,6 +12,9 @@ public class KIBoot extends BroadcastReceiver {
         if (Intent.ACTION_BOOT_COMPLETED.equals(a) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) {
             KIReminder.schedule(c);
             KIOrt.schedule(c);
+            try {
+                KINachtschicht.schedule(c);
+            } catch (Exception ignored) {}
         }
     }
 }

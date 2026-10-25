@@ -304,6 +304,49 @@ if (BETA) {
   await run(`window.__app.state.settings.floatOverlay = false; KIFloat.setEnabled(false); return true`);
 }
 
+// 4b) Alltag wie auf dem Handy (Bereich Privat): Vorhaben der Figur → Nachtschicht beim Gerät planen; App-Sperre an,
+// Neustart – der Start muss heil durchlaufen (in Beta 80 riss ein Fehler der Nachtschicht die Sperre mit)
+{
+  const restart = async () => {
+    await run(`setTimeout(() => location.reload(), 50); return true`).catch(() => {});
+    await sleep(1500);
+    let ok = false;
+    for (let i = 0; i < 40 && !ok; i++) {
+      ok = await run(`return !!window.__app && !!window.__app.state?.settings && (!!window.__app.state.settings.onboarded || !!document.getElementById('onboard'))`).catch(() => false);
+      if (!ok) await sleep(500);
+    }
+    await run(`[...document.querySelectorAll('#onboard button')].find((b) => b.textContent === 'Später')?.click(); return true`).catch(() => {});
+    return ok;
+  };
+  await run(`localStorage.setItem('ki-bereich', 'privat'); return true`);
+  check(await restart(), 'Alltag: Neustart im Bereich Privat');
+  const night = await run(`
+    const app = window.__app;
+    await window.desktop.setKey('anthropic', 'sk-ant-emulator-test-0000');
+    app.state.settings.provider = 'anthropic';
+    await app.runAppTool('notiz_anlegen', { notizbuch: 'eigenes', titel: 'Emulator-Vorhaben', text: 'Test', schritte: ['Schritt eins', 'Schritt zwei'] });
+    const job = app.planNight();
+    const res = KIDevice.nightPlan(JSON.stringify(job));
+    return { job: !!job, keyless: !JSON.stringify(job).includes('sk-ant'), res, log: app.logLines().filter((l) => /VORHABEN|FEHLER/.test(l)).slice(-3) };
+  `);
+  console.log('   Nachtschicht:', JSON.stringify(night));
+  check(night.job && night.keyless && night.res === '', 'Alltag: Android nimmt den Nachtschicht-Auftrag an (ohne Schlüssel im Auftrag)', JSON.stringify(night));
+  await run(`localStorage.setItem('ki-sperre', JSON.stringify({ on: true, delay: 0 })); return true`);
+  check(await restart(), 'Alltag: Neustart mit App-Sperre');
+  await sleep(1500);
+  const start = await run(`
+    const app = window.__app;
+    const ls = document.getElementById('lockScreen');
+    if (!ls.hidden) document.getElementById('lockBtn').click(); // ohne Bildschirmsperre im Emulator: entsperrt sofort
+    await new Promise((r) => setTimeout(r, 800));
+    const log = app.logLines();
+    return { unlocked: ls.hidden && !app.state.locked, errors: log.filter((l) => /FEHLER (Start |Nachtschicht|Orte|Sperre)/.test(l)), start: log.filter((l) => /START|SPERRE/.test(l)).slice(-4), safe: app.SAFE };
+  `);
+  console.log('   Start:', JSON.stringify(start));
+  check(start.unlocked && !start.errors.length && !start.safe, 'Alltag: Start mit Daten, Vorhaben und Sperre läuft ohne Fehler durch, Entsperren geht', JSON.stringify(start));
+  await run(`KIDevice.nightPlan(''); localStorage.setItem('ki-sperre', JSON.stringify({ on: false })); localStorage.setItem('ki-bereich', 'dienstlich'); return true`);
+}
+
 // 5) Keine Skriptfehler (auch nicht beim Start – die stehen im Systemprotokoll)
 const log = adb('logcat', '-d', '-s', 'Capacitor/Console:E', 'chromium:E');
 // nur unbehandelte Fehler zählen (Capacitor meldet z. B. beim Start harmlos „Error injecting safe area CSS“)

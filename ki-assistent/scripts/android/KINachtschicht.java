@@ -59,17 +59,34 @@ public class KINachtschicht extends JobService {
         return at.getTimeInMillis() - now.getTimeInMillis();
     }
 
+    /**
+     * Für die nächste Nacht planen. Lehnt Android eine Variante ab (je nach Gerät/Version unterschiedlich streng), die
+     * nächst einfachere versuchen: ohne „übersteht Neustart“ (KIBoot plant dann neu), dann ohne Lade-Bedingung (die
+     * prüft der Auftrag selbst). Scheitern alle, geht der Grund an die Oberfläche (Protokoll).
+     */
     static void schedule(Context c) {
         if (prefs(c).getString("auftrag", null) == null) return;
         JobScheduler js = c.getSystemService(JobScheduler.class);
-        if (js == null) return;
-        JobInfo job = new JobInfo.Builder(JOB_ID, new ComponentName(c, KINachtschicht.class))
-            .setMinimumLatency(untilNight())
-            .setRequiresCharging(true)
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
-            .setPersisted(true)
-            .build();
-        js.schedule(job);
+        if (js == null) throw new IllegalStateException("JobScheduler nicht verfügbar");
+        StringBuilder why = new StringBuilder();
+        for (int v = 0; v < 3; v++) {
+            try {
+                JobInfo.Builder b = new JobInfo.Builder(JOB_ID, new ComponentName(c, KINachtschicht.class))
+                    .setMinimumLatency(untilNight())
+                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED);
+                if (v < 2) b.setRequiresCharging(true);
+                if (v == 0) b.setPersisted(true);
+                int res = js.schedule(b.build());
+                if (res == JobScheduler.RESULT_SUCCESS) {
+                    prefs(c).edit().putInt("variante", v).apply();
+                    return;
+                }
+                why.append("Variante ").append(v).append(": abgelehnt; ");
+            } catch (Exception e) {
+                why.append("Variante ").append(v).append(": ").append(e.getClass().getSimpleName()).append(" ").append(e.getMessage()).append("; ");
+            }
+        }
+        throw new IllegalStateException(why.toString());
     }
 
     /** Ergebnis für die Oberfläche abholen (und löschen); "" = nichts da. */
@@ -83,8 +100,15 @@ public class KINachtschicht extends JobService {
     @Override
     public boolean onStartJob(JobParameters params) {
         int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-        if (h < FROM || h >= TO) {
-            schedule(this);
+        // ohne Lade-Bedingung geplant (Variante 2): nur arbeiten, wenn das Handy wirklich lädt
+        android.os.BatteryManager bm = getSystemService(android.os.BatteryManager.class);
+        boolean charging = bm == null || bm.isCharging();
+        if (h < FROM || h >= TO || !charging) {
+            try {
+                schedule(this);
+            } catch (Exception e) {
+                Log.w("KI-Assistent", "Nachtschicht neu planen", e);
+            }
             return false;
         }
         String auftrag = prefs(this).getString("auftrag", null);

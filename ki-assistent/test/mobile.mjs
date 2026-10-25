@@ -3483,6 +3483,25 @@ const b80f = await page.evaluate(async () => {
   return out;
 });
 check(b80f.startup && b80f.pause === 1200 && b80f.acked && /livePauseMs/.test(b80f.row ?? ''), 'Selbsttest beim Start: Einstellungen und Daten geprüft, Kaputtes repariert, steht unter „Läuft alles?“', JSON.stringify(b80f));
+// Beta 85: Startschutz – nach mehreren Fehlstarts sicherer Modus mit den letzten Fehlern, „Normal neu starten“
+await page.evaluate(() => {
+  localStorage.setItem('ki-start', JSON.stringify({ n: 3, t: Date.now() }));
+  localStorage.setItem('ki-letzte-fehler', JSON.stringify(['24.10.2026 19:15:15.879 FEHLER Error invoking nightPlan: Testfehler']));
+});
+await page.reload();
+await page.waitForFunction(() => window.__app);
+await page.waitForTimeout(800);
+const safe = await page.evaluate(() => {
+  const note = [...document.querySelectorAll('.msg.note')].find((m) => /Sicherer Modus/.test(m.textContent));
+  return { safe: window.__app.SAFE, note: !!note, err: /nightPlan: Testfehler/.test(note?.textContent ?? ''), btn: !!note?.querySelector('button') };
+});
+check(safe.safe && safe.note && safe.err && safe.btn, 'Startschutz: nach 3 Fehlstarts sicherer Modus, zeigt die letzten Fehler', JSON.stringify(safe));
+await page.evaluate(() => [...document.querySelectorAll('.msg.note button')].find((b) => /Normal neu starten/.test(b.textContent))?.click());
+await page.waitForTimeout(1500);
+await page.waitForFunction(() => window.__app);
+await page.waitForTimeout(500);
+const normal = await page.evaluate(() => ({ safe: window.__app.SAFE, n: window.__app.BOOT.n }));
+check(!normal.safe && normal.n === 1, 'Startschutz: „Normal neu starten“ startet wieder normal', JSON.stringify(normal));
 await page.evaluate(() => localStorage.setItem('ki-bereich', 'dienstlich'));
 await page.reload();
 await page.waitForFunction(() => window.__app);
