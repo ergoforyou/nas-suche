@@ -8,7 +8,7 @@ import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
 import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
 import { markSections, indexSettings, searchSettings, runOnboarding } from './einrichtung.js';
-import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS } from './begleiter.js';
+import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS, ORT_RADIEN, ortArt, hhmm, wannText, hereNow, isOffice, gruppenKey } from './begleiter.js';
 import { EMBED_MODEL, createSemantik, combine, docText, sourcesLine, idbStore } from './suche.js';
 import { SpeechOutput, SentenceSplitter, PIPER_VOICES, DEFAULT_VOICES } from './tts.js';
 import { removeBackground, hasUniformBorder, hasTransparency, applyAlpha, borderColor, cropToContent } from './cutout.js';
@@ -1870,6 +1870,9 @@ function renderTopics() {
   $('cMorning').checked = state.settings.morningBrief !== false;
   $('cEvening').checked = state.settings.eveningBrief !== false;
   $('roundNotifyWrap').hidden = !(PRIV && MOBILE);
+  $('cHeimRunde').checked = state.settings.heimRunde !== false;
+  $('cVerkehrHeim').checked = state.settings.verkehrHeim !== false;
+  safely('Orte', renderOrte);
   $('cRoundNotify').checked = state.settings.roundNotify !== false;
   $('cRoundMorningAt').value = state.settings.roundMorningAt || '07:30';
   $('cRoundEveningAt').value = state.settings.roundEveningAt || '18:00';
@@ -8407,6 +8410,7 @@ async function searchEverything(q, k = 8) {
 
 function brainChanged() {
   brainIdx = new WeakMap();
+  if (PRIV) syncOrte();
   semKick();
   save();
   renderBrain();
@@ -8457,7 +8461,7 @@ async function brainTool(name, input = {}) {
   if (name === 'notiz_anlegen') {
     if (!String(input.text ?? input.titel ?? '').trim()) throw new Error('Was soll in die Notiz?');
     const steps = stepsFrom(input.schritte);
-    const n = addBrainNote({ titel: input.titel, text: input.text ?? '', ordner: ordnerKey(input.ordner) ?? (steps.length ? 'projekte' : who === 'figur' ? 'themen' : 'eingang'), tags: input.tags, projekt: input.projekt, offen: input.offen ?? (steps.length ? true : undefined), faellig: input.faellig, quelle: who === 'figur' ? 'figur' : 'ki' }, who);
+    const n = addBrainNote({ titel: input.titel, text: input.text ?? '', ordner: ordnerKey(input.ordner) ?? (steps.length ? 'projekte' : who === 'figur' ? 'themen' : 'eingang'), tags: input.tags, projekt: input.projekt, ort: input.ort, offen: input.offen ?? (steps.length ? true : undefined), faellig: input.faellig, quelle: who === 'figur' ? 'figur' : 'ki' }, who);
     if (steps.length) {
       n.schritte = steps;
       save();
@@ -8496,6 +8500,7 @@ async function brainTool(name, input = {}) {
   if (ordnerKey(input.ordner)) patch.ordner = ordnerKey(input.ordner);
   if (Array.isArray(input.tags)) patch.tags = makeNote({ tags: input.tags }).tags;
   if (input.projekt != null) patch.projekt = String(input.projekt).slice(0, 80) || undefined;
+  if (input.ort != null) patch.ort = String(input.ort).trim().slice(0, 60) || undefined;
   if (input.offen != null) patch.offen = !!input.offen;
   if (input.faellig != null) patch.faellig = /^\d{4}-\d{2}-\d{2}$/.test(input.faellig) ? input.faellig : undefined;
   if (input.erledigt === true) patch.erledigt = Date.now();
@@ -9010,7 +9015,7 @@ async function healthChecks() {
     const na = d.notifyAccess?.();
     if (na != null && PRIV) add(na ? 'ok' : 'warn', 'Musik steuern / Nachrichten vorlesen', na ? 'Zugriff erteilt' : 'kein Zugriff auf Benachrichtigungen', na ? null : ['Freigeben', () => d.askNotifyAccess?.()]);
     const bg = PRIV && orte().length ? d.hasPerm?.(BG_LOC) : null;
-    if (bg != null) add(bg ? 'ok' : 'warn', 'Erinnerungen an Orten', bg ? `${orte().length} Ort(e), Standort immer erlaubt` : 'Standort nur bei offener App – „immer erlauben“ fehlt', bg ? null : ['Erlauben', () => d.askPerm?.(BG_LOC)]);
+    if (bg != null) add(bg ? 'ok' : 'warn', 'Erinnerungen an Orten', bg ? `${orte().length} Ort(e), Standort immer erlaubt${ortTechnik ? ` · ${ortTechnik}` : ''}` : 'Standort nur bei offener App – „immer erlauben“ fehlt', bg ? null : ['Erlauben', () => d.askPerm?.(BG_LOC)]);
     const ct = d.hasPerm?.('android.permission.READ_CONTACTS');
     if (ct != null && PRIV) add(ct ? 'ok' : 'warn', 'Adressbuch', ct ? 'freigegeben („Ruf Anna an“)' : 'nicht freigegeben – Anrufe nur mit Nummer', ct ? null : ['Freigeben', () => d.askPerm?.('android.permission.READ_CONTACTS')]);
   }
@@ -9599,6 +9604,11 @@ async function handleIntents() {
       setBgTalk(false);
     } else if (ev.action === 'reminder') {
       // Morgen-/Feierabendrunde bei offener App: gleich die Runde statt Ansage
+      if (String(ev.key ?? '').startsWith('verkehr:')) {
+        dev()?.dismissReminder?.(ev.key);
+        verkehrHeim();
+        continue;
+      }
       if (String(ev.key ?? '').startsWith('runde:')) {
         dev()?.dismissReminder?.(ev.key);
         if (!state.busy && (morningDue() || eveningDue())) personalGreeting().catch(() => {});
@@ -9612,7 +9622,9 @@ async function handleIntents() {
       fireEvent('reminder', 6000);
       status(`⏰ ${ev.title}: ${ev.text}`);
       noteAlert(ev);
-      if (state.settings.speak && !state.busy && !tts.speaking) tts.enqueue(`${ev.title}: ${ev.text}`);
+      if (state.settings.speak && !state.busy && !tts.speaking && !placeQuiet()) tts.enqueue(`${ev.title}: ${ev.text}`);
+    } else if (ev.action === 'ort') {
+      pollPlace();
     } else if (ev.action === 'reminder-ack') {
       ackReminder(ev.key, ev.was);
     } else if (ev.action === 'share') {
@@ -9737,7 +9749,7 @@ function reminderTool(name, input) {
   const text = String(input?.text ?? '').trim().slice(0, 200);
   if (!text) throw new Error('Woran soll ich erinnern?');
   // an einem Ort statt zu einer Zeit: „wenn ich beim Supermarkt bin“
-  if (input?.ort && !input?.zeitpunkt && !(Number(input?.in_minuten) > 0)) return placeReminder(text, input.ort);
+  if (input?.ort && !input?.zeitpunkt && !(Number(input?.in_minuten) > 0)) return placeReminder(text, input.ort, input);
   let at = null;
   if (Number(input?.in_minuten) > 0) at = Date.now() + Number(input.in_minuten) * 60e3;
   else if (input?.zeitpunkt) at = Date.parse(String(input.zeitpunkt).slice(0, 16));
@@ -9844,51 +9856,288 @@ function takeNight() {
   return n;
 }
 
-/** Gemerkte Orte (nur auf diesem Handy, nicht abgeglichen) und was dort erinnert werden soll. */
+/** Gemerkte Orte (nur auf diesem Handy, nicht abgeglichen) und was dort erinnert werden soll (siehe begleiter.js). */
 const orte = () => (state.settings.orte ??= []);
+let ortTechnik = '';
 function syncOrte() {
-  safely('Orte', () => dev()?.ortWatch?.(JSON.stringify(ortWatch(orte(), ownReminders()))));
+  safely('Orte', () => {
+    const watch = ortWatch(orte(), ownReminders(), {
+      notizen: PRIV ? (state.brain ?? []).filter((n) => n.ort) : [],
+      heimRunde: state.settings.heimRunde !== false && state.settings.eveningBrief !== false ? { ab: '17:00', erledigt: state.settings.eveningDay || '' } : null,
+      verkehr: state.settings.verkehrHeim !== false,
+    });
+    const res = dev()?.ortWatch?.(JSON.stringify(watch));
+    if (typeof res === 'string' && res !== ortTechnik) {
+      ortTechnik = res;
+      if (watch.length) logEv('ORT', `${watch.length} Ort(e) beobachtet – ${res || 'ok'}`);
+    }
+  });
 }
-function herePosition() {
+/** Aktueller Standort – auf Wunsch genau: wartet bis zu 20 s auf ein gutes GPS-Signal (drinnen oft 50–300 m daneben). */
+function herePosition({ genau = true } = {}) {
   return new Promise((ok, fail) => {
-    if (!navigator.geolocation) return fail(new Error('Standort ist hier nicht verfügbar'));
-    navigator.geolocation.getCurrentPosition((pos) => ok(pos.coords), () => fail(new Error('Standort nicht freigegeben')), { enableHighAccuracy: true, maximumAge: 60e3, timeout: 20000 });
+    const g = navigator.geolocation;
+    if (!g) return fail(new Error('Standort ist hier nicht verfügbar'));
+    const opts = { enableHighAccuracy: true, maximumAge: genau ? 0 : 60e3, timeout: 20000 };
+    if (!genau || !g.watchPosition) return g.getCurrentPosition((pos) => ok(pos.coords), () => fail(new Error('Standort nicht freigegeben')), opts);
+    let best = null;
+    let id = null;
+    const done = () => {
+      g.clearWatch?.(id);
+      clearTimeout(timer);
+      best ? ok(best) : fail(new Error('kein Standort-Signal'));
+    };
+    const timer = setTimeout(done, 20000);
+    id = g.watchPosition(
+      (pos) => {
+        if (!best || pos.coords.accuracy < best.accuracy) best = pos.coords;
+        if (best.accuracy <= 25) done();
+      },
+      () => (best ? done() : (g.clearWatch?.(id), clearTimeout(timer), fail(new Error('Standort nicht freigegeben')))),
+      opts,
+    );
   });
 }
 const BG_LOC = 'android.permission.ACCESS_BACKGROUND_LOCATION';
-function placeReminder(text, ortName) {
+const FINE_LOC = 'android.permission.ACCESS_FINE_LOCATION';
+/** Erinnerung an einem Ort oder einer Gruppe; input: ort, bei (ankommen|verlassen), jedes_mal, ab_uhrzeit, bis_uhrzeit, nur_werktags. */
+function placeReminder(text, ortName, input = {}) {
   const o = findOrt(orte(), ortName);
-  if (!o) return { gestellt: false, hinweis: `Den Ort „${ortName}“ kenne ich noch nicht. Bitte dein Gegenüber, dort „Merk dir diesen Ort als ${ortName}“ zu sagen (orte_verwalten).`, orte: orte().map((x) => x.name) };
-  ownReminders().push({ id: newId(), ort: o.id, text, created: Date.now(), changed: Date.now() });
+  if (!o)
+    return {
+      gestellt: false,
+      hinweis:
+        `Den Ort „${ortName}“ kenne ich noch nicht. Frag dein Gegenüber nach der Adresse oder dem Kontakt (z. B. „bei den ` +
+        'Schwiegereltern“ → Kontakt), oder ob du das WLAN bzw. den Standort hier nehmen sollst – dann orte_verwalten und danach diese Erinnerung noch einmal.',
+      orte: orte().map((x) => x.name),
+    };
+  const r = {
+    id: newId(),
+    ort: o.gruppe ? gruppenKey(o.gruppe) : o.id,
+    text,
+    wann: /verlass|weg|geh/i.test(input.bei ?? '') ? 'weg' : 'an',
+    ...(input.jedes_mal ? { jedes: true } : {}),
+    ...(hhmm(input.ab_uhrzeit) ? { von: hhmm(input.ab_uhrzeit) } : {}),
+    ...(hhmm(input.bis_uhrzeit) ? { bis: hhmm(input.bis_uhrzeit) } : {}),
+    ...(input.nur_werktags ? { werktags: true } : {}),
+    created: Date.now(),
+    changed: Date.now(),
+  };
+  ownReminders().push(r);
   reminderChanged();
-  logEv('ERINNERUNG', 'an einem Ort gestellt');
+  logEv('ERINNERUNG', `an einem Ort gestellt (${wannText(r)})`);
   const bg = dev()?.hasPerm?.(BG_LOC);
   if (bg === false) dev()?.askPerm?.(BG_LOC);
-  return { gestellt: true, ort: o.name, text, ...(bg === false ? { hinweis: 'Damit es auch bei geschlossener App klappt, muss der Standort „immer“ erlaubt sein – Android fragt gleich danach.' } : {}) };
+  return {
+    gestellt: true,
+    ort: o.gruppe ? `Gruppe ${o.gruppe} (${o.orte.length} Orte)` : o.name,
+    wann: wannText(r),
+    text,
+    ...(bg === false ? { hinweis: 'Damit es auch bei geschlossener App klappt, muss der Standort „immer“ erlaubt sein – Android fragt gleich danach.' } : {}),
+  };
+}
+/** Ort anlegen oder aktualisieren (gleicher Name = derselbe Ort). */
+function putOrt(name, data) {
+  const old = orte().find((x) => x.name.toLowerCase() === name.toLowerCase());
+  if (old) Object.assign(old, data);
+  else if (orte().length >= ORTE_MAX) throw new Error(`Höchstens ${ORTE_MAX} Orte – erst einen löschen.`);
+  else orte().push({ id: newId(), name, radius: ORT_RADIUS, ...data });
+  save();
+  syncOrte();
+  renderOrte();
+  return old ? 'aktualisiert' : 'gemerkt';
+}
+/** Wo bin ich gerade (laut Gerät), und was steht dort an. */
+function placeNowIds() {
+  return state.placeNow ?? [];
+}
+function pollPlace() {
+  const raw = safely('Orte', () => dev()?.placeState?.());
+  if (!raw) return;
+  let st = {};
+  try {
+    st = JSON.parse(raw);
+  } catch {}
+  // drin seit höchstens 12 h (ein verpasstes „Verlassen“ soll nicht ewig hängen bleiben)
+  state.placeNow = Object.entries(st.drin ?? {})
+    .filter(([, t]) => Date.now() - t < 12 * 3600e3)
+    .map(([id]) => id);
+  state.wifiNow = st.wlan || '';
+  for (const ev of st.ereignisse ?? []) {
+    const o = orte().find((x) => x.id === ev.ort);
+    if (!o) continue;
+    logEv('ORT', `${ev.an ? 'angekommen' : 'verlassen'}: ${o.name} (${ev.wie})`);
+    // Büro verlassen (Feierabend): Verkehrslage für den Heimweg – nur, wenn es eben erst war
+    if (!ev.an && isOffice(o) && state.settings.verkehrHeim !== false && Date.now() - ev.t < 30 * 60e3) verkehrHeim();
+  }
+  renderPlaceQuiet();
+}
+/** Leiser Ort (z. B. Büro): nichts vorlesen, keine eigene Initiative – nur still anzeigen. */
+const placeQuiet = () => orte().some((o) => o.leise && placeNowIds().includes(o.id));
+function renderPlaceQuiet() {
+  document.body.classList.toggle('place-quiet', placeQuiet());
+}
+let verkehrDay = '';
+function verkehrHeim() {
+  if (verkehrDay === todayKey() || state.busy || !appToolsActive()) return;
+  verkehrDay = todayKey();
+  logEv('ORT', 'Feierabend – Verkehrslage für den Heimweg');
+  send('🚗 Feierabend – wie ist die Verkehrslage auf meinem Heimweg?');
 }
 async function ortTool(input) {
   const aktion = input?.aktion ?? 'liste';
-  if (aktion === 'liste') return { orte: orte().map((o) => ({ name: o.name, erinnerungen: ownReminders().filter((r) => r.ort === o.id && !r.ack).map((r) => r.text) })) };
+  const show = (o) => ({
+    name: o.name,
+    erkannt_ueber: { auto: `Bluetooth „${o.bt}“`, wlan: `WLAN „${o.ssid}“`, adresse: o.adresse, standort: 'gespeicherter Standort' }[ortArt(o)],
+    ...(o.lat != null ? { umkreis_m: o.radius || ORT_RADIUS } : {}),
+    ...(o.gruppe ? { gruppe: o.gruppe } : {}),
+    ...(o.leise ? { leise: true } : {}),
+    erinnerungen: ownReminders().filter((r) => !r.ack && (r.ort === o.id || (o.gruppe && r.ort === gruppenKey(o.gruppe)))).map((r) => `${r.text} (${wannText(r)})`),
+  });
+  if (aktion === 'liste') return { orte: orte().map(show), ...(orte().length ? {} : { hinweis: 'Noch keine Orte gemerkt.' }) };
+  if (aktion === 'wo_bin_ich') {
+    pollPlace();
+    const here = hereNow(orte(), placeNowIds(), ownReminders(), state.brain ?? []);
+    return here.length ? { hier: here } : { hier: [], hinweis: 'Laut Handy gerade an keinem gemerkten Ort.', wlan: state.wifiNow || undefined };
+  }
   const name = String(input?.name ?? '').trim().slice(0, 60);
   if (!name) throw new Error('Wie soll der Ort heißen?');
+  const o = findOrt(orte(), name);
   if (aktion === 'loeschen') {
-    const o = findOrt(orte(), name);
-    if (!o) return { geloescht: false, hinweis: 'Diesen Ort gibt es nicht.' };
+    if (!o || o.gruppe) return { geloescht: false, hinweis: 'Diesen Ort gibt es nicht.' };
     state.settings.orte = orte().filter((x) => x !== o);
     state.erinnerungen = ownReminders().filter((r) => r.ort !== o.id);
     reminderChanged();
+    renderOrte();
     return { geloescht: o.name };
   }
-  if (!dev()?.hasPerm?.('android.permission.ACCESS_FINE_LOCATION')) dev()?.askPerm?.('android.permission.ACCESS_FINE_LOCATION');
-  const c = await herePosition();
-  const old = findOrt(orte(), name);
-  if (old) Object.assign(old, { lat: c.latitude, lon: c.longitude });
-  else if (orte().length >= ORTE_MAX) throw new Error(`Höchstens ${ORTE_MAX} Orte – erst einen löschen.`);
-  else orte().push({ id: newId(), name, lat: c.latitude, lon: c.longitude, radius: ORT_RADIUS });
-  save();
-  syncOrte();
-  logEv('ORT', `${old ? 'aktualisiert' : 'gemerkt'} (Genauigkeit ${Math.round(c.accuracy ?? 0)} m)`);
-  return { gemerkt: name, genauigkeit_m: Math.round(c.accuracy ?? 0) };
+  if (aktion === 'einstellen' || aktion === 'umbenennen') {
+    if (!o || o.gruppe) return { geaendert: false, hinweis: 'Diesen Ort gibt es nicht.' };
+    if (input.neuer_name) o.name = String(input.neuer_name).trim().slice(0, 60);
+    if (Number(input.umkreis_m) > 0) o.radius = Math.min(2000, Math.max(100, Math.round(Number(input.umkreis_m))));
+    if (input.gruppe != null) o.gruppe = String(input.gruppe).trim().slice(0, 40) || undefined;
+    if (input.leise != null) o.leise = !!input.leise;
+    save();
+    syncOrte();
+    renderOrte();
+    return { geaendert: true, ort: show(o) };
+  }
+  const extra = { ...(input.gruppe ? { gruppe: String(input.gruppe).trim().slice(0, 40) } : {}), ...(input.leise != null ? { leise: !!input.leise } : {}), ...(Number(input.umkreis_m) > 0 ? { radius: Math.min(2000, Math.max(100, Math.round(Number(input.umkreis_m)))) } : {}) };
+  if (aktion === 'adresse_merken' || aktion === 'kontakt_merken') {
+    let adresse = String(input.adresse ?? '').trim();
+    if (aktion === 'kontakt_merken') {
+      let list = [];
+      try {
+        list = JSON.parse(dev()?.contactAddress?.(String(input.kontakt ?? name)) || '[]');
+      } catch {}
+      if (!list.length) {
+        if (!dev()?.hasPerm?.('android.permission.READ_CONTACTS')) dev()?.askPerm?.('android.permission.READ_CONTACTS');
+        return { gemerkt: false, hinweis: `Beim Kontakt „${input.kontakt ?? name}“ steht keine Adresse (oder das Adressbuch ist nicht freigegeben). Frag nach der Adresse.` };
+      }
+      if (list.length > 1 && !input.auswahl) return { gemerkt: false, frage: 'Welche Adresse ist gemeint?', auswahl: list.map((x, i) => `${i + 1}: ${x.name} – ${x.adresse}`) };
+      adresse = list[Math.max(0, Number(input.auswahl || 1) - 1)]?.adresse ?? list[0].adresse;
+    }
+    if (!adresse) throw new Error('Welche Adresse?');
+    let hits = [];
+    try {
+      hits = JSON.parse(dev()?.geocode?.(adresse) || '[]');
+    } catch {}
+    if (!hits.length) return { gemerkt: false, hinweis: `Die Adresse „${adresse}“ habe ich nicht gefunden – mit Straße, Hausnummer und Ort noch einmal?` };
+    const h = hits[0];
+    const how = putOrt(name, { lat: h.lat, lon: h.lon, adresse: h.label || adresse, ssid: undefined, bt: undefined, ...extra });
+    logEv('ORT', `${how} über Adresse`);
+    return { gemerkt: name, adresse: h.label || adresse, ...(hits.length > 1 ? { hinweis: `Es gab ${hits.length} Treffer – ich habe den ersten genommen.` } : {}) };
+  }
+  if (aktion === 'wlan_merken') {
+    if (!dev()?.hasPerm?.(FINE_LOC)) {
+      dev()?.askPerm?.(FINE_LOC);
+      return { gemerkt: false, hinweis: 'Android gibt den WLAN-Namen nur mit Standort-Freigabe heraus – bitte erlauben und noch einmal.' };
+    }
+    const ssid = String(input.wlan ?? '').trim() || dev()?.currentWifi?.() || '';
+    if (!ssid) return { gemerkt: false, hinweis: 'Gerade ist kein WLAN verbunden.' };
+    const how = putOrt(name, { ssid, ...extra });
+    logEv('ORT', `${how} über WLAN`);
+    return { gemerkt: name, wlan: ssid, hinweis: 'Erkannt wird das Ankommen (Verbinden mit dem WLAN); für „beim Verlassen“ zusätzlich die Adresse merken.' };
+  }
+  if (aktion === 'auto_merken') {
+    const bt = String(input.bluetooth ?? '').trim() || state.settings.carName || '';
+    if (!bt) return { gemerkt: false, hinweis: 'Welches Bluetooth-Gerät ist das Auto? Unter ⚙ → Handy → Fahrmodus auswählen oder den Namen nennen.' };
+    const how = putOrt(name || 'Auto', { bt, ...extra });
+    logEv('ORT', `${how} über Bluetooth`);
+    return { gemerkt: name || 'Auto', bluetooth: bt };
+  }
+  // hier_merken: aktueller Standort, möglichst genau
+  if (!dev()?.hasPerm?.(FINE_LOC)) dev()?.askPerm?.(FINE_LOC);
+  const c = await herePosition({ genau: true });
+  const acc = Math.round(c.accuracy ?? 0);
+  const how = putOrt(name, { lat: c.latitude, lon: c.longitude, adresse: undefined, ...extra, ...(acc > 150 && !extra.radius ? { radius: Math.min(500, Math.ceil(acc / 50) * 50) } : {}) });
+  logEv('ORT', `${how} (Genauigkeit ${acc} m)`);
+  return { gemerkt: name, genauigkeit_m: acc, ...(acc > 80 ? { hinweis: `Das Signal war nur auf ${acc} m genau – mit der Adresse wird es genauer.` } : {}) };
+}
+/** Knöpfe in den Einstellungen: Name (und Adresse) abfragen, dann wie per Sprache. */
+async function addOrtUi(aktion) {
+  const name = prompt(aktion === 'wlan_merken' ? 'Name für diesen Ort (z. B. Zuhause, Büro):' : 'Name des Orts (z. B. Zuhause, Büro, Schwiegereltern):');
+  if (!name?.trim()) return;
+  let adresse = '';
+  if (aktion === 'adresse_merken') {
+    adresse = prompt('Adresse (Straße Hausnummer, Ort):') ?? '';
+    if (!adresse.trim()) return;
+  }
+  status('📍 Merke mir den Ort …');
+  try {
+    const r = await ortTool({ aktion, name: name.trim(), adresse });
+    status(r.gemerkt ? `📍 „${r.gemerkt}“ gemerkt${r.adresse ? `: ${r.adresse}` : r.wlan ? ` (WLAN ${r.wlan})` : r.genauigkeit_m ? ` (± ${r.genauigkeit_m} m)` : ''}.${r.hinweis ? ` ${r.hinweis}` : ''}` : r.hinweis ?? 'Nicht gemerkt.');
+  } catch (e) {
+    status(`📍 ${e.message}`);
+  }
+}
+$('orteAddr').onclick = () => addOrtUi('adresse_merken');
+$('orteWifi').onclick = () => addOrtUi('wlan_merken');
+$('orteHere').onclick = () => addOrtUi('hier_merken');
+for (const [id, key] of [['cHeimRunde', 'heimRunde'], ['cVerkehrHeim', 'verkehrHeim']]) {
+  $(id).onchange = (e) => {
+    state.settings[key] = e.target.checked;
+    save();
+    syncOrte();
+  };
+}
+/** Ortsliste in den Einstellungen (⚙ → Handy). */
+function renderOrte() {
+  const box = document.getElementById('orteList');
+  if (!box) return;
+  $('orteWrap').hidden = !(PRIV && MOBILE);
+  box.replaceChildren(
+    ...orte().map((o) => {
+      const row = document.createElement('div');
+      row.className = 'ort-row';
+      const art = { auto: '🚗', wlan: '📶', adresse: '🏠', standort: '📍' }[ortArt(o)];
+      const label = document.createElement('span');
+      label.textContent = `${art} ${o.name}${o.gruppe ? ` (${o.gruppe})` : ''}`;
+      label.title = o.adresse || o.ssid || o.bt || 'gespeicherter Standort';
+      row.append(label);
+      if (o.lat != null) {
+        const sel = document.createElement('select');
+        for (const r of ORT_RADIEN) sel.add(new Option(`${r} m`, String(r), false, r === (o.radius || ORT_RADIUS)));
+        sel.onchange = () => ((o.radius = Number(sel.value)), save(), syncOrte());
+        row.append(sel);
+      }
+      const quiet = document.createElement('label');
+      quiet.className = 'check';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!o.leise;
+      cb.onchange = () => ((o.leise = cb.checked), save(), renderPlaceQuiet());
+      quiet.append(cb, ' leise');
+      quiet.title = 'Hier nichts vorlesen und keine eigene Initiative';
+      const del = document.createElement('button');
+      del.textContent = '✕';
+      del.title = 'Ort löschen';
+      del.onclick = () => ortTool({ aktion: 'loeschen', name: o.name });
+      row.append(quiet, del);
+      return row;
+    }),
+  );
+  if (!orte().length) box.textContent = 'Noch keine Orte – sag z. B. „Merk dir Hauptstraße 5, Hannover als Zuhause“ oder „Merk dir dieses WLAN als Büro“.';
 }
 /** Erinnerungen geändert: speichern, neu planen, Leiste nachziehen und gleich abgleichen (NAS / WLAN). */
 function reminderChanged() {
@@ -9984,6 +10233,8 @@ function ackReminder(key, was = 'erledigt') {
   const id = String(key).split(':')[1];
   const r = ownReminders().find((x) => x.id === id);
   if (!r) return renderReminderBar();
+  // „jedes Mal“ an einem Ort: Erledigt schließt nur diese Meldung, die Erinnerung bleibt (löschen über die Liste)
+  if (r.jedes && was !== 'spaeter') return renderReminderBar();
   if (was === 'spaeter') {
     r.at = Date.now() + 10 * 60e3;
     r.done = false;
@@ -10484,7 +10735,7 @@ function readNotification(ev) {
   const text = String(ev.text ?? '').replace(/\s+/g, ' ').slice(0, 280);
   status(`💬 ${ev.title} (${app}): ${text}`);
   fireEvent('reminder', 3000);
-  if (state.settings.speak) tts.enqueue(`Nachricht von ${ev.title}: ${text}`, { local: true });
+  if (state.settings.speak && !placeQuiet()) tts.enqueue(`Nachricht von ${ev.title}: ${text}`, { local: true });
 }
 
 // ---- Bildschirm fragen: ein Bildschirmfoto (nach Android-Freigabe) geht mit der Frage an Claude
@@ -11281,6 +11532,7 @@ document.addEventListener('visibilitychange', () => {
   screenIsOff = false;
   // Ergebnis der Nachtschicht zuerst – die Morgenrunde kann dann davon erzählen
   safely('Nachtschicht', takeNight);
+  if (PRIV) safely('Orte', pollPlace);
   // App wieder geöffnet: ist gerade Morgen- oder Feierabendrunde fällig, kommt sie jetzt
   if (!state.locked && (morningDue() || eveningDue())) setTimeout(() => personalGreeting().catch(() => {}), 1500);
 });
@@ -11294,7 +11546,7 @@ const INITIATIVE_MAX = 2;
 async function maybeInitiative({ force = false } = {}) {
   const p = persona();
   if (!PRIV || p.immersion === false || p.selbstOn === false) return null;
-  if (!force && (state.settings.initiative === false || budgetSaving() || state.drive || state.locked || document.hidden)) return null;
+  if (!force && (state.settings.initiative === false || budgetSaving() || state.drive || state.locked || document.hidden || placeQuiet())) return null;
   if (!force && (state.busy || tts.speaking || state.micActive || state.transcribing || state.dnd)) return null;
   const hour = new Date().getHours();
   const day = todayKey();
@@ -11785,7 +12037,10 @@ function startPhoneFeatures() {
   if (PRIV && !SAFE) {
     safely('Nachtschicht', takeNight);
     safely('Nachtschicht', planNight);
+    safely('Orte', pollPlace);
+    setInterval(() => safely('Orte', pollPlace), 5 * 60e3);
   }
+  safely('Orte', renderOrte);
   window.KIFloat?.setDock?.(state.settings.floatDock !== false);
   refreshFloat();
   intentsReady = true;
@@ -11807,6 +12062,9 @@ function startPhoneFeatures() {
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
   logLines: () => LOG.slice(),
+  pollPlace,
+  placeQuiet,
+  renderOrte,
   SAFE,
   BOOT,
   safely,

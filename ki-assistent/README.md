@@ -153,8 +153,11 @@ Tageszeit, Begrüßung beim Start, Status-Leuchte, Sprechblase (z. B. im Büro o
 - **Begleiter bei geschlossener App** (Beta 80): Morgen- und Feierabendrunde als Benachrichtigung zur gewählten Uhrzeit
   (Antippen startet die Runde); **Nachtschicht** – nachts zwischen 1 und 6 Uhr, nur beim Laden im WLAN, arbeitet die Figur
   einen Schritt an einem Vorhaben weiter (der Claude-Schlüssel bleibt im verschlüsselten Speicher des Geräts);
-  **Erinnerungen an Orten** („Merk dir diesen Ort als Supermarkt“ → „Erinnere mich an Milch, wenn ich beim Supermarkt
-  bin“) – die Orte bleiben nur auf dem Handy.
+  **Orte und Situationen** (Beta 87): Orte per Adresse, Kontakt-Adresse, WLAN (am genauesten für Zuhause/Büro),
+  Auto-Bluetooth oder „hier“ (wartet auf genaues GPS); Erinnerungen beim Ankommen oder Verlassen, einmal oder jedes Mal,
+  mit Zeitfenster/werktags; Ortsgruppen („Supermarkt“); Notizen mit Ort erscheinen dort; „Was steht hier an?“;
+  Feierabendrunde beim Heimkommen, Verkehrslage beim Verlassen des Büros; leise Orte (nichts vorlesen). Erkennung über
+  die Google-Ortungsdienste (sonst Android-Näherungsalarm) – die Orte bleiben nur auf dem Handy.
 - **Handy steuern**: Apps öffnen, Navigation, Wecker/Timer, Musik, YouTube, Lautstärke, Taschenlampe, „An Claude: …“;
   Anrufe und Nachrichten (auch WhatsApp, per Name aus dem Adressbuch) werden nur vorbereitet – gesendet wird per Tippen.
   Bei Telefonaten pausiert die Figur.

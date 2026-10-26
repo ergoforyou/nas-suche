@@ -3483,6 +3483,95 @@ const b80f = await page.evaluate(async () => {
   return out;
 });
 check(b80f.startup && b80f.pause === 1200 && b80f.acked && /livePauseMs/.test(b80f.row ?? ''), 'Selbsttest beim Start: Einstellungen und Daten geprüft, Kaputtes repariert, steht unter „Läuft alles?“', JSON.stringify(b80f));
+// Beta 87 (Privat): Orte und Situationen – Adresse, Kontakt, WLAN, Gruppen, Zeitfenster, Notizen mit Ort, „Was steht hier
+// an?“, leise Orte, Verkehrslage beim Verlassen des Büros
+await page.evaluate(() => (window.__app.state.busy = false));
+const b87 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const watches = [];
+  let place = { drin: {}, ereignisse: [], wlan: '' };
+  const had = window.KIDevice;
+  window.KIDevice = {
+    ...(had ?? {}),
+    hasPerm: () => true,
+    askPerm() {},
+    ortWatch: (j) => (watches.push(JSON.parse(j)), 'Google-Ortung'),
+    geocode: (q) => JSON.stringify(/Hauptstraße/.test(q) ? [{ lat: 52.37, lon: 9.73, label: 'Hauptstraße 5, 30159 Hannover' }] : /Podbi/.test(q) ? [{ lat: 52.39, lon: 9.76, label: 'Podbielskistraße 100, Hannover' }] : /Gartenweg|Lindenallee/.test(q) ? [{ lat: 52.2, lon: 9.9, label: q }] : []),
+    contactAddress: (n) => JSON.stringify(/Schmidt/.test(n) ? [{ name: 'Erika Schmidt', adresse: 'Gartenweg 3, Celle' }, { name: 'Hans Schmidt', adresse: 'Lindenallee 7, Peine' }] : []),
+    currentWifi: () => 'Firma-WLAN',
+    placeState: () => JSON.stringify(place),
+    setReminders() {},
+    dismissReminder() {},
+  };
+  const keep = { orte: app.orte().slice(), er: app.state.erinnerungen.slice(), prov: app.state.settings.provider };
+  app.state.settings.orte = [];
+  const last = () => watches.at(-1) ?? [];
+  const z = await app.runAppTool('orte_verwalten', { aktion: 'adresse_merken', name: 'Zuhause', adresse: 'Hauptstraße 5, Hannover' });
+  out.addr = z.gemerkt === 'Zuhause' && /30159/.test(z.adresse);
+  const bad = await app.runAppTool('orte_verwalten', { aktion: 'adresse_merken', name: 'Nirgends', adresse: 'Gibtsnichtweg 99' });
+  out.badAddr = bad.gemerkt === false && /nicht gefunden/.test(bad.hinweis);
+  const r1 = await app.runAppTool('erinnerung_setzen', { text: 'Post aus dem Briefkasten holen', ort: 'wenn ich zu Hause bin', jedes_mal: true, ab_uhrzeit: '17:00' });
+  out.r1 = r1.gestellt && /jedes Mal, ab 17:00/.test(r1.wann);
+  const home = last().find((x) => x.name === 'Zuhause');
+  out.homeWatch = !!home?.texte.some((t) => t.text === 'Post aus dem Briefkasten holen' && t.jedes && t.von === '17:00') && home.texte.some((t) => t.art === 'runde');
+  const w = await app.runAppTool('orte_verwalten', { aktion: 'wlan_merken', name: 'Büro' });
+  out.wifi = w.wlan === 'Firma-WLAN';
+  const k1 = await app.runAppTool('orte_verwalten', { aktion: 'kontakt_merken', name: 'Schwiegereltern', kontakt: 'Schmidt' });
+  out.ask = k1.gemerkt === false && k1.auswahl?.length === 2;
+  const k2 = await app.runAppTool('orte_verwalten', { aktion: 'kontakt_merken', name: 'Schwiegereltern', kontakt: 'Schmidt', auswahl: 2 });
+  out.contact = k2.gemerkt === 'Schwiegereltern' && /Lindenallee/.test(k2.adresse);
+  await app.runAppTool('orte_verwalten', { aktion: 'adresse_merken', name: 'Rewe Podbi', adresse: 'Podbielskistraße 100', gruppe: 'Supermarkt', umkreis_m: 300 });
+  const g = await app.runAppTool('erinnerung_setzen', { text: 'Milch', ort: 'beim Supermarkt' });
+  out.group = g.gestellt && /Gruppe Supermarkt/.test(g.ort);
+  const unknown = await app.runAppTool('erinnerung_setzen', { text: 'Brötchen', ort: 'beim Bäcker' });
+  out.unknown = unknown.gestellt === false && /Adresse oder dem Kontakt/.test(unknown.hinweis);
+  await app.runAppTool('notiz_anlegen', { titel: 'Dübel 8 mm', text: 'für das Regal', ort: 'Supermarkt' });
+  const rewe = last().find((x) => x.name === 'Rewe Podbi');
+  out.reweWatch = rewe?.radius === 300 && rewe.texte.some((t) => t.text === 'Milch') && rewe.texte.some((t) => t.art === 'notiz' && /Dübel/.test(t.text));
+  const reweId = app.orte().find((o) => o.name === 'Rewe Podbi').id;
+  const bueroId = app.orte().find((o) => o.name === 'Büro').id;
+  // „Was steht hier an?“
+  place = { drin: { [reweId]: Date.now() }, ereignisse: [], wlan: '' };
+  const here = await app.runAppTool('orte_verwalten', { aktion: 'wo_bin_ich' });
+  out.here = here.hier?.[0]?.ort === 'Rewe Podbi' && here.hier[0].erinnerungen.some((e) => /Milch/.test(e)) && here.hier[0].notizen.includes('Dübel 8 mm');
+  // leiser Ort: nichts vorlesen
+  await app.runAppTool('orte_verwalten', { aktion: 'einstellen', name: 'Büro', leise: true });
+  place = { drin: { [bueroId]: Date.now() }, ereignisse: [], wlan: 'Firma-WLAN' };
+  app.pollPlace();
+  const said = [];
+  const enq = app.tts.enqueue;
+  app.tts.enqueue = (t) => said.push(t);
+  const notifyBefore = app.state.settings.notifyOn;
+  app.state.settings.notifyOn = true;
+  app.readNotification({ app: 'com.whatsapp', title: 'Anna', text: 'Hallo' });
+  app.state.settings.notifyOn = notifyBefore;
+  app.tts.enqueue = enq;
+  out.quiet = app.placeQuiet() && !said.length;
+  // „jedes Mal“: Erledigt schließt nur die Meldung
+  const rep = app.state.erinnerungen.find((r) => r.text === 'Post aus dem Briefkasten holen');
+  app.ackReminder(`o:${rep.id}:123`, 'erledigt');
+  out.repeatStays = !rep.ack;
+  // Büro verlassen → Verkehrslage für den Heimweg (einmal am Tag)
+  app.state.settings.provider = 'anthropic';
+  const before = app.history().length;
+  place = { drin: {}, ereignisse: [{ ort: bueroId, an: false, t: Date.now(), wie: 'wlan' }], wlan: '' };
+  app.pollPlace();
+  await new Promise((r) => setTimeout(r, 1500));
+  out.traffic = app.history().slice(before).some((m) => m.role === 'user' && /Verkehrslage auf meinem Heimweg/.test(m.content));
+  // Liste in den Einstellungen
+  app.renderOrte();
+  out.list = document.querySelectorAll('#orteList .ort-row').length;
+  Object.assign(app.state.settings, { orte: keep.orte, provider: keep.prov });
+  app.state.erinnerungen = keep.er;
+  if (had) window.KIDevice = had;
+  else delete window.KIDevice;
+  return out;
+});
+await page.waitForFunction(() => !window.__app.state.busy, null, { timeout: 15000 }).catch(() => {});
+check(b87.addr && b87.badAddr && b87.wifi && b87.ask && b87.contact, 'Orte: per Adresse, WLAN und Kontakt (bei mehreren Adressen Rückfrage)', JSON.stringify(b87));
+check(b87.r1 && b87.homeWatch && b87.group && b87.unknown && b87.reweWatch, 'Orte: Zeitfenster, jedes Mal, Gruppen, Notizen mit Ort, Feierabendrunde beim Heimkommen; unbekannter Ort → Rückfrage', JSON.stringify(b87));
+check(b87.here && b87.quiet && b87.repeatStays && b87.traffic && b87.list >= 4, 'Orte: „Was steht hier an?“, leiser Ort, „jedes Mal“ bleibt, Verkehrslage beim Verlassen des Büros, Liste', JSON.stringify(b87));
 // Beta 85: Startschutz – nach mehreren Fehlstarts sicherer Modus mit den letzten Fehlern, „Normal neu starten“
 await page.evaluate(() => {
   localStorage.setItem('ki-start', JSON.stringify({ n: 3, t: Date.now() }));

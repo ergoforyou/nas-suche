@@ -138,7 +138,7 @@ public class KIReminder extends BroadcastReceiver {
             }
             Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             // Morgen-/Feierabendrunde: Antippen öffnet die App und startet die Runde – ohne Erledigt-Knöpfe
-            boolean round = key.startsWith("runde:");
+            boolean round = key.startsWith("runde:") || key.startsWith("verkehr:") || key.startsWith("n:");
             Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, CHANNEL) : new Notification.Builder(c);
             b.setSmallIcon(R.drawable.ic_ki_mic)
                 .setContentTitle(title)

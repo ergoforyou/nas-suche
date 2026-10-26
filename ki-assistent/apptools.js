@@ -195,6 +195,7 @@ const APP_TOOLS = [
         tags: { type: 'array', items: { type: 'string' }, description: '2–5 kurze Stichworte' },
         offen: { type: 'boolean', description: 'true = noch zu erledigen (offener Punkt)' },
         faellig: { type: 'string', description: 'optional: Fälligkeit YYYY-MM-DD' },
+        ort: { type: 'string', description: 'optional: gemerkter Ort/Gruppe – beim Ankommen dort zeigt das Handy die Notiz („Für den Baumarkt: Dübel 8 mm“)' },
         schritte: { type: 'array', items: { type: 'string' }, description: 'Vorhaben: Arbeitsschritte (im eigenen Notizbuch arbeitest du sie in ruhigen Minuten selbst ab)' },
       },
       required: ['text'],
@@ -240,6 +241,7 @@ const APP_TOOLS = [
         text_anhaengen: { type: 'string', description: 'wird unten angefügt' },
         ordner: { type: 'string', enum: ['eingang', 'projekte', 'themen', 'personen', 'tagebuch', 'archiv'] },
         projekt: { type: 'string' },
+        ort: { type: 'string', description: 'gemerkter Ort/Gruppe, an dem die Notiz erscheinen soll ("" = keiner)' },
         tags: { type: 'array', items: { type: 'string' } },
         offen: { type: 'boolean' },
         erledigt: { type: 'boolean' },
@@ -259,14 +261,21 @@ const APP_TOOLS = [
       'Stellt eine Erinnerung oder einen Timer auf dem Gerät (ohne Google, auch offline): „Erinnere mich in 20 Minuten an ' +
       'den Rückruf“, „Weck mich um 6:30“, „Morgen um 9 an den Zahnarzt erinnern“. Entweder in_minuten oder zeitpunkt ' +
       '(Ortszeit YYYY-MM-DDTHH:MM). Sag danach kurz, wann du erinnerst. Handy: statt einer Zeit auch an einem gemerkten ' +
-      'Ort – „Erinnere mich an Milch, wenn ich beim Supermarkt bin“ → ort: „Supermarkt“ (Orte siehe orte_verwalten).',
+      'Ort – „Erinnere mich an Milch, wenn ich beim Supermarkt bin“ → ort: „Supermarkt“, auch beim Verlassen, jedes Mal ' +
+      'und mit Zeitfenster („wenn ich nach 17 Uhr zu Hause bin“). Kennt die App den Ort nicht, sagt das Ergebnis, was ' +
+      'zu fragen ist (Adresse, Kontakt, WLAN) – dann orte_verwalten und die Erinnerung erneut stellen.',
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Woran erinnert werden soll (kurz)' },
         in_minuten: { type: 'number', description: 'In wie vielen Minuten (für Timer)' },
         zeitpunkt: { type: 'string', description: 'Ortszeit YYYY-MM-DDTHH:MM' },
-        ort: { type: 'string', description: 'Name eines gemerkten Orts (statt Zeit): erinnert beim Ankommen dort' },
+        ort: { type: 'string', description: 'Name eines gemerkten Orts oder einer Gruppe (statt Zeit)' },
+        bei: { type: 'string', enum: ['ankommen', 'verlassen'], description: 'Ort: beim Ankommen (Standard) oder Verlassen' },
+        jedes_mal: { type: 'boolean', description: 'Ort: jedes Mal statt nur einmal („jedes Mal, wenn ich nach Hause komme …“)' },
+        ab_uhrzeit: { type: 'string', description: 'Ort: nur ab dieser Uhrzeit (HH:MM)' },
+        bis_uhrzeit: { type: 'string', description: 'Ort: nur bis zu dieser Uhrzeit (HH:MM)' },
+        nur_werktags: { type: 'boolean', description: 'Ort: nur Montag bis Freitag' },
       },
       required: ['text'],
     },
@@ -276,11 +285,28 @@ const APP_TOOLS = [
     privatOnly: true,
     mobileOnly: true,
     description:
-      'Gemerkte Orte für Erinnerungen an Orten (bleiben nur auf dem Handy): „Merk dir diesen Ort als Supermarkt“ → ' +
-      'aktion hier_merken mit name (nimmt den aktuellen Standort); „Welche Orte kennst du?“ → liste; löschen mit name.',
+      'Gemerkte Orte (bleiben nur auf dem Handy) für Erinnerungen und Notizen an Orten. Am genauesten: adresse_merken ' +
+      '(„Merk dir Hauptstraße 5, Hannover als Zuhause“), kontakt_merken (Adresse aus dem Adressbuch: „bei den ' +
+      'Schwiegereltern“ → kontakt „Schmidt“), wlan_merken (das gerade verbundene WLAN – ideal für Zuhause/Büro), ' +
+      'auto_merken (Auto-Bluetooth). hier_merken nimmt den aktuellen Standort (wartet auf ein genaues Signal). ' +
+      'einstellen: umkreis_m, gruppe (mehrere Supermärkte = Gruppe „Supermarkt“), leise (dort nichts vorlesen, keine ' +
+      'eigene Initiative), neuer_name. wo_bin_ich: wo das Handy gerade ist und was dort ansteht („Was steht hier an?“). ' +
+      'Kennst du einen Ort nicht, frag nach Adresse oder Kontakt, statt zu raten.',
     input_schema: {
       type: 'object',
-      properties: { aktion: { type: 'string', enum: ['hier_merken', 'liste', 'loeschen'] }, name: { type: 'string' } },
+      properties: {
+        aktion: { type: 'string', enum: ['adresse_merken', 'kontakt_merken', 'wlan_merken', 'auto_merken', 'hier_merken', 'einstellen', 'liste', 'wo_bin_ich', 'loeschen'] },
+        name: { type: 'string', description: 'Name des Orts (Zuhause, Büro, Schwiegereltern, Supermarkt Lister Meile …)' },
+        adresse: { type: 'string', description: 'adresse_merken: Straße Hausnummer, Ort' },
+        kontakt: { type: 'string', description: 'kontakt_merken: Name im Adressbuch' },
+        auswahl: { type: 'integer', description: 'kontakt_merken: Nummer der Adresse, wenn es mehrere gibt' },
+        wlan: { type: 'string', description: 'wlan_merken: WLAN-Name (leer = das gerade verbundene)' },
+        bluetooth: { type: 'string', description: 'auto_merken: Name des Bluetooth-Geräts (leer = das Auto aus dem Fahrmodus)' },
+        umkreis_m: { type: 'integer', description: 'Umkreis in Metern (100–2000, Standard 200)' },
+        gruppe: { type: 'string', description: 'Gruppe, z. B. „Supermarkt“' },
+        leise: { type: 'boolean' },
+        neuer_name: { type: 'string' },
+      },
       required: ['aktion'],
     },
   },

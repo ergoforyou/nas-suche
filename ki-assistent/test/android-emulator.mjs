@@ -344,7 +344,20 @@ if (BETA) {
   `);
   console.log('   Start:', JSON.stringify(start));
   check(start.unlocked && !start.errors.length && !start.safe, 'Alltag: Start mit Daten, Vorhaben und Sperre läuft ohne Fehler durch, Entsperren geht', JSON.stringify(start));
-  await run(`KIDevice.nightPlan(''); localStorage.setItem('ki-sperre', JSON.stringify({ on: false })); localStorage.setItem('ki-bereich', 'dienstlich'); return true`);
+  // Orte: Umkreis (Google-Ortung oder Näherungsalarm), WLAN und Auto – Android nimmt sie an, ohne Fehler
+  const orte = await run(`
+    const watch = [
+      { id: 't1', name: 'Zuhause', lat: 52.37, lon: 9.73, radius: 200, texte: [{ id: 'x1', text: 'Test', wann: 'an' }] },
+      { id: 't2', name: 'Büro', ssid: 'Test-WLAN', texte: [{ id: 'x2', text: 'Test', wann: 'an' }] },
+      { id: 't3', name: 'Auto', bt: 'Golf', texte: [{ id: 'x3', text: 'Test', wann: 'an' }] },
+    ];
+    const res = KIDevice.ortWatch(JSON.stringify(watch));
+    const state = JSON.parse(KIDevice.placeState());
+    return { res, state: !!state && typeof state.drin === 'object', geo: typeof KIDevice.geocode('Hannover'), wifi: typeof KIDevice.currentWifi(), contact: typeof KIDevice.contactAddress('Test') };
+  `);
+  console.log('   Orte:', JSON.stringify(orte));
+  check(orte.res && !/^Fehler/.test(orte.res) && orte.state && orte.geo === 'string' && orte.wifi === 'string' && orte.contact === 'string', 'Orte: Android nimmt Umkreis, WLAN und Auto an; Adresse, WLAN-Name und Kontakt-Adresse abfragbar', JSON.stringify(orte));
+  await run(`KIDevice.ortWatch('[]'); KIDevice.nightPlan(''); localStorage.setItem('ki-sperre', JSON.stringify({ on: false })); localStorage.setItem('ki-bereich', 'dienstlich'); return true`);
 }
 
 // 5) Keine Skriptfehler (auch nicht beim Start – die stehen im Systemprotokoll)

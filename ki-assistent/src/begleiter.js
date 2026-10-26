@@ -117,26 +117,118 @@ export function readNightResult(raw) {
   return { noteId: r.noteId, step: r.step, t: r.t, error: r.fehler || null, text, use, model: msgs[0]?.model ?? r.model ?? '' };
 }
 
-// ---------------------------------------------------------------- Erinnerungen an Orten
-export const ORT_RADIUS = 150; // Meter
-export const ORTE_MAX = 20;
+// ---------------------------------------------------------------- Orte und Situationen
+// Ein Ort kann auf drei Arten erkannt werden: Umkreis um einen Punkt (Adresse, Kontakt oder „hier“), ein WLAN
+// („Zuhause“ = mit dem Heim-WLAN verbunden – genau, auch im Haus, ohne GPS) oder ein Bluetooth-Gerät (das Auto).
+// Gemerkte Orte bleiben nur auf dem Handy. Erinnerungen an einem Ort: beim Ankommen oder Verlassen, einmal oder jedes
+// Mal, optional nur in einem Zeitfenster und/oder werktags; Ort kann auch eine Gruppe sein („Supermarkt“).
+export const ORT_RADIUS = 200; // Meter
+export const ORT_RADIEN = [100, 200, 300, 500, 1000];
+export const ORTE_MAX = 30;
 
-/** Ort zu einem Namen („beim Supermarkt“, „zu Hause“) aus der Liste der gemerkten Orte. */
+const normOrt = (s) =>
+  String(s ?? '')
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/\b(wenn|sobald|ich|bin|bist|sind|wieder|komme|ankomme|beim|bei|im|in|am|an|auf|nach|vom|von|zum|zur|zu|der|die|das|dem|den|mein|meine|meinem|meiner|meinen|irgendeinem|einem|einen|ein|einer)\b/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+/** „zu Hause“, „daheim“, „Zuhause“ meinen dasselbe – ebenso „Arbeit“ und „Büro“. */
+const ALIAS = { hause: 'zuhause', daheim: 'zuhause', zuhause: 'zuhause', home: 'zuhause', arbeit: 'buero', buero: 'buero', firma: 'buero', office: 'buero' };
+const canon = (s) => {
+  const n = normOrt(s);
+  return ALIAS[n] ?? ALIAS[n.replace(/\s+/g, '')] ?? n;
+};
+/** Schlüssel einer Ortsgruppe in Erinnerungen („gruppe:supermarkt“). */
+export const gruppenKey = (g) => `gruppe:${canon(g)}`;
+export const isHome = (o) => canon(o?.name) === 'zuhause';
+export const isOffice = (o) => canon(o?.name) === 'buero';
+
+/** Ort oder Gruppe zu einem Namen („beim Supermarkt“, „zu Hause“). Liefert { ort } oder { gruppe, orte } oder null. */
 export function findOrt(orte, q) {
-  const norm = (s) =>
-    String(s ?? '')
-      .toLowerCase()
-      .replace(/\b(beim|bei|im|in|am|an|zum|zur|zu|der|die|das|dem|den|mein|meine|meinem|meiner)\b/g, ' ')
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
-      .trim();
-  const n = norm(q);
+  const n = canon(q);
   if (!n) return null;
-  return orte.find((o) => norm(o.name) === n) ?? orte.find((o) => norm(o.name).includes(n) || n.includes(norm(o.name))) ?? null;
+  const exact = orte.find((o) => canon(o.name) === n);
+  if (exact) return exact;
+  const group = orte.filter((o) => o.gruppe && canon(o.gruppe) === n);
+  if (group.length) return { gruppe: group[0].gruppe, orte: group };
+  return orte.find((o) => canon(o.name).includes(n) || n.includes(canon(o.name))) ?? null;
+}
+/** Wie das Gerät den Ort erkennt (für Anzeige und Hilfe). */
+export const ortArt = (o) => (o.bt ? 'auto' : o.ssid ? 'wlan' : o.adresse ? 'adresse' : 'standort');
+
+/** „17:30“ / „17 Uhr“ / 17 → „17:30“ bzw. null. */
+export function hhmm(v) {
+  const m = String(v ?? '').match(/(\d{1,2})(?:[:.](\d{2}))?/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2] ?? 0);
+  return h < 24 && mi < 60 ? `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}` : null;
+}
+/** Passt der Zeitpunkt in das Fenster einer Erinnerung (von/bis, nur werktags)? Fenster über Mitternacht geht. */
+export function inWindow(r, now = Date.now()) {
+  const d = new Date(now);
+  if (r.werktags && (d.getDay() === 0 || d.getDay() === 6)) return false;
+  const min = d.getHours() * 60 + d.getMinutes();
+  const toMin = (s) => (s ? Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5)) : null);
+  const a = toMin(r.von);
+  const b = toMin(r.bis);
+  if (a == null && b == null) return true;
+  if (a != null && b != null) return a <= b ? min >= a && min < b : min >= a || min < b;
+  return a != null ? min >= a : min < b;
+}
+/** Kurze Beschreibung der Bedingung: „beim Ankommen, jedes Mal, ab 17:00, werktags“. */
+export function wannText(r) {
+  return [
+    r.wann === 'weg' ? 'beim Verlassen' : 'beim Ankommen',
+    r.jedes ? 'jedes Mal' : null,
+    r.von && r.bis ? `${r.von}–${r.bis} Uhr` : r.von ? `ab ${r.von} Uhr` : r.bis ? `bis ${r.bis} Uhr` : null,
+    r.werktags ? 'werktags' : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
 }
 
-/** Was das Gerät überwachen soll: je Ort mit offenen Erinnerungen ein Bereich (Mittelpunkt, Radius, Texte). */
-export function ortWatch(orte, erinnerungen) {
+/**
+ * Was das Gerät überwachen soll. Je Ort: wie er erkannt wird (Umkreis, WLAN, Bluetooth) und welche Einträge beim
+ * Ankommen/Verlassen erscheinen – Erinnerungen (auch über Gruppen), Notizen mit diesem Ort, Feierabendrunde beim
+ * Heimkommen, Verkehrslage beim Verlassen des Büros. Bedingungen (Zeitfenster, werktags, „schon erledigt am …“) prüft
+ * das Gerät selbst, die App muss dafür nicht laufen.
+ */
+export function ortWatch(orte, erinnerungen, { notizen = [], heimRunde = null, verkehr = false } = {}) {
   return orte
-    .map((o) => ({ id: o.id, name: o.name, lat: o.lat, lon: o.lon, radius: o.radius || ORT_RADIUS, texte: erinnerungen.filter((r) => r.ort === o.id && !r.ack).map((r) => ({ id: r.id, text: r.text })) }))
-    .filter((w) => w.texte.length && Number.isFinite(w.lat) && Number.isFinite(w.lon));
+    .map((o) => {
+      const mine = (r) => r.ort === o.id || (o.gruppe && r.ort === gruppenKey(o.gruppe));
+      const texte = erinnerungen
+        .filter((r) => mine(r) && !r.ack)
+        .map((r) => ({ id: r.id, text: r.text, wann: r.wann === 'weg' ? 'weg' : 'an', ...(r.jedes ? { jedes: true } : {}), ...(r.von ? { von: r.von } : {}), ...(r.bis ? { bis: r.bis } : {}), ...(r.werktags ? { werktags: true } : {}) }));
+      const notes = notizen.filter((n) => n.ort && !n.erledigt && (canon(n.ort) === canon(o.name) || (o.gruppe && canon(n.ort) === canon(o.gruppe))));
+      if (notes.length) texte.push({ id: `notizen:${o.id}`, art: 'notiz', wann: 'an', jedes: true, text: notes.map((n) => n.titel).slice(0, 6).join(' · '), anzahl: notes.length });
+      if (heimRunde && isHome(o)) texte.push({ id: 'runde:heim', art: 'runde', wann: 'an', jedes: true, von: heimRunde.ab || '16:00', bis: '22:30', erledigt: heimRunde.erledigt || '' });
+      if (verkehr && isOffice(o)) texte.push({ id: 'verkehr:heim', art: 'verkehr', wann: 'weg', jedes: true, von: '15:00', bis: '21:00', werktags: true });
+      return {
+        id: o.id,
+        name: o.name,
+        ...(Number.isFinite(o.lat) && Number.isFinite(o.lon) ? { lat: o.lat, lon: o.lon, radius: o.radius || ORT_RADIUS } : {}),
+        ...(o.ssid ? { ssid: o.ssid } : {}),
+        ...(o.bt ? { bt: o.bt } : {}),
+        texte,
+      };
+    })
+    .filter((w) => w.texte.length && (w.lat != null || w.ssid || w.bt));
+}
+
+/** Was gerade „hier“ ansteht: offene Erinnerungen und Notizen für die Orte, an denen man gerade ist. */
+export function hereNow(orte, drinIds, erinnerungen, notizen = []) {
+  const here = orte.filter((o) => drinIds.includes(o.id));
+  const out = [];
+  for (const o of here) {
+    const er = erinnerungen.filter((r) => !r.ack && (r.ort === o.id || (o.gruppe && r.ort === gruppenKey(o.gruppe))));
+    const no = notizen.filter((n) => n.ort && !n.erledigt && (canon(n.ort) === canon(o.name) || (o.gruppe && canon(n.ort) === canon(o.gruppe))));
+    out.push({ ort: o.name, erinnerungen: er.map((r) => `${r.text} (${wannText(r)})`), notizen: no.map((n) => n.titel) });
+  }
+  return out;
 }

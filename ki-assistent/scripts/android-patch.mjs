@@ -233,6 +233,8 @@ const PERMS = [
   'android.permission.RECEIVE_BOOT_COMPLETED',
   // Nachtschicht: Auftrag nur im WLAN – Android verlangt dafür den Netzwerkstatus (keine Rückfrage beim Nutzer)
   'android.permission.ACCESS_NETWORK_STATE',
+  // Orte: „Zuhause“ am Heim-WLAN erkennen (Name des verbundenen WLANs lesen)
+  'android.permission.ACCESS_WIFI_STATE',
   'android.permission.USE_EXACT_ALARM',
   ['android.permission.SCHEDULE_EXACT_ALARM', 32],
   // Gespräch im Hintergrund (nur wenn eingeschaltet)
@@ -305,6 +307,12 @@ if (!xml.includes('KIConversationService')) {
         </service>
         <receiver android:name=".KIReminder" android:exported="false" />
         <receiver android:name=".KIOrt" android:exported="false" />
+        <receiver android:name=".KIBluetooth" android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
         <service android:name=".KINachtschicht" android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
         <activity android:name=".KIQuickNote" android:exported="true" android:excludeFromRecents="true"
@@ -412,6 +420,8 @@ if (BETA) {
   const strings = path.join(root, 'android/app/src/main/res/values/strings.xml');
   fs.writeFileSync(strings, fs.readFileSync(strings, 'utf8').replace(/(<string name="(?:app_name|title_activity_main)">)[^<]*/g, '$1KI-Assistent Beta'));
 }
+// Orte: Google-Ortungsdienste (Geofencing) – genauer und sparsamer als der Näherungsalarm von Android
+if (!g.includes('play-services-location')) g = g.replace(/dependencies \{/, "dependencies {\n    implementation 'com.google.android.gms:play-services-location:21.3.0'");
 g = g.replace(/versionCode \d+/, `versionCode ${versionCode}`).replace(/versionName "[^"]*"/, `versionName "${version}"`);
 fs.writeFileSync(gradle, g);
 console.log('Android-Manifest und Version angepasst:', version);

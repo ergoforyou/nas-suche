@@ -1150,6 +1150,23 @@
           </div>
         </label>
         <div id="privCarInfo" class="hint"></div>
+        <div id="orteWrap" hidden>
+          <h3>📍 Orte <span class="beta-badge">Privat</span></h3>
+          <p class="hint">Erinnerungen und Notizen an Orten: beim Ankommen oder Verlassen, einmal oder jedes Mal, auf Wunsch nur zu
+            bestimmten Zeiten („Erinnere mich, wenn ich nach 17 Uhr zu Hause bin, …“). Erkannt über die Adresse, das WLAN
+            (am genauesten für Zuhause/Büro) oder das Auto-Bluetooth – auch bei geschlossener App. Die Orte bleiben nur auf
+            diesem Handy; für die Adresssuche geht nur der Adresstext an den Ortsdienst von Android.</p>
+          <div id="orteList" class="ort-list"></div>
+          <div class="row wrap">
+            <button id="orteAddr">🏠 Adresse …</button>
+            <button id="orteWifi">📶 Dieses WLAN …</button>
+            <button id="orteHere">📍 Hier (genau) …</button>
+          </div>
+          <label class="check"><input id="cHeimRunde" type="checkbox" /> 🌆 Feierabendrunde beim Heimkommen (ab 17 Uhr; braucht einen
+            Ort „Zuhause“)</label>
+          <label class="check"><input id="cVerkehrHeim" type="checkbox" /> 🚗 Beim Verlassen des Büros die Verkehrslage für den Heimweg
+            (werktags 15–21 Uhr; braucht einen Ort „Büro“)</label>
+        </div>
         <h3>Echtzeit-Gespräch <span class="beta-badge">Privat</span></h3>
         <p class="hint">Hören, Denken und Sprechen in einem Schritt (OpenAI Realtime): Antworten in etwa einer halben Sekunde,
           sehr natürliche Stimme, Dazwischenreden jederzeit. Braucht den OpenAI-Schlüssel; kostet pro Gesprächsminute deutlich

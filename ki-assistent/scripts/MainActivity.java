@@ -1425,12 +1425,64 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public String ortWatch(String json) {
             try {
-                KIOrt.store(MainActivity.this, json);
-                return "";
+                return KIOrt.store(MainActivity.this, json);
             } catch (Throwable e) {
                 Log.w("KI-Assistent", "Orte", e);
-                return e.getClass().getSimpleName() + ": " + e.getMessage();
+                return "Fehler: " + e.getClass().getSimpleName() + ": " + e.getMessage();
             }
+        }
+
+        /** Wo man gerade ist (Orte mit Zeitpunkt) und was seit dem letzten Abholen passiert ist. */
+        @JavascriptInterface
+        public String placeState() {
+            try {
+                return KIOrt.takeState(MainActivity.this);
+            } catch (Throwable e) {
+                return "{}";
+            }
+        }
+
+        /** Name des verbundenen WLANs ("" = keins oder keine Standort-Freigabe). */
+        @JavascriptInterface
+        public String currentWifi() {
+            return KIOrt.currentWifi(MainActivity.this);
+        }
+
+        /** Adresse → Koordinaten über den Ortsdienst von Android: [{"lat","lon","label"}] (höchstens 3). */
+        @JavascriptInterface
+        @SuppressWarnings("deprecation")
+        public String geocode(String query) {
+            JSONArray out = new JSONArray();
+            try {
+                if (!android.location.Geocoder.isPresent()) return "[]";
+                java.util.List<android.location.Address> list = new android.location.Geocoder(MainActivity.this, java.util.Locale.GERMANY).getFromLocationName(query, 3);
+                for (android.location.Address a : list == null ? java.util.Collections.<android.location.Address>emptyList() : list) {
+                    StringBuilder label = new StringBuilder();
+                    for (int i = 0; i <= a.getMaxAddressLineIndex(); i++) label.append(i > 0 ? ", " : "").append(a.getAddressLine(i));
+                    out.put(new JSONObject().put("lat", a.getLatitude()).put("lon", a.getLongitude()).put("label", label.toString()));
+                }
+            } catch (Throwable e) {
+                Log.w("KI-Assistent", "Adresse suchen", e);
+            }
+            return out.toString();
+        }
+
+        /** Postanschriften eines Kontakts aus dem Adressbuch: [{"name","adresse"}]. */
+        @JavascriptInterface
+        public String contactAddress(String name) {
+            JSONArray out = new JSONArray();
+            if (name == null || checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return "[]";
+            try (android.database.Cursor cur = getContentResolver().query(
+                android.provider.ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_URI,
+                new String[] { android.provider.ContactsContract.Contacts.DISPLAY_NAME, android.provider.ContactsContract.CommonDataKinds.StructuredPostal.FORMATTED_ADDRESS },
+                android.provider.ContactsContract.Contacts.DISPLAY_NAME + " LIKE ?", new String[] { "%" + name + "%" }, null)) {
+                while (cur != null && cur.moveToNext() && out.length() < 5) {
+                    out.put(new JSONObject().put("name", cur.getString(0)).put("adresse", cur.getString(1)));
+                }
+            } catch (Throwable e) {
+                Log.w("KI-Assistent", "Kontakt-Adresse", e);
+            }
+            return out.toString();
         }
 
         /** Kopfzeile des Widgets: {"name","zwischen","offen"}. */
