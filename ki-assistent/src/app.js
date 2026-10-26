@@ -1313,10 +1313,11 @@ async function send(text) {
     );
   }
 
-  state.place = await currentPlace();
-  // Wortsuche und – sobald berechnet – Bedeutungssuche über alles, was die Figur weiß (ein gemeinsamer Durchlauf)
+  // Vorbereitung gleichzeitig statt nacheinander: Ort und Bedeutungssuche (beide mit Zeitlimit)
+  const tPrep = performance.now();
   const pp = persona();
-  const vec = await semQuery(text, null, 12);
+  const [place, vec] = await Promise.all([currentPlace(), semQuery(text, null, 12, MOBILE ? 600 : 900)]);
+  state.place = place;
   const kbKey = (h) => `k:${kb.docs.indexOf(h.doc)}:${h.i}`;
   state.kbHits = kbActive()
     ? semMerge(searchIndex(kbIndex, text || attachments.map((a) => a.name).join(' '), 5), vec, 'k:', kbKey, (key) => {
@@ -1335,7 +1336,10 @@ async function send(text) {
   state.brainHits = PRIV && state.brain?.length && text ? semMerge(brainSearchIndex(text, 3), vec, 'b:', (n) => `b:${n.id}`, (key) => state.brain.find((n) => `b:${n.id}` === key), 3) : [];
   // klingt nach den eigenen Notizen („was hatte ich notiert …“, „weißt du noch …“): auch Umschreibungen verstehen
   // (das Hilfsmodell nur, solange die Bedeutungssuche noch nicht bereitsteht)
-  if (PRIV && state.brain?.length && !state.brainHits.length && !sem.ready(['b:']) && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text))) state.brainHits = await brainSmart(text, 2);
+  // Hilfsabfragen (Umschreibungen verstehen) laufen gleichzeitig und höchstens 2,5 s – sonst ohne sie weiter
+  const helpers = [];
+  if (PRIV && state.brain?.length && !state.brainHits.length && !sem.ready(['b:']) && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text)))
+    helpers.push(withLimit(brainSmart(text, 2), 2500, []).then((hits) => (state.brainHits = hits)));
   state.ownBrainHits = PRIV && pp.brain?.length && text ? semMerge(brainSearchIndex(text, 2, {}, 'figur'), vec, `f:${pp.id}:`, (n) => `f:${pp.id}:${n.id}`, (key) => pp.brain.find((n) => `f:${pp.id}:${n.id}` === key), 2) : [];
   state.ownBrainLoops = PRIV && persona().brain?.length ? openLoops(persona().brain, 3) : [];
   state.brainLoops = PRIV && /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text) ? openLoops(state.brain, 10) : [];
@@ -1344,8 +1348,13 @@ async function send(text) {
   if (pp.memoryOn && pp.episoden?.length) {
     const eKey = (e) => `e:${pp.id}:${e.id}`;
     state.episodeHits = semMerge(findEpisodes(pp, text, 2, 6), vec, `e:${pp.id}:`, eKey, (key) => pp.episoden.find((e) => eKey(e) === key), 2);
-    if (!state.episodeHits.length && RECALL_RE.test(text) && !sem.ready([`e:${pp.id}:`])) state.episodeHits = await findEpisodesSmart(pp, text, 2, 6);
+    if (!state.episodeHits.length && RECALL_RE.test(text) && !sem.ready([`e:${pp.id}:`]))
+      helpers.push(withLimit(findEpisodesSmart(pp, text, 2, 6), 2500, []).then((hits) => (state.episodeHits = hits)));
   } else state.episodeHits = [];
+  if (helpers.length) await Promise.all(helpers);
+  if (state.timing && !state.timing.ready) state.timing.ready = performance.now();
+  const prepMs = performance.now() - tPrep;
+  if (prepMs > 800) logEv('ZEIT', `Vorbereitung ${Math.round(prepMs)} ms${helpers.length ? ` (${helpers.length} Hilfsabfrage(n))` : ''}`);
   const id = newId();
   state.currentChatId = id;
   // Denklaut: kommt nach gut einer Sekunde noch nichts, sagt die Figur kurz „Hm, Moment …“ (statt Stille)
@@ -3431,7 +3440,10 @@ function showTiming() {
   t.shown = true;
   const s = (a, b) => ((b - a) / 1000).toFixed(1).replace('.', ',') + ' s';
   const now = performance.now();
-  status(`⏱ Erkennen ${s(t.spoke, t.heard)} · erste Worte ${s(t.heard, t.answer)} · Stimme ${s(t.answer, now)} · gesamt ${s(t.spoke, now)}`);
+  const line = `Erkennen ${s(t.spoke, t.heard)} · Vorbereitung ${t.ready ? s(t.heard, t.ready) : '–'} · erste Worte ${s(t.ready ?? t.heard, t.answer)} · Stimme ${s(t.answer, now)} · gesamt ${s(t.spoke, now)}`;
+  status(`⏱ ${line}`);
+  // ins Protokoll (Fehlerbericht): so lässt sich sehen, wo die Zeit bleibt – Spracherkennung, Vorbereitung, KI, Stimme
+  logEv('ZEIT', `${line} (${state.settings.sttEngine === 'cloud' ? 'Erkennung Cloud' : 'Erkennung lokal'}, Stimme ${tts.engine}, ${state.settings.provider} ${state.settings.provider === 'anthropic' ? state.settings.claudeModel : ''})`);
 }
 
 function setHandsFree(on) {
@@ -8359,6 +8371,10 @@ async function semRun() {
     semRunning = false;
   }
 }
+/** Promise mit Zeitlimit: kommt bis dahin nichts, gilt der Ersatzwert (die Antwort wartet nicht länger). */
+function withLimit(p, ms, fallback) {
+  return Promise.race([Promise.resolve(p).catch(() => fallback), new Promise((ok) => setTimeout(() => ok(fallback), ms))]);
+}
 /** Bedeutungssuche mit Zeitlimit – hängt das Modell, geht die Antwort trotzdem sofort raus. */
 async function semQuery(q, prefixes, k = 8, ms = 900) {
   if (!semOn() || !String(q ?? '').trim() || !sem.ready(prefixes)) return [];
@@ -9490,8 +9506,13 @@ async function refreshPlace({ force = false } = {}) {
 }
 async function currentPlace() {
   if (MOBILE && state.settings.placeAuto) {
-    // höchstens 4 s warten – sonst den zuletzt bekannten bzw. eingetragenen Ort nehmen
-    const auto = await Promise.race([refreshPlace(), new Promise((ok) => setTimeout(() => ok(placeCache?.text ?? null), 4000))]);
+    // Antwort nicht aufhalten: ist ein Ort bekannt, gilt er sofort und wird im Hintergrund aufgefrischt;
+    // nur ganz ohne bekannten Ort kurz (höchstens 1,5 s) warten
+    if (placeCache?.text) {
+      refreshPlace().catch(() => {});
+      return placeCache.text;
+    }
+    const auto = await Promise.race([refreshPlace(), new Promise((ok) => setTimeout(() => ok(null), 1500))]);
     if (auto) return auto;
   }
   return String(state.settings.place ?? '').trim();
