@@ -96,8 +96,8 @@ export function App() {
     };
     const ueber = (e: DragEvent) => {
       if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
-      // Über den Miniaturen werden Dateien eingefügt, nicht geöffnet
-      setAblage(!(e.target as Element | null)?.closest?.(".miniaturen"));
+      // Über Miniaturen und Seiten wird eingefügt (mit Markierungslinie), sonst geöffnet
+      setAblage(!(e.target as Element | null)?.closest?.(".miniaturen, .dokumentansicht"));
       window.clearTimeout(uhr);
       uhr = window.setTimeout(() => setAblage(false), 900);
     };
@@ -289,7 +289,12 @@ export function App() {
       <Auftraege />
       <Meldungen />
       <ScreenshotKarte />
-      {ablage && <div className="ablage-hinweis">Dateien hier ablegen zum Öffnen</div>}
+      {ablage && (
+        <div className="ablage-hinweis">
+          Hier ablegen: als neues Dokument öffnen
+          <small>Zum Einfügen zwischen zwei Seiten auf die Seiten oder Miniaturen ziehen</small>
+        </div>
+      )}
     </div>
   );
 }

@@ -122,6 +122,27 @@ export async function dateienEinfuegen(dokId: string, position: number, dateien:
   }
 }
 
+/** Bild aus der Zwischenablage (z. B. Screenshot mit Win+Umschalt+S) als
+ * neue Seite einfügen. Strg+V macht dasselbe nach der aktuellen Seite. */
+export async function zwischenablageEinfuegen(dokId: string, position: number): Promise<void> {
+  let dateien: File[] = [];
+  try {
+    for (const eintrag of await navigator.clipboard.read()) {
+      const typ = eintrag.types.find((t) => t.startsWith("image/"));
+      if (!typ) continue;
+      const blob = await eintrag.getType(typ);
+      dateien.push(new File([blob], `Screenshot.${typ === "image/jpeg" ? "jpg" : "png"}`, { type: typ }));
+    }
+  } catch {
+    dateien = [];
+  }
+  if (!dateien.length) {
+    melden("In der Zwischenablage ist kein Bild – erst einen Screenshot machen (Win+Umschalt+S), dann hier Strg+V.");
+    return;
+  }
+  await dateienEinfuegen(dokId, position, dateien);
+}
+
 let dateiAuswahl: HTMLInputElement | null = null;
 
 export async function dateiEinfuegenDialog(danach = true, d = aktiv()): Promise<void> {

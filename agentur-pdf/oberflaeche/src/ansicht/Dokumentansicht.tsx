@@ -23,9 +23,9 @@ import { Seite } from "./Seite";
 import { AnmerkungsEbene } from "./Anmerkungen";
 import { anmerkungenLaden } from "../zustand/anmerkungen";
 import { istSeitenDrag, laufenderSeitenDrag, seitenDragDaten, zeigerInnerhalb } from "../zustand/seitenDrag";
-import { seitenDrehen, seitenExtrahieren, seitenUebertragen, seitenVerschieben } from "../zustand/seitenaktionen";
+import { dateienEinfuegen, seitenDrehen, seitenExtrahieren, seitenUebertragen, seitenVerschieben, zwischenablageEinfuegen } from "../zustand/seitenaktionen";
 import { Kontextmenue, type MenuePunkt } from "./Kontextmenue";
-import { FileOutput, FileSignature, Printer, RotateCcw, RotateCw } from "lucide-react";
+import { ClipboardPaste, FileOutput, FileSignature, Printer, RotateCcw, RotateCw } from "lucide-react";
 
 interface Anker {
   seite: number;
@@ -495,7 +495,16 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
       : { x: box.x, y: danach ? box.y + box.h + 4 : box.y - 8, b: box.b, h: 4 };
     return { index: box.seite + (danach ? 1 : 0), linie };
   };
+  const istDateiDrag = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
   const seitenDragOver = (e: React.DragEvent) => {
+    if (istDateiDrag(e)) {
+      // PDF, Bild, Word … aus dem Explorer: an dieser Stelle einfügen
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      const a = ablageBei(e);
+      setSeitenAblage((alt) => (a && alt && alt.index === a.index ? alt : a));
+      return;
+    }
     if (!istSeitenDrag(e)) return;
     e.preventDefault();
     const fremd = laufenderSeitenDrag()?.dokId !== dokId;
@@ -504,6 +513,14 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
     setSeitenAblage((alt) => (a && alt && alt.index === a.index ? alt : a));
   };
   const seitenDrop = (e: React.DragEvent) => {
+    if (istDateiDrag(e) && e.dataTransfer.files.length) {
+      e.preventDefault();
+      e.stopPropagation(); // nicht zusätzlich als neues Dokument öffnen
+      const a = ablageBei(e);
+      setSeitenAblage(null);
+      void dateienEinfuegen(dokId, a ? a.index : dok.seitenanzahl, [...e.dataTransfer.files]);
+      return;
+    }
     if (!istSeitenDrag(e)) return;
     e.preventDefault();
     const a = ablageBei(e);
@@ -562,6 +579,7 @@ export function Dokumentansicht({ dokId }: { dokId: string }) {
         { titel: "Links drehen", icon: RotateCcw, aktion: () => void seitenDrehen(-90, nurSeite()) },
         { titel: "Rechts drehen", icon: RotateCw, aktion: () => void seitenDrehen(90, nurSeite()) },
         { titel: "Als neue PDF extrahieren", icon: FileOutput, aktion: () => void seitenExtrahieren(false, nurSeite()) },
+        { titel: "Screenshot / Bild aus Zwischenablage danach einfügen", icon: ClipboardPaste, kuerzel: "Strg+V", aktion: () => void zwischenablageEinfuegen(dokId, seitenMenue.seite + 1) },
         "trenner",
         { titel: "Zur Unterschrift senden …", icon: FileSignature, aktion: () => setzen({ dialog: { art: "signatur", dokId } }) },
       ]

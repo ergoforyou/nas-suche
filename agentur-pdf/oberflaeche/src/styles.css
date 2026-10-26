@@ -1247,6 +1247,14 @@ input[type="range"] {
   border-radius: 12px;
   background: color-mix(in srgb, var(--hg-flaeche) 85%, transparent);
   pointer-events: none;
+  align-content: center;
+  gap: 6px;
+}
+
+.ablage-hinweis small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-schwach, var(--text));
 }
 
 /* ===================================================== M2: Seiten organisieren */

@@ -3,6 +3,7 @@
 // Explorer zwischen zwei Seiten ablegen, Rechtsklick-Menü, Entf zum Löschen.
 
 import {
+  ClipboardPaste,
   Copy,
   Crop,
   FileOutput,
@@ -29,6 +30,7 @@ import {
   seitenLoeschen,
   seitenUebertragen,
   seitenVerschieben,
+  zwischenablageEinfuegen,
 } from "../zustand/seitenaktionen";
 import { auswahlSetzen, holen, setzen, springen } from "../zustand/store";
 import type { Dokument } from "../typen";
@@ -235,6 +237,12 @@ export function Miniaturen({ dok, groesse }: { dok: Dokument; groesse: number })
     { titel: "Leere Seite danach", icon: FilePlus2, aktion: () => void leereSeiteEinfuegen(true, d()) },
     { titel: "Datei einfügen davor …", icon: FileUp, aktion: () => void dateiEinfuegenDialog(false, d()) },
     { titel: "Datei einfügen danach …", icon: FileUp, aktion: () => void dateiEinfuegenDialog(true, d()) },
+    {
+      titel: "Screenshot / Bild aus Zwischenablage danach",
+      icon: ClipboardPaste,
+      kuerzel: "Strg+V",
+      aktion: () => void zwischenablageEinfuegen(dok.id, Math.max(...(d().auswahl.length ? d().auswahl : [d().ansicht.seite])) + 1),
+    },
     "trenner",
     { titel: anzahl > 1 ? `${anzahl} Seiten duplizieren` : "Duplizieren", icon: Copy, aktion: () => void seitenDuplizieren(d()) },
     { titel: "Als neue PDF extrahieren", icon: FileOutput, aktion: () => void seitenExtrahieren(false, d()) },

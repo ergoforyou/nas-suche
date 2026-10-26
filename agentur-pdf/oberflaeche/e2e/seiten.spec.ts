@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DATEN, start } from "./hilfen";
 
@@ -311,4 +312,44 @@ test("Datei aus dem Explorer zwischen zwei Miniaturen ablegen – Hinweis bleibt
     targetPosition: { x: hinter.width / 2, y: hinter.height - 10 },
   });
   await expect.poll(() => seiteMit(page, info.id, "Max Muster")).toEqual([2]);
+});
+
+test("PDF direkt auf die Seiten ziehen fügt dort ein; Screenshot aus der Zwischenablage als Seite", async ({ page, context }) => {
+  await start(page);
+  await oeffnen(page, "a.pdf");
+  const info = await dokumentInfo(page, "a.pdf");
+  // b.pdf (3 Seiten, „B1“…) aus dem Explorer auf die obere Hälfte von Seite 2 ziehen
+  const pdf = readFileSync(join(DATEN, "b.pdf")).toString("base64");
+  const zug = await page.evaluateHandle((b64) => {
+    const dt = new DataTransfer();
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    dt.items.add(new File([bytes], "b.pdf", { type: "application/pdf" }));
+    return dt;
+  }, pdf);
+  const ansicht = page.getByTestId("dokumentansicht");
+  await page.locator(".seitenwahl input").fill("2");
+  await page.keyboard.press("Enter");
+  const seite = (await page.locator('.seite [data-seite="1"]').first().boundingBox())!;
+  const punkt = { clientX: seite.x + seite.width / 2, clientY: seite.y + 20 };
+  await ansicht.dispatchEvent("dragover", { dataTransfer: zug, ...punkt });
+  await expect(page.locator(".ablage-hinweis")).toBeHidden();
+  await ansicht.dispatchEvent("drop", { dataTransfer: zug, ...punkt });
+  await expect(page.locator(".seitenwahl")).toContainText("/ 8");
+  expect(await seiteMit(page, info.id, "B1")).toEqual([1]);
+  await expect(page.locator(".tab", { hasText: "b.pdf" })).toHaveCount(0); // nicht als neues Dokument geöffnet
+
+  // Screenshot in die Zwischenablage legen und per Rechtsklick einfügen
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.evaluate(async () => {
+    const c = document.createElement("canvas");
+    c.width = 300;
+    c.height = 200;
+    c.getContext("2d")!.fillRect(0, 0, 300, 200);
+    const blob = await new Promise<Blob>((ok) => c.toBlob((b) => ok(b!), "image/png"));
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  });
+  const mini = page.getByTestId("miniaturen");
+  await mini.locator('.miniatur[data-seite="0"]').click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Zwischenablage/ }).click();
+  await expect(page.locator(".seitenwahl")).toContainText("/ 9");
 });

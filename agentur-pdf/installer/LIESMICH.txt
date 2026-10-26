@@ -53,6 +53,19 @@ PDF-DRUCKER „ERGOFORYOU PDF“
   software „Drucken“ → Drucker „Ergoforyou PDF“: Der Ausdruck öffnet sich
   sofort in Ergoforyou PDF als neues Dokument.
 
+SEITEN ZUSAMMENSTELLEN PER DRAG & DROP
+  • PDF, Bild, Word, Excel oder Mail aus dem Explorer auf die Miniaturen
+    oder direkt auf eine Seite ziehen: wird genau an der roten Linie
+    eingefügt (Word & Co. werden dabei im Hintergrund umgewandelt).
+    Auf die Tab-Leiste gezogen: als neues Dokument öffnen.
+  • Seiten umsortieren: Miniatur anfassen und zwischen zwei andere ziehen
+    (mehrere vorher mit Strg/Umschalt markieren).
+  • In ein anderes Dokument: Miniaturen in die Seiten oder Miniaturen des
+    anderen Dokuments ziehen (Nebeneinander-Ansicht) oder auf dessen Tab.
+    Ohne Taste verschieben, mit Strg kopieren.
+  • Screenshot einfügen: Win+Umschalt+S, dann Strg+V (nach der aktuellen
+    Seite) oder Rechtsklick → „Screenshot / Bild aus Zwischenablage …“.
+
 STAPELVERARBEITUNG
   „Konvertieren“ → „Stapelverarbeitung“: Dateien oder ganze Ordner auf
   einmal – Texterkennung, Leerseiten entfernen, Metadaten entfernen,
