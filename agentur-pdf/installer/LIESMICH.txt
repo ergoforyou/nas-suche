@@ -57,7 +57,9 @@ SEITEN ZUSAMMENSTELLEN PER DRAG & DROP
   • PDF, Bild, Word, Excel oder Mail aus dem Explorer auf die Miniaturen
     oder direkt auf eine Seite ziehen: wird genau an der roten Linie
     eingefügt (Word & Co. werden dabei im Hintergrund umgewandelt).
-    Auf die Tab-Leiste gezogen: als neues Dokument öffnen.
+    Irgendwo sonst ins Fenster gezogen: nach der aktuellen Seite einfügen.
+    Es entsteht kein neues Dokument – neu öffnen über Datei → Öffnen
+    (oder hineinziehen, solange kein Dokument offen ist).
   • Seiten umsortieren: Miniatur anfassen und zwischen zwei andere ziehen
     (mehrere vorher mit Strg/Umschalt markieren).
   • In ein anderes Dokument: Miniaturen in die Seiten oder Miniaturen des

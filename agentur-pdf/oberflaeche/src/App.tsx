@@ -244,7 +244,15 @@ export function App() {
         if (!e.dataTransfer.files.length) return;
         e.preventDefault();
         setAblage(false);
-        void dateienOeffnen([...e.dataTransfer.files]);
+        // Ist ein Dokument offen, kommt die Datei hinein (nach der aktuellen
+        // Seite) – es entsteht kein neues Dokument. Sonst: öffnen.
+        const d = holen().dokumente.find((x) => x.id === holen().aktiv);
+        if (d) {
+          const nach = d.auswahl.length ? Math.max(...d.auswahl) : d.ansicht.seite;
+          void dateienEinfuegen(d.id, nach + 1, [...e.dataTransfer.files]);
+        } else {
+          void dateienOeffnen([...e.dataTransfer.files]);
+        }
       }}
     >
       <Titelleiste />
@@ -291,8 +299,8 @@ export function App() {
       <ScreenshotKarte />
       {ablage && (
         <div className="ablage-hinweis">
-          Hier ablegen: als neues Dokument öffnen
-          <small>Zum Einfügen zwischen zwei Seiten auf die Seiten oder Miniaturen ziehen</small>
+          {aktiv ? "Hier ablegen: wird ins Dokument eingefügt" : "Hier ablegen zum Öffnen"}
+          {aktiv && <small>Nach der aktuellen Seite – für eine genaue Stelle auf die Seiten oder Miniaturen ziehen</small>}
         </div>
       )}
     </div>

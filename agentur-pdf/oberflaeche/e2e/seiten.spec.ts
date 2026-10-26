@@ -338,6 +338,13 @@ test("PDF direkt auf die Seiten ziehen fügt dort ein; Screenshot aus der Zwisch
   expect(await seiteMit(page, info.id, "B1")).toEqual([1]);
   await expect(page.locator(".tab", { hasText: "b.pdf" })).toHaveCount(0); // nicht als neues Dokument geöffnet
 
+  // Irgendwo anders ins Fenster (z. B. Menüband) fallen lassen: ebenfalls einfügen, kein neuer Tab
+  await page.locator(".menueband").dispatchEvent("dragover", { dataTransfer: zug, ...punkt });
+  await expect(page.locator(".ablage-hinweis")).toContainText("eingefügt");
+  await page.locator(".menueband").dispatchEvent("drop", { dataTransfer: zug, ...punkt });
+  await expect(page.locator(".seitenwahl")).toContainText("/ 11");
+  await expect(page.locator(".tab", { hasText: "b.pdf" })).toHaveCount(0);
+
   // Screenshot in die Zwischenablage legen und per Rechtsklick einfügen
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.evaluate(async () => {
@@ -349,7 +356,7 @@ test("PDF direkt auf die Seiten ziehen fügt dort ein; Screenshot aus der Zwisch
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
   });
   const mini = page.getByTestId("miniaturen");
-  await mini.locator('.miniatur[data-seite="0"]').click({ button: "right" });
+  await mini.locator('.miniatur.markiert').first().click({ button: "right" });
   await page.getByRole("menuitem", { name: /Zwischenablage/ }).click();
-  await expect(page.locator(".seitenwahl")).toContainText("/ 9");
+  await expect(page.locator(".seitenwahl")).toContainText("/ 12");
 });
