@@ -202,3 +202,32 @@ def test_ueberwachung_einstellen(client, tmp_path):
     assert r["regeln"][0]["ordner"] == str(tmp_path) and r["regeln"][0]["original_sichern"] is False
     assert client.get("/api/einstellungen").json()["ueberwachung"][0]["leerseiten_entfernen"] is True
     client.put("/api/ueberwachung", json=[])
+
+
+def test_einfuegen_word_und_text_wird_umgewandelt(client, brief, tmp_path):
+    from test_konvertierung import docx, mit_libreoffice  # noqa: F401
+
+    info = client.post("/api/dokumente/oeffnen", json={"pfad": str(brief)}).json()
+    notiz = tmp_path / "Notiz Max Muster.txt"
+    notiz.write_text("Rückruf vereinbart", encoding="utf-8")
+    r = client.post(f"/api/dokumente/{info['id']}/seiten/einfuegen_pfad", json={"position": 1, "pfade": [str(notiz)]}).json()
+    assert r["dokumente"][0]["seitenanzahl"] == 4 and r["auswahl"] == [1]
+    r = client.post(
+        f"/api/dokumente/{info['id']}/seiten/einfuegen_datei", params={"position": 0, "name": "Notiz.txt"}, content="Hallo".encode()
+    ).json()
+    assert r["dokumente"][0]["seitenanzahl"] == 5 and r["auswahl"] == [0]
+    from agentur_pdf.kern.konvertierung import libreoffice_finden
+
+    if libreoffice_finden():
+        wort = docx(tmp_path / "Angebot Max Muster.docx", "Hausrat für Max Muster")
+        r = client.post(
+            f"/api/dokumente/{info['id']}/seiten/einfuegen_datei",
+            params={"position": 5, "name": wort.name},
+            content=wort.read_bytes(),
+        ).json()
+        assert r["dokumente"][0]["seitenanzahl"] == 6 and r["auswahl"] == [5]
+        pdf = pymupdf.open("pdf", client.get(f"/api/dokumente/{info['id']}/datei").content)
+        assert "Max Muster" in pdf[5].get_text()
+    assert client.post(
+        f"/api/dokumente/{info['id']}/seiten/einfuegen_datei", params={"position": 0, "name": "x.zip"}, content=b"PK"
+    ).status_code == 400

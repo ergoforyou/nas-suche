@@ -107,6 +107,8 @@ export async function dateienEinfuegen(dokId: string, position: number, dateien:
   let pos = position;
   const eingefuegt: number[] = [];
   for (const datei of dateien) {
+    // Word, Excel, Mails … werden erst umgewandelt – das dauert ein paar Sekunden
+    if (!/\.(pdf|png|jpe?g|tiff?|bmp|gif)$/i.test(datei.name)) melden(`„${datei.name}“ wird umgewandelt und eingefügt …`);
     const pfad = (datei as File & { pywebviewFullPath?: string }).pywebviewFullPath;
     const antwort = await sicher(() => (pfad ? api.einfuegenPfade(dokId, pos, [pfad]) : api.einfuegenDatei(dokId, pos, datei, datei.name)));
     if (!antwort) break;
@@ -139,7 +141,7 @@ export async function dateiEinfuegenDialog(danach = true, d = aktiv()): Promise<
   dateiAuswahl ??= document.createElement("input");
   dateiAuswahl.type = "file";
   dateiAuswahl.multiple = true;
-  dateiAuswahl.accept = ".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif";
+  dateiAuswahl.accept = ".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif,.doc,.docx,.xls,.xlsx,.odt,.rtf,.txt,.eml,.msg";
   dateiAuswahl.onchange = () => {
     const liste = [...(dateiAuswahl?.files ?? [])];
     if (dateiAuswahl) dateiAuswahl.value = "";

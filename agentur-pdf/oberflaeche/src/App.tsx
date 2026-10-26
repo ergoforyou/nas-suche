@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Befehlssuche } from "./befehle/Befehlssuche";
 import { ausfuehren } from "./befehle/register";
 import { Bereiche } from "./ansicht/Bereiche";
@@ -83,7 +83,39 @@ export function App() {
   const rechtsOffen = useZustand((z) => z.rechtsOffen);
   const hatDokumente = useZustand((z) => z.dokumente.length > 0);
   const [ablage, setAblage] = useState(false);
-  const ablageZaehler = useRef(0);
+
+  // Hinweis „Dateien hier ablegen“: solange Dateien über dem Fenster gezogen
+  // werden. Ohne Zähler (der hing, wenn ein Bereich wie die Miniaturleiste das
+  // Ablegen selbst übernimmt) – dragover kommt laufend, bleibt es aus, ist der
+  // Zug vorbei oder hat das Fenster verlassen.
+  useEffect(() => {
+    let uhr = 0;
+    const aus = () => {
+      window.clearTimeout(uhr);
+      setAblage(false);
+    };
+    const ueber = (e: DragEvent) => {
+      if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
+      // Über den Miniaturen werden Dateien eingefügt, nicht geöffnet
+      setAblage(!(e.target as Element | null)?.closest?.(".miniaturen"));
+      window.clearTimeout(uhr);
+      uhr = window.setTimeout(() => setAblage(false), 900);
+    };
+    const taste = (e: KeyboardEvent) => e.key === "Escape" && aus();
+    window.addEventListener("dragover", ueber, true);
+    window.addEventListener("drop", aus, true);
+    window.addEventListener("dragend", aus, true);
+    window.addEventListener("blur", aus);
+    window.addEventListener("keydown", taste, true);
+    return () => {
+      window.clearTimeout(uhr);
+      window.removeEventListener("dragover", ueber, true);
+      window.removeEventListener("drop", aus, true);
+      window.removeEventListener("dragend", aus, true);
+      window.removeEventListener("blur", aus);
+      window.removeEventListener("keydown", taste, true);
+    };
+  }, []);
 
   useEffect(() => {
     void starten();
@@ -205,22 +237,12 @@ export function App() {
   return (
     <div
       className="app"
-      onDragEnter={(e) => {
-        if (![...e.dataTransfer.types].includes("Files")) return;
-        ablageZaehler.current++;
-        setAblage(true);
-      }}
-      onDragLeave={() => {
-        ablageZaehler.current = Math.max(0, ablageZaehler.current - 1);
-        if (!ablageZaehler.current) setAblage(false);
-      }}
       onDragOver={(e) => {
         if ([...e.dataTransfer.types].includes("Files")) e.preventDefault();
       }}
       onDrop={(e) => {
         if (!e.dataTransfer.files.length) return;
         e.preventDefault();
-        ablageZaehler.current = 0;
         setAblage(false);
         void dateienOeffnen([...e.dataTransfer.files]);
       }}

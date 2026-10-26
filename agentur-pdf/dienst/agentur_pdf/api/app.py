@@ -17,7 +17,7 @@ from ..benutzer.speicher import BenutzerSpeicher
 from ..kern.bearbeitung import Bearbeitung, quelle_oeffnen
 from ..kern.auftraege import LEISE, Auftrag, AuftragsVerwaltung
 from ..kern.dokumente import DokumentFehler, DokumentSpeicher
-from ..kern.konvertierung import braucht_umwandlung, unterstuetzt
+from ..kern.konvertierung import braucht_umwandlung, konvertieren, unterstuetzt
 from ..kern.mupdf_thread import im_mupdf_thread, im_mupdf_thread_sync
 from ..kern import ocr
 from ..kern.ocr_auftrag import OcrOptionen, bereich_erkennen, dokument_erkennen, unsichere_woerter
@@ -338,33 +338,48 @@ def erstelle_app(
         await im_mupdf_thread(bearbeitung.leere_seite, dok_id, position)
         return await antwort([dok_id], auswahl=[position])
 
+    Teil = tuple[bytes | None, str | None, str]  # (Daten, Pfad, Name mit passender Endung)
+
+    async def als_pdf_teile(name: str, daten: bytes | None = None, pfad: str | None = None) -> list[Teil]:
+        """Word, Excel, Mails … vorher umwandeln – und zwar außerhalb des
+        MuPDF-Threads, damit das Programm währenddessen bedienbar bleibt."""
+        if not braucht_umwandlung(name):
+            return [(daten, pfad, name)]
+        if not unterstuetzt(name):
+            raise DokumentFehler(f"„{os.path.basename(name)}“: Dateityp wird nicht unterstützt.")
+        teil = await asyncio.to_thread(konvertieren, name, daten, pfad, im_mupdf_thread_sync)
+        teile, offen = [], [teil]
+        while offen:  # Mail mit Anhängen: Mail, dann die Anhänge
+            t = offen.pop(0)
+            teile.append((t.pdf, None, "umgewandelt.pdf"))
+            offen[0:0] = t.unterteile
+        return teile
+
+    def teile_einfuegen(dok_id: str, position: int, teile: list[Teil], name: str) -> int:
+        pos = position
+        for daten, pfad, typ in teile:
+            quelle = quelle_oeffnen(daten=daten, pfad=pfad, name=typ)
+            try:
+                pos += bearbeitung.datei_einfuegen(dok_id, pos, quelle, f"„{os.path.basename(name)}“ einfügen")
+            finally:
+                quelle.close()
+        return pos - position
+
     @app.post("/api/dokumente/{dok_id}/seiten/einfuegen_pfad")
     async def seiten_einfuegen_pfad(dok_id: str, position: int = Body(...), pfade: list[str] = Body(...)):
-        def einfuegen():
-            pos = position
-            for pfad in pfade:
-                quelle = quelle_oeffnen(pfad=pfad)
-                try:
-                    pos += bearbeitung.datei_einfuegen(dok_id, pos, quelle, f"„{os.path.basename(pfad)}“ einfügen")
-                finally:
-                    quelle.close()
-            return list(range(position, pos))
-
-        auswahl = await im_mupdf_thread(einfuegen)
-        return await antwort([dok_id], auswahl=auswahl)
+        pos = position
+        for pfad in pfade:
+            teile = await als_pdf_teile(pfad, pfad=pfad)
+            pos += await im_mupdf_thread(teile_einfuegen, dok_id, pos, teile, pfad)
+        return await antwort([dok_id], auswahl=list(range(position, pos)))
 
     @app.post("/api/dokumente/{dok_id}/seiten/einfuegen_datei")
     async def seiten_einfuegen_datei(request: Request, dok_id: str, position: int = Query(...), name: str = Query(...)):
         daten = await request.body()
-
-        def einfuegen():
-            quelle = quelle_oeffnen(daten=daten, name=name)
-            try:
-                return bearbeitung.datei_einfuegen(dok_id, position, quelle, f"„{name}“ einfügen")
-            finally:
-                quelle.close()
-
-        anzahl = await im_mupdf_thread(einfuegen)
+        if not daten:
+            raise DokumentFehler("Leere Datei.")
+        teile = await als_pdf_teile(name, daten=daten)
+        anzahl = await im_mupdf_thread(teile_einfuegen, dok_id, position, teile, name)
         return await antwort([dok_id], auswahl=list(range(position, position + anzahl)))
 
     @app.post("/api/seiten/uebertragen")

@@ -282,3 +282,33 @@ test("Rechtsklick: Seite drucken – aus Seitenansicht und Miniaturen", async ({
   await page.getByRole("menuitem", { name: "2 Seiten drucken …" }).click();
   await expect(dialog.getByRole("radio", { name: /Markierte Seiten \(2\)/ })).toBeChecked();
 });
+
+test("Datei aus dem Explorer zwischen zwei Miniaturen ablegen – Hinweis bleibt nicht hängen", async ({ page }) => {
+  await start(page);
+  await oeffnen(page, "a.pdf");
+  const mini = page.getByTestId("miniaturen");
+  const ziel = (await mini.locator('.miniatur[data-seite="1"]').boundingBox())!;
+  // Textdatei (wird wie Word erst umgewandelt) von außen auf die Miniaturleiste ziehen
+  const zug = await page.evaluateHandle(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(["Notiz von Max Muster"], "Notiz.txt", { type: "text/plain" }));
+    return dt;
+  });
+  const punkt = { clientX: ziel.x + ziel.width / 2, clientY: ziel.y + 6 };
+  await page.locator("body").dispatchEvent("dragover", { dataTransfer: zug, ...punkt });
+  await expect(page.locator(".ablage-hinweis")).toBeVisible();
+  for (const art of ["dragenter", "dragover"]) await mini.dispatchEvent(art, { dataTransfer: zug, ...punkt });
+  await expect(page.locator(".ablage-hinweis")).toBeHidden(); // über den Miniaturen: einfügen, nicht öffnen
+  await expect(mini.locator(".ablagemarke")).toBeVisible();
+  await mini.dispatchEvent("drop", { dataTransfer: zug, ...punkt });
+  await expect(page.locator(".seitenwahl")).toContainText("/ 6");
+  await expect(page.locator(".ablage-hinweis")).toBeHidden();
+  const info = await dokumentInfo(page, "a.pdf");
+  expect(await seiteMit(page, info.id, "Max Muster")).toEqual([1]);
+  // Programm bleibt bedienbar: Seite umsortieren klappt direkt danach
+  const hinter = (await mini.locator('.miniatur[data-seite="2"]').boundingBox())!;
+  await mini.locator('.miniatur[data-seite="1"]').dragTo(mini.locator('.miniatur[data-seite="2"]'), {
+    targetPosition: { x: hinter.width / 2, y: hinter.height - 10 },
+  });
+  await expect.poll(() => seiteMit(page, info.id, "Max Muster")).toEqual([2]);
+});
