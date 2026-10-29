@@ -3690,6 +3690,24 @@ const b91 = await page.evaluate(async () => {
   return out;
 });
 check(b91.test && b91.synced && b91.peek && b91.fail && b91.quick && b91.badId, 'NAS: Schnell-Einrichtung über QuickConnect, Verbindungstest mit Hinweisen; Kurz-Check holt Neues vom anderen Gerät', JSON.stringify(b91));
+// Beta 93: Gerätewechsel – „Mach am PC weiter“ legt eine Übergabe ab, das andere Gerät greift den Faden einmal auf
+const b93 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = { device: app.DEVICE };
+  app.state.uebergabe = { id: 'u1', t: Date.now(), von: 'pc', nach: 'handy', personaId: null, themen: ['Urlaubsplanung Italien'], gesehen: false };
+  out.greet = app.checkHandoff() === true;
+  const h = app.history();
+  out.text = h.at(-1)?.content ?? '';
+  out.once = app.checkHandoff() === false && app.state.uebergabe.gesehen === true;
+  // zu alt → nichts
+  app.state.uebergabe = { id: 'u2', t: Date.now() - 9 * 3600e3, von: 'pc', nach: 'handy', themen: ['x'], gesehen: false };
+  out.old = app.checkHandoff() === false;
+  app.handoff('Mach am PC weiter', 'pc');
+  out.sent = app.state.uebergabe.nach === 'pc' && app.state.uebergabe.von === 'handy' && !app.state.uebergabe.gesehen;
+  out.news = /Gesprächsthemen/.test(app.newsSince(Date.now() - 60e3));
+  return out;
+});
+check(b93.device === 'handy' && b93.greet && /am PC/.test(b93.text) && /Urlaubsplanung/.test(b93.text) && b93.once && b93.old && b93.sent && b93.news, 'Gerätewechsel: Übergabe ablegen, am anderen Gerät einmal aufgreifen; „Was gab’s Neues?“', JSON.stringify(b93));
 // Beta 85: Startschutz – nach mehreren Fehlstarts sicherer Modus mit den letzten Fehlern, „Normal neu starten“
 await page.evaluate(() => {
   localStorage.setItem('ki-start', JSON.stringify({ n: 3, t: Date.now() }));

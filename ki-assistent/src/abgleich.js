@@ -91,6 +91,8 @@ export function snapshot(data, sync, { limit = HISTORY_MAX } = {}) {
     erinnerungen: data.erinnerungen ?? [],
     // Second Brain (Privat): Notizen – die zuletzt geänderte Fassung gewinnt
     brain: data.brain ?? [],
+    // Gerätewechsel: „Mach am PC weiter“ (die neueste Übergabe gilt)
+    uebergabe: data.uebergabe ?? null,
     deleted: { ...(sync?.deleted ?? {}) },
   };
 }
@@ -206,5 +208,8 @@ export function mergeSync(a, b) {
   // Erinnerungen: neuerer Stand gewinnt (changed) – „erledigt“ auf einem Gerät gilt damit auch auf dem anderen
   const erinnerungen = mergeEntries(a.erinnerungen, b.erinnerungen, { dead, max: 50 }).sort((x, y) => x.at - y.at);
   const brain = mergeNotes(a.brain, b.brain, { dead });
-  return { personas: alive, history, saved, erinnerungen, brain, deleted, rename };
+  const ua = a.uebergabe ?? null;
+  const ub = b.uebergabe ?? null;
+  const uebergabe = !ua ? ub : !ub ? ua : (ub.t ?? 0) > (ua.t ?? 0) || ((ub.t ?? 0) === (ua.t ?? 0) && ub.gesehen) ? ub : ua;
+  return { personas: alive, history, saved, erinnerungen, brain, uebergabe, deleted, rename };
 }

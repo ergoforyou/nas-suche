@@ -1,5 +1,5 @@
 // Natürliches Gespräch (src/gespraech.js): Zurufe, Korrekturen, Pausenlänge, Enden beim Erzählen.
-import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, talkMode, realtimeCommand } from '../src/gespraech.js';
+import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, talkMode, realtimeCommand, handoffCommand, newsRequest, whatsNew } from '../src/gespraech.js';
 
 let failed = 0;
 const check = (ok, name, info = '') => {
@@ -31,6 +31,13 @@ check(e4.how === 'senden' && e5.how === 'text' && dictEnd('Ich bin noch nicht fe
 
 check(talkMode('Nur kurz bitte, wie spät ist es?') === 'kurz' && talkMode('Lass uns ein bisschen plaudern') === 'plaudern' && talkMode("Erklär's mir genau") === 'genau' && talkMode('Ok, wieder normal') === 'normal' && talkMode('Wie wird das Wetter?') === null, 'Gesprächsart per Zuruf');
 check(realtimeCommand('Lass uns in Echtzeit reden') === 'an' && realtimeCommand('Echtzeit an') === 'an' && realtimeCommand('Echtzeit aus') === 'aus' && realtimeCommand('Beende das Echtzeit-Gespräch') === 'aus' && realtimeCommand('Was ist Echtzeit?') === null, 'Echtzeit-Gespräch per Zuruf an/aus');
+
+check(handoffCommand('Mach am PC weiter') === 'pc' && handoffCommand('Lass uns am Rechner weitermachen') === 'pc' && handoffCommand('Weiter am Handy bitte') === 'handy' && handoffCommand('Ich geh an den Laptop') === 'pc' && handoffCommand('Wie geht es am PC weiter mit dem Update?') === null && handoffCommand('Mach weiter') === null, 'Gerätewechsel per Zuruf', JSON.stringify(['Mach am PC weiter', 'Wie geht es am PC weiter mit dem Update?'].map(handoffCommand)));
+check(newsRequest("Was gab's Neues?") && newsRequest('Was hab ich verpasst?') && newsRequest('Hey, was gibt es Neues') && !newsRequest('Neues Projekt anlegen'), '„Was gab’s Neues?“ erkannt');
+const since = 1000;
+const nw = whatsNew({ since, now: 5000, notes: [{ titel: 'Hecke', created: 2000 }, { titel: 'Alt', created: 500, changed: 3000 }, { titel: 'Steuer', created: 100, erledigt: 4000 }, { titel: 'Uralt', created: 10 }], reminders: [{ text: 'Müll raus', created: 2500 }], history: [{ role: 'user', content: 'Wie wird das Wetter?', t: 3000 }, { role: 'user', content: 'vorher', t: 10 }] });
+check(/Neue Notizen: „Hecke“/.test(nw) && /Geänderte Notizen: „Alt“/.test(nw) && /Erledigt: „Steuer“/.test(nw) && /Müll raus/.test(nw) && /Wetter/.test(nw) && !/Uralt|vorher/.test(nw), 'Was ist neu seit dem letzten Blick', nw);
+check(whatsNew({ since: 9e12, notes: [{ titel: 'x', created: 1 }] }) === '', 'Nichts Neues = leer');
 
 console.log(failed ? `${failed} Prüfung(en) fehlgeschlagen` : 'Gespräch: alles in Ordnung');
 process.exit(failed ? 1 : 0);

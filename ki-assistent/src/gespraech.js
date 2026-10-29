@@ -103,3 +103,38 @@ export const MODE_RULES = {
   genau: 'Dein Gegenüber möchte es genau: erkläre gründlich und strukturiert, Schritt für Schritt; Länge ist hier erwünscht.',
 };
 export const MODE_NAMES = { kurz: 'kurz', plaudern: 'Plaudern', genau: 'genau', normal: 'normal' };
+
+// ---------------------------------------------------------------- Gerätewechsel
+/** „Mach am PC weiter“ / „Weiter am Handy“ → Zielgerät 'pc' | 'handy' | null. */
+export function handoffCommand(text) {
+  const t = String(text ?? '').toLowerCase();
+  const pc = /\b(pc|computer|rechner|laptop|schreibtisch)\b/;
+  const phone = /\b(handy|smartphone|telefon|unterwegs)\b/;
+  if (!/\b(mach(en)? (wir )?(am|auf dem|beim) .* weiter|weiter (am|auf dem|beim)|wechsel(n)? (an|auf|zum) (den |das )?|übergib|übergeben|ich geh(e)? (an|zum) (den |das )?|lass uns (am|auf dem) .* weitermachen)/.test(t)) return null;
+  if (pc.test(t)) return 'pc';
+  if (phone.test(t)) return 'handy';
+  return null;
+}
+/** „Was gab's Neues?“ / „Was hab ich verpasst?“ */
+export const newsRequest = (text) => /\b(was gibt'?s neues|was gab'?s neues|was gibt es neues|was ist neu|was hab(e)? ich verpasst|was ist (seitdem|inzwischen) passiert|was hat sich getan|neuigkeiten seit)\b/i.test(String(text ?? ''));
+
+/**
+ * Was ist seit dem letzten Blick auf diesem Gerät dazugekommen (aus den abgeglichenen Daten)? Für „Was gab's Neues?“
+ * und die Begrüßung nach einem Gerätewechsel. Liefert einen kurzen Text für die KI (oder '' = nichts Neues).
+ */
+export function whatsNew({ since = 0, notes = [], ownNotes = [], reminders = [], history = [], now = Date.now() } = {}) {
+  const lines = [];
+  const neu = notes.filter((n) => (n.created ?? 0) > since);
+  const geaendert = notes.filter((n) => (n.created ?? 0) <= since && (n.changed ?? 0) > since);
+  const erledigt = notes.filter((n) => (n.erledigt ?? 0) > since);
+  if (neu.length) lines.push(`Neue Notizen: ${neu.slice(0, 6).map((n) => `„${n.titel}“`).join(', ')}${neu.length > 6 ? ` (+${neu.length - 6})` : ''}`);
+  if (geaendert.length) lines.push(`Geänderte Notizen: ${geaendert.slice(0, 4).map((n) => `„${n.titel}“`).join(', ')}`);
+  if (erledigt.length) lines.push(`Erledigt: ${erledigt.slice(0, 4).map((n) => `„${n.titel}“`).join(', ')}`);
+  const fig = ownNotes.filter((n) => (n.changed ?? 0) > since && n.ordner === 'projekte');
+  if (fig.length) lines.push(`Deine eigenen Vorhaben weitergeführt: ${fig.slice(0, 3).map((n) => `„${n.titel}“`).join(', ')}`);
+  const rem = reminders.filter((r) => (r.created ?? 0) > since && !r.ack);
+  if (rem.length) lines.push(`Neue Erinnerungen: ${rem.slice(0, 4).map((r) => r.text).join(', ')}`);
+  const talk = history.filter((m) => (m.t ?? 0) > since && m.role === 'user').map((m) => String(m.content ?? '').slice(0, 120));
+  if (talk.length) lines.push(`Gesprächsthemen inzwischen (${talk.length} Nachricht${talk.length === 1 ? '' : 'en'}): ${talk.slice(-4).map((t) => `„${t}“`).join(' · ')}`);
+  return lines.join('\n');
+}

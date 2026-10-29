@@ -193,6 +193,12 @@ vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder 
 - **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
 - **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
+### Second Brain am PC und Gerätewechsel (Beta 93, Bereich Privat)
+
+- Second Brain (Notizen, Zwischenspeicher, Vorhaben der Figur) und Erinnerungen gibt es im Bereich Privat jetzt auch am PC – abgeglichen über WLAN oder die NAS.
+- „Mach am PC weiter“ / „Weiter am Handy“: Die Figur legt eine Übergabe ab; am anderen Gerät greift sie nach dem Abgleich den Faden einmal auf („Wir waren gerade am Handy bei …“). Übergaben verfallen nach 8 Stunden.
+- „Was gab's Neues?“ erzählt, was seit dem letzten Blick auf diesem Gerät dazukam (neue/geänderte/erledigte Notizen, Erinnerungen, Gesprächsthemen).
+
 ### Gedächtnis
 
 Unter ⚙ → **Gedächtnis**: Nach jeder Antwort fragt die App das Modell in LM Studio kurz, welche Fakten dauerhaft

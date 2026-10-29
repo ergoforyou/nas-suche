@@ -6,7 +6,7 @@ import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pick
 import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
-import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES } from './gespraech.js';
+import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES, handoffCommand, newsRequest, whatsNew } from './gespraech.js';
 import synology from '../synology.js';
 import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
 import { markSections, indexSettings, searchSettings, runOnboarding } from './einrichtung.js';
@@ -427,6 +427,7 @@ function save({ quiet = false } = {}) {
       abgleich: state.abgleich,
       erinnerungen: state.erinnerungen ?? [],
       brain: state.brain ?? [],
+      uebergabe: state.uebergabe ?? null,
     });
     if (saveLoud) {
       autoSyncSoon();
@@ -934,8 +935,8 @@ function buildMessages() {
   if (state.settings.moodTags && gestures.length) parts.push(gesturePrompt(gestures, p.language === 'en' ? 'en' : 'de'));
   if (p.style !== 'frei') parts.push(appKnowledge());
   // Privat: mitdenken (nächste Schritte, Alternativen, Verbindungen) – abschaltbar
-  if (PRIV && state.settings.mitdenken !== false && p.style !== 'frei') parts.push(mitdenkenPrompt(p.language === 'en' ? 'en' : 'de', { drive: !!state.drive }));
-  if (PRIV && p.selbstOn !== false && appToolsActive()) parts.push(OWN_BRAIN_PROMPT[p.language === 'en' ? 'en' : 'de']);
+  if (BRAIN && state.settings.mitdenken !== false && p.style !== 'frei') parts.push(mitdenkenPrompt(p.language === 'en' ? 'en' : 'de', { drive: !!state.drive }));
+  if (BRAIN && p.selbstOn !== false && appToolsActive()) parts.push(OWN_BRAIN_PROMPT[p.language === 'en' ? 'en' : 'de']);
   if (state.drive) parts.push(r.drive);
   if (webActive()) parts.push(r.web);
   const ctx = [];
@@ -948,6 +949,8 @@ function buildMessages() {
   if ((state.voiceTurn || state.settings.handsFree) && state.talkMode !== 'genau' && p.style !== 'frei' && p.language !== 'en') ctx.push(RULE_LIVE);
   if (state.longTurn && p.language !== 'en') ctx.push(RULE_LONG_TURN);
   if (state.correction && p.language !== 'en') ctx.push(RULE_CORRECTION);
+  if (state.newsCtx != null && p.language !== 'en')
+    ctx.push(state.newsCtx ? `Neu seit dem letzten Blick auf diesem Gerät (abgeglichen vom anderen Gerät):\n${state.newsCtx}\nErzähl das kurz und natürlich, das Wichtigste zuerst.` : 'Seit dem letzten Blick auf diesem Gerät ist nichts Neues dazugekommen – sag das kurz.');
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
   if (state.savedHits?.length) ctx.push(savedPrompt(state.savedHits));
   if (state.brainHits?.length || state.brainLoops?.length) ctx.push(brainPrompt(state.brainHits ?? [], state.brainLoops ?? [], p.language === 'en' ? 'en' : 'de'));
@@ -1122,6 +1125,11 @@ async function send(text) {
     logEv('GESPRÄCH', `Art: ${MODE_NAMES[mode]}`);
     status(`💬 Gesprächsart: ${MODE_NAMES[mode]}`);
   }
+  // „Mach am PC weiter“: Übergabe ablegen – das andere Gerät begrüßt mit dem Stand (über NAS/WLAN-Abgleich)
+  const nach = BRAIN && !pendingAttachments.length ? handoffCommand(text) : null;
+  if (nach && nach !== DEVICE) return handoff(text, nach);
+  // „Was gab's Neues?“: was seit dem letzten Blick auf diesem Gerät dazukam, geht mit an die Figur
+  state.newsCtx = BRAIN && newsRequest(text) ? newsSince(state.seenBefore || Date.now() - 86400e3) : null;
   if (PRIV && realtimeCommand(text) === 'an' && desktop.realtimeConnect && !pendingAttachments.length) {
     addBubble('user', text);
     logEv('GESPRÄCH', 'Echtzeit per Zuruf');
@@ -1157,7 +1165,7 @@ async function send(text) {
     return;
   }
   // Privat: „Für später: …“ – nur in den Zwischenspeicher, die Figur antwortet nicht (abgearbeitet wird später)
-  if (PRIV && text && !pendingAttachments.length && LATER_RE.test(text)) {
+  if (BRAIN && text && !pendingAttachments.length && LATER_RE.test(text)) {
     const note = text.match(LATER_RE)[2].trim();
     addZwischen(note, 'app');
     addBubble('note', `📥 Für später abgelegt: ${note}`);
@@ -1165,7 +1173,7 @@ async function send(text) {
   }
   // „Lass uns den Zwischenspeicher durchgehen“: die Figur bekommt die Einträge und geht sie mit dir durch
   // (nur kurze Bitten – der daraus gebaute Auftrag enthält die Worte selbst und darf nicht wieder hier landen)
-  if (PRIV && text && text.length < 200 && ZWISCHEN_GO_RE.test(text) && zwischenItems().length) return processZwischen(text);
+  if (BRAIN && text && text.length < 200 && ZWISCHEN_GO_RE.test(text) && zwischenItems().length) return processZwischen(text);
   // Privat: „Merk dir …“ bzw. Notiz über 📝 – ohne Sprachmodell direkt notieren
   if (PRIV && text && !pendingAttachments.length && (state.noteMode || NOTE_RE.test(text))) {
     const note = state.noteMode ? text : text.match(NOTE_RE)[1];
@@ -1181,7 +1189,7 @@ async function send(text) {
   state.busy = true;
   state.lastSendAt = Date.now();
   // Antwort auf die Frage der Morgenrunde („drei wichtigste Dinge“): im Hintergrund als offene Punkte für heute festhalten
-  if (PRIV && state.top3Asked && Date.now() - state.top3Asked < 45 * 60e3 && text) {
+  if (BRAIN && state.top3Asked && Date.now() - state.top3Asked < 45 * 60e3 && text) {
     state.top3Asked = 0;
     captureTop3(text).catch((e) => logEv('TAG', e.message));
   }
@@ -1355,16 +1363,16 @@ async function send(text) {
         return e && { doc: { name: e.title, entry: e }, i: 0, text: chunkText(e.text, 1600)[0] ?? '' };
       }, 3)
     : [];
-  state.brainHits = PRIV && state.brain?.length && text ? semMerge(brainSearchIndex(text, 3), vec, 'b:', (n) => `b:${n.id}`, (key) => state.brain.find((n) => `b:${n.id}` === key), 3) : [];
+  state.brainHits = BRAIN && state.brain?.length && text ? semMerge(brainSearchIndex(text, 3), vec, 'b:', (n) => `b:${n.id}`, (key) => state.brain.find((n) => `b:${n.id}` === key), 3) : [];
   // klingt nach den eigenen Notizen („was hatte ich notiert …“, „weißt du noch …“): auch Umschreibungen verstehen
   // (das Hilfsmodell nur, solange die Bedeutungssuche noch nicht bereitsteht)
   // Hilfsabfragen (Umschreibungen verstehen) laufen gleichzeitig und höchstens 2,5 s – sonst ohne sie weiter
   const helpers = [];
-  if (PRIV && state.brain?.length && !state.brainHits.length && !sem.ready(['b:']) && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text)))
+  if (BRAIN && state.brain?.length && !state.brainHits.length && !sem.ready(['b:']) && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text)))
     helpers.push(withLimit(brainSmart(text, 2), 2500, []).then((hits) => (state.brainHits = hits)));
-  state.ownBrainHits = PRIV && pp.brain?.length && text ? semMerge(brainSearchIndex(text, 2, {}, 'figur'), vec, `f:${pp.id}:`, (n) => `f:${pp.id}:${n.id}`, (key) => pp.brain.find((n) => `f:${pp.id}:${n.id}` === key), 2) : [];
-  state.ownBrainLoops = PRIV && persona().brain?.length ? openLoops(persona().brain, 3) : [];
-  state.brainLoops = PRIV && /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text) ? openLoops(state.brain, 10) : [];
+  state.ownBrainHits = BRAIN && pp.brain?.length && text ? semMerge(brainSearchIndex(text, 2, {}, 'figur'), vec, `f:${pp.id}:`, (n) => `f:${pp.id}:${n.id}`, (key) => pp.brain.find((n) => `f:${pp.id}:${n.id}` === key), 2) : [];
+  state.ownBrainLoops = BRAIN && persona().brain?.length ? openLoops(persona().brain, 3) : [];
+  state.brainLoops = BRAIN && /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text) ? openLoops(state.brain, 10) : [];
   // frühere Gespräche, die zur Frage passen (nur mit eingeschaltetem Gedächtnis)
   // klingt die Frage nach Erinnerung („weißt du noch …“), auch Umschreibungen verstehen (kurz das Hilfsmodell fragen)
   if (pp.memoryOn && pp.episoden?.length) {
@@ -1570,9 +1578,9 @@ async function morningContext(p) {
   y.setHours(0, 0, 0, 0);
   const open = (p.episoden ?? []).filter((e) => e.offen && (e.von ?? 0) >= y.getTime() - 86400e3).slice(-3);
   if (open.length) out.push(`Gestern offen geblieben:\n${open.map((e) => `- ${e.titel}: ${e.offen}`).join('\n')}`);
-  const loops = PRIV ? openLoops(state.brain, 5) : [];
+  const loops = BRAIN ? openLoops(state.brain, 5) : [];
   if (loops.length) out.push(`Offene Punkte aus dem Second Brain:\n${loops.map((n) => `- ${n.titel}${n.faellig ? ` (fällig ${n.faellig})` : ''}`).join('\n')}`);
-  const zw = PRIV ? zwischenItems().length : 0;
+  const zw = BRAIN ? zwischenItems().length : 0;
   if (zw) out.push(`Im Zwischenspeicher liegen ${zw} Notiz(en) für später – biete kurz an, sie gemeinsam durchzugehen.`);
   return out;
 }
@@ -1594,14 +1602,14 @@ function figureParts(p, lang) {
   ].filter(Boolean);
 }
 /** Feierabendrunde fällig? (Privat, 17–22 Uhr, einmal am Tag, abschaltbar) */
-const eveningDue = () => PRIV && !budgetSaving() && state.settings.eveningBrief !== false && new Date().getHours() >= 17 && new Date().getHours() < 22 && state.settings.eveningDay !== todayKey();
+const eveningDue = () => BRAIN && !budgetSaving() && state.settings.eveningBrief !== false && new Date().getHours() >= 17 && new Date().getHours() < 22 && state.settings.eveningDay !== todayKey();
 
 /** Was die Feierabendrunde braucht: was heute besprochen wurde, der erste Termin morgen. */
 async function eveningContext(p) {
   const out = [];
-  const wichtig = PRIV ? heuteWichtig() : [];
+  const wichtig = BRAIN ? heuteWichtig() : [];
   if (wichtig.length) out.push(`Heute wichtig (vom Morgen):\n${wichtig.map((n) => `- ${n.titel}${n.erledigt ? ' (erledigt)' : ''}`).join('\n')}`);
-  const loops = PRIV ? openLoops(state.brain, 5) : [];
+  const loops = BRAIN ? openLoops(state.brain, 5) : [];
   if (loops.length) out.push(`Offene Punkte aus dem Second Brain:\n${loops.map((n) => `- ${n.titel}${n.faellig ? ` (fällig ${n.faellig})` : ''}`).join('\n')}`);
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -1677,7 +1685,7 @@ async function personalGreeting({ morning: forceMorning = false, evening: forceE
             ? `Du bist ${p.name}. ${INITIATIVE_PROMPT}`
             : `Du bist ${p.name}. Dein Gegenüber hat gerade die App geöffnet. Begrüße es mit ein, zwei kurzen, natürlichen, gesprochenen Sätzen passend zu Tageszeit und Lage; greife höchstens ein offenes Thema oder einen heutigen Termin auf, wenn es passt. ${avoid}`;
   // Tagesbegleiter (Privat): morgens nach den drei wichtigsten Dingen fragen, abends nachhaken
-  const top3 = PRIV && state.settings.tagesbegleiter !== false && lang === 'de';
+  const top3 = BRAIN && state.settings.tagesbegleiter !== false && lang === 'de';
   const askTop3 = top3 && morning && state.settings.top3Day !== todayKey();
   const todayTop3 = top3 && mode === 'evening' ? heuteWichtig() : [];
   const extra = askTop3 ? ` ${TOP3_ASK}` : todayTop3.length ? ' Unten steht, was heute wichtig war – frag kurz nach, was davon geklappt hat.' : '';
@@ -1917,7 +1925,7 @@ function renderTopics() {
   $('cOwnTidy').checked = state.settings.ownTidy !== false;
   $('cMoodEffect').checked = state.settings.moodEffect !== false;
   if (document.getElementById('phWidgetStyle')) $('phWidgetStyle').value = state.settings.widgetStyle ?? 'glas';
-  $('privRounds').hidden = !PRIV;
+  $('privRounds').hidden = !BRAIN;
   renderBudget();
   $('cThink').checked = state.settings.thinkSounds !== false;
   const topics = (p.themen ?? []).filter((t) => !t.asked);
@@ -2896,7 +2904,7 @@ function findEpisodes(p, q, k = 3, minLen = 4) {
 async function findEpisodesSmart(p, q, k = 3, minLen = 4) {
   const hits = findEpisodes(p, q, k, minLen);
   const list = (p.episoden ?? []).slice(-150);
-  if (hits.length || !PRIV || budgetSaving() || list.length < 2 || !String(q ?? '').trim()) return hits;
+  if (hits.length || !BRAIN || budgetSaving() || list.length < 2 || !String(q ?? '').trim()) return hits;
   try {
     const lines = list.map((e, i) => `${i + 1}. ${new Date(e.von).toLocaleDateString('de-DE')} – ${e.titel}: ${String(e.text).slice(0, 140)}`).join('\n');
     const raw = await helperJson(EPISODE_PICK_PROMPT, `Heute: ${new Date().toLocaleDateString('de-DE')}\nFrage: ${q}\n\nFrühere Gespräche:\n${lines}`);
@@ -3687,7 +3695,7 @@ async function startDictation({ erzaehlen = false } = {}) {
     logEv('DIKTAT', `Ende – ${d.segments} Abschnitt(e), ${words} Wörter`);
     // wie geht es weiter? Zuruf am Ende, sonst „fertig“ = Einstellung (prüfen oder gleich antworten lassen)
     const how = d.how && d.how !== 'fertig' ? d.how : d.erzaehlen || state.settings.dictMode === 'antworten' ? 'antworten' : 'pruefen';
-    if (how === 'notiz' && PRIV && d.parts.length) {
+    if (how === 'notiz' && BRAIN && d.parts.length) {
       // „als Notiz“: Diktat landet im Second Brain (Eingang) statt im Gespräch
       const text = d.parts.join(' ');
       addBrainNote({ titel: '', text, ordner: 'eingang', quelle: 'diktat' });
@@ -3745,7 +3753,7 @@ function showDictChips(words) {
       state.longTurn = false;
     }
   });
-  if (PRIV)
+  if (BRAIN)
     btn('🧠 Als Notiz', () => {
       addBrainNote({ titel: '', text: input.value.trim(), ordner: 'eingang', quelle: 'diktat' });
       input.value = '';
@@ -6982,7 +6990,10 @@ async function init() {
   state.history = data.history ?? {};
   state.saved = Array.isArray(data.wissen) ? data.wissen : [];
   // Second Brain (Privat); frühere „Merk dir“-Notizen einmalig als offene Punkte übernehmen
-  state.brain = PRIV && Array.isArray(data.brain) ? data.brain : [];
+  state.brain = BRAIN && Array.isArray(data.brain) ? data.brain : [];
+  state.uebergabe = data.uebergabe ?? null;
+  // Gerätewechsel: wann war ich zuletzt auf diesem Gerät? (für „Was gab's Neues?“)
+  state.seenBefore = state.settings.lastSeenAt ?? 0;
   if (PRIV && state.settings.notes?.length) {
     for (const n of state.settings.notes) state.brain.push(makeNote({ titel: n.text, text: '', ordner: 'eingang', offen: true, faellig: n.due, quelle: 'notiz', created: n.at }));
     state.settings.notes = [];
@@ -7419,7 +7430,7 @@ async function runAppToolInner(name, input) {
     return ortTool(input);
   }
   if (name === 'erinnerung_setzen' || name === 'erinnerungen_verwalten') {
-    if (!PRIV) throw new Error('Erinnerungen gibt es vorerst im Bereich Privat.');
+    if (!BRAIN) throw new Error('Erinnerungen gibt es vorerst im Bereich Privat.');
     return reminderTool(name, input);
   }
   if (name === 'verkehr') {
@@ -8437,7 +8448,7 @@ const BRAIN_ASK_RE = /\b(notiert|notiz(en)?|aufgeschrieben|second brain|hatte ic
 /** Passende Notizen über das Hilfsmodell (bekommt nur Titel, Projekt, Stichworte) – für Umschreibungen. */
 async function brainSmart(q, k = 3, who = 'nutzer') {
   const notes = notesOf(who);
-  if (!PRIV || state.settings.offline || budgetSaving() || !notes.length) return [];
+  if (!BRAIN || state.settings.offline || budgetSaving() || !notes.length) return [];
   try {
     const ids = parsePick(await helperJson(BRAIN_PICK_PROMPT, brainPickInput(q, notes)));
     return ids.map((id) => notes.find((n) => n.id === id)).filter(Boolean).slice(0, k);
@@ -8482,7 +8493,7 @@ function semOn() {
 function semDocs() {
   const docs = [];
   const p = persona();
-  if (PRIV) {
+  if (BRAIN) {
     for (const n of state.brain ?? []) docs.push({ key: `b:${n.id}`, text: docText(n.titel, (n.tags ?? []).join(', '), n.projekt, n.text) });
     for (const n of p.brain ?? []) docs.push({ key: `f:${p.id}:${n.id}`, text: docText(n.titel, (n.tags ?? []).join(', '), n.text) });
   }
@@ -8570,8 +8581,8 @@ async function searchEverything(q, k = 8) {
     });
   }
   // Wortsuche ergänzt, was die Bedeutungssuche (noch) nicht kennt
-  if (PRIV) for (const n of brainSearch(q, 4)) take(`b:${n.id}`, () => push('Notiz', n.titel, n.text, { id: n.id }));
-  if (PRIV) for (const n of brainSearch(q, 2, {}, 'figur')) take(`f:${p.id}:${n.id}`, () => push('eigenes Notizbuch', n.titel, n.text, { id: n.id }));
+  if (BRAIN) for (const n of brainSearch(q, 4)) take(`b:${n.id}`, () => push('Notiz', n.titel, n.text, { id: n.id }));
+  if (BRAIN) for (const n of brainSearch(q, 2, {}, 'figur')) take(`f:${p.id}:${n.id}`, () => push('eigenes Notizbuch', n.titel, n.text, { id: n.id }));
   if (p.memoryOn) for (const e of findEpisodes(p, q, 3, 5)) take(`e:${p.id}:${e.id}`, () => push('früheres Gespräch', `${e.titel} (${fmtDate(e.von)})`, e.text));
   for (const h of savedIndex?.n ? searchIndex(savedIndex, q, 3) : []) take(`s:${h.doc.entry.id}`, () => push('gespeichertes Wissen', h.doc.name, h.text));
   if (kbActive()) for (const h of searchIndex(kbIndex, q, 3)) take(`k:${kb.docs.indexOf(h.doc)}:${h.i}`, () => push('Firmenwissen', `${h.doc.name} (Abschnitt ${h.i + 1})`, h.text));
@@ -8592,7 +8603,7 @@ function brainChanged() {
   brainSortSoon();
 }
 function addBrainNote(f, who = 'nutzer') {
-  if (!PRIV) throw new Error('Das Second Brain gibt es im Bereich Privat.');
+  if (!BRAIN) throw new Error('Das Second Brain gibt es im Bereich Privat.');
   const n = makeNote(who === 'figur' ? { ordner: 'themen', ...f, sortiert: true, quelle: f.quelle ?? 'figur' } : f);
   notesOf(who).push(n);
   logEv('BRAIN', `neu${who === 'figur' ? ' (Figur)' : ''}: ${n.titel.slice(0, 40)} (${n.ordner})`);
@@ -8625,7 +8636,7 @@ const noteView = (n, full = false) => ({
 });
 const ordnerKey = (o) => (o ? Object.keys(ORDNER).find((k) => k === String(o).toLowerCase() || ORDNER[k].toLowerCase() === String(o).toLowerCase()) : undefined);
 async function brainTool(name, input = {}) {
-  if (!PRIV) throw new Error('Das Second Brain gibt es im Bereich Privat.');
+  if (!BRAIN) throw new Error('Das Second Brain gibt es im Bereich Privat.');
   // notizbuch: „eigenes“ = das der Figur, sonst das deines Gegenübers
   const who = input.notizbuch === 'eigenes' ? 'figur' : 'nutzer';
   const notes = notesOf(who);
@@ -8722,12 +8733,12 @@ const OWN_BRAIN_PROMPT = {
 // Kostenbremse, nur was der Nutzer nicht selbst eingeordnet hat
 let brainSortTimer = null;
 function brainSortSoon(ms = 60000) {
-  if (!PRIV || state.settings.brainSort === false) return;
+  if (!BRAIN || state.settings.brainSort === false) return;
   clearTimeout(brainSortTimer);
   brainSortTimer = setTimeout(() => sortInbox().catch((e) => logEv('BRAIN', `Sortieren: ${e.message}`)), ms);
 }
 async function sortInbox({ force = false } = {}) {
-  if (!PRIV || state.settings.offline || (!force && (state.busy || budgetSaving()))) return 0;
+  if (!BRAIN || state.settings.offline || (!force && (state.busy || budgetSaving()))) return 0;
   if (!force && Date.now() - (state.brainSortedAt ?? 0) < 10 * 60e3) return 0;
   const todo = (state.brain ?? []).filter((n) => n.ordner === 'eingang' && !n.sortiert && !n.zwischen).slice(0, 15);
   if (!todo.length) return 0;
@@ -8805,7 +8816,7 @@ function processZwischen(said = '') {
 function renderZwischenChip() {
   const chip = document.getElementById('zwischenChip');
   if (!chip) return;
-  const n = PRIV ? zwischenItems().length : 0;
+  const n = BRAIN ? zwischenItems().length : 0;
   chip.hidden = !n;
   chip.textContent = `📥 ${n}`;
   chip.title = `${n} Notiz${n === 1 ? '' : 'en'} für später – antippen zum Durchgehen mit der Figur`;
@@ -8833,7 +8844,7 @@ async function captureTop3(text) {
 async function tidyOwnBrain({ force = false } = {}) {
   const p = persona();
   const own = p.brain ?? [];
-  if (!PRIV || state.settings.offline || own.length < 3) return null;
+  if (!BRAIN || state.settings.offline || own.length < 3) return null;
   if (!force && (state.settings.ownTidy === false || budgetSaving() || state.busy || tts.speaking || Date.now() - (p.brainTidyAt ?? 0) < 20 * 3600e3)) return null;
   p.brainTidyAt = Date.now();
   let res = null;
@@ -8853,7 +8864,7 @@ async function tidyOwnBrain({ force = false } = {}) {
 /** An einem eigenen Vorhaben weiterarbeiten: einen Schritt, mit Internetsuche; höchstens VORHABEN_MAX_TAG am Tag. */
 async function workOnVorhaben({ force = false } = {}) {
   const p = persona();
-  if (!PRIV || state.settings.offline) return null;
+  if (!BRAIN || state.settings.offline) return null;
   if (!force && (state.settings.vorhaben === false || budgetSaving() || state.busy || tts.speaking || state.micActive || state.drive || state.inCall)) return null;
   const day = todayKey();
   const cnt = state.settings.vorhabenDay?.day === day ? state.settings.vorhabenDay.n : 0;
@@ -8910,7 +8921,7 @@ setInterval(() => {
 
 /** Anlässe für die eigene Initiative aus dem Second Brain: bald Fälliges, ab und zu eine ältere Notiz wieder hochholen. */
 function brainSeeds(now = Date.now()) {
-  if (!PRIV) return [];
+  if (!BRAIN) return [];
   const out = [];
   // eigenes Vorhaben der Figur (aus ihrem Notizbuch)
   const own = openLoops(notesOf('figur'), 5);
@@ -8927,7 +8938,7 @@ function brainSeeds(now = Date.now()) {
 }
 /** Wochenrückblick als Notiz (Tagebuch): neu, erledigt, offen, Vorschläge – einmal pro Woche oder per Knopf. */
 async function brainWeekly({ manual = false } = {}) {
-  if (!PRIV) return null;
+  if (!BRAIN) return null;
   const now = Date.now();
   if (!manual && (state.settings.brainWeek === false || now - (state.settings.brainWeekAt ?? 0) < 6.5 * 86400e3 || state.busy || document.hidden)) return null;
   const since = Math.max(state.settings.brainWeekAt ?? 0, now - 7 * 86400e3);
@@ -8950,8 +8961,8 @@ let brainFilter = { ordner: '', q: '', who: 'nutzer' };
 function renderBrain() {
   const wrap = document.getElementById('brainWrap');
   if (!wrap) return;
-  wrap.hidden = !PRIV;
-  if (!PRIV) return;
+  wrap.hidden = !BRAIN;
+  if (!BRAIN) return;
   $('brainWeekOn').checked = state.settings.brainWeek !== false;
   const who = brainFilter.who;
   // umschalten: deine Notizen / das eigene Notizbuch der Figur
@@ -9289,6 +9300,58 @@ function startOnboarding() {
   });
 }
 $('obAgain').onclick = () => startOnboarding();
+// ---- Gerätewechsel (Privat): „Mach am PC weiter“ – das andere Gerät greift den Faden auf
+const DEVICE = MOBILE ? 'handy' : 'pc';
+const DEVICE_NAME = { handy: 'am Handy', pc: 'am PC' };
+function handoff(text, nach) {
+  const h = history();
+  const themen = h.filter((m) => m.role === 'user' && m.content && !handoffCommand(m.content)).slice(-3).map((m) => String(m.content).slice(0, 140));
+  state.uebergabe = { id: newId(), t: Date.now(), von: DEVICE, nach, personaId: persona().id, themen, gesehen: false };
+  history().push({ role: 'user', content: text, t: Date.now() });
+  addBubble('user', text);
+  const reply = nach === 'pc' ? 'Alles klar – am PC mache ich da weiter, wo wir gerade sind.' : 'Alles klar – am Handy mache ich da weiter, wo wir gerade sind.';
+  const entry = { role: 'assistant', content: reply, t: Date.now() };
+  history().push(entry);
+  decorateBubble(addBubble('assistant', reply), entry);
+  if (state.settings.speak && !state.dnd) tts.enqueue(reply, { mood: 'freundlich', text: reply });
+  logEv('GERÄT', `Übergabe ${DEVICE} → ${nach}`);
+  save();
+  // gleich übertragen, damit das andere Gerät es beim Öffnen schon hat
+  nasSoon(500);
+  autoSyncSoon(500);
+}
+/** Liegt eine frische Übergabe für dieses Gerät vor? Dann den Faden aufgreifen (einmal). */
+function checkHandoff() {
+  const u = state.uebergabe;
+  if (!BRAIN || !u || u.nach !== DEVICE || u.gesehen || Date.now() - (u.t ?? 0) > 8 * 3600e3 || state.locked || state.busy) return false;
+  u.gesehen = true;
+  if (u.personaId && state.personas.some((p) => p.id === u.personaId) && state.activeId !== u.personaId) {
+    state.activeId = u.personaId;
+    applyPersona?.();
+  }
+  const thema = u.themen?.at(-1);
+  const text = thema ? `Da bist du ja – wir waren gerade ${DEVICE_NAME[u.von]} bei „${thema.replace(/[.!?]+$/, '')}“. Sollen wir hier weitermachen?` : `Da bist du ja – wir waren eben ${DEVICE_NAME[u.von]} dran. Sollen wir hier weitermachen?`;
+  const entry = { role: 'assistant', content: text, t: Date.now() };
+  history().push(entry);
+  decorateBubble(addBubble('assistant', text), entry);
+  if (state.settings.speak && !state.dnd) tts.enqueue(text, { mood: 'freudig', text });
+  fireEvent('greet', 2500);
+  logEv('GERÄT', `Übergabe von ${u.von} aufgegriffen`);
+  save();
+  nasSoon(2000);
+  autoSyncSoon(2000);
+  return true;
+}
+/** Was kam seit `since` dazu (aus den abgeglichenen Daten)? */
+function newsSince(since) {
+  return whatsNew({ since, notes: state.brain ?? [], ownNotes: persona().brain ?? [], reminders: ownReminders(), history: history() });
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    state.settings.lastSeenAt = Date.now();
+    save({ quiet: true });
+  } else setTimeout(() => checkHandoff(), 1500);
+});
 /** Selbsttest beim Start (siehe selbsttest.js): Einstellungen und Daten prüfen, Sicheres reparieren, Ergebnis merken. */
 async function startCheck() {
   const fixed = repairSettings(state.settings, DEFAULT_SETTINGS);
@@ -10364,7 +10427,7 @@ function dueReminders() {
 function renderReminderBar() {
   const bar = document.getElementById('reminderBar');
   if (!bar) return;
-  const list = PRIV || alerts.length ? dueReminders() : [];
+  const list = BRAIN || alerts.length ? dueReminders() : [];
   bar.hidden = !list.length;
   document.body.classList.toggle('has-reminders', !!list.length);
   const sig = JSON.stringify(list.map((x) => x.key));
@@ -10439,7 +10502,7 @@ function afterReminderSync() {
 async function syncReminders() {
   const d = dev()?.setReminders ? dev() : OFFICE ? { setReminders: (j) => scheduleLocalReminders(JSON.parse(j)) } : null;
   if (!d) return;
-  const own = PRIV ? ownReminderItems() : [];
+  const own = BRAIN ? ownReminderItems() : [];
   if (PRIV) syncOrte();
   let up = null;
   const plan = (items) => d.setReminders(JSON.stringify([...items, ...own, ...roundNotifyItems(up)].filter((i) => i.at > Date.now()).sort((a, b) => a.at - b.at).slice(0, 60)));
@@ -10585,6 +10648,9 @@ window.__setFloat = (on) => {
 // ---------------------------------------------------------------- Privat-Funktionen (Android, nur Bereich Privat)
 // Fehlerprotokoll, Notizen („Merk dir …“), Fahrmodus – vorerst nur im Bereich Privat.
 const PRIV = MOBILE && AREA === 'privat';
+// Second Brain, Zwischenspeicher, Vorhaben, Tagesbegleiter: im Bereich Privat auf PC und Handy (handy-eigene Dinge wie
+// Orte, Fahrmodus, Benachrichtigungen bleiben bei PRIV)
+const BRAIN = AREA === 'privat';
 
 // ---- Fehlerprotokoll: letzte Ereignisse der App, ohne Gesprächsinhalte und ohne Schlüssel
 const LOG = [];
@@ -11242,7 +11308,11 @@ function applySync(m) {
   state.activeId = state.personas.some((p) => p.id === wasActive) ? wasActive : state.personas[0].id;
   state.saved = m.saved;
   if (Array.isArray(m.erinnerungen)) state.erinnerungen = m.erinnerungen;
-  if (Array.isArray(m.brain) && PRIV) {
+  if (m.uebergabe !== undefined) {
+    state.uebergabe = m.uebergabe;
+    setTimeout(() => checkHandoff(), 300);
+  }
+  if (Array.isArray(m.brain) && BRAIN) {
     state.brain = m.brain;
     brainIdx = new WeakMap();
     renderBrain();
@@ -11837,7 +11907,7 @@ document.addEventListener('visibilitychange', () => {
 const INITIATIVE_MAX = 2;
 async function maybeInitiative({ force = false } = {}) {
   const p = persona();
-  if (!PRIV || p.immersion === false || p.selbstOn === false) return null;
+  if (!BRAIN || p.immersion === false || p.selbstOn === false) return null;
   if (!force && (state.settings.initiative === false || budgetSaving() || state.drive || state.locked || document.hidden || placeQuiet())) return null;
   if (!force && (state.busy || tts.speaking || state.micActive || state.transcribing || state.dnd)) return null;
   const hour = new Date().getHours();
@@ -12362,6 +12432,10 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  checkHandoff,
+  handoff,
+  newsSince,
+  DEVICE,
   nasQuickSetup,
   nasTest,
   nasPeek,
@@ -12600,6 +12674,7 @@ init().then(() => {
   // persönliche Begrüßung (nach längerer Pause), sobald die Figur steht
   setTimeout(() => step('Begrüßung', personalGreeting), 2500);
   step('Gesicht', ensureFaceRig);
+  setTimeout(() => step('Gerätewechsel', checkHandoff), 3500);
   // Bedeutungssuche: Bestand im Hintergrund erfassen, wenn die App zur Ruhe gekommen ist
   semKick(20e3);
   // Spracherkennung im Hintergrund vorwärmen, damit der erste gesprochene Satz nicht warten muss
