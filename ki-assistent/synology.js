@@ -13,6 +13,17 @@ function parseQuickConnect(address) {
   if (m) return { id: m[1], folder: cleanFolder(m[2]) };
   return null;
 }
+/**
+ * Adresse für die Einrichtung bauen: aus „jens-nas“, „jens-nas.quickconnect.to“ oder einer ganzen Adresse plus Zielordner
+ * („/home/Drive/ki-assistent“ = Synology Drive, „/home/ki-assistent“ = Benutzerordner). null = keine gültige ID.
+ */
+function quickConnectAddress(input, folder = '/home/Drive/ki-assistent') {
+  const raw = String(input ?? '').trim();
+  const parsed = parseQuickConnect(raw) ?? parseQuickConnect(`${raw.replace(/\/+$/, '')}.quickconnect.to`);
+  const id = parsed?.id;
+  if (!id || !/^[a-z0-9][a-z0-9-]*$/i.test(id)) return null;
+  return `https://${id}.quickconnect.to${cleanFolder(folder) || '/home/Drive/ki-assistent'}`;
+}
 function cleanFolder(p) {
   const f = decodeURIComponent(String(p ?? '')).replace(/\/+$/, '').replace(/\/{2,}/g, '/');
   return f && f !== '/' ? (f.startsWith('/') ? f : `/${f}`) : '';
@@ -202,4 +213,5 @@ function createQuickConnect({ request }) {
   return { req };
 }
 
-module.exports = { parseQuickConnect, createQuickConnect };
+module.exports = {
+  quickConnectAddress, parseQuickConnect, createQuickConnect };

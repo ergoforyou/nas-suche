@@ -7,6 +7,7 @@ import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
 import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES } from './gespraech.js';
+import synology from '../synology.js';
 import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
 import { markSections, indexSettings, searchSettings, runOnboarding } from './einrichtung.js';
 import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS, ORT_RADIEN, ortArt, hhmm, wannText, hereNow, isOffice, gruppenKey } from './begleiter.js';
@@ -11621,6 +11622,37 @@ $('nasPass').onchange = async (e) => {
   }
 };
 $('nasNow').onclick = () => nasSync({ manual: true });
+/** Schnell-Einrichtung über QuickConnect (z. B. am Handy): Adresse bauen, Passwort sichern, Ordner anlegen, testen. */
+async function nasQuickSetup({ id, ziel, user, pass }) {
+  const url = synology.quickConnectAddress(id, ziel);
+  if (!url) return { ok: false, lines: ['❌ Das sieht nicht nach einer QuickConnect-ID aus (nur Buchstaben, Ziffern und Bindestriche, z. B. jens-nas).'] };
+  if (!String(user ?? '').trim()) return { ok: false, lines: ['❌ Benutzer der NAS fehlt.'] };
+  state.settings.nas = { ...(state.settings.nas ?? {}), url, user: user.trim(), auto: true };
+  delete state.settings.nas.error;
+  save({ quiet: true });
+  if (pass) await desktop.nasSetPassword(pass);
+  logEv('NAS', `Schnell-Einrichtung (${ziel.includes('/Drive/') ? 'Synology Drive' : 'Benutzerordner'})`);
+  // der Test schreibt eine Datei – dabei legt die NAS den Ordner (samt fehlenden Elternordnern) selbst an
+  const r = await nasTest();
+  if (r.ok) {
+    r.lines.unshift(`✅ Ordner auf der NAS: ${new URL(url).pathname}`);
+    r.lines.push(
+      ziel.includes('/Drive/')
+        ? '💻 Am PC: im Synology Drive Client „Mein Drive“ abgleichen lassen – der Ordner „ki-assistent“ erscheint dann unter SynologyDrive. In der App am PC: ⚙ → Wissen → NAS → „📁 Ordner wählen“ und diesen Ordner nehmen.'
+        : '💻 Am PC: den Benutzerordner der NAS als Netzlaufwerk verbinden und in der App mit „📁 Ordner wählen“ den Ordner „ki-assistent“ nehmen – oder dieselbe QuickConnect-Adresse eintragen.',
+    );
+  }
+  renderNasState();
+  return r;
+}
+$('nasQcGo').onclick = async () => {
+  $('nasTestOut').hidden = false;
+  $('nasTestOut').textContent = '🧭 Richte die NAS ein …';
+  const r = await nasQuickSetup({ id: $('nasQcId').value, ziel: $('nasQcZiel').value, user: $('nasQcUser').value, pass: $('nasQcPass').value });
+  $('nasQcPass').value = '';
+  $('nasTestOut').textContent = [...r.lines, ...(r.hint ? [`👉 ${r.hint}`] : [])].join('\n');
+  if (r.ok) nasSync({ manual: true });
+};
 $('nasTest').onclick = async () => {
   $('nasTestOut').hidden = false;
   $('nasTestOut').textContent = '🔌 Teste die Verbindung …';
@@ -12330,6 +12362,7 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  nasQuickSetup,
   nasTest,
   nasPeek,
   nasSync,

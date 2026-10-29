@@ -2,7 +2,7 @@
 // auf den Server der Region, Anmeldung, Dateien lesen/schreiben/löschen, bedingtes Schreiben, abgelaufene Sitzung.
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { parseQuickConnect, createQuickConnect } = require('../synology.js');
+const { parseQuickConnect, createQuickConnect, quickConnectAddress } = require('../synology.js');
 
 let failed = 0;
 const check = (ok, name, info = '') => {
@@ -17,6 +17,13 @@ check(p1?.id === 'jens' && p1.folder === '/home/ki-assistent', 'Adresse ID.quick
 check(p2?.id === 'jens' && p2.folder === '/home/ki-assistent', 'Adresse quickconnect.to/ID/Ordner', JSON.stringify(p2));
 check(p3?.id === 'jens' && p3.folder === '/home/ki', 'Adresse mit Region', JSON.stringify(p3));
 check(!parseQuickConnect('http://192.168.1.10:5005/home/ki') && !parseQuickConnect('http://100.1.2.3:5005/x'), 'WebDAV-Adressen bleiben WebDAV');
+check(
+  quickConnectAddress('jens-nas') === 'https://jens-nas.quickconnect.to/home/Drive/ki-assistent' &&
+    quickConnectAddress('jens-nas.quickconnect.to', '/home/ki-assistent') === 'https://jens-nas.quickconnect.to/home/ki-assistent' &&
+    quickConnectAddress('https://jens-nas.quickconnect.to/irgendwas') === 'https://jens-nas.quickconnect.to/home/Drive/ki-assistent' &&
+    quickConnectAddress('') === null && quickConnectAddress('mit leerzeichen') === null,
+  'Einrichtung: Adresse aus der QuickConnect-ID bauen (Synology Drive oder Benutzerordner)',
+);
 
 // nachgebildete NAS
 const td = new TextDecoder();

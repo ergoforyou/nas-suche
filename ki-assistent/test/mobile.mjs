@@ -3673,6 +3673,15 @@ const b91 = await page.evaluate(async () => {
   await app.nasPeek();
   await new Promise((r) => setTimeout(r, 500));
   out.peek = app.logLines().slice(before).some((l) => /Neues vom anderen Gerät/.test(l));
+  // Schnell-Einrichtung vom Handy: ID → Adresse (Ordner in Synology Drive), Passwort gesichert, Ordner per Test angelegt
+  let pwSet = '';
+  const keepPw = window.desktop.nasSetPassword;
+  window.desktop.nasSetPassword = async (pw) => ((pwSet = pw), true);
+  const qs = await app.nasQuickSetup({ id: 'jens-nas', ziel: '/home/Drive/ki-assistent', user: 'ki', pass: 'geheim' });
+  out.quick = qs.ok && app.state.settings.nas.url === 'https://jens-nas.quickconnect.to/home/Drive/ki-assistent' && pwSet === 'geheim' && qs.lines.some((l) => /Synology Drive Client/.test(l));
+  const bad = await app.nasQuickSetup({ id: 'mit leerzeichen', ziel: '/home/ki-assistent', user: 'ki', pass: '' });
+  out.badId = !bad.ok && /QuickConnect-ID/.test(bad.lines[0]);
+  window.desktop.nasSetPassword = keepPw;
   deny = true;
   const t2 = await app.nasTest();
   out.fail = !t2.ok && /Passwort/.test(t2.lines.join(' ')) && /Benutzer und Passwort prüfen/.test(t2.hint);
@@ -3680,7 +3689,7 @@ const b91 = await page.evaluate(async () => {
   app.state.settings.nas = keep.nas;
   return out;
 });
-check(b91.test && b91.synced && b91.peek && b91.fail, 'NAS: Verbindungstest (schreiben, lesen, aufräumen) mit Hinweisen; Kurz-Check holt Neues vom anderen Gerät', JSON.stringify(b91));
+check(b91.test && b91.synced && b91.peek && b91.fail && b91.quick && b91.badId, 'NAS: Schnell-Einrichtung über QuickConnect, Verbindungstest mit Hinweisen; Kurz-Check holt Neues vom anderen Gerät', JSON.stringify(b91));
 // Beta 85: Startschutz – nach mehreren Fehlstarts sicherer Modus mit den letzten Fehlern, „Normal neu starten“
 await page.evaluate(() => {
   localStorage.setItem('ki-start', JSON.stringify({ n: 3, t: Date.now() }));

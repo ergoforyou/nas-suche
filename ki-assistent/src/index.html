@@ -886,6 +886,22 @@
           <b>Am PC: einfach den Ordner</b>, den der Synology-Client (oder ein Netzlaufwerk) einbindet – mit „📁 Ordner wählen“,
           z. B. D:\SynologyDrive\ki-assistent. Die App schreibt hinein, die Synology überträgt es selbst.<br />
           Im eigenen Netz geht auch WebDAV (http://IP-der-NAS:5005/home/ki-assistent).</p>
+        <div id="nasSetup" class="nas-setup">
+          <b>🧭 Schnell einrichten über QuickConnect</b>
+          <input id="nasQcId" type="text" placeholder="QuickConnect-ID (z. B. jens-nas – steht in DSM unter Externer Zugriff)" autocomplete="off" />
+          <select id="nasQcZiel">
+            <option value="/home/Drive/ki-assistent">Ordner in Synology Drive (empfohlen – der Drive-Client holt ihn auf den PC)</option>
+            <option value="/home/ki-assistent">Ordner im Benutzerordner (für ein Netzlaufwerk am PC)</option>
+          </select>
+          <div class="row">
+            <input id="nasQcUser" type="text" placeholder="Benutzer der NAS" autocomplete="off" style="flex:1" />
+            <input id="nasQcPass" type="password" placeholder="Passwort" autocomplete="new-password" style="flex:1" />
+          </div>
+          <button id="nasQcGo">🧭 Einrichten und testen</button>
+          <p class="hint">Die App legt den Ordner „ki-assistent“ auf der NAS selbst an, prüft Schreiben und Lesen und gleicht
+            gleich ab. Am PC erscheint der Ordner dann über den Synology Drive Client (unter „SynologyDrive“) – dort in der App
+            mit „📁 Ordner wählen“ auswählen. Oder hier unten alles von Hand eintragen.</p>
+        </div>
         <div class="row">
           <input id="nasUrl" type="text" placeholder="https://ID.quickconnect.to/home/ki-assistent – am PC auch ein Ordner" autocomplete="off" style="flex:1" />
           <button id="nasPick" hidden title="Ordner des Synology-Clients wählen">📁 Ordner wählen</button>
