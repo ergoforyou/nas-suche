@@ -1,0 +1,11 @@
+{
+  "uid": "whatsapp_chat_card",
+  "type": "card",
+  "config": {
+    "name": "WhatsApp",
+    "description": "WhatsApp-Verlauf mit diesem Kontakt; Antworten direkt aus HubSpot.",
+    "location": "crm.record.tab",
+    "entrypoint": "/app/cards/WhatsAppChat.jsx",
+    "objectTypes": ["contacts"]
+  }
+}

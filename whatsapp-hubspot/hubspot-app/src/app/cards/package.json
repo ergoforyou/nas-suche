@@ -1,0 +1,10 @@
+{
+  "name": "whatsapp-karte",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@hubspot/ui-extensions": "^0.18.0",
+    "react": "^18.2.0"
+  }
+}

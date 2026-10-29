@@ -1,0 +1,22 @@
+{
+  "name": "whatsapp-hubspot-server",
+  "version": "1.0.0",
+  "description": "Verbindet WhatsApp Business (als verknüpftes Gerät) mit HubSpot: Verlauf am Kontakt, Senden aus HubSpot.",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.1.0",
+    "pino": "^10.0.0",
+    "qrcode": "^1.5.4"
+  }
+}

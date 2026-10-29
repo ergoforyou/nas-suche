@@ -1,0 +1,30 @@
+{
+  "uid": "whatsapp_app",
+  "type": "app",
+  "config": {
+    "description": "WhatsApp-Verlauf am Kontakt und Antworten aus HubSpot über den eigenen Server auf der Synology.",
+    "name": "WhatsApp",
+    "distribution": "private",
+    "auth": {
+      "type": "static",
+      "requiredScopes": [
+        "oauth",
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.schemas.contacts.read",
+        "crm.schemas.contacts.write"
+      ],
+      "optionalScopes": [],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": [
+        "https://wa.eure-firma.de"
+      ],
+      "iframe": [],
+      "img": [
+        "https://wa.eure-firma.de"
+      ]
+    }
+  }
+}
