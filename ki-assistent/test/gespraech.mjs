@@ -1,5 +1,5 @@
 // Natürliches Gespräch (src/gespraech.js): Zurufe, Korrekturen, Pausenlänge, Enden beim Erzählen.
-import { voiceCommand, isCorrection, liveSilenceMs, dictEnd } from '../src/gespraech.js';
+import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, talkMode, realtimeCommand } from '../src/gespraech.js';
 
 let failed = 0;
 const check = (ok, name, info = '') => {
@@ -28,6 +28,9 @@ check(e1.how === 'fertig' && e1.rest === 'Das war mein Tag heute', '„fertig“
 check(e2.how === 'antworten' && /Was meinst du\?$/.test(e2.rest), '„Was meinst du?“ = Figur antwortet (Frage bleibt drin)', JSON.stringify(e2));
 check(e3.how === 'notiz' && e3.rest === 'Hecke schneiden am Samstag', '„als Notiz“', JSON.stringify(e3));
 check(e4.how === 'senden' && e5.how === 'text' && dictEnd('Ich bin noch nicht fertig mit dem Gedanken und') === null, '„abschicken“, „nur Text“; „fertig“ mitten im Satz zählt nicht');
+
+check(talkMode('Nur kurz bitte, wie spät ist es?') === 'kurz' && talkMode('Lass uns ein bisschen plaudern') === 'plaudern' && talkMode("Erklär's mir genau") === 'genau' && talkMode('Ok, wieder normal') === 'normal' && talkMode('Wie wird das Wetter?') === null, 'Gesprächsart per Zuruf');
+check(realtimeCommand('Lass uns in Echtzeit reden') === 'an' && realtimeCommand('Echtzeit an') === 'an' && realtimeCommand('Echtzeit aus') === 'aus' && realtimeCommand('Beende das Echtzeit-Gespräch') === 'aus' && realtimeCommand('Was ist Echtzeit?') === null, 'Echtzeit-Gespräch per Zuruf an/aus');
 
 console.log(failed ? `${failed} Prüfung(en) fehlgeschlagen` : 'Gespräch: alles in Ordnung');
 process.exit(failed ? 1 : 0);

@@ -6,7 +6,7 @@ import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pick
 import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
-import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION } from './gespraech.js';
+import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES } from './gespraech.js';
 import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
 import { markSections, indexSettings, searchSettings, runOnboarding } from './einrichtung.js';
 import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS, ORT_RADIEN, ortArt, hhmm, wannText, hereNow, isOffice, gruppenKey } from './begleiter.js';
@@ -942,7 +942,9 @@ function buildMessages() {
   else if (webActive() || state.place) ctx.push(r.now(new Date(), userTimeZone()));
   if (state.place) ctx.push(r.place(state.place));
   // gesprochenes Hin und Her: kurz und dialogisch; nach langem Erzählen: erst zusammenfassen; Korrektur: übernehmen
-  if ((state.voiceTurn || state.settings.handsFree) && p.style !== 'frei' && p.language !== 'en') ctx.push(RULE_LIVE);
+  // Gesprächsart per Zuruf („nur kurz“, „lass uns plaudern“, „erklär's genau“) – gilt bis „wieder normal“
+  if (state.talkMode && MODE_RULES[state.talkMode] && p.language !== 'en') ctx.push(MODE_RULES[state.talkMode]);
+  if ((state.voiceTurn || state.settings.handsFree) && state.talkMode !== 'genau' && p.style !== 'frei' && p.language !== 'en') ctx.push(RULE_LIVE);
   if (state.longTurn && p.language !== 'en') ctx.push(RULE_LONG_TURN);
   if (state.correction && p.language !== 'en') ctx.push(RULE_CORRECTION);
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
@@ -1112,6 +1114,18 @@ const NEW_CHAT_COMMAND = /^(neuer chat|neues gespräch|new chat)[.!]?$/i;
 async function send(text) {
   text = text.trim();
   state.correction = isCorrection(text);
+  // Gesprächsart umstellen (die Nachricht geht trotzdem an die Figur); Echtzeit-Gespräch per Zuruf (Privat)
+  const mode = talkMode(text);
+  if (mode && mode !== (state.talkMode ?? 'normal')) {
+    state.talkMode = mode === 'normal' ? null : mode;
+    logEv('GESPRÄCH', `Art: ${MODE_NAMES[mode]}`);
+    status(`💬 Gesprächsart: ${MODE_NAMES[mode]}`);
+  }
+  if (PRIV && realtimeCommand(text) === 'an' && desktop.realtimeConnect && !pendingAttachments.length) {
+    addBubble('user', text);
+    logEv('GESPRÄCH', 'Echtzeit per Zuruf');
+    return startRealtime();
+  }
   if (NEW_CHAT_COMMAND.test(text) && !pendingAttachments.length) return newChat();
   // „Morgenrunde“ – den Tagesüberblick auch auf Zuruf
   if (/^\s*(morgenrunde|morgen-?briefing|tagesüberblick)\s*[.!?]?\s*$/i.test(text ?? '') && !pendingAttachments.length) {
@@ -11996,6 +12010,14 @@ async function startRealtime() {
         const entry = { role: 'user', content: ev.transcript.trim() };
         history().push(entry);
         decorateBubble(addBubble('user', entry.content), entry);
+        // „Echtzeit aus“: zurück ins normale Live-Gespräch (günstiger, mit Gedächtnis-Suche und allen Werkzeugen)
+        if (realtimeCommand(entry.content) === 'aus') {
+          logEv('GESPRÄCH', 'Echtzeit per Zuruf beendet');
+          setTimeout(() => {
+            stopRealtime();
+            setHandsFree(true);
+          }, 300);
+        }
       } else if (/response\.(output_)?audio_transcript\.delta$/.test(t)) {
         avatarState.thinking = false;
         if (!rt.bot) rt.bot = addBubble('assistant', '');
@@ -12223,6 +12245,8 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  talkMode,
+  realtimeCommand,
   logLines: () => LOG.slice(),
   pollPlace,
   placeQuiet,

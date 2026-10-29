@@ -74,3 +74,32 @@ export const RULE_LONG_TURN =
 export const RULE_CORRECTION =
   'Dein Gegenüber korrigiert sich oder dich gerade. Übernimm die Korrektur ohne lange Entschuldigung und antworte nur ' +
   'noch auf den korrigierten Stand – fang nicht von vorn an.';
+
+// ---------------------------------------------------------------- Gesprächsmodi und Echtzeit per Zuruf
+/**
+ * Wunsch nach einer anderen Gesprächsart? → 'kurz' | 'plaudern' | 'genau' | 'normal' | null. Gilt, bis etwas anderes
+ * gesagt wird (die Nachricht geht trotzdem an die Figur – sie soll ja darauf eingehen).
+ */
+export function talkMode(text) {
+  const t = String(text ?? '').toLowerCase();
+  if (/\b(wieder normal|normal weiter|ganz normal|wie vorher|normaler modus)\b/.test(t)) return 'normal';
+  if (/\b(nur kurz|fass dich kurz|kurz bitte|kürzer bitte|kurze antworten|in kurz|knapp bitte|nicht so lang)\b/.test(t)) return 'kurz';
+  if (/\b(erklär[’']?s? (mir )?(genau|ausführlich|gründlich)|ganz genau|ausführlich bitte|ausführlicher|schritt für schritt|im detail|mehr details)\b/.test(t)) return 'genau';
+  if (/\b(lass uns (mal )?(ein bisschen |etwas )?(plaudern|quatschen|reden|unterhalten)|einfach plaudern|erzähl (doch )?(mal )?(was|etwas) von dir|lass uns quatschen)\b/.test(t)) return 'plaudern';
+  return null;
+}
+/** Echtzeit-Gespräch per Zuruf an ('an') oder aus ('aus')? */
+export function realtimeCommand(text) {
+  const t = String(text ?? '').toLowerCase();
+  if (/\b(echtzeit|realtime)[- ]?(gespräch|modus)?\s*(aus|beenden|stopp|stop|ende)\b|\b(beende|stopp?) (das )?echtzeit/.test(t)) return 'aus';
+  if (/\b(echtzeit|realtime)[- ]?(gespräch|modus)?\s*(an|starten|start|einschalten)\b|\bin echtzeit (reden|quatschen|plaudern|sprechen|unterhalten)\b|\b(starte|mach) (das )?echtzeit/.test(t)) return 'an';
+  return null;
+}
+export const MODE_RULES = {
+  kurz: 'Dein Gegenüber möchte es kurz: antworte in ein, zwei Sätzen, ohne Rückfrage, außer sie ist nötig.',
+  plaudern:
+    'Ihr plaudert gerade locker: antworte im Plauderton, bring eigene Gedanken, Erlebnisse aus deiner Rolle oder eine ' +
+    'kleine Beobachtung ein und stell gern eine neugierige Rückfrage – wie in einem echten Gespräch unter Freunden.',
+  genau: 'Dein Gegenüber möchte es genau: erkläre gründlich und strukturiert, Schritt für Schritt; Länge ist hier erwünscht.',
+};
+export const MODE_NAMES = { kurz: 'kurz', plaudern: 'Plaudern', genau: 'genau', normal: 'normal' };

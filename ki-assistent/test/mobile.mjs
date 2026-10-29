@@ -3622,6 +3622,22 @@ await page.evaluate(() => [...document.querySelectorAll('#dictChips button')].fi
 await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !window.__app.state.busy, n89, { timeout: 15000 }).catch(() => {});
 const sent89 = await page.evaluate(() => ({ user: window.__app.history().filter((m) => m.role === 'user').at(-1)?.content, chipsHidden: document.getElementById('dictChips').hidden }));
 check(/Gedanke zum Garten/.test(sent89.user ?? '') && sent89.chipsHidden, 'Nach dem Diktat: „Antworten lassen“ schickt es an die Figur', JSON.stringify(sent89));
+// Beta 90: Gesprächsart per Zuruf – gilt, bis „wieder normal“
+await page.evaluate(() => (window.__app.state.busy = false));
+claudeQueue.push(sayText('Klar, kurz: Es ist sonnig.'));
+const before90 = claudeRequests.length;
+const n90 = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+await page.fill('#input', 'Nur kurz bitte: Wie wird das Wetter?');
+await page.click('#btnSend');
+await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !window.__app.state.busy, n90, { timeout: 15000 }).catch(() => {});
+const req90 = claudeRequests.slice(before90).find((r) => JSON.stringify(r.messages ?? '').includes('Nur kurz bitte'));
+const m90 = await page.evaluate(() => {
+  const app = window.__app;
+  const out = { mode: app.state.talkMode };
+  app.state.talkMode = null;
+  return out;
+});
+check(m90.mode === 'kurz' && /ein, zwei Sätzen/.test(JSON.stringify(req90 ?? '')), 'Gesprächsart per Zuruf („Nur kurz bitte“) wirkt auf die Antwort', JSON.stringify({ m90, req: !!req90 }));
 // Beta 85: Startschutz – nach mehreren Fehlstarts sicherer Modus mit den letzten Fehlern, „Normal neu starten“
 await page.evaluate(() => {
   localStorage.setItem('ki-start', JSON.stringify({ n: 3, t: Date.now() }));
