@@ -876,23 +876,33 @@
       </div>
       <div id="nasWrap" hidden>
         <h3>🗄 Synology NAS <span class="beta-badge">Privat</span></h3>
-        <p class="hint">PC und Handy gleichen Personas, Chatverlauf, Gedächtnis, Selbstbild und Wissen über einen Ordner auf deiner
-          NAS ab – unabhängig voneinander, der PC muss dafür nicht laufen. Dazu jeden Tag eine Sicherung (30 Tage).
-          Einrichtung auf der NAS: im Paket-Zentrum „WebDAV Server“ installieren und HTTP (Port 5005) einschalten, in der
-          File Station einen Ordner anlegen, z. B. „ki-assistent“ in deinem Benutzerordner (home). Adresse dann:
-          <b>http://IP-der-NAS:5005/home/ki-assistent</b>. Auf PC und Handy dieselbe Adresse und denselben Benutzer eintragen.
-          Unterwegs: mit dem Tailscale-Paket die Tailscale-Adresse der NAS eintragen – oder einfach über
-          <b>QuickConnect</b>: <b>https://DEINE-ID.quickconnect.to/home/ki-assistent</b> (geht zu Hause und unterwegs,
-          ohne WebDAV und ohne Portfreigabe; Benutzer ohne Zwei-Faktor-Anmeldung nehmen).</p>
-        <input id="nasUrl" type="text" placeholder="http://192.168.1.10:5005/home/ki-assistent oder https://ID.quickconnect.to/home/ki-assistent" autocomplete="off" />
+        <p class="hint">PC und Handy gleichen Personas, Chatverlauf, Gedächtnis, Notizen, Erinnerungen und Figuren über einen
+          Ordner auf deiner Synology ab – gleich nach jeder Änderung, beim Öffnen und mit einem kurzen Check alle 30 Sekunden.
+          Dazu jeden Tag eine Sicherung (30 Tage).<br />
+          <b>Am Handy (und unterwegs): QuickConnect.</b> In DSM QuickConnect einschalten, in der File Station einen Ordner
+          anlegen (z. B. „ki-assistent“ in deinem Benutzerordner „home“) und hier eintragen:
+          <b>https://DEINE-ID.quickconnect.to/home/ki-assistent</b> – dazu Benutzer und Passwort (Benutzer ohne
+          Zwei-Faktor-Anmeldung).<br />
+          <b>Am PC: einfach den Ordner</b>, den der Synology-Client (oder ein Netzlaufwerk) einbindet – mit „📁 Ordner wählen“,
+          z. B. D:\SynologyDrive\ki-assistent. Die App schreibt hinein, die Synology überträgt es selbst.<br />
+          Im eigenen Netz geht auch WebDAV (http://IP-der-NAS:5005/home/ki-assistent).</p>
+        <div class="row">
+          <input id="nasUrl" type="text" placeholder="https://ID.quickconnect.to/home/ki-assistent – am PC auch ein Ordner" autocomplete="off" style="flex:1" />
+          <button id="nasPick" hidden title="Ordner des Synology-Clients wählen">📁 Ordner wählen</button>
+        </div>
         <div class="row">
           <input id="nasUser" type="text" placeholder="Benutzer der NAS" autocomplete="off" style="flex:1" />
           <input id="nasPass" type="password" placeholder="Passwort" autocomplete="new-password" style="flex:1" />
         </div>
         <p class="hint">Das Passwort bleibt verschlüsselt auf diesem Gerät (wie die API-Schlüssel) und wird nirgends angezeigt.
           Im eigenen Netz geht die Verbindung unverschlüsselt – für unterwegs Tailscale oder QuickConnect (verschlüsselt) verwenden.</p>
-        <label class="check"><input id="nasAuto" type="checkbox" /> Automatisch abgleichen (beim Öffnen, beim Verlassen, alle 3 Minuten und gleich nach Änderungen wie neuen oder bestätigten Erinnerungen)</label>
-        <div class="row wrap"><button id="nasNow">🗄 Jetzt abgleichen</button><button id="nasBackups">↩ Sicherung zurückholen …</button></div>
+        <input id="nasCrypt" type="password" autocomplete="new-password" placeholder="Passwort für die Verschlüsselung (optional, auf allen Geräten gleich)" />
+        <p class="hint">🔐 Mit Passwort für die Verschlüsselung liegt auf der NAS nur Datensalat (AES-256). Auf jedem Gerät
+          dasselbe Passwort eintragen; es bleibt verschlüsselt auf dem Gerät und geht nirgends hin. Vergessen = der Stand auf der
+          NAS ist nicht mehr lesbar (die Geräte selbst behalten alles).</p>
+        <label class="check"><input id="nasAuto" type="checkbox" /> Automatisch abgleichen (beim Öffnen und Verlassen, gleich nach Änderungen, Kurz-Check alle 30 Sekunden)</label>
+        <div class="row wrap"><button id="nasTest">🔌 Verbindung testen</button><button id="nasNow">🗄 Jetzt abgleichen</button><button id="nasBackups">↩ Sicherung zurückholen …</button></div>
+        <pre id="nasTestOut" class="hint nas-test" hidden></pre>
         <div id="nasBackupList" class="hint" hidden></div>
         <p id="nasState" class="hint"></p>
       </div>

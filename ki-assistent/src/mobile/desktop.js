@@ -12,6 +12,7 @@ import googleLib from '../../google.js';
 import wetter from '../../wetter.js';
 import nachrichten from '../../nachrichten.js';
 import synology from '../../synology.js';
+import nasCrypt from '../../nascrypt.js';
 import youtube from '../../youtube.js';
 import verkehr from '../../verkehr.js';
 
@@ -83,7 +84,9 @@ const safeBackup = (n) => {
 // Schlüssel liegen verschlüsselt im App-Speicher: Der AES-Schlüssel dazu steckt im Android-Keystore
 // (Hardware-geschützt, lässt sich nicht auslesen oder kopieren). window.KIKeys kommt aus MainActivity.java.
 const vault = () => (window.KIKeys?.available?.() ? window.KIKeys : null);
-const PROVIDERS = ['anthropic', 'openai', 'google'];
+// nas / naskrypt: Passwort der NAS und für die Verschlüsselung – müssen wie die API-Schlüssel dauerhaft (verschlüsselt)
+// gespeichert werden; vorher fehlte das NAS-Passwort nach jedem Neustart der App
+const PROVIDERS = ['anthropic', 'openai', 'google', 'nas', 'naskrypt'];
 let keys = null;
 async function loadKeys(path = areaPath('schluessel.json')) {
   const file = (await readJson(path)) ?? {};
@@ -269,16 +272,32 @@ const api = {
   nasReq: async ({ base, user, method = 'GET', path = '', body, headers = {} }) => {
     if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');
     if (!window.KIDevice?.httpStart) throw new Error('NAS-Zugriff braucht die Android-App');
-    const pw = (await getKeys()).nas ?? '';
-    if (synology.parseQuickConnect(base)) return quickConnect.req({ address: base, user, password: pw, method, path, body, headers });
-    const root = new URL(String(base).endsWith('/') ? base : `${base}/`);
-    if (!/^https?:$/.test(root.protocol)) throw new Error('Adresse muss mit http:// oder https:// beginnen');
-    const url = new URL(String(path).replace(/^\/+/, ''), root).href;
-    const auth = `Basic ${toBase64(new TextEncoder().encode(`${user ?? ''}:${pw}`))}`;
-    const r = await nativeHttp(method, url, { Authorization: auth, ...headers }, body);
-    if (r.error) throw new Error(`NAS nicht erreichbar (${r.error})`);
-    return { status: r.status, etag: r.etag, body: r.body };
+    const k = await getKeys();
+    const pw = k.nas ?? '';
+    const send = async (m, p, b, h) => {
+      if (synology.parseQuickConnect(base)) return quickConnect.req({ address: base, user, password: pw, method: m, path: p, body: b, headers: h });
+      const root = new URL(String(base).endsWith('/') ? base : `${base}/`);
+      if (!/^https?:$/.test(root.protocol)) throw new Error('Adresse muss mit http:// oder https:// beginnen (oder https://ID.quickconnect.to/…)');
+      const url = new URL(String(p).replace(/^\/+/, ''), root).href;
+      const auth = `Basic ${toBase64(new TextEncoder().encode(`${user ?? ''}:${pw}`))}`;
+      const r = await nativeHttp(m, url, { Authorization: auth, ...h }, b);
+      if (r.error) throw new Error(`NAS nicht erreichbar (${r.error})`);
+      return { status: r.status, etag: r.etag, body: r.body };
+    };
+    // mit eigenem Passwort für die Verschlüsselung: hinein verschlüsselt, heraus entschlüsselt
+    return nasCrypt.cryptReq(send, k.naskrypt ?? '', method, path, body, headers);
   },
+  nasSetCrypt: async (pw) => {
+    if (AREA !== 'privat') throw new Error('Die NAS gibt es vorerst nur im Bereich Privat.');
+    const k = await getKeys();
+    const clean = String(pw ?? '').trim();
+    if (clean) k.naskrypt = clean;
+    else delete k.naskrypt;
+    await storeKeys(k);
+    return true;
+  },
+  nasHasCrypt: async () => AREA === 'privat' && !!(await getKeys()).naskrypt,
+  nasIsLocal: async () => false,
 
   setKey: async (provider, key) => {
     const k = await getKeys();

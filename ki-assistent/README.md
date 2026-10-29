@@ -168,7 +168,10 @@ Tageszeit, Begrüßung beim Start, Status-Leuchte, Sprechblase (z. B. im Büro o
   Inhalt erkennen (nur auf Knopfdruck, 3 Standbilder an Claude); die Figur schaut klein in der Ecke mit.
 - **Widget** (Glas, durchsichtig oder dunkel), Schnellkacheln, App-Verknüpfungen; **Teilen** mit der App legt Notizen an.
 - **Fahrmodus**, **Nachrichten vorlesen** (mit der Stimme auf dem Gerät), **Bildschirm fragen**, schwebende Figur.
-- **Abgleich mit dem PC im WLAN** (QR-Code) und über die **Synology-NAS** (WebDAV oder QuickConnect).
+- **Abgleich mit dem PC im WLAN** (QR-Code) und über die **Synology-NAS** (Beta 91): am Handy über QuickConnect, am PC
+  einfach über den Ordner des Synology-Clients/Netzlaufwerks; Abgleich gleich nach Änderungen, beim Öffnen und mit einem
+  Kurz-Check alle 30 s; „🔌 Verbindung testen“ mit verständlichen Hinweisen; optional verschlüsselt (AES-256, eigenes
+  Passwort auf jedem Gerät).
 - **Läuft alles?** (⚙ → Verbindung): Ampel für Schlüssel, Mikrofon, Freigaben, Sicherung, Suche und Selbsttest – mit Knopf
   zum Beheben; wöchentliche **Sicherung auf dem Gerät**.
 

@@ -467,8 +467,10 @@ const quickConnect = qcLib.createQuickConnect({
     return { status: r.status, url: r.url, body: new Uint8Array(await r.arrayBuffer()) };
   },
 });
-ipcMain.handle('nas:req', async (_e, { base, user, method = 'GET', path: rel = '', body, headers = {} }) => {
-  nasAllowed();
+const nasCrypt = require('./nascrypt.js');
+// Am PC kann das Ziel auch ein lokaler Ordner sein (Synology-Client/Netzlaufwerk) – siehe naslocal.js
+const { isLocalNas, localNasReq } = require('./naslocal.js');
+async function remoteNasReq(base, user, method, rel, body, headers) {
   if (qcLib.parseQuickConnect(base)) {
     try {
       return await quickConnect.req({ address: base, user, password: getKey('nas') ?? '', method, path: rel, body, headers });
@@ -478,7 +480,7 @@ ipcMain.handle('nas:req', async (_e, { base, user, method = 'GET', path: rel = '
     }
   }
   const root = new URL(String(base).endsWith('/') ? base : `${base}/`);
-  if (!/^https?:$/.test(root.protocol)) throw new Error('Adresse muss mit http:// oder https:// beginnen');
+  if (!/^https?:$/.test(root.protocol)) throw new Error('Adresse muss mit http:// oder https:// beginnen – oder ein Ordner auf dem PC sein (z. B. D:\\SynologyDrive\\ki-assistent)');
   const url = new URL(String(rel).replace(/^\/+/, ''), root);
   const auth = `Basic ${Buffer.from(`${user ?? ''}:${getKey('nas') ?? ''}`).toString('base64')}`;
   let r;
@@ -488,6 +490,24 @@ ipcMain.handle('nas:req', async (_e, { base, user, method = 'GET', path: rel = '
     throw new Error(/certificate|self.signed|CERT/i.test(String(e.cause?.message ?? e.message)) ? 'Zertifikat der NAS wird nicht anerkannt – im eigenen Netz http://…:5005 nehmen' : `NAS nicht erreichbar (${e.cause?.code ?? e.message})`);
   }
   return { status: r.status, etag: r.headers.get('etag'), body: new Uint8Array(await r.arrayBuffer()) };
+}
+ipcMain.handle('nas:req', async (_e, { base, user, method = 'GET', path: rel = '', body, headers = {} }) => {
+  nasAllowed();
+  const send = (m, p, b, h) => (isLocalNas(base) ? localNasReq(base, m, p, b, h) : remoteNasReq(base, user, m, p, b, h));
+  // mit eigenem Passwort für die Verschlüsselung: hinein verschlüsselt, heraus entschlüsselt
+  return nasCrypt.cryptReq(send, getKey('naskrypt') ?? '', method, rel, body, headers);
+});
+ipcMain.handle('nas:setCrypt', (_e, pw) => {
+  nasAllowed();
+  writeKey('naskrypt', pw);
+  return true;
+});
+ipcMain.handle('nas:hasCrypt', () => AREA === 'privat' && !!readKeyFile().naskrypt);
+ipcMain.handle('nas:isLocal', (_e, base) => isLocalNas(base));
+ipcMain.handle('nas:pickFolder', async () => {
+  nasAllowed();
+  const r = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow() ?? undefined, { title: 'Ordner für den Abgleich (z. B. vom Synology-Client)', properties: ['openDirectory', 'createDirectory'] });
+  return r.canceled ? null : r.filePaths[0];
 });
 
 // ---------------------------------------------------------------- Firmenwissen (nur Dienstlich)

@@ -3638,6 +3638,49 @@ const m90 = await page.evaluate(() => {
   return out;
 });
 check(m90.mode === 'kurz' && /ein, zwei Sätzen/.test(JSON.stringify(req90 ?? '')), 'Gesprächsart per Zuruf („Nur kurz bitte“) wirkt auf die Antwort', JSON.stringify({ m90, req: !!req90 }));
+// Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
+const b91 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const files = new Map();
+  let n = 0;
+  let deny = false;
+  const empty = new Uint8Array();
+  const keep = { req: window.desktop.nasReq, nas: app.state.settings.nas };
+  window.desktop.nasReq = async ({ method, path, body }) => {
+    if (deny) return { status: 401, etag: null, body: empty };
+    const f = files.get(path);
+    if (method === 'GET') return f ? { status: 200, etag: f.etag, body: f.body } : { status: 404, etag: null, body: empty };
+    if (method === 'HEAD') return f ? { status: 200, etag: f.etag, body: empty } : { status: 404, etag: null, body: empty };
+    if (method === 'PUT') {
+      const etag = `"e${++n}"`;
+      files.set(path, { etag, body: new Uint8Array(body) });
+      return { status: f ? 204 : 201, etag, body: empty };
+    }
+    if (method === 'DELETE') return files.delete(path), { status: 204, etag: null, body: empty };
+    return { status: 405, etag: null, body: empty };
+  };
+  app.state.busy = false;
+  app.state.settings.nas = { url: 'https://jens.quickconnect.to/home/ki-assistent', user: 'ki', auto: true };
+  const t1 = await app.nasTest();
+  out.test = t1.ok && t1.lines.some((l) => /Schreiben/.test(l)) && t1.lines.some((l) => /Lesen/.test(l)) && ![...files.keys()].some((k) => /verbindungstest/.test(k));
+  await app.nasSync({ manual: true });
+  out.synced = files.has('stand.json');
+  // das andere Gerät legt etwas Neues ab → der Kurz-Check merkt es und gleicht ab
+  const before = app.logLines().length;
+  const f = files.get('stand.json');
+  files.set('stand.json', { ...f, etag: '"anderesGeraet"' });
+  await app.nasPeek();
+  await new Promise((r) => setTimeout(r, 500));
+  out.peek = app.logLines().slice(before).some((l) => /Neues vom anderen Gerät/.test(l));
+  deny = true;
+  const t2 = await app.nasTest();
+  out.fail = !t2.ok && /Passwort/.test(t2.lines.join(' ')) && /Benutzer und Passwort prüfen/.test(t2.hint);
+  window.desktop.nasReq = keep.req;
+  app.state.settings.nas = keep.nas;
+  return out;
+});
+check(b91.test && b91.synced && b91.peek && b91.fail, 'NAS: Verbindungstest (schreiben, lesen, aufräumen) mit Hinweisen; Kurz-Check holt Neues vom anderen Gerät', JSON.stringify(b91));
 // Beta 85: Startschutz – nach mehreren Fehlstarts sicherer Modus mit den letzten Fehlern, „Normal neu starten“
 await page.evaluate(() => {
   localStorage.setItem('ki-start', JSON.stringify({ n: 3, t: Date.now() }));

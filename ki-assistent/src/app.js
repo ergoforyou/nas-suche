@@ -11415,7 +11415,9 @@ $('syncUnpair').onclick = () => {
 // zuletzt schreibt, prüft per ETag, dass niemand dazwischen geschrieben hat. Figuren liegen als eigene Dateien daneben,
 // einmal am Tag kommt eine Sicherung dazu (30 Tage). Alles flach in einem Ordner (Android kann keine Ordner anlegen).
 const NAS_FIG_MAX = 80 * 1024 * 1024; // größere Figuren (lange Videos) lieber per Export/WLAN übertragen
-const nasActive = () => AREA === 'privat' && !!desktop.nasReq && !!state.settings?.nas?.url && !!state.settings?.nas?.user;
+// am PC auch ein Ordner (Synology-Client/Netzlaufwerk) – dann ohne Benutzer
+const nasLocalPath = (u) => !MOBILE && (/^[A-Za-z]:[\\/]/.test(u ?? '') || /^\\\\/.test(u ?? '') || /^file:/i.test(u ?? '') || String(u ?? '').startsWith('/'));
+const nasActive = () => AREA === 'privat' && !!desktop.nasReq && !!state.settings?.nas?.url && (!!state.settings?.nas?.user || nasLocalPath(state.settings.nas.url));
 const nasReq = (method, path, body, headers = {}) => desktop.nasReq({ base: state.settings.nas.url, user: state.settings.nas.user, method, path, body, headers });
 function nasError(status) {
   if (status === 401 || status === 403) return 'Benutzer oder Passwort falsch (oder kein Zugriff auf den Ordner)';
@@ -11426,7 +11428,58 @@ function nasError(status) {
 }
 let nasRunning = false;
 let nasSoonTimer = null;
-function nasSoon(ms = 30000) {
+let nasEtag = null;
+/** Leichter Änderungs-Check (alle 30 s bei offener App): nur der Stand, nicht der Inhalt – Neues wird gleich geholt. */
+async function nasPeek() {
+  if (!nasActive() || nasRunning || state.settings.nas.auto === false || document.hidden || state.busy) return;
+  const h = await nasReq('HEAD', 'stand.json').catch(() => null);
+  if (!h?.etag) return;
+  if (nasEtag && h.etag !== nasEtag) {
+    logEv('NAS', 'Neues vom anderen Gerät – hole es');
+    nasSync().catch(() => {});
+  } else nasEtag ??= h.etag;
+}
+/** Verbindung testen: schreiben, lesen, aufräumen – mit verständlichem Hinweis, wenn etwas nicht geht. */
+async function nasTest() {
+  const lines = [];
+  const name = `verbindungstest-${newId()}.txt`;
+  const probe = 'KI-Assistent Verbindungstest';
+  try {
+    if (!nasActive()) throw new Error(nasLocalPath(state.settings.nas?.url) ? 'Ordner fehlt' : 'Adresse und Benutzer eintragen');
+    const put = await nasReq('PUT', name, new TextEncoder().encode(probe), { 'Content-Type': 'text/plain' });
+    if (![200, 201, 204].includes(put.status)) throw new Error(nasError(put.status));
+    lines.push('✅ Schreiben');
+    const got = await nasReq('GET', name);
+    if (got.status !== 200) throw new Error(nasError(got.status));
+    if (new TextDecoder().decode(got.body) !== probe) throw new Error('gelesen, aber der Inhalt stimmt nicht');
+    lines.push('✅ Lesen');
+    await nasReq('DELETE', name).catch(() => {});
+    lines.push('✅ Aufräumen');
+    const st = await nasReq('HEAD', 'stand.json').catch(() => ({ status: 0 }));
+    lines.push(st.status === 200 ? '✅ Stand vom anderen Gerät gefunden' : 'ℹ️ Noch kein Stand – dieses Gerät legt ihn beim ersten Abgleich an');
+    logEv('NAS', 'Verbindungstest bestanden');
+    return { ok: true, lines };
+  } catch (e) {
+    lines.push(`❌ ${e.message}`);
+    logEv('NAS', `Verbindungstest: ${e.message}`);
+    return { ok: false, lines, hint: nasHint(e.message) };
+  }
+}
+/** Was tun? – zum Fehler passend */
+function nasHint(msg) {
+  const m = String(msg);
+  if (/Zwei-Faktor/.test(m)) return 'Für die App einen eigenen Benutzer ohne Zwei-Faktor-Anmeldung anlegen (DSM: Systemsteuerung → Benutzer und Gruppe) und ihm Lese-/Schreibrechte auf den Ordner geben.';
+  if (/Passwort|401|403/.test(m)) return 'Benutzer und Passwort prüfen (Groß-/Kleinschreibung) und ob der Benutzer den Ordner lesen und schreiben darf.';
+  if (/Ordner|404|409/.test(m))
+    return nasLocalPath(state.settings.nas?.url)
+      ? 'Den Ordner gibt es nicht – läuft der Synology-Client, und ist das Laufwerk verbunden? Sonst mit „📁 Ordner wählen“ neu auswählen.'
+      : 'Den Ordner auf der NAS gibt es nicht – in der File Station anlegen (z. B. „ki-assistent“ in deinem Benutzerordner „home“) und die Adresse so eintragen: https://DEINE-ID.quickconnect.to/home/ki-assistent';
+  if (/QuickConnect|nicht erreichbar|Netz/.test(m)) return 'QuickConnect in DSM eingeschaltet (Systemsteuerung → Externer Zugriff → QuickConnect)? Stimmt die QuickConnect-ID? Hat das Gerät Internet?';
+  if (/verschlüsselt|passt nicht/.test(m)) return 'Auf allen Geräten dasselbe Passwort für die Verschlüsselung eintragen.';
+  return '';
+}
+// gleich nach einer Änderung (wenige Sekunden gebündelt) statt erst beim nächsten Durchgang
+function nasSoon(ms = 6000) {
   if (!nasActive() || state.settings.nas.auto === false) return;
   clearTimeout(nasSoonTimer);
   nasSoonTimer = setTimeout(() => nasSync().catch(() => {}), ms);
@@ -11516,6 +11569,8 @@ async function nasSync({ manual = false } = {}) {
       cfg.last = Date.now();
       delete cfg.error;
       save({ quiet: true });
+      // Stand merken: der leichte Änderungs-Check erkennt dann, wenn das andere Gerät etwas Neues abgelegt hat
+      nasEtag = put.etag || (await nasReq('HEAD', 'stand.json').catch(() => null))?.etag || null;
       say(`🗄 Mit der NAS abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.`);
       return true;
     }
@@ -11541,8 +11596,13 @@ async function renderNasState() {
   $('nasAuto').checked = cfg.auto !== false;
   const hasPw = await desktop.nasHasPassword?.().catch(() => false);
   $('nasPass').placeholder = hasPw ? 'Passwort gespeichert (zum Ändern neu eingeben)' : 'Passwort';
+  const local = nasLocalPath(cfg.url);
+  $('nasUser').disabled = $('nasPass').disabled = local;
+  $('nasPick').hidden = !desktop.nasPickFolder;
+  const crypt = await desktop.nasHasCrypt?.().catch(() => false);
+  $('nasCrypt').placeholder = crypt ? '🔐 Verschlüsselung an (Passwort gespeichert – leer lassen; zum Ändern neu eingeben)' : 'Passwort für die Verschlüsselung (optional, auf allen Geräten gleich)';
   const when = cfg.last ? new Date(cfg.last).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'noch nie';
-  $('nasState').textContent = `Zuletzt mit der NAS abgeglichen: ${when}${cfg.error ? ` · letzter Versuch: ${cfg.error}` : ''}`;
+  $('nasState').textContent = `${local ? '📁 Ordner auf diesem PC' : '🌐 NAS'}${crypt ? ' · 🔐 verschlüsselt' : ''} · zuletzt abgeglichen: ${when}${cfg.error ? ` · letzter Versuch: ${cfg.error}` : ''}`;
 }
 const nasField = (key, val) => {
   state.settings.nas = { ...(state.settings.nas ?? {}), [key]: val };
@@ -11561,6 +11621,30 @@ $('nasPass').onchange = async (e) => {
   }
 };
 $('nasNow').onclick = () => nasSync({ manual: true });
+$('nasTest').onclick = async () => {
+  $('nasTestOut').hidden = false;
+  $('nasTestOut').textContent = '🔌 Teste die Verbindung …';
+  const r = await nasTest();
+  $('nasTestOut').textContent = [...r.lines, ...(r.hint ? [`👉 ${r.hint}`] : []), ...(r.ok ? ['Alles bereit – der Abgleich läuft ab jetzt automatisch.'] : [])].join('\n');
+  if (r.ok) nasSync({ manual: true });
+};
+$('nasPick').onclick = async () => {
+  const dir = await desktop.nasPickFolder?.().catch(() => null);
+  if (!dir) return;
+  nasField('url', dir);
+  renderNasState();
+};
+$('nasCrypt').onchange = async (e) => {
+  try {
+    await desktop.nasSetCrypt(e.target.value);
+    e.target.value = '';
+    logEv('NAS', 'Verschlüsselung geändert');
+    renderNasState();
+    nasSoon(1000);
+  } catch (err) {
+    status(`NAS: ${err.message}`);
+  }
+};
 
 /**
  * Einen Stand vollständig übernehmen (Rücksicherung): Texte, Verlauf, Wissen, Erinnerungen wie im Stand, Figuren
@@ -11864,6 +11948,7 @@ function startAutoSync() {
   renderNasState();
   setTimeout(() => nasSync().catch(() => {}), 8000);
   setInterval(() => !document.hidden && nasSync().catch(() => {}), 3 * 60e3);
+  setInterval(() => nasPeek().catch(() => {}), 30e3);
   document.addEventListener('visibilitychange', () => nasSoon(document.hidden ? 500 : 1500));
   if (MOBILE) {
     setTimeout(() => autoSync().catch(() => {}), 5000);
@@ -12245,6 +12330,9 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  nasTest,
+  nasPeek,
+  nasSync,
   talkMode,
   realtimeCommand,
   logLines: () => LOG.slice(),
