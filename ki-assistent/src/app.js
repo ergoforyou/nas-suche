@@ -6,6 +6,7 @@ import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pick
 import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
+import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION } from './gespraech.js';
 import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
 import { markSections, indexSettings, searchSettings, runOnboarding } from './einrichtung.js';
 import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS, ORT_RADIEN, ortArt, hhmm, wannText, hereNow, isOffice, gruppenKey } from './begleiter.js';
@@ -261,6 +262,7 @@ const DEFAULT_SETTINGS = {
   lastBriefing: '',
   dnd: 'auto', // Nicht stören: 'auto' (Vollbild/Präsentation) | 'an' | 'aus'
   semSearch: true, // Suche nach Bedeutung (lokales Modell, einmalig ca. 120 MB)
+  dictMode: 'pruefen', // Diktat 📝 nach „fertig“: 'pruefen' (Text bleibt zum Prüfen) | 'antworten' (Figur antwortet gleich)
   roundNotify: true, // Android (Privat): Morgen-/Feierabendrunde als Benachrichtigung, auch bei geschlossener App
   roundMorningAt: '07:30',
   roundEveningAt: '18:00',
@@ -939,6 +941,10 @@ function buildMessages() {
   if (googleActive()) ctx.push(googleLib.toolPrompt(new Date(), userTimeZone()) + (PRIV && state.google?.mail ? ` ${googleLib.mailToolPrompt()}` : ''));
   else if (webActive() || state.place) ctx.push(r.now(new Date(), userTimeZone()));
   if (state.place) ctx.push(r.place(state.place));
+  // gesprochenes Hin und Her: kurz und dialogisch; nach langem Erzählen: erst zusammenfassen; Korrektur: übernehmen
+  if ((state.voiceTurn || state.settings.handsFree) && p.style !== 'frei' && p.language !== 'en') ctx.push(RULE_LIVE);
+  if (state.longTurn && p.language !== 'en') ctx.push(RULE_LONG_TURN);
+  if (state.correction && p.language !== 'en') ctx.push(RULE_CORRECTION);
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
   if (state.savedHits?.length) ctx.push(savedPrompt(state.savedHits));
   if (state.brainHits?.length || state.brainLoops?.length) ctx.push(brainPrompt(state.brainHits ?? [], state.brainLoops ?? [], p.language === 'en' ? 'en' : 'de'));
@@ -1105,6 +1111,7 @@ const NEW_CHAT_COMMAND = /^(neuer chat|neues gespräch|new chat)[.!]?$/i;
 
 async function send(text) {
   text = text.trim();
+  state.correction = isCorrection(text);
   if (NEW_CHAT_COMMAND.test(text) && !pendingAttachments.length) return newChat();
   // „Morgenrunde“ – den Tagesüberblick auch auf Zuruf
   if (/^\s*(morgenrunde|morgen-?briefing|tagesüberblick)\s*[.!?]?\s*$/i.test(text ?? '') && !pendingAttachments.length) {
@@ -1821,6 +1828,7 @@ function renderMemory() {
   $('mOn').checked = !!p.memoryOn;
   $('mLearn').checked = !!state.settings.memoryLearn;
   $('mSem').checked = semOn();
+  $('sDictMode').value = state.settings.dictMode === 'antworten' ? 'antworten' : 'pruefen';
   $('mSources').checked = state.settings.showSources !== false;
   $('mCount').textContent = p.memory.length ? `(${p.memory.length})` : '';
   $('mNight').checked = state.settings.nightTidy !== false;
@@ -1991,6 +1999,10 @@ $('mOn').onchange = (e) => {
 };
 $('mLearn').onchange = (e) => {
   state.settings.memoryLearn = e.target.checked;
+  save();
+};
+$('sDictMode').onchange = (e) => {
+  state.settings.dictMode = e.target.value;
   save();
 };
 $('mSem').onchange = (e) => {
@@ -3197,6 +3209,39 @@ async function transcribeWithFallback(audio, { withConfidence = false } = {}) {
   }
 }
 
+/** Zuruf ausführen: Stopp = sofort still (Antwort abbrechen), Moment = anhalten, weiter = fortsetzen. */
+function handleVoiceCommand(cmd) {
+  const ms = state.speechStartAt ? Math.round(performance.now() - state.speechStartAt) : null;
+  const after = ms != null ? ` – ${(ms / 1000).toFixed(1).replace('.', ',')} s nach Sprechbeginn` : '';
+  const running = state.busy || tts.speaking || tts.held;
+  if (cmd === 'stopp') {
+    if (state.carry) {
+      clearTimeout(state.carry.timer);
+      state.carry = null;
+    }
+    if (running) {
+      state.cutId = state.currentChatId;
+      if (state.currentChatId) desktop.abortChat(state.currentChatId);
+      tts.stop();
+    }
+    state.voicePaused = false;
+    status(running ? '⏹ Okay.' : '');
+    logEv('STOPP', `${running ? 'gestoppt' : 'nichts zu stoppen'}${after}`);
+  } else if (cmd === 'pause') {
+    if (running) {
+      tts.hold();
+      state.voicePaused = true;
+      status('⏸ Angehalten – „weiter“ oder „Stopp“.');
+    }
+    logEv('STOPP', `angehalten${after}`);
+  } else {
+    if (tts.held) tts.release();
+    state.voicePaused = false;
+    status('');
+    logEv('STOPP', 'weiter');
+  }
+  fireEvent('ack', 1200);
+}
 async function listenOnce({ handsFree = false } = {}) {
   if (state.micActive || state.inCall) return;
   state.micActive = true;
@@ -3210,18 +3255,22 @@ async function listenOnce({ handsFree = false } = {}) {
     const p = stt.listen({
       waitForSpeech: handsFree,
       // läuft ein Video mit Ton: ebenso strenger (sein Ton soll nicht als Sprache gelten)
-      threshold: () => state.settings.sensitivity * ((live && tts.speaking && !tts.held) || clipLoud() || mediaLoud() ? 2.5 : 1),
+      // mit Headset/Auto kommt kein Echo der Figur ins Mikrofon: dann reicht eine deutlich leisere Stimme zum Dazwischenreden
+      threshold: () => state.settings.sensitivity * ((live && tts.speaking && !tts.held) ? (state.voiceDevice ? 1.4 : 2.5) : clipLoud() || mediaLoud() ? 2.5 : 1),
       // während der Avatar spricht keine Absenkung der Schwelle (sonst unterbricht ihn sein eigenes Echo)
       adaptive: () => !((live && tts.speaking && !tts.held) || clipLoud() || mediaLoud()),
       // im Live-Gespräch sinkt die Schwelle höchstens auf die Hälfte (sonst lösen leise Hintergrundgeräusche aus)
       minThreshold: () => (handsFree ? state.settings.sensitivity * 0.5 : 0.003),
       // im Freihand-Modus mindestens ~⅓ s Stimme, damit Tastenklicks und Räuspern nichts auslösen
-      startMs: () => (!handsFree ? 0 : tts.speaking || clipLoud() || mediaLoud() ? 350 : 300),
+      startMs: () => (!handsFree ? 0 : tts.speaking && state.voiceDevice ? 220 : tts.speaking || clipLoud() || mediaLoud() ? 350 : 300),
       // Pause bis „fertig“: wer länger spricht, darf länger überlegen (nach 5 s +0,5 s, ab 11,5 s +1,5 s);
       // beim langen Erzählen deutlich mehr
-      silenceMs: (spoken) => (state.longTalk ? 3500 : handsFree ? state.settings.livePauseMs : 1100) + Math.min(1500, Math.max(0, spoken - 1500) * 0.15),
+      // kurze Äußerungen („Stopp“, „ja“, „weiter“) enden schon nach 0,6 s – längere wie bisher (unfertige Sätze wartet
+      // die App ohnehin weiter ab, siehe unfinished)
+      silenceMs: (spoken) => (state.longTalk ? 3500 + Math.min(1500, Math.max(0, spoken - 1500) * 0.15) : liveSilenceMs(spoken, handsFree ? state.settings.livePauseMs : 1100)),
       maxMs: () => (state.longTalk ? 300000 : 120000),
       onSpeechStart: () => {
+        state.speechStartAt = performance.now();
         duringSpeech = tts.speaking || Date.now() - (state.lastSpeakEnd ?? 0) < 1000;
         // es geht weiter nach einem unfertigen Satz: nicht vorher abschicken
         if (state.carry) {
@@ -3260,7 +3309,8 @@ async function listenOnce({ handsFree = false } = {}) {
     if (!audio || audio.length < 16000 * 0.35) return;
     // genug echte Stimme? (Aufnahmen mit kurzem Geräusch und langer Stille gar nicht erst erkennen lassen)
     const voiced = voicedSeconds(audio, state.settings.sensitivity * 0.6);
-    if (voiced < (handsFree ? 0.4 : 0.15)) {
+    // „Stopp“ ist kurz: schon ~¼ s Stimme reicht (Füllwörter und Fetzen sortiert fragmentReason danach aus)
+    if (voiced < (handsFree ? 0.25 : 0.15)) {
       if (handsFree) overheard('', 'nur kurzes Geräusch');
       return;
     }
@@ -3288,6 +3338,24 @@ async function listenOnce({ handsFree = false } = {}) {
     else if (mediaLoud() || state.mediaHold) {
       if (await mediaCommand(text)) return;
       mediaHoldForAnswer();
+    }
+    // Zurufe (Stopp, Moment, weiter) erledigt die App selbst – sofort und ohne Antwort der KI
+    const cmd = voiceCommand(text, persona().name);
+    // ohne Headset kann das eigene Echo der Figur („Einen Moment …“) wie ein Zuruf klingen
+    const echoCmd = cmd && duringSpeech && !state.voiceDevice && state.spoken.slice(-200).toLowerCase().includes(text.toLowerCase().replace(/[^\p{L}\s]+/gu, '').trim());
+    if (cmd && echoCmd) return overheard(text, 'eigenes Echo');
+    if (cmd) {
+      held = false;
+      handleVoiceCommand(cmd);
+      return;
+    }
+    // das Erkannte kurz zeigen (auch in der Nur-Figur-Ansicht): so sieht man gleich, ob es richtig verstanden wurde
+    status(`🗣 „${text.length > 90 ? `${text.slice(0, 90)}…` : text}“`);
+    // pausierte Antwort („Moment“) und dann etwas Neues gesagt: die alte Antwort ist erledigt
+    if (state.voicePaused) {
+      state.voicePaused = false;
+      if (state.currentChatId) desktop.abortChat(state.currentChatId);
+      tts.stop();
     }
     // Fortsetzung eines unfertigen Satzes: vorne anhängen
     if (state.carry) {
@@ -3343,7 +3411,12 @@ async function listenOnce({ handsFree = false } = {}) {
     }
     fireEvent('ack', 1500);
     if (interrupted) await waitIdle(2500);
-    await send(interrupted ? joinTornSentence(text) : text);
+    state.voiceTurn = true;
+    try {
+      await send(interrupted ? joinTornSentence(text) : text);
+    } finally {
+      state.voiceTurn = false;
+    }
   } catch (e) {
     state.transcribing = false;
     updateBadge();
@@ -3522,22 +3595,26 @@ $('btnMic').onclick = () => {
 // ---- Diktat (📝 bzw. Mikrofon lange drücken): nimmt durchgehend auf – ohne Ende durch Pausen –, schreibt
 // abschnittsweise (etwa alle 20 s an einer ruhigen Stelle) mit und stellt den Text ins Eingabefeld. Ende: antippen,
 // „fertig“ (Text bleibt zum Prüfen stehen) oder „abschicken“ (geht gleich an die Figur).
-const DICT_END_RE = /[\s,.]*\b(fertig|ende diktat|diktat ende|diktat beenden|abschicken|absenden|senden|schick (es|das) ab|als notiz( speichern| ablegen)?|ins second brain)[.!]*\s*$/i;
-const DICT_NOTE_RE = /\b(als notiz( speichern| ablegen)?|ins second brain)[.!]*\s*$/i;
-const DICT_SEND_RE = /\b(abschicken|absenden|senden|schick (es|das) ab)[.!]*\s*$/i;
+// Ende per Sprache (gespraech.js → dictEnd): „fertig“ (je nach Einstellung prüfen oder antworten lassen), „was meinst
+// du?“ (die Figur antwortet gleich), „als Notiz“, „abschicken“, „nur Text“
 let micLongPressed = false;
-async function startDictation() {
+async function startDictation({ erzaehlen = false } = {}) {
   if (state.dictation || state.inCall) return;
   if (state.wakeListening || stt.listening) stt.cancel();
   tts.stop();
-  const d = { parts: [], queue: Promise.resolve(), send: false, base: input.value.trim(), segments: 0 };
+  const d = { parts: [], queue: Promise.resolve(), how: null, erzaehlen, base: input.value.trim(), segments: 0 };
+  hideDictChips();
   state.dictation = d;
   state.micActive = true;
   document.body.classList.add('dictating');
   $('btnDictate')?.classList.add('listening');
   $('btnMic').classList.add('listening');
   logEv('DIKTAT', 'Start');
-  status('📝 Diktat läuft – sprich in Ruhe, Pausen sind kein Problem. Ende: 📝 antippen oder „fertig“ / „abschicken“ sagen.');
+  status(
+    erzaehlen || state.settings.dictMode === 'antworten'
+      ? '🗣 Erzähl in Ruhe – Pausen sind kein Problem. Ende: 📝 antippen oder „fertig“ / „Was meinst du?“ – dann antwortet die Figur.'
+      : '📝 Diktat läuft – sprich in Ruhe, Pausen sind kein Problem. Ende: 📝 antippen, „fertig“, „Was meinst du?“ oder „als Notiz“.',
+  );
   const show = () => {
     input.value = [d.base, ...d.parts].filter(Boolean).join(d.base || d.parts.length > 1 ? ' ' : '');
     autoGrow();
@@ -3568,13 +3645,15 @@ async function startDictation() {
           text = '[…]';
         }
         if (!text || NOISE.some((r) => r.test(text))) return;
-        if (DICT_END_RE.test(text)) {
-          d.send = DICT_SEND_RE.test(text);
-          d.note = DICT_NOTE_RE.test(text);
-          text = text.replace(DICT_END_RE, '').trim();
+        const end = dictEnd(text);
+        if (end) {
+          d.how = end.how;
+          text = end.rest;
           d.ending = true;
           if (stt.listening) stt.cancel();
         }
+        // zuhören sichtbar machen: nach jedem Abschnitt kurz nicken
+        if (state.dictation === d && !d.ending) fireEvent('ack', 1200);
         if (text) d.parts.push(text);
         if (state.dictation === d) show();
       });
@@ -3591,18 +3670,27 @@ async function startDictation() {
     $('btnMic').classList.remove('listening');
     const words = d.parts.join(' ').split(/\s+/).filter(Boolean).length;
     logEv('DIKTAT', `Ende – ${d.segments} Abschnitt(e), ${words} Wörter`);
-    if (d.note && PRIV && d.parts.length) {
+    // wie geht es weiter? Zuruf am Ende, sonst „fertig“ = Einstellung (prüfen oder gleich antworten lassen)
+    const how = d.how && d.how !== 'fertig' ? d.how : d.erzaehlen || state.settings.dictMode === 'antworten' ? 'antworten' : 'pruefen';
+    if (how === 'notiz' && PRIV && d.parts.length) {
       // „als Notiz“: Diktat landet im Second Brain (Eingang) statt im Gespräch
       const text = d.parts.join(' ');
       addBrainNote({ titel: '', text, ordner: 'eingang', quelle: 'diktat' });
       input.value = d.base;
       autoGrow();
       status(`🧠 Diktat als Notiz im Second Brain abgelegt (${words} Wörter).`);
-    } else if (d.send && input.value.trim()) {
+    } else if ((how === 'senden' || how === 'antworten') && input.value.trim()) {
       status('');
-      submit();
+      // langes Erzählen: die Figur fasst erst kurz zusammen, dann antwortet sie
+      state.longTurn = how === 'antworten' && words > 40;
+      try {
+        await submit();
+      } finally {
+        state.longTurn = false;
+      }
     } else {
-      status(words ? `📝 Diktat fertig (${words} Wörter) – prüfen und mit ➤ abschicken.` : '📝 Diktat beendet – nichts verstanden.');
+      status(words ? `📝 Diktat fertig (${words} Wörter) – prüfen, dann ➤, oder unten wählen.` : '📝 Diktat beendet – nichts verstanden.');
+      if (words) showDictChips(words);
       input.focus();
     }
     updateBadge();
@@ -3620,7 +3708,58 @@ function toggleDictation() {
   if (state.dictation) stopDictation();
   else startDictation();
 }
-$('btnDictate').onclick = toggleDictation;
+// nach dem Diktat: gleich weiter – die Figur antworten lassen oder als Notiz ablegen
+function showDictChips(words) {
+  const bar = $('dictChips');
+  if (!bar) return;
+  bar.replaceChildren();
+  const btn = (label, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = () => {
+      hideDictChips();
+      fn();
+    };
+    bar.append(b);
+  };
+  btn('🗣 Antworten lassen', async () => {
+    state.longTurn = words > 40;
+    try {
+      await submit();
+    } finally {
+      state.longTurn = false;
+    }
+  });
+  if (PRIV)
+    btn('🧠 Als Notiz', () => {
+      addBrainNote({ titel: '', text: input.value.trim(), ordner: 'eingang', quelle: 'diktat' });
+      input.value = '';
+      autoGrow();
+      status('🧠 Als Notiz im Second Brain abgelegt.');
+    });
+  btn('✕', () => {});
+  bar.hidden = false;
+}
+function hideDictChips() {
+  const bar = $('dictChips');
+  if (bar) bar.hidden = true;
+}
+$('btnDictate').onclick = () => (dictLongPressed ? (dictLongPressed = false) : toggleDictation());
+// 📝 lange drücken: Erzählen – die Figur hört zu, so lange du willst, und antwortet am Ende
+let dictLongPressed = false;
+{
+  let timer = null;
+  const down = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      dictLongPressed = true;
+      if (!state.dictation) startDictation({ erzaehlen: true });
+    }, 600);
+  };
+  const up = () => clearTimeout(timer);
+  $('btnDictate').addEventListener('pointerdown', down);
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => $('btnDictate').addEventListener(ev, up));
+}
 // Mikrofon lange drücken (Handy und PC): Diktat
 {
   let timer = null;
@@ -3708,7 +3847,8 @@ const submit = () => {
   const t = input.value;
   input.value = '';
   autoGrow();
-  send(t);
+  hideDictChips();
+  return send(t);
 };
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -3717,6 +3857,7 @@ input.addEventListener('keydown', (e) => {
   }
 });
 input.addEventListener('input', autoGrow);
+input.addEventListener('keydown', hideDictChips);
 $('btnSend').onclick = submit;
 $('btnAttach').onclick = () => $('fileAttach').click();
 $('fileAttach').onchange = (e) => {
@@ -12147,7 +12288,10 @@ window.__app = {
   startDictation,
   stopDictation,
   dictation: () => state.dictation,
-  DICT_END_RE,
+  dictEnd,
+  voiceCommand,
+  handleVoiceCommand,
+  showDictChips,
   mediaCommand,
   mediaHoldForAnswer,
   phoneCall,

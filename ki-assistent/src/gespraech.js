@@ -1,0 +1,76 @@
+// Natürliches Gespräch: kurze Zurufe, die die App selbst erledigt (Stopp, Moment, weiter – ohne Umweg über die KI),
+// Korrekturen („Nein, ich meinte …“), Pausenlänge je nach Länge des Gesagten und die Enden beim langen Erzählen.
+
+const words = (t) =>
+  String(t ?? '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+// Zurufe (ganze Äußerung, höchstens ein paar Wörter; Anrede mit Namen davor/danach ist erlaubt)
+const STOP = /^(stopp?|halt|ruhe|still|sei (mal )?(still|ruhig)|hör (mal )?auf|aufhören|schluss|genug|abbrechen|schon gut|ist gut|passt schon|danke (das )?reicht|reicht( schon)?|okay (danke|stopp?)|ok stopp?|stopp? bitte|bitte stopp?)$/;
+const PAUSE = /^(warte|wart mal|warte mal|moment|einen moment|moment mal|kurz (mal )?(warten|pause)|pause|mach (mal )?pause)$/;
+const RESUME = /^(weiter|mach weiter|weitermachen|sprich weiter|erzähl weiter|fahr fort|okay weiter|ok weiter|weiter bitte|bitte weiter)$/;
+
+/**
+ * Kurzer Zuruf an die Figur? → 'stopp' | 'pause' | 'weiter' | null. name: Name der Figur (wird vorn/hinten ignoriert).
+ * Nur für kurze Äußerungen – „Stopp, ich meinte eigentlich …“ ist eine Korrektur, kein Zuruf.
+ */
+export function voiceCommand(text, name = '') {
+  let w = words(text);
+  const n = String(name ?? '').toLowerCase();
+  if (n) w = w.filter((x, i) => !(x === n && (i === 0 || i === w.length - 1)));
+  if (!w.length || w.length > 4) return null;
+  const s = w.join(' ');
+  if (STOP.test(s)) return 'stopp';
+  if (PAUSE.test(s)) return 'pause';
+  if (RESUME.test(s)) return 'weiter';
+  return null;
+}
+
+/** Korrektur des eben Gesagten oder der Antwort („Nein, ich meinte …“, „nicht Dienstag, sondern Mittwoch“)? */
+export function isCorrection(text) {
+  const t = String(text ?? '').toLowerCase().trim();
+  return (
+    /^(nein|nee|stopp?|halt|quatsch|falsch|sorry|pardon|entschuldigung)\b[\s,.!]*(ich (meinte|meine|wollte sagen)|eigentlich|nicht|sondern|das (war|ist) falsch|so meinte ich das nicht)/.test(t) ||
+    /^(ich meinte|ich meine natürlich|ich wollte sagen|korrektur|nicht \S+(\s\S+)?,? sondern)\b/.test(t)
+  );
+}
+
+/**
+ * Wie lange Stille gilt als „fertig gesprochen“ (Live-Gespräch)? Kurze Äußerungen (Zurufe, „ja“, kurze Antworten)
+ * enden schnell; wer länger spricht, darf länger überlegen. spokenMs = bisher gesprochene Zeit.
+ */
+export function liveSilenceMs(spokenMs, baseMs = 1200) {
+  if (spokenMs < 1500) return Math.min(baseMs, 600);
+  return baseMs + Math.min(1500, Math.max(0, spokenMs - 1500) * 0.15);
+}
+
+// Enden beim langen Erzählen/Diktat: „fertig“ (je nach Einstellung), „was meinst du?“ (die Figur antwortet),
+// „als Notiz“ (Second Brain), „abschicken“ (wie bisher), „nur Text“ (bleibt im Eingabefeld zum Prüfen)
+const END = /[\s,.]*\b(fertig|ende diktat|diktat ende|diktat beenden|abschicken|absenden|senden|schick (es|das) ab|als notiz( speichern| ablegen)?|ins second brain|nur (als )?text|(und )?was (meinst|sagst|denkst) du( dazu| darüber)?|was hältst du davon|deine meinung|antworte( mir)?( bitte)?)[.!?]*\s*$/i;
+/** Ende eines Diktats erkennen: { how: 'fertig'|'antworten'|'notiz'|'senden'|'text', rest } oder null. */
+export function dictEnd(text) {
+  const t = String(text ?? '');
+  const m = END.exec(t);
+  if (!m) return null;
+  const e = m[1].toLowerCase();
+  const how = /notiz|second brain/.test(e) ? 'notiz' : /^nur/.test(e) ? 'text' : /abschick|absend|^senden|schick/.test(e) ? 'senden' : /was |halt|meinung|antwort/.test(e) ? 'antworten' : 'fertig';
+  // bei „was meinst du?“ bleibt die Frage Teil des Gesagten
+  const rest = how === 'antworten' ? t.trim() : t.slice(0, m.index).trim();
+  return { how, rest };
+}
+
+/** Zusätze für die KI (in den Systemtext). */
+export const RULE_LIVE =
+  'Live-Gespräch (gesprochen, hin und her): Antworte kurz – höchstens zwei, drei Sätze –, sag das Wichtigste zuerst ' +
+  'und lass Raum für dein Gegenüber; Details nur auf Nachfrage. Stell ab und zu eine kurze, passende Rückfrage statt ' +
+  'eines Monologs.';
+export const RULE_LONG_TURN =
+  'Dein Gegenüber hat dir gerade länger erzählt. Sag zuerst in einem Satz, was du verstanden hast („Wenn ich dich ' +
+  'richtig verstehe …“), dann antworte oder frag gezielt nach. Lohnt es sich, biete kurz an, es als Notiz abzulegen.';
+export const RULE_CORRECTION =
+  'Dein Gegenüber korrigiert sich oder dich gerade. Übernimm die Korrektur ohne lange Entschuldigung und antworte nur ' +
+  'noch auf den korrigierten Stand – fang nicht von vorn an.';

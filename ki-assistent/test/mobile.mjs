@@ -2894,7 +2894,7 @@ const b70 = await page.evaluate(async () => {
   app.stopDictation();
   await p2;
   out.tapped = document.getElementById('input').value;
-  out.sendWord = app.DICT_END_RE.test('So, das schicke ich jetzt. Abschicken.');
+  out.sendWord = app.dictEnd('So, das schicke ich jetzt. Abschicken.')?.how === 'senden';
   stt.listen = keepListen;
   delete stt.stop;
   app.setTranscriber(null);
@@ -3572,6 +3572,56 @@ await page.waitForFunction(() => !window.__app.state.busy, null, { timeout: 1500
 check(b87.addr && b87.badAddr && b87.wifi && b87.ask && b87.contact, 'Orte: per Adresse, WLAN und Kontakt (bei mehreren Adressen Rückfrage)', JSON.stringify(b87));
 check(b87.r1 && b87.homeWatch && b87.group && b87.unknown && b87.reweWatch, 'Orte: Zeitfenster, jedes Mal, Gruppen, Notizen mit Ort, Feierabendrunde beim Heimkommen; unbekannter Ort → Rückfrage', JSON.stringify(b87));
 check(b87.here && b87.quiet && b87.repeatStays && b87.traffic && b87.list >= 4, 'Orte: „Was steht hier an?“, leiser Ort, „jedes Mal“ bleibt, Verkehrslage beim Verlassen des Büros, Liste', JSON.stringify(b87));
+// Beta 89: natürliches Gespräch – Zurufe ohne KI, Korrektur, kurze Antworten im Gespräch, Erzählen mit Antwort
+await page.evaluate(() => (window.__app.state.busy = false));
+const b89 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const before = (window.__claudeCount = window.__claudeCount ?? 0);
+  // „Stopp“ während die Figur spricht: sofort still, keine Anfrage an die KI
+  const tts = app.tts;
+  const keep = { stop: tts.stop, hold: tts.hold, release: tts.release, speaking: Object.getOwnPropertyDescriptor(tts, 'speaking') };
+  const calls = [];
+  tts.stop = () => calls.push('stop');
+  tts.hold = () => calls.push('hold');
+  tts.release = () => calls.push('release');
+  Object.defineProperty(tts, 'speaking', { value: true, configurable: true, writable: true });
+  const hist = app.history().length;
+  app.handleVoiceCommand(app.voiceCommand('Stopp!'));
+  out.stop = calls.includes('stop') && app.history().length === hist;
+  app.handleVoiceCommand(app.voiceCommand('Einen Moment!'));
+  out.pause = calls.includes('hold') && app.state.voicePaused === true;
+  app.handleVoiceCommand(app.voiceCommand('Weiter.'));
+  out.resume = app.state.voicePaused === false;
+  out.log = app.logLines().filter((l) => /STOPP/.test(l)).slice(-3);
+  Object.assign(tts, { stop: keep.stop, hold: keep.hold, release: keep.release });
+  if (keep.speaking) Object.defineProperty(tts, 'speaking', keep.speaking);
+  else delete tts.speaking;
+  // Gespräch: kurze, dialogische Antworten; Korrektur übernehmen; langes Erzählen erst zusammenfassen
+  app.state.voiceTurn = true;
+  app.state.correction = true;
+  app.state.longTurn = true;
+  const msgs = JSON.stringify(app.buildMessages());
+  out.rules = /höchstens zwei, drei Sätze/.test(msgs) && /korrigiert sich oder dich/.test(msgs) && /länger erzählt/.test(msgs);
+  Object.assign(app.state, { voiceTurn: false, correction: false, longTurn: false });
+  out.noRules = !/höchstens zwei, drei Sätze/.test(JSON.stringify(app.buildMessages())) || app.state.settings.handsFree;
+  // nach dem Diktat: Auswahl „Antworten lassen“ / „Als Notiz“
+  document.getElementById('input').value = 'Ein längerer Gedanke zum Garten.';
+  app.showDictChips(6);
+  out.chips = [...document.querySelectorAll('#dictChips button')].map((b) => b.textContent);
+  void before;
+  return out;
+});
+check(b89.stop && b89.pause && b89.resume && b89.log.length === 3, 'Gespräch: „Stopp“ sofort still (ohne KI), „Moment“ hält an, „weiter“ setzt fort – mit Zeit im Protokoll', JSON.stringify(b89));
+check(b89.rules && b89.noRules, 'Gespräch: kurze dialogische Antworten, Korrektur übernehmen, langes Erzählen erst zusammenfassen', JSON.stringify(b89));
+check(b89.chips.some((c) => /Antworten lassen/.test(c)) && b89.chips.some((c) => /Als Notiz/.test(c)), 'Nach dem Diktat: „Antworten lassen“ / „Als Notiz“', JSON.stringify(b89.chips));
+// „Antworten lassen“ schickt das Diktierte an die Figur
+claudeQueue.push(sayText('Wenn ich dich richtig verstehe, geht es um den Garten.'));
+const n89 = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+await page.evaluate(() => [...document.querySelectorAll('#dictChips button')].find((b) => /Antworten lassen/.test(b.textContent)).click());
+await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !window.__app.state.busy, n89, { timeout: 15000 }).catch(() => {});
+const sent89 = await page.evaluate(() => ({ user: window.__app.history().filter((m) => m.role === 'user').at(-1)?.content, chipsHidden: document.getElementById('dictChips').hidden }));
+check(/Gedanke zum Garten/.test(sent89.user ?? '') && sent89.chipsHidden, 'Nach dem Diktat: „Antworten lassen“ schickt es an die Figur', JSON.stringify(sent89));
 // Beta 85: Startschutz – nach mehreren Fehlstarts sicherer Modus mit den letzten Fehlern, „Normal neu starten“
 await page.evaluate(() => {
   localStorage.setItem('ki-start', JSON.stringify({ n: 3, t: Date.now() }));

@@ -52,6 +52,7 @@
   <div class="attachments" id="attachments" hidden></div>
   <div class="quick-bar" id="quickBar" hidden></div>
 
+  <div id="dictChips" class="dict-chips" hidden></div>
   <footer class="composer">
     <button id="btnAttach" class="round" title="Datei anhängen – PDF, Bild, Text, Excel/Word/PowerPoint (oder Datei ins Fenster ziehen)" hidden>📎</button>
     <input id="fileAttach" type="file" multiple hidden />
@@ -60,7 +61,7 @@
     <button id="btnLive" class="round" title="Live-Gespräch an/aus – einfach losreden, dazwischenreden erlaubt (überall: Strg+Alt+L)">📞</button>
     <button id="btnMic" class="round" title="Sprechen (Strg+Leertaste, überall: Strg+Alt+Leertaste) – lange drücken: Diktat">🎤</button>
     <button id="zwischenChip" class="zwischen-chip" hidden title="Notizen für später – antippen zum Durchgehen mit der Figur">📥 0</button>
-    <button id="btnDictate" class="round" title="Diktat: längere Gedanken in Ruhe sprechen – ohne Abbruch bei Pausen; der Text kommt zum Prüfen ins Eingabefeld (Ende: antippen, „fertig“ oder „abschicken“)">📝</button>
+    <button id="btnDictate" class="round" title="Antippen: Diktat – längere Gedanken in Ruhe sprechen, ohne Abbruch bei Pausen. Lange drücken: Erzählen – die Figur hört zu und antwortet am Ende. Ende: antippen, „fertig“, „Was meinst du?“ oder „als Notiz“">📝</button>
     <select id="micQuick" class="mic-chip desktop-only" title="Mikrofon – zeigt, welches gerade aufnimmt; hier direkt wechseln"></select>
     <textarea id="input" rows="1" placeholder="Nachricht schreiben …"></textarea>
     <button id="btnClaude" class="round" title="An Claude übergeben – fügt den Text in die Claude-App ein (Chat oder Cowork) und schickt ihn ab. Per Sprache: „An Claude: …“" hidden>✳</button>
@@ -655,6 +656,16 @@
           <option value="english">immer Englisch</option>
         </select>
       </label>
+      <h3>Diktat und Erzählen</h3>
+      <label>📝 Nach „fertig“
+        <select id="sDictMode">
+          <option value="pruefen">Text bleibt zum Prüfen im Eingabefeld</option>
+          <option value="antworten">die Figur antwortet gleich darauf</option>
+        </select>
+      </label>
+      <p class="hint">📝 antippen = Diktat, 📝 lange drücken = Erzählen (die Figur hört zu, so lange du willst, und antwortet
+        am Ende). Ende per Zuruf: „fertig“, „Was meinst du?“ (Figur antwortet), „als Notiz“, „nur Text“. Im Gespräch erledigt
+        die Figur „Stopp“, „Moment“ und „weiter“ sofort selbst.</p>
       <h3>Live-Gespräch</h3>
       <label class="check"><input id="sHandsFree" type="checkbox" /> Live-Gespräch (freihändig): automatisch zuhören, wenn ich spreche – auch über 📞 unten</label>
       <label class="check"><input id="sBargeIn" type="checkbox" /> Dazwischenreden erlaubt: Der Avatar verstummt, sobald ich spreche</label>

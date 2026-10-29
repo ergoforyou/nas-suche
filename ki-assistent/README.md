@@ -140,6 +140,9 @@ Tageszeit, Begrüßung beim Start, Status-Leuchte, Sprechblase (z. B. im Büro o
 ### Privat-Funktionen auf dem Handy (Beta, nur Bereich Privat)
 
 - **Echtzeit-Gespräch** (OpenAI Realtime): Antworten in ca. ½ s, Dazwischenreden; kostet mehr pro Minute.
+- **Natürliches Gespräch** (Beta 89): „Stopp“, „Moment“, „weiter“ erledigt die App sofort selbst (ohne KI); kurze
+  Äußerungen werden schneller ausgewertet; mit Headset reicht leiseres Dazwischenreden; „Nein, ich meinte …“ korrigiert;
+  im Gespräch kurze, dialogische Antworten; 📝 lange drücken = Erzählen (die Figur hört zu und antwortet am Ende).
 - **Aktivierungswort** frei wählbar (Standard: Name der Persona), auf dem Handy erkannt.
 - **Diktat**: lange Gedanken am Stück sprechen, abschnittsweise mitgeschrieben; „fertig“ beendet, „als Notiz“ legt ab.
 - **Second Brain**: Notizen in Ordnern (Eingang, Projekte, Themen, Personen, Tagebuch, Archiv), offene Punkte,
