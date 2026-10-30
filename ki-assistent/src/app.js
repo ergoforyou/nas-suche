@@ -593,7 +593,14 @@ let routeOffTimer = 0;
 // Headset/Auto als Sprechgerät („Anruf“) nur, wenn wirklich gesprochen wird: im Gespräch (Live/Fahrmodus) oder beim
 // Sprechen per Knopf. Das Warten aufs Aktivierungswort (ohne Echo-Unterdrückung) läuft über das Handy-Mikrofon und
 // lässt den Ton anderer Apps in Ruhe – sonst reißt die App z. B. YouTube auf den Kopfhörern ständig weg.
+// der Anruf-Erkennung sagen, dass das Mikrofon unseres ist (sonst gälte der eigene Telefonie-Modus als Anruf)
+const micState = (on) => {
+  try {
+    window.KIDevice?.micState?.(!!on);
+  } catch {}
+};
 stt.onMicOpen = (aec) => {
+  micState(true);
   clearTimeout(routeOffTimer);
   routeOffTimer = 0;
   const want = !!aec || voiceSession();
@@ -602,6 +609,7 @@ stt.onMicOpen = (aec) => {
 };
 stt.onMicClose = () => {
   clearTimeout(routeOffTimer);
+  micState(voiceSession());
   renderAudioChip();
   // während Live/Fahrmodus gar nicht freigeben (erst beim Beenden), sonst nach kurzer Pause
   if (voiceSession()) return;
@@ -609,6 +617,7 @@ stt.onMicClose = () => {
 };
 /** Gespräch zu Ende (Live/Fahrmodus aus): Sprechverbindung freigeben, wenn das Mikrofon zu ist. */
 function releaseVoiceSoon() {
+  if (!stt.stream) micState(false);
   clearTimeout(routeOffTimer);
   routeOffTimer = setTimeout(() => !voiceSession() && !stt.stream && !rt && voiceRoute(false), 3000);
 }

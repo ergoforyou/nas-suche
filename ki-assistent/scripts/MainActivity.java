@@ -413,6 +413,11 @@ public class MainActivity extends BridgeActivity {
 
     // ---- Headset für Sprache (siehe Device.voiceRoute)
     private volatile boolean voiceWanted;
+    // hält die App selbst gerade das Mikrofon (Gespräch läuft)? Dann ist der Telefonie-Modus unserer und kein Anruf
+    private volatile boolean ownMic;
+    private volatile long ownMicUntil;
+    private int commTicks;
+    private int quietTicks;
     private boolean scoStarted;
     private boolean deviceWatch;
     private boolean callMode; // Telefonie-Modus selbst gesetzt (Auto/Headset wie bei einem Anruf)
@@ -436,9 +441,20 @@ public class MainActivity extends BridgeActivity {
             android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return;
             int m = am.getMode();
-            boolean call = m == android.media.AudioManager.MODE_RINGTONE || m == android.media.AudioManager.MODE_IN_CALL
-                || (Build.VERSION.SDK_INT >= 30 && m == android.media.AudioManager.MODE_CALL_SCREENING)
-                || (m == android.media.AudioManager.MODE_IN_COMMUNICATION && !callMode && !voiceWanted);
+            boolean real = m == android.media.AudioManager.MODE_RINGTONE || m == android.media.AudioManager.MODE_IN_CALL
+                || (Build.VERSION.SDK_INT >= 30 && m == android.media.AudioManager.MODE_CALL_SCREENING);
+            // Telefonie-Modus ohne echtes Telefonat: WhatsApp & Co. – oder unser eigenes Mikrofon (die WebView schaltet ihn beim
+            // Öffnen selbst ein). Nur als Anruf werten, wenn die App das Mikrofon nicht selbst hält (auch nicht kurz zuvor)
+            // und der Modus mindestens 3 Sekunden besteht – sonst schaltet sich das Gespräch selbst ab und wieder an
+            boolean mine = callMode || voiceWanted || ownMic || System.currentTimeMillis() < ownMicUntil;
+            boolean comm = m == android.media.AudioManager.MODE_IN_COMMUNICATION && !mine;
+            commTicks = comm ? commTicks + 1 : 0;
+            boolean call = real || commTicks >= 3;
+            // Ende erst nach 2 Sekunden ohne Anruf (kein Hin und Her beim Umschalten)
+            if (phoneCall && !call) {
+                quietTicks++;
+                if (quietTicks < 2 && !real) call = true;
+            } else quietTicks = 0;
             // spielt eine andere App (YouTube, Musik)? Dann hört die Figur strenger hin und kann sie kurz anhalten
             boolean media = am.isMusicActive();
             if (media != otherMedia) {
@@ -1262,6 +1278,13 @@ public class MainActivity extends BridgeActivity {
          * Lautsprecher/Hörmuschel, obwohl ein Bluetooth-Headset verbunden ist. Deshalb das Headset ausdrücklich als
          * Sprechgerät wählen (Mikrofon und Ton). Liefert den Namen des Geräts oder "" (Handy selbst).
          */
+        /** Die App öffnet/schließt das Mikrofon (bzw. ein Gespräch läuft) – für die Anruf-Erkennung. */
+        @JavascriptInterface
+        public void micState(boolean on) {
+            if (ownMic && !on) ownMicUntil = System.currentTimeMillis() + 5000;
+            ownMic = on;
+        }
+
         @JavascriptInterface
         public String voiceRoute(boolean on) {
             if (on) audioShutdown = false;
