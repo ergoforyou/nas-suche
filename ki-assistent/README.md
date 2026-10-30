@@ -193,6 +193,13 @@ vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder 
 - **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
 - **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
+### Noch flüssiger (Beta 99)
+
+- **Live-Text:** was man sagt, erscheint schon beim Sprechen in der Statuszeile (auch in der Nur-Figur-Ansicht).
+- **Früher losdenken:** sobald der Satz zu Ende ist, laufen Ort und Suche schon an; die Figur nickt sofort.
+- **Keine tote Stille:** im Gespräch kommt nach ¾ s ein kurzer Denklaut in der eigenen Stimme, falls die Antwort noch entsteht.
+- **Weitermachen nach Unterbrechung:** nach dem Dazwischenreden setzt „weiter“ / „sprich weiter“ dort an, wo die Figur war.
+
 ### Flüssigeres Gespräch und Humor-Stil (Beta 98)
 
 - **Zuhören wie im Echtzeit-Gespräch** (Live-Gespräch am Handy, mit OpenAI-Schlüssel): die Cloud schreibt mit, während man spricht, und erkennt am Sinn, wann man fertig ist – keine festen Pausen, Rauschen wird nicht zu Sätzen, das Echo unterdrückt die Verbindung selbst. Antworten kommen weiter von der eigenen KI (Claude) mit der eigenen Stimme. Klappt die Verbindung nicht, läuft das bisherige Zuhören. Abschaltbar unter ⚙ → Sprache.

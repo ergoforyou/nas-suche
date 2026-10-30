@@ -3717,6 +3717,28 @@ const b98 = await page.evaluate(async () => {
 });
 await page.waitForTimeout(300);
 check(/Dein Humor: frech/.test(JSON.stringify(req98 ?? '')) && /Gruppen herabsetzen/.test(JSON.stringify(req98 ?? '')) && b98.noExtra && claudeRequests.length === reqCount98, 'Live-Mitschrift: Satz geht an die Figur (Humor frech mit Grenzen); Rauschen, Hinweistext und „Stopp“ nicht', JSON.stringify({ req: !!req98, b98, extra: claudeRequests.length - reqCount98 }));
+// Beta 99: Live-Text beim Sprechen; nach einer Unterbrechung macht „weiter“ dort weiter, wo die Figur war
+const b99 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  app.setLh({ held: false, start: performance.now() });
+  app.liveHearEvent({ type: 'input_audio_buffer.speech_started' });
+  app.liveHearEvent({ type: 'conversation.item.input_audio_transcription.delta', delta: 'Wie wird das ' });
+  app.liveHearEvent({ type: 'conversation.item.input_audio_transcription.delta', delta: 'Wetter morgen' });
+  out.live = /Wie wird das Wetter morgen/.test(document.getElementById('status')?.textContent ?? '');
+  app.setLh(null);
+  // unterbrochene Antwort im Verlauf, dann „weiter“
+  app.state.busy = false;
+  app.history().push({ role: 'assistant', content: 'Zuerst fährst du nach Hamburg, dann', t: Date.now(), cut: true });
+  return out;
+});
+claudeQueue.push(sayText('… dann weiter nach Kiel.'));
+const before99 = claudeRequests.length;
+await page.evaluate(() => window.__app.handleVoiceCommand('weiter'));
+await page.waitForFunction(() => !window.__app.state.busy, null, { timeout: 15000 }).catch(() => {});
+await page.waitForTimeout(800);
+const req99 = claudeRequests.slice(before99).find((r) => JSON.stringify(r.messages ?? '').includes('wo ich dich unterbrochen habe'));
+check(b99.live && !!req99, 'Live-Text beim Sprechen; „weiter“ nach Unterbrechung macht dort weiter', JSON.stringify({ b99, resume: !!req99 }));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

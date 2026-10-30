@@ -1516,15 +1516,17 @@ async function send(text) {
   if (prepMs > 800) logEv('ZEIT', `Vorbereitung ${Math.round(prepMs)} ms${helpers.length ? ` (${helpers.length} Hilfsabfrage(n))` : ''}`);
   const id = newId();
   state.currentChatId = id;
-  // Denklaut: kommt nach gut einer Sekunde noch nichts, sagt die Figur kurz „Hm, Moment …“ (statt Stille)
+  // Denklaut: kommt nach gut einer Sekunde noch nichts, sagt die Figur kurz „Hm, Moment …“ (statt Stille); im
+  // gesprochenen Gespräch schon nach ¾ s und immer – tote Stille fühlt sich länger an, als sie ist
+  const voiceTurnNow = !!(state.voiceTurn || state.settings.handsFree);
   fillerTimer =
     speak && state.settings.thinkSounds !== false
       ? setTimeout(() => {
-          if (state.currentChatId !== id || !avatarState.thinking || tts.speaking || Math.random() > 0.75) return;
+          if (state.currentChatId !== id || !avatarState.thinking || tts.speaking || (!voiceTurnNow && Math.random() > 0.75)) return;
           const f = pickFiller(persona().language === 'en' ? 'en' : 'de');
           state.spoken = (state.spoken + ' ' + f).slice(-1500);
           tts.enqueue(f, { mood: 'nachdenklich' });
-        }, 1300)
+        }, voiceTurnNow ? 750 : 1300)
       : null;
   usedTopics = state.topicsNow ?? []; // werden nach der Antwort geleert (die Anfrage braucht sie noch)
   chatRequest(
@@ -3382,10 +3384,17 @@ function handleVoiceCommand(cmd) {
     }
     logEv('STOPP', `angehalten${after}`);
   } else {
+    const wasHeld = tts.held;
     if (tts.held) tts.release();
     state.voicePaused = false;
     status('');
     logEv('STOPP', 'weiter');
+    // unterbrochen und jetzt „sprich weiter“: an der Stelle weitermachen, statt neu anzufangen
+    const last = [...history()].reverse().find((m) => m.role === 'assistant');
+    if (!wasHeld && !state.busy && !tts.speaking && last?.cut && Date.now() - (last.t ?? 0) < 10 * 60e3) {
+      logEv('STOPP', 'mache nach der Unterbrechung weiter');
+      setTimeout(() => send(persona().language === 'en' ? 'Go on where you were interrupted.' : 'Mach da weiter, wo ich dich unterbrochen habe.'), 50);
+    }
   }
   fireEvent('ack', 1200);
 }
@@ -12662,7 +12671,15 @@ function liveHearRelease(why) {
 function liveHearEvent(ev) {
   const t = ev.type ?? '';
   if (!lh) return;
+  if (/input_audio_transcription\.delta$/.test(t)) {
+    // Live-Text: was ankommt, gleich zeigen (auch in der Nur-Figur-Ansicht) – man sieht, dass es verstanden wird
+    lh.partial = (lh.partial ?? '') + (ev.delta ?? '');
+    const p = lh.partial.trim();
+    if (p) status(`🗣 ${p.length > 110 ? `…${p.slice(-110)}` : p}`);
+    return;
+  }
   if (t === 'input_audio_buffer.speech_started') {
+    lh.partial = '';
     lh.start = performance.now();
     state.speechStartAt = lh.start;
     state.hearing = true;
@@ -12681,8 +12698,17 @@ function liveHearEvent(ev) {
     state.hearing = false;
     avatarState.listening = false;
     state.timing = { spoke: performance.now() };
-    status('🎙 Verstehe …');
+    if (!lh.partial?.trim()) status('🎙 Verstehe …');
     updateBadge();
+    // sofort eine Regung (Nicken, nachdenklicher Blick), während die Mitschrift fertig wird
+    if (!lh.held) {
+      fireEvent('ack', 1200);
+      avatarState.thinking = true;
+    }
+    // früher losdenken: Ort und Suchmodell schon jetzt anwerfen (mit dem bisher Verstandenen)
+    const early = lh.partial?.trim();
+    currentPlace().catch(() => {});
+    if (early && early.split(/\s+/).length >= 3) semQuery(early, null, 4, 600).catch(() => {});
   } else if (/input_audio_transcription\.completed$/.test(t)) {
     liveHeard(String(ev.transcript ?? '').trim()).catch((e) => logEv('STT', e.message));
   } else if (t === 'error') {
