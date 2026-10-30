@@ -6,6 +6,7 @@ import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pick
 import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
+import { humorLevel, humorPrompt, humorCommand, HUMOR_NAMES } from './humor.js';
 import { isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
 import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES, handoffCommand, newsRequest, whatsNew } from './gespraech.js';
 import synology from '../synology.js';
@@ -978,6 +979,8 @@ function buildMessages() {
   // Rollenanker direkt vor der aktuellen Frage (wirkt gegen Abdriften in langen Gesprächen)
   if (p.selbstOn !== false) ctx.push(stimmungPrompt(p.stimmung));
   if (PRIV && clipsOf(p).length) ctx.push(clipsPrompt(p));
+  // Humor-Stil (fein … derb) mit festen Grenzen – direkt vor dem Rollenanker, damit er nicht untergeht
+  if (p.style !== 'frei' && p.language !== 'en') ctx.push(humorPrompt(humorLevel(p, { area: AREA, override: state.humorNow })));
   if (p.immersion !== false) ctx.push(r.anchor(p.name || 'Max'));
   if (state.topicsNow?.length) ctx.push(topicsPrompt(state.topicsNow, p.language === 'en' ? 'en' : 'de'));
   const sys = parts.filter(Boolean).join('\n\n');
@@ -1220,6 +1223,15 @@ async function send(text) {
     logEv('GESPRÄCH', `Art: ${MODE_NAMES[mode]}`);
     status(`💬 Gesprächsart: ${MODE_NAMES[mode]}`);
   }
+  // „Sei mal frecher“ / „Jetzt mal wieder ernst“: Humor-Stil für den Moment (die Nachricht geht trotzdem an die Figur)
+  const hc = humorCommand(text, humorLevel(persona(), { area: AREA, override: state.humorNow }));
+  if (hc) {
+    state.humorNow = hc === 'normal' ? null : hc;
+    state.humorSetAt = Date.now();
+    const now = humorLevel(persona(), { area: AREA, override: state.humorNow });
+    logEv('GESPRÄCH', `Humor: ${HUMOR_NAMES[now]}`);
+    status(`😄 Humor: ${HUMOR_NAMES[now]}`);
+  }
   // „Vergiss das“ / „Das war Quatsch“: letzte Eingabe samt Antwort zurücknehmen – ohne KI
   if (forgetCommand(text) && !pendingAttachments.length) {
     const ok = forgetLast();
@@ -1304,7 +1316,10 @@ async function send(text) {
   noteFeedback(persona(), text);
   const entry = { role: 'user', content: text, t: Date.now(), ...(attachments.length ? { attachments } : {}) };
   // neues Gespräch (längere Pause): was schon mitging, darf wieder mit – innerhalb eines Gesprächs nur einmal
-  if (!state.faden || isSessionStart(history(), entry.t)) state.faden = { start: entry.t, shown: new Set(), first: true };
+  if (!state.faden || isSessionStart(history(), entry.t)) {
+    state.faden = { start: entry.t, shown: new Set(), first: true };
+    if (Date.now() - (state.humorSetAt ?? 0) > 5000) state.humorNow = null; // „sei mal frecher“ gilt für ein Gespräch
+  }
   else state.faden.first = false;
   history().push(entry);
   state.turnTools = [];
@@ -3608,6 +3623,7 @@ function phoneCall(on) {
   logEv('TELEFON', on ? 'Anruf – Figur pausiert' : 'Anruf vorbei – weiter');
   if (on) {
     state.callPaused = { clip: !!clipPlaying && !clipPlaying.v.paused };
+    stopLiveHear();
     stopDictation();
     if (state.callPaused.clip) clipPlaying.v.pause();
     if (stt.listening) stt.cancel();
@@ -3638,6 +3654,17 @@ function phoneCall(on) {
 
 function maybeListenHandsFree(tries = 0) {
   if (!state.settings.handsFree) return;
+  // Live-Mitschrift läuft (oder startet gleich): sie hört durchgehend zu, das bisherige Zuhören ruht
+  if (lh) return;
+  if (liveHearWanted() && !state.liveHearStarting) {
+    if (state.wakeListening) stt.cancel();
+    state.liveHearStarting = true;
+    startLiveHear()
+      .then((ok) => !ok && maybeListenHandsFree(tries))
+      .finally(() => (state.liveHearStarting = false));
+    return;
+  }
+  if (state.liveHearStarting) return;
   setTimeout(() => {
     // Live-Gespräch hört auch zu, während der Avatar denkt oder spricht
     // während eines Telefonats nicht zuhören (Mikrofon gehört dem Gespräch)
@@ -3682,8 +3709,11 @@ function setHandsFree(on) {
   save();
   // wartet das Aktivierungswort gerade aufs Mikrofon: sofort freigeben, damit Live gleich zuhören kann
   if (on && state.wakeListening) stt.cancel();
-  if (on) maybeListenHandsFree();
-  else {
+  if (on) {
+    state.liveHearFailed = false; // bei jedem Start neu versuchen
+    maybeListenHandsFree();
+  } else {
+    stopLiveHear();
     stt.cancel();
     releaseVoiceSoon();
   }
@@ -3749,6 +3779,8 @@ $('btnMic').onclick = () => {
 let micLongPressed = false;
 async function startDictation({ erzaehlen = false } = {}) {
   if (state.dictation || state.inCall) return;
+  stopLiveHear(); // das Diktat braucht das Mikrofon für sich
+
   if (state.wakeListening || stt.listening) stt.cancel();
   tts.stop();
   const d = { parts: [], queue: Promise.resolve(), how: null, erzaehlen, base: input.value.trim(), segments: 0 };
@@ -4188,6 +4220,7 @@ function fillSettings() {
   renderStory();
   $('pLang').value = p.language;
   $('pStyle').value = p.style;
+  $('pHumor').value = p.humorStil ?? '';
 
   $('avFloating').checked = s.floating;
   $('avFloatSize').value = s.floatingSize;
@@ -4279,6 +4312,7 @@ function fillSettings() {
   $('sBargeIn').checked = s.bargeIn;
   $('sMood').checked = s.moodTags !== false;
   $('sLivePause').value = String(s.livePauseMs);
+  $('sLiveHear').checked = s.liveHear !== false;
   $('sSens').value = s.sensitivity;
   fillMics();
 
@@ -4899,6 +4933,13 @@ $('pPresetNew').onclick = () => {
 
 $('pStyle').onchange = (e) => {
   persona().style = e.target.value;
+  save();
+};
+$('pHumor').onchange = (e) => {
+  const p = persona();
+  if (e.target.value) p.humorStil = e.target.value;
+  else delete p.humorStil;
+  state.humorNow = null;
   save();
 };
 const switchTo = (p) => {
@@ -6783,6 +6824,16 @@ $('sMood').onchange = (e) => {
 $('sBargeIn').onchange = (e) => {
   state.settings.bargeIn = e.target.checked;
   save();
+  if (state.settings.handsFree) {
+    stt.cancel();
+    maybeListenHandsFree();
+  }
+};
+$('sLiveHear').onchange = (e) => {
+  state.settings.liveHear = e.target.checked;
+  state.liveHearFailed = false;
+  save();
+  if (!e.target.checked) stopLiveHear();
   if (state.settings.handsFree) {
     stt.cancel();
     maybeListenHandsFree();
@@ -12531,6 +12582,172 @@ async function startRealtime() {
     stopRealtime();
   }
 }
+// ---- Zuhören wie im Echtzeit-Gespräch (Live-Gespräch am Handy, mit OpenAI-Schlüssel): die Cloud schreibt mit, während
+// man spricht, und erkennt am SINN, wann man fertig ist (semantic_vad) – keine festen Pausen, kein Rauschen als Satz,
+// Echo unterdrückt die Verbindung selbst. Geantwortet wird wie gewohnt von der eigenen KI mit der eigenen Stimme.
+// Klappt die Verbindung nicht, läuft das bisherige Zuhören weiter.
+let lh = null;
+const liveHearWanted = () =>
+  MOBILE && state.settings.handsFree && state.settings.liveHear !== false && state.settings.sttEngine === 'cloud' && !state.settings.offline && !!desktop.realtimeConnect && !rt && !state.liveHearFailed && !state.inCall && !state.dictation && !state.longTalk;
+async function startLiveHear() {
+  if (lh) return true;
+  if (!(await desktop.keyStatus().catch(() => ({}))).openai) return false;
+  const pc = new RTCPeerConnection();
+  lh = { pc, held: false, guard: null, start: 0 };
+  try {
+    voiceRoute(true);
+    micState(true);
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    lh.mic = mic;
+    mic.getTracks().forEach((t) => pc.addTrack(t, mic));
+    const dc = pc.createDataChannel('oai-events');
+    lh.dc = dc;
+    dc.onmessage = (m) => {
+      let ev;
+      try {
+        ev = JSON.parse(m.data);
+      } catch {
+        return;
+      }
+      liveHearEvent(ev);
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const answer = await desktop.realtimeConnect({
+      offerSdp: offer.sdp,
+      transcription: {
+        model: state.settings.sttCloudModel || 'gpt-4o-transcribe',
+        language: stt.language || 'de',
+        eagerness: state.settings.livePauseMs <= 600 ? 'medium' : 'auto',
+        farField: !state.voiceDevice,
+      },
+    });
+    await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+    lh.since = Date.now();
+    logEv('ZUHÖREN', `live (Satzende nach Sinn${state.voiceDevice ? `, ${state.voiceDevice}` : ''})`);
+    status('🎙 Ich höre zu – sprich einfach.');
+    return true;
+  } catch (e) {
+    logEv('ZUHÖREN', `Live-Mitschrift nicht möglich: ${e.message} – bisheriges Zuhören`);
+    state.liveHearFailed = true;
+    stopLiveHear();
+    return false;
+  }
+}
+function stopLiveHear() {
+  if (!lh) return;
+  const l = lh;
+  lh = null;
+  clearInterval(l.guard);
+  if (l.held && tts.held) tts.release();
+  try {
+    l.dc?.close();
+    l.pc.close();
+    l.mic?.getTracks().forEach((t) => t.stop());
+  } catch {}
+  state.hearing = false;
+  avatarState.listening = false;
+  micState(false);
+  if (!stt.stream && !rt) voiceRoute(false);
+  updateBadge();
+}
+/** Angehaltene Antwort weiterlaufen lassen (war doch nichts). */
+function liveHearRelease(why) {
+  if (!lh?.held) return;
+  lh.held = false;
+  clearInterval(lh.guard);
+  if (tts.held) tts.release();
+  if (why) logEv('STT', `${why} während der Antwort – weitergesprochen`);
+}
+function liveHearEvent(ev) {
+  const t = ev.type ?? '';
+  if (!lh) return;
+  if (t === 'input_audio_buffer.speech_started') {
+    lh.start = performance.now();
+    state.speechStartAt = lh.start;
+    state.hearing = true;
+    avatarState.listening = true;
+    updateBadge();
+    if (!tts.speaking && !state.busy && Date.now() - (state.lastExchange ?? 0) > 15000) fireEvent('turn', 2500);
+    state.lastExchange = Date.now();
+    // spricht die Figur gerade: anhalten, bis klar ist, ob wirklich etwas gesagt wird
+    if (tts.speaking || state.busy) {
+      lh.held = true;
+      tts.hold();
+      clearInterval(lh.guard);
+      lh.guard = setInterval(() => lh?.held && tts.speaking && !tts.held && tts.hold(), 200);
+    }
+  } else if (t === 'input_audio_buffer.speech_stopped') {
+    state.hearing = false;
+    avatarState.listening = false;
+    state.timing = { spoke: performance.now() };
+    status('🎙 Verstehe …');
+    updateBadge();
+  } else if (/input_audio_transcription\.completed$/.test(t)) {
+    liveHeard(String(ev.transcript ?? '').trim()).catch((e) => logEv('STT', e.message));
+  } else if (t === 'error') {
+    logEv('ZUHÖREN', ev.error?.message ?? 'Fehler');
+  }
+}
+async function liveHeard(text) {
+  state.timing = { ...(state.timing ?? {}), heard: performance.now() };
+  costs.add({ kind: 'stt', model: state.settings.sttCloudModel || 'gpt-4o-transcribe', seconds: lh?.start ? Math.max(1, (performance.now() - lh.start) / 1000) : 2 });
+  if (!text || NOISE.some((r) => r.test(text)) || isPhantom(text) || sttPromptEcho(text)) {
+    if (text) logEv('STT', `verworfen (Erfindung der Erkennung): ${text}`);
+    status('');
+    return liveHearRelease('Geräusch');
+  }
+  // eigenes Echo (die Verbindung unterdrückt es meist schon selbst)
+  const sinceSpoke = Date.now() - (state.lastSpeakEnd ?? 0);
+  if (echoScore(text, state.spoken) >= (tts.speaking || sinceSpoke < 6000 ? 0.5 : 2)) {
+    overheard(text, 'eigenes Echo');
+    return liveHearRelease('Echo');
+  }
+  const cmd = voiceCommand(text, persona().name);
+  if (cmd) {
+    if (lh) lh.held = false;
+    handleVoiceCommand(cmd);
+    return;
+  }
+  const why = fragmentReason(text, null);
+  if (why) {
+    overheard(text, why);
+    return liveHearRelease(why);
+  }
+  // „Hör mir mal länger zu“: Diktat (das braucht das Mikrofon für sich)
+  if (LONG_START_RE.test(text)) {
+    stopLiveHear();
+    fireEvent('ack', 1500);
+    setTimeout(() => startDictation(), 50);
+    return;
+  }
+  status(`🗣 „${text.length > 90 ? `${text.slice(0, 90)}…` : text}“`);
+  let interrupted = false;
+  if (lh?.held) {
+    lh.held = false;
+    clearInterval(lh.guard);
+    interrupted = true;
+    interrupt();
+  }
+  if (state.voicePaused) {
+    state.voicePaused = false;
+    if (state.currentChatId) desktop.abortChat(state.currentChatId);
+    tts.stop();
+  }
+  // noch am Antworten (ohne Sprechen)? Abbrechen und beides als eine Frage schicken
+  if (!interrupted && state.busy && Date.now() - (state.lastSendAt ?? 0) < 12000) {
+    interrupted = true;
+    interrupt();
+  }
+  fireEvent('ack', 1500);
+  if (interrupted) await waitIdle(2500);
+  state.voiceTurn = true;
+  try {
+    await send(interrupted ? joinTornSentence(text) : text);
+  } finally {
+    state.voiceTurn = false;
+  }
+}
 function stopRealtime() {
   if (!rt) return;
   try {
@@ -12687,6 +12904,12 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  liveHearEvent,
+  liveHeard,
+  liveHearWanted,
+  stopLiveHear,
+  lhState: () => lh,
+  setLh: (v) => (lh = v),
   sttPromptEcho,
   forgetLast,
   markNotesDone,

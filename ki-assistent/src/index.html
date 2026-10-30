@@ -193,6 +193,18 @@
           <option value="frei">Nur mein Systemprompt (keine Zusatzanweisungen)</option>
         </select>
       </label>
+      <label>Humor-Stil
+        <select id="pHumor">
+          <option value="">Standard (Privat: Frech · Dienstlich: Fein)</option>
+          <option value="fein">Fein – höflich, Wortwitz</option>
+          <option value="locker">Locker – Umgangssprache, Ironie</option>
+          <option value="frech">Frech – Kraftausdrücke, schwarzer Humor, Satire über Promis</option>
+          <option value="derb">Derb – Stammtisch-Ton mit Niveau</option>
+        </select>
+      </label>
+      <p class="hint">Auf jeder Stufe gilt: nichts gegen Gruppen, nichts Herabwürdigendes über Privatpersonen, nichts explizit
+        Sexuelles; bei ernsten Themen lässt die Figur den Humor weg. Im Bereich Dienstlich höchstens „Locker“. Per Zuruf: „Sei
+        mal frecher“, „Jetzt mal wieder ernst“.</p>
       <div class="row">
         <button id="personaExport">📤 Persona exportieren</button>
         <button id="personaImport">📥 Persona importieren</button>
@@ -670,6 +682,7 @@
       <h3>Live-Gespräch</h3>
       <label class="check"><input id="sHandsFree" type="checkbox" /> Live-Gespräch (freihändig): automatisch zuhören, wenn ich spreche – auch über 📞 unten</label>
       <label class="check"><input id="sBargeIn" type="checkbox" /> Dazwischenreden erlaubt: Der Avatar verstummt, sobald ich spreche</label>
+      <label class="check mobile-only"><input id="sLiveHear" type="checkbox" /> Zuhören wie im Echtzeit-Gespräch (Handy, mit OpenAI-Schlüssel): live mitschreiben, Satzende nach Sinn statt nach Pause – die Antwort kommt weiter von deiner KI mit der eigenen Stimme</label>
       <label>Reaktionszeit (Pause, nach der mein Satz als fertig gilt)
         <select id="sLivePause">
           <option value="600">schnell – 0,6 s</option>

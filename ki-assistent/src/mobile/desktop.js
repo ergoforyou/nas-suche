@@ -417,15 +417,28 @@ const api = {
    * Echtzeit-Gespräch (OpenAI Realtime): kurzlebigen Sitzungsschlüssel holen und die WebRTC-Verbindung aufbauen.
    * Der eigentliche API-Schlüssel bleibt in der App; die Verbindung nutzt nur den kurzlebigen Schlüssel.
    */
-  realtimeConnect: async ({ offerSdp, instructions, voice, model = 'gpt-realtime' }) => {
+  realtimeConnect: async ({ offerSdp, instructions, voice, model = 'gpt-realtime', transcription = null }) => {
     const key = (await getKeys()).openai;
     if (!key) throw new Error('Kein OpenAI-Schlüssel hinterlegt (⚙ → Verbindung).');
-    const session = {
-      type: 'realtime',
-      model,
-      instructions,
-      audio: { input: { transcription: { model: 'gpt-4o-mini-transcribe' } }, output: { voice } },
-    };
+    // nur Mitschreiben (Zuhören wie im Echtzeit-Gespräch, Antwort kommt von der eigenen KI mit eigener Stimme):
+    // Satzende nach Sinn (semantic_vad), Rauschunterdrückung – es wird nichts gesprochen, nur Text zurückgegeben
+    const session = transcription
+      ? {
+          type: 'transcription',
+          audio: {
+            input: {
+              transcription: { model: transcription.model || 'gpt-4o-transcribe', language: transcription.language || 'de', ...(transcription.prompt ? { prompt: transcription.prompt } : {}) },
+              turn_detection: { type: 'semantic_vad', eagerness: transcription.eagerness || 'auto' },
+              noise_reduction: { type: transcription.farField ? 'far_field' : 'near_field' },
+            },
+          },
+        }
+      : {
+          type: 'realtime',
+          model,
+          instructions,
+          audio: { input: { transcription: { model: 'gpt-4o-mini-transcribe' } }, output: { voice } },
+        };
     const j = async (r) => {
       const t = await r.text();
       if (!r.ok) throw new Error(`OpenAI ${r.status}: ${t.slice(0, 300)}`);
@@ -441,13 +454,13 @@ const api = {
         })),
       );
       const ek = sec.value ?? sec.client_secret?.value;
-      return await j(await fetch(`https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`, {
+      return await j(await fetch(transcription ? 'https://api.openai.com/v1/realtime/calls' : `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${ek}`, 'Content-Type': 'application/sdp' },
         body: offerSdp,
       }));
     } catch (e) {
-      if (!/404|400/.test(String(e.message))) throw e;
+      if (transcription || !/404|400/.test(String(e.message))) throw e;
       const old = JSON.parse(
         await j(await fetch('https://api.openai.com/v1/realtime/sessions', {
           method: 'POST',

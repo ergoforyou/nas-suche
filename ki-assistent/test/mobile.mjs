@@ -1628,7 +1628,8 @@ const bargeRes = await page.evaluate(async () => {
   const app = window.__app;
   const calls = [];
   const orig = { listen: app.stt.listen, hold: app.tts.hold, release: app.tts.release, stop: app.tts.stop, abort: window.desktop.abortChat };
-  const keep = { bargeIn: app.state.settings.bargeIn, wakeOn: app.state.settings.wakeOn };
+  const keep = { bargeIn: app.state.settings.bargeIn, wakeOn: app.state.settings.wakeOn, liveHear: app.state.settings.liveHear };
+  app.state.settings.liveHear = false; // hier das bisherige Zuhören (die Live-Mitschrift hat einen eigenen Test)
   Object.defineProperty(app.tts, 'speaking', { get: () => true, configurable: true });
   app.tts.hold = () => calls.push('hold');
   app.tts.release = () => calls.push('release');
@@ -3687,6 +3688,35 @@ const b97 = await page.evaluate(() => {
   };
 });
 check(b97.echo && b97.normal, 'Rauschen: Hinweistext der Spracherkennung wird verworfen, echte Sätze nicht', JSON.stringify(b97));
+// Beta 98: Humor-Stil geht mit (Privat Standard „frech“, Grenzen dabei); Live-Mitschrift: Satz → Nachricht, Rauschen/
+// Hinweistext/Echo → nichts, Zuruf „Stopp“ ohne KI
+await page.evaluate(() => (window.__app.state.busy = false));
+claudeQueue.push(sayText('Na, das war ja wieder ein Auftritt.'));
+const before98 = claudeRequests.length;
+const n98 = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+await page.evaluate(() => {
+  const app = window.__app;
+  app.setLh({ held: false, start: performance.now() }); // Mitschrift „läuft“ (ohne echte Verbindung)
+  app.liveHearEvent({ type: 'input_audio_buffer.speech_started' });
+  app.liveHearEvent({ type: 'input_audio_buffer.speech_stopped' });
+  app.liveHearEvent({ type: 'conversation.item.input_audio_transcription.completed', transcript: 'Erzähl mir was Lustiges über Politiker.' });
+});
+await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !window.__app.state.busy, n98, { timeout: 15000 }).catch(() => {});
+const req98 = claudeRequests.slice(before98).find((r) => JSON.stringify(r.messages ?? '').includes('Lustiges über Politiker'));
+const reqCount98 = claudeRequests.length;
+const b98 = await page.evaluate(async () => {
+  const app = window.__app;
+  const userCount = () => app.history().filter((m) => m.role === 'user').length;
+  const before = userCount();
+  await app.liveHeard(`Gespräch mit dem Assistenten ${app.persona().name || 'Max'}.`);
+  await app.liveHeard('Untertitelung im Auftrag des ZDF, 2021');
+  await app.liveHeard('Stopp');
+  const out = { noExtra: userCount() === before };
+  app.setLh(null);
+  return out;
+});
+await page.waitForTimeout(300);
+check(/Dein Humor: frech/.test(JSON.stringify(req98 ?? '')) && /Gruppen herabsetzen/.test(JSON.stringify(req98 ?? '')) && b98.noExtra && claudeRequests.length === reqCount98, 'Live-Mitschrift: Satz geht an die Figur (Humor frech mit Grenzen); Rauschen, Hinweistext und „Stopp“ nicht', JSON.stringify({ req: !!req98, b98, extra: claudeRequests.length - reqCount98 }));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

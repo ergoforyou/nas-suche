@@ -193,6 +193,11 @@ vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder 
 - **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
 - **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
+### Flüssigeres Gespräch und Humor-Stil (Beta 98)
+
+- **Zuhören wie im Echtzeit-Gespräch** (Live-Gespräch am Handy, mit OpenAI-Schlüssel): die Cloud schreibt mit, während man spricht, und erkennt am Sinn, wann man fertig ist – keine festen Pausen, Rauschen wird nicht zu Sätzen, das Echo unterdrückt die Verbindung selbst. Antworten kommen weiter von der eigenen KI (Claude) mit der eigenen Stimme. Klappt die Verbindung nicht, läuft das bisherige Zuhören. Abschaltbar unter ⚙ → Sprache.
+- **Humor-Stil je Persona:** Fein, Locker, Frech, Derb (Standard: Privat „Frech“, Dienstlich „Fein“; Dienstlich höchstens „Locker“). Feste Grenzen auf jeder Stufe: nichts gegen Gruppen, nichts Herabwürdigendes über Privatpersonen, nichts explizit Sexuelles; bei ernsten Themen kein Humor. Per Zuruf: „Sei mal frecher“, „Jetzt mal wieder ernst“.
+
 ### Kohärentes Gespräch (Beta 96)
 
 - **Beim Thema bleiben:** Notizen, Vorhaben und offene Punkte gehen nur mit, wenn sie zur Frage passen – jedes Stück höchstens einmal je Gespräch; eigene Vorhaben der Figur nur zu Beginn eines Gesprächs; Erledigtes nur auf Nachfrage.
