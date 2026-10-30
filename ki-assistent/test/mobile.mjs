@@ -3690,6 +3690,50 @@ const b91 = await page.evaluate(async () => {
   return out;
 });
 check(b91.test && b91.synced && b91.peek && b91.fail && b91.quick && b91.badId, 'NAS: Schnell-Einrichtung über QuickConnect, Verbindungstest mit Hinweisen; Kurz-Check holt Neues vom anderen Gerät', JSON.stringify(b91));
+// Beta 94: Reiter „Sicherung & Geräte“, NAS auch in der einfachen Ansicht, große Figuren in Teilen, Übersicht, Sichern per Knopf
+const b94 = await page.evaluate(async () => {
+  const app = window.__app;
+  const out = {};
+  const files = new Map();
+  const empty = new Uint8Array();
+  const keep = { req: window.desktop.nasReq, nas: app.state.settings.nas, simple: app.state.settings.setSimple };
+  window.desktop.nasReq = async ({ method, path, body }) => {
+    const f = files.get(path);
+    if (method === 'GET') return f ? { status: 200, etag: '"x"', body: f } : { status: 404, etag: null, body: empty };
+    if (method === 'HEAD') return f ? { status: 200, etag: '"x"', body: empty } : { status: 404, etag: null, body: empty };
+    if (method === 'PUT') return files.set(path, new Uint8Array(body)), { status: 201, etag: '"x"', body: empty };
+    if (method === 'DELETE') return files.delete(path), { status: 204, etag: null, body: empty };
+    return { status: 405, etag: null, body: empty };
+  };
+  app.state.settings.nas = { url: 'https://jens.quickconnect.to/home/ki-assistent', user: 'ki', auto: true };
+  // große Figur (70 MB) → 3 Teile, wieder zusammengesetzt identisch
+  const big = new Uint8Array(70 * 1024 * 1024);
+  for (let i = 0; i < big.length; i += 4096) big[i] = i % 251;
+  const sent = await app.nasPutFigure('figur-test-1.kiavatar', big);
+  const back = await app.nasGetFigure(sent);
+  out.parts = sent.parts === 3 && files.has('figur-test-1.kiavatar.3') && back.length === big.length && back[4096 * 1000] === big[4096 * 1000];
+  files.clear();
+  // Reiter und einfache Ansicht
+  app.state.settings.setSimple = true;
+  document.querySelector('#drawer [data-tab="geraete"]').click();
+  const tab = document.querySelector('.tab[data-tab="geraete"]');
+  out.tab = !tab.hidden && !!tab.querySelector('#nasWrap') && !!tab.querySelector('#syncPhoneWrap') && !!tab.querySelector('#localBackupWrap');
+  out.simpleVisible = !document.getElementById('nasWrap').closest('.set-adv');
+  // „Jetzt auf der NAS sichern“: Sicherung von heute liegt auf der NAS, Übersicht zeigt die Personas
+  app.state.busy = false;
+  const done = await app.syncAllNow({ backup: true });
+  const day = new Date().toISOString().slice(0, 10);
+  out.backup = done[0] === 'NAS ✅' && files.has(`sicherung-${day}.json`) && files.has('stand.json');
+  const lines = app.syncOverviewLines();
+  out.lines = lines.slice(0, 3);
+  out.overview = /NAS: zuletzt/.test(lines[0]) && lines.some((l) => /^👤 .*Gedächtnis \d+/.test(l) && /Figur ✅/.test(l));
+  window.desktop.nasReq = keep.req;
+  app.state.settings.nas = keep.nas;
+  app.state.settings.setSimple = keep.simple;
+  document.getElementById('drawer').hidden = true;
+  return out;
+});
+check(b94.parts && b94.tab && b94.simpleVisible && b94.backup && b94.overview, 'Sicherung & Geräte: eigener Reiter, NAS in der einfachen Ansicht, große Figuren in Teilen, Sichern per Knopf, Übersicht', JSON.stringify(b94));
 // Beta 93: Gerätewechsel – „Mach am PC weiter“ legt eine Übergabe ab, das andere Gerät greift den Faden einmal auf
 const b93 = await page.evaluate(async () => {
   const app = window.__app;
@@ -3739,7 +3783,9 @@ const dienst = await page.evaluate(() => {
   document.getElementById('btnSettings').click();
   document.querySelector('[data-tab=phone]').click();
   const vis = (id) => !!document.getElementById(id)?.offsetParent;
-  const out = { wake: vis('privWakeOn'), sync: vis('syncConnect'), notes: vis('privNotes') };
+  const out = { wake: vis('privWakeOn'), notes: vis('privNotes') };
+  document.querySelector('[data-tab=geraete]').click();
+  out.sync = vis('syncConnect');
   document.getElementById('btnCloseDrawer')?.click();
   return out;
 });

@@ -4033,6 +4033,10 @@ $('tabs').onclick = (e) => {
   for (const t of document.querySelectorAll('.tab')) t.hidden = t.dataset.tab !== tab;
   if (tab === 'avatar') drawMarkers();
   if (tab === 'memory') renderMemory();
+  if (tab === 'geraete') {
+    renderSyncOverview();
+    renderBackupsLocal().catch(() => {});
+  }
   if (tab === 'conn') {
     if (state.settings.provider === 'lmstudio') refreshModels();
     if (state.settings.provider === 'openai') refreshOpenaiModels();
@@ -7463,6 +7467,23 @@ async function runAppToolInner(name, input) {
     if (!desktop.news) throw new Error('Nachrichten sind hier nicht verfügbar');
     const ort = String(input?.ort ?? '').trim() || (await currentPlace());
     return desktop.news({ bereiche: input?.bereiche, ort, anzahl: input?.anzahl });
+  }
+  if (name === 'abgleich_sicherung') {
+    const a = input?.aktion;
+    if (a === 'zeigen') {
+      openTab('geraete');
+      return { ok: true, geoeffnet: '⚙ → Sicherung & Geräte' };
+    }
+    if (a === 'sichern' || a === 'abgleichen') {
+      if (a === 'sichern' && !nasActive()) {
+        await autoBackup({ force: true });
+        return { ok: true, gesichert: 'auf diesem Gerät (die NAS ist hier nicht eingerichtet)', stand: syncOverviewLines() };
+      }
+      const done = await syncAllNow({ backup: a === 'sichern' });
+      if (!done.length) return { ok: false, hinweis: 'Noch kein Abgleich eingerichtet (NAS oder WLAN-Kopplung) – anbieten, die Einstellungen zu öffnen.' };
+      return { ok: !done.some((d) => /⚠️/.test(d)), ergebnis: done, stand: syncOverviewLines() };
+    }
+    return { stand: syncOverviewLines() };
   }
   if (name === 'app_hilfe') {
     const q = String(input?.frage ?? '').trim();
@@ -11354,7 +11375,7 @@ function renderSyncState() {
     if (!el) return;
     el.textContent = pair?.token
       ? `Gekoppelt mit dem PC (${(pair.urls ?? [])[0]?.replace('http://', '') ?? '?'}). Zuletzt abgeglichen: ${when(last)}${pair.error ? ` · letzter Versuch: ${pair.error}` : ''}`
-      : 'Noch nicht gekoppelt: am PC ⚙ → Bereich → „Handy automatisch abgleichen“ einschalten und den QR-Code oben mit „📷 QR-Code scannen“ lesen.';
+      : 'Noch nicht gekoppelt: am PC ⚙ → Sicherung & Geräte → „Handy automatisch abgleichen“ einschalten und den QR-Code oben mit „📷 QR-Code scannen“ lesen.';
     $('syncNow').hidden = $('syncUnpair').hidden = !pair?.token;
   } else {
     const el = document.getElementById('syncAuto');
@@ -11485,7 +11506,42 @@ $('syncUnpair').onclick = () => {
 // nicht laufen, Firewall und getrennte WLANs spielen keine Rolle. Zusammengeführt wird wie beim WLAN-Abgleich; wer
 // zuletzt schreibt, prüft per ETag, dass niemand dazwischen geschrieben hat. Figuren liegen als eigene Dateien daneben,
 // einmal am Tag kommt eine Sicherung dazu (30 Tage). Alles flach in einem Ordner (Android kann keine Ordner anlegen).
-const NAS_FIG_MAX = 80 * 1024 * 1024; // größere Figuren (lange Videos) lieber per Export/WLAN übertragen
+const NAS_FIG_MAX = 300 * 1024 * 1024; // noch größere Figuren lieber per Export übertragen
+const NAS_FIG_PART = 32 * 1024 * 1024; // große Figuren (mehrere Videos) gehen in Teilen – das schafft auch QuickConnect
+const figParts = (f) => (f?.parts ? Array.from({ length: f.parts }, (_, i) => `${f.file}.${i + 1}`) : [f.file]);
+async function nasGetFigure(f) {
+  const chunks = [];
+  for (const file of figParts(f)) {
+    const r = await nasReq('GET', file);
+    if (r.status !== 200) return null;
+    chunks.push(r.body instanceof Uint8Array ? r.body : new Uint8Array(r.body));
+  }
+  if (chunks.length === 1) return chunks[0];
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) (out.set(c, at), (at += c.length));
+  return out;
+}
+async function nasPutFigure(file, bytes) {
+  if (bytes.length <= NAS_FIG_PART) {
+    const put = await nasReq('PUT', file, bytes, { 'Content-Type': 'application/zip' });
+    if (![200, 201, 204].includes(put.status)) throw new Error(nasError(put.status));
+    return { file };
+  }
+  const parts = Math.ceil(bytes.length / NAS_FIG_PART);
+  for (let i = 0; i < parts; i++) {
+    const put = await nasReq('PUT', `${file}.${i + 1}`, bytes.slice(i * NAS_FIG_PART, (i + 1) * NAS_FIG_PART), { 'Content-Type': 'application/octet-stream' });
+    if (![200, 201, 204].includes(put.status)) throw new Error(nasError(put.status));
+  }
+  return { file, parts };
+}
+const nasDelFigure = (f) => figParts(f).forEach((file) => nasReq('DELETE', file).catch(() => {}));
+/** Wie steht es um die Figur dieser Persona im Abgleich? (für die Übersicht) */
+function figMark(p, st, mb) {
+  const cfg = state.settings.nas;
+  if (!cfg) return;
+  cfg.fig = { ...(cfg.fig ?? {}), [p.id]: { st, mb, t: Date.now() } };
+}
 // am PC auch ein Ordner (Synology-Client/Netzlaufwerk) – dann ohne Benutzer
 const nasLocalPath = (u) => !MOBILE && (/^[A-Za-z]:[\\/]/.test(u ?? '') || /^\\\\/.test(u ?? '') || /^file:/i.test(u ?? '') || String(u ?? '').startsWith('/'));
 const nasActive = () => AREA === 'privat' && !!desktop.nasReq && !!state.settings?.nas?.url && (!!state.settings?.nas?.user || nasLocalPath(state.settings.nas.url));
@@ -11555,7 +11611,7 @@ function nasSoon(ms = 6000) {
   clearTimeout(nasSoonTimer);
   nasSoonTimer = setTimeout(() => nasSync().catch(() => {}), ms);
 }
-async function nasSync({ manual = false } = {}) {
+async function nasSync({ manual = false, backup = false } = {}) {
   if (!nasActive() || nasRunning) return;
   const cfg = state.settings.nas;
   if (!manual && cfg.auto === false) return;
@@ -11596,29 +11652,32 @@ async function nasSync({ manual = false } = {}) {
         const mine = p.avatarStamp ?? 0;
         if (f && f.stamp > mine) {
           say(`🗄 Hole die Figur von „${p.name}“ …`);
-          const r = await nasReq('GET', f.file);
-          if (r.status === 200) {
-            await takeFigure(p, r.body, f.stamp);
+          const r = await nasGetFigure(f);
+          if (r) {
+            await takeFigure(p, r, f.stamp);
+            figMark(p, 'ok', Math.round(r.length / 1e6));
             figs++;
-          }
+          } else figMark(p, 'fehlt');
         } else if (mine >= 0 && (!f || mine > f.stamp)) {
           const bytes = await packPersona(p, { withMemory: false, version: APP_VERSION });
+          const mb = Math.round(bytes.length / 1e6);
           if (bytes.length > NAS_FIG_MAX) {
-            logEv('NAS', `Figur von ${p.name} zu groß (${Math.round(bytes.length / 1e6)} MB) – nicht übertragen`);
+            logEv('NAS', `Figur von ${p.name} zu groß (${mb} MB) – nicht übertragen`);
+            figMark(p, 'gross', mb);
             continue;
           }
-          say(`🗄 Sende die Figur von „${p.name}“ …`);
+          say(`🗄 Sende die Figur von „${p.name}“ (${mb} MB) …`);
           const file = `figur-${p.id}-${mine}.kiavatar`;
-          const put = await nasReq('PUT', file, bytes, { 'Content-Type': 'application/zip' });
-          if (![200, 201, 204].includes(put.status)) throw new Error(nasError(put.status));
-          if (f?.file && f.file !== file) nasReq('DELETE', f.file).catch(() => {});
-          figuren[p.id] = { stamp: mine, file };
+          const sent = await nasPutFigure(file, bytes);
+          if (f?.file && f.file !== file) nasDelFigure(f);
+          figuren[p.id] = { stamp: mine, ...sent };
+          figMark(p, 'ok', mb);
           figs++;
-        }
+        } else if (f) figMark(p, 'ok', state.settings.nas.fig?.[p.id]?.mb);
       }
       for (const id of Object.keys(figuren)) {
         if (state.personas.some((p) => p.id === id)) continue;
-        nasReq('DELETE', figuren[id].file).catch(() => {});
+        nasDelFigure(figuren[id]);
         delete figuren[id];
       }
       const body = new TextEncoder().encode(
@@ -11630,10 +11689,12 @@ async function nasSync({ manual = false } = {}) {
       if (![200, 201, 204].includes(put.status)) throw new Error(nasError(put.status));
       // einmal am Tag eine Sicherung, 30 Tage aufheben
       const day = new Date().toISOString().slice(0, 10);
-      if (cfg.backupDay !== day) {
+      if (cfg.backupDay !== day || backup) {
         const b = await nasReq('PUT', `sicherung-${day}.json`, body, { 'Content-Type': 'application/json' });
+        if (backup && ![200, 201, 204].includes(b.status)) throw new Error(`Sicherung: ${nasError(b.status)}`);
         if ([200, 201, 204].includes(b.status)) {
           cfg.backupDay = day;
+          cfg.backupAt = Date.now();
           nasReq('DELETE', `sicherung-${new Date(Date.now() - 31 * 86400e3).toISOString().slice(0, 10)}.json`).catch(() => {});
         }
       }
@@ -11642,7 +11703,7 @@ async function nasSync({ manual = false } = {}) {
       save({ quiet: true });
       // Stand merken: der leichte Änderungs-Check erkennt dann, wenn das andere Gerät etwas Neues abgelegt hat
       nasEtag = put.etag || (await nasReq('HEAD', 'stand.json').catch(() => null))?.etag || null;
-      say(`🗄 Mit der NAS abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.`);
+      say(backup ? `🗄 Auf der NAS gesichert (Sicherung vom ${new Date().toLocaleDateString('de-DE')}) und abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.` : `🗄 Mit der NAS abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.`);
       return true;
     }
     throw new Error('die NAS war gerade mehrfach belegt – gleich noch einmal');
@@ -11654,6 +11715,7 @@ async function nasSync({ manual = false } = {}) {
   } finally {
     nasRunning = false;
     renderNasState();
+    renderSyncOverview();
   }
 }
 async function renderNasState() {
@@ -11692,6 +11754,46 @@ $('nasPass').onchange = async (e) => {
   }
 };
 $('nasNow').onclick = () => nasSync({ manual: true });
+// ---- Übersicht „Was ist abgeglichen?“ (⚙ → Sicherung & Geräte)
+function syncOverviewLines() {
+  const when = (t) => (t ? new Date(t).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'noch nie');
+  const nas = nasActive() ? state.settings.nas : null;
+  const pair = state.settings?.syncPair;
+  const lines = [];
+  const wege = [];
+  if (nas) wege.push(`🗄 NAS: zuletzt ${when(nas.last)}${nas.error ? ` (⚠️ ${nas.error})` : ''}${nas.backupAt ? ` · gesichert ${when(nas.backupAt)}` : ''}`);
+  if (MOBILE ? pair?.token : state.settings.syncAuto) wege.push(`📶 WLAN: zuletzt ${when(state.abgleich?.last)}`);
+  if (!wege.length) lines.push(`⚠️ Noch kein Abgleich eingerichtet – ${AREA === 'privat' ? 'unten die NAS einrichten oder ' : ''}${MOBILE ? 'mit dem PC koppeln' : 'das Handy koppeln'}. Beide Geräte müssen im selben Bereich sein (${AREA === 'privat' ? 'Privat' : 'Dienstlich'}).`);
+  else lines.push(...wege);
+  for (const p of state.personas) {
+    const fig = nas?.fig?.[p.id];
+    const figText = !nas ? '' : !fig ? ' · Figur: ⏳ noch nicht über die NAS' : fig.st === 'ok' ? ` · Figur ✅${fig.mb ? ` (${fig.mb} MB)` : ''}` : fig.st === 'gross' ? ` · Figur ⚠️ zu groß (${fig.mb} MB) – per „Persona exportieren“ übertragen` : ' · Figur ⚠️ fehlt auf der NAS – beim nächsten Abgleich neu';
+    const n = (x) => x?.length ?? 0;
+    lines.push(`👤 ${p.name}: Gedächtnis ${n(p.memory)} · Selbstbild ${n(p.selbst)} · Geschichte ${p.geschichte?.trim() ? '✓' : '–'}${BRAIN ? ` · Notizbuch ${n(p.brain)}` : ''} · Verlauf ${n(state.history[p.id])}${figText}`);
+  }
+  if (BRAIN) lines.push(`🧠 Second Brain: ${n0(state.brain)} Notizen · ⏰ Erinnerungen: ${ownReminders().filter((r) => !r.ack).length} offen`);
+  return lines;
+}
+const n0 = (x) => x?.length ?? 0;
+function renderSyncOverview() {
+  const box = document.getElementById('syncOverview');
+  if (!box) return;
+  box.replaceChildren(...syncOverviewLines().map((l) => Object.assign(document.createElement('div'), { textContent: l })));
+  $('nasBackupNow').hidden = !nasActive();
+}
+/** „Jetzt alles abgleichen“: NAS und WLAN (was eingerichtet ist). */
+async function syncAllNow({ backup = false } = {}) {
+  const done = [];
+  if (nasActive()) done.push((await nasSync({ manual: true, backup })) ? 'NAS ✅' : 'NAS ⚠️');
+  if (MOBILE && state.settings?.syncPair?.token) done.push((await autoSync({ manual: true }).then(() => !state.settings.syncPair?.error, () => false)) ? 'WLAN ✅' : 'WLAN ⚠️');
+  renderSyncOverview();
+  return done;
+}
+$('syncAllNow').onclick = async () => {
+  const d = await syncAllNow();
+  if (!d.length) status('Noch kein Abgleich eingerichtet – siehe unten (NAS oder WLAN-Kopplung).');
+};
+$('nasBackupNow').onclick = () => syncAllNow({ backup: true });
 /** Schnell-Einrichtung über QuickConnect (z. B. am Handy): Adresse bauen, Passwort sichern, Ordner anlegen, testen. */
 async function nasQuickSetup({ id, ziel, user, pass }) {
   const url = synology.quickConnectAddress(id, ziel);
@@ -11708,7 +11810,7 @@ async function nasQuickSetup({ id, ziel, user, pass }) {
     r.lines.unshift(`✅ Ordner auf der NAS: ${new URL(url).pathname}`);
     r.lines.push(
       ziel.includes('/Drive/')
-        ? '💻 Am PC: im Synology Drive Client „Mein Drive“ abgleichen lassen – der Ordner „ki-assistent“ erscheint dann unter SynologyDrive. In der App am PC: ⚙ → Wissen → NAS → „📁 Ordner wählen“ und diesen Ordner nehmen.'
+        ? '💻 Am PC: im Synology Drive Client „Mein Drive“ abgleichen lassen – der Ordner „ki-assistent“ erscheint dann unter SynologyDrive. In der App am PC: ⚙ → Sicherung & Geräte → NAS → „📁 Ordner wählen“ und diesen Ordner nehmen.'
         : '💻 Am PC: den Benutzerordner der NAS als Netzlaufwerk verbinden und in der App mit „📁 Ordner wählen“ den Ordner „ki-assistent“ nehmen – oder dieselbe QuickConnect-Adresse eintragen.',
     );
   }
@@ -12432,6 +12534,10 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  syncOverviewLines,
+  syncAllNow,
+  nasPutFigure,
+  nasGetFigure,
   checkHandoff,
   handoff,
   newsSince,

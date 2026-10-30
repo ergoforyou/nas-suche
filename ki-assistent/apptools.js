@@ -281,6 +281,18 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'abgleich_sicherung',
+    description:
+      'Abgleich zwischen PC und Handy und Sicherungen: „Sichere jetzt auf die NAS“ (sichern), „Gleich alles ab“ ' +
+      '(abgleichen), „Ist alles synchron?“ / „Wann wurde zuletzt gesichert?“ (stand), „Wo stelle ich die NAS ein?“ ' +
+      '(zeigen – öffnet die Einstellungen dort). Sag danach kurz, was passiert ist.',
+    input_schema: {
+      type: 'object',
+      properties: { aktion: { type: 'string', enum: ['sichern', 'abgleichen', 'stand', 'zeigen'] } },
+      required: ['aktion'],
+    },
+  },
+  {
     name: 'orte_verwalten',
     privatOnly: true,
     mobileOnly: true,
@@ -386,6 +398,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   handy_steuern: '📱 Mache das auf dem Handy …',
   erinnerungen_verwalten: '⏰ Schaue in die Erinnerungen …',
   nachrichten: '📰 Schaue in die Nachrichten …',
+  abgleich_sicherung: '🔁 Gleiche ab …',
 };
 
 module.exports = { APP_TOOLS, APP_TOOL_STATUS };

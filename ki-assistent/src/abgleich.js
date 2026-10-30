@@ -13,7 +13,7 @@ const SELF_MAX = 40;
 const REFLEX_MAX = 20;
 
 // Teile einer Persona, die nicht als „Text“ zählen: eigene Regeln beim Zusammenführen bzw. gerätebezogen
-const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'ziele', 'entwicklung', 'episoden', 'episodeUntil', 'signale', 'weekReviewAt', 'sicherungen', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp', 'brain']);
+const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'ziele', 'entwicklung', 'episoden', 'episodeUntil', 'signale', 'weekReviewAt', 'sicherungen', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp', 'brain', 'brainTidyAt']);
 const newId = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 const norm = (x) => String(x ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -163,7 +163,8 @@ export function mergeSync(a, b) {
       ...personaText(newer),
       id,
       updated: Math.max(pa.updated ?? 0, pb.updated ?? 0) || undefined,
-      memory: mergeEntries(pa.memory, pb.memory, { dead, max: MEMORY_MAX, same: (x, y) => norm(x.text) === norm(y.text) }),
+      // wie trimMemory: was der Nutzer selbst eingetragen hat, fällt beim Begrenzen nicht heraus
+      memory: mergeEntries(pa.memory, pb.memory, { dead, max: MEMORY_MAX, same: (x, y) => norm(x.text) === norm(y.text), keep: (e) => e.quelle === 'nutzer' }),
       selbst: mergeEntries(pa.selbst, pb.selbst, {
         dead,
         max: SELF_MAX,
@@ -185,6 +186,7 @@ export function mergeSync(a, b) {
       // eigenes Second Brain der Figur: die zuletzt geänderte Fassung je Notiz gewinnt
       brain: mergeNotes(pa.brain, pb.brain, { dead }),
       weekReviewAt: Math.max(pa.weekReviewAt ?? 0, pb.weekReviewAt ?? 0) || undefined,
+      brainTidyAt: Math.max(pa.brainTidyAt ?? 0, pb.brainTidyAt ?? 0) || undefined,
       signale: pa.signale,
       sicherungen: pa.sicherungen, // Sicherungen bleiben je Gerät
       reflexion: [...new Map([...(pa.reflexion ?? []), ...(pb.reflexion ?? [])].map((r) => [r.created, r])).values()]

@@ -193,6 +193,14 @@ vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder 
 - **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
 - **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
+### Sicherung & Geräte (Beta 94)
+
+- Eigener Reiter **⚙ → Sicherung & Geräte**: Synology-NAS, WLAN-Kopplung und Abgleich, Sicherungen auf dem Gerät – auch in der einfachen Ansicht.
+- **„Was ist abgeglichen?“** zeigt je Persona Gedächtnis, Selbstbild, Geschichte, Notizbuch, Verlauf und ob die Figur auf der NAS ist; dazu Second Brain und Erinnerungen und wann zuletzt über NAS/WLAN abgeglichen und gesichert wurde.
+- **„🔁 Jetzt alles abgleichen“** und **„🗄 Jetzt auf der NAS sichern“** (sofort, auch wenn es heute schon eine Sicherung gab); per Zuruf: „Sichere jetzt auf die NAS“, „Ist alles synchron?“, „Wo stelle ich die NAS ein?“.
+- Große Figuren (mehrere Videos) gehen in Teilen über die NAS (bis 300 MB); vorher blieben Figuren über 80 MB still zurück.
+- Abgleich: selbst eingetragene Erinnerungen bleiben beim Begrenzen erhalten; das nächtliche Aufräumen des Notizbuchs überschreibt keine Persona-Änderungen vom anderen Gerät mehr.
+
 ### Second Brain am PC und Gerätewechsel (Beta 93, Bereich Privat)
 
 - Second Brain (Notizen, Zwischenspeicher, Vorhaben der Figur) und Erinnerungen gibt es im Bereich Privat jetzt auch am PC – abgeglichen über WLAN oder die NAS.

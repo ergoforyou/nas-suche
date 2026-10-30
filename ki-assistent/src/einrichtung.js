@@ -17,8 +17,6 @@ export const ADVANCED = new Set([
   '📔 Tagebuch',
   '🤝 Gemeinsame Geschichte',
   '📌 Offene Themen',
-  '🗄 Synology NAS',
-  '🔄 Automatisch abgleichen',
   'Markierten Text bearbeiten – Strg+Alt+K',
   'Teilen',
   'Gespräch im Hintergrund',

@@ -78,6 +78,7 @@
         <button data-tab="memory">Gedächtnis</button>
         <button data-tab="voice">Sprache</button>
         <button data-tab="conn">Verbindung</button>
+        <button data-tab="geraete">Sicherung &amp; Geräte</button>
         <button data-tab="wissen" id="tabWissen">Wissen</button>
         <button data-tab="buero">Büro</button>
         <button data-tab="phone" class="mobile-only">Handy</button>
@@ -697,15 +698,6 @@
         <div class="row wrap"><button id="healthNow">🩺 Jetzt prüfen</button><button id="obAgain">🧭 Einrichtung erneut starten</button><span id="healthSum" class="hint"></span></div>
         <div id="healthList" class="health-list"></div>
       </div>
-      <div id="localBackupWrap">
-        <h3>🗂 Sicherungen auf diesem Gerät</h3>
-        <p class="hint">Einmal pro Woche sichert die App Personas (ohne Figuren), Verlauf, Gedächtnis, Wissen, Second Brain und
-          Erinnerungen auf dem Gerät (die letzten 6 bleiben). Mit 📤 als Datei speichern, z. B. um sie auf den PC zu bringen.</p>
-        <label class="check"><input id="autoBackupOn" type="checkbox" /> Jede Woche automatisch sichern</label>
-        <div class="row wrap"><button id="backupNowLocal">🗂 Jetzt sichern</button><button id="backupImportLocal">📥 Sicherungsdatei einlesen</button></div>
-        <input id="backupImportFile" type="file" accept=".kisicherung,.json" hidden />
-        <div id="localBackupList"></div>
-      </div>
       <label>KI-Anbieter
         <select id="cProvider">
           <option value="lmstudio">LM Studio – lokal auf diesem Rechner</option>
@@ -844,84 +836,6 @@
         und Google-Verbindung.
         Beide liegen nur auf diesem Gerät; Privates taucht nie im Firmenwissen oder in dienstlichen Exporten auf.
         Beim Wechsel startet die App neu.</p>
-      <div id="syncPcWrap" hidden>
-        <h3>Mit dem Handy abgleichen</h3>
-        <p class="hint">Personas samt Avatar, Posen und Schnellbefehlen sowie das gespeicherte Wissen direkt zwischen PC und Handy
-          übertragen – im eigenen WLAN, ohne Cloud. Auf dem Handy im <b>gleichen Bereich</b>: ⚙ → Handy → „Mit dem PC abgleichen“.
-          Windows fragt beim ersten Mal eventuell, ob der KI-Assistent im privaten Netzwerk erreichbar sein darf – bitte erlauben.</p>
-        <button id="syncPcStart">📶 Mit Handy abgleichen</button>
-        <div id="syncPcBox" hidden>
-          <div id="syncPcQr" style="width:180px;height:180px;background:#fff;border-radius:8px"></div>
-          <div id="syncPcInfo" class="hint"></div>
-          <button id="syncPcStop">Beenden</button>
-        </div>
-        <h3>🔄 Automatisch abgleichen</h3>
-        <label class="check"><input id="syncAuto" type="checkbox" /> Handy automatisch abgleichen (im eigenen WLAN)</label>
-        <p class="hint">Personas, Chatverlauf, Gedächtnis, Selbstbild und gespeichertes Wissen werden zwischen PC und Handy
-          zusammengeführt – von selbst, sobald das Handy im selben WLAN ist und der KI-Assistent hier läuft. Figuren (Bilder,
-          Videos, Posen) gehen nur mit, wenn sie geändert wurden. Nie dabei: Einstellungen, API-Schlüssel, Google-Anmeldung
-          und Firmenwissen. Gelöschtes wird auf beiden Geräten gelöscht. Unverschlüsselt im eigenen Netz, Zugang nur mit dem
-          Kopplungsschlüssel im QR-Code.</p>
-        <div id="syncAutoBox" hidden>
-          <div id="syncAutoQr" style="width:180px;height:180px;background:#fff;border-radius:8px"></div>
-          <div id="syncAutoInfo" class="hint"></div>
-          <div id="syncAutoLast" class="hint"></div>
-          <p class="hint">Ohne Kamera: „Adresse + Code anzeigen“ und beides am Handy unter „Mit dem PC abgleichen“ eintippen –
-            das Handy wird dabei gleich dauerhaft gekoppelt.</p>
-          <div class="row wrap">
-            <button id="syncAutoCode">Adresse + Code anzeigen</button>
-            <button id="syncAutoNew">Kopplung erneuern</button>
-          </div>
-        </div>
-      </div>
-      <div id="nasWrap" hidden>
-        <h3>🗄 Synology NAS <span class="beta-badge">Privat</span></h3>
-        <p class="hint">PC und Handy gleichen Personas, Chatverlauf, Gedächtnis, Notizen, Erinnerungen und Figuren über einen
-          Ordner auf deiner Synology ab – gleich nach jeder Änderung, beim Öffnen und mit einem kurzen Check alle 30 Sekunden.
-          Dazu jeden Tag eine Sicherung (30 Tage).<br />
-          <b>Am Handy (und unterwegs): QuickConnect.</b> In DSM QuickConnect einschalten, in der File Station einen Ordner
-          anlegen (z. B. „ki-assistent“ in deinem Benutzerordner „home“) und hier eintragen:
-          <b>https://DEINE-ID.quickconnect.to/home/ki-assistent</b> – dazu Benutzer und Passwort (Benutzer ohne
-          Zwei-Faktor-Anmeldung).<br />
-          <b>Am PC: einfach den Ordner</b>, den der Synology-Client (oder ein Netzlaufwerk) einbindet – mit „📁 Ordner wählen“,
-          z. B. D:\SynologyDrive\ki-assistent. Die App schreibt hinein, die Synology überträgt es selbst.<br />
-          Im eigenen Netz geht auch WebDAV (http://IP-der-NAS:5005/home/ki-assistent).</p>
-        <div id="nasSetup" class="nas-setup">
-          <b>🧭 Schnell einrichten über QuickConnect</b>
-          <input id="nasQcId" type="text" placeholder="QuickConnect-ID (z. B. jens-nas – steht in DSM unter Externer Zugriff)" autocomplete="off" />
-          <select id="nasQcZiel">
-            <option value="/home/Drive/ki-assistent">Ordner in Synology Drive (empfohlen – der Drive-Client holt ihn auf den PC)</option>
-            <option value="/home/ki-assistent">Ordner im Benutzerordner (für ein Netzlaufwerk am PC)</option>
-          </select>
-          <div class="row">
-            <input id="nasQcUser" type="text" placeholder="Benutzer der NAS" autocomplete="off" style="flex:1" />
-            <input id="nasQcPass" type="password" placeholder="Passwort" autocomplete="new-password" style="flex:1" />
-          </div>
-          <button id="nasQcGo">🧭 Einrichten und testen</button>
-          <p class="hint">Die App legt den Ordner „ki-assistent“ auf der NAS selbst an, prüft Schreiben und Lesen und gleicht
-            gleich ab. Am PC erscheint der Ordner dann über den Synology Drive Client (unter „SynologyDrive“) – dort in der App
-            mit „📁 Ordner wählen“ auswählen. Oder hier unten alles von Hand eintragen.</p>
-        </div>
-        <div class="row">
-          <input id="nasUrl" type="text" placeholder="https://ID.quickconnect.to/home/ki-assistent – am PC auch ein Ordner" autocomplete="off" style="flex:1" />
-          <button id="nasPick" hidden title="Ordner des Synology-Clients wählen">📁 Ordner wählen</button>
-        </div>
-        <div class="row">
-          <input id="nasUser" type="text" placeholder="Benutzer der NAS" autocomplete="off" style="flex:1" />
-          <input id="nasPass" type="password" placeholder="Passwort" autocomplete="new-password" style="flex:1" />
-        </div>
-        <p class="hint">Das Passwort bleibt verschlüsselt auf diesem Gerät (wie die API-Schlüssel) und wird nirgends angezeigt.
-          Im eigenen Netz geht die Verbindung unverschlüsselt – für unterwegs Tailscale oder QuickConnect (verschlüsselt) verwenden.</p>
-        <input id="nasCrypt" type="password" autocomplete="new-password" placeholder="Passwort für die Verschlüsselung (optional, auf allen Geräten gleich)" />
-        <p class="hint">🔐 Mit Passwort für die Verschlüsselung liegt auf der NAS nur Datensalat (AES-256). Auf jedem Gerät
-          dasselbe Passwort eintragen; es bleibt verschlüsselt auf dem Gerät und geht nirgends hin. Vergessen = der Stand auf der
-          NAS ist nicht mehr lesbar (die Geräte selbst behalten alles).</p>
-        <label class="check"><input id="nasAuto" type="checkbox" /> Automatisch abgleichen (beim Öffnen und Verlassen, gleich nach Änderungen, Kurz-Check alle 30 Sekunden)</label>
-        <div class="row wrap"><button id="nasTest">🔌 Verbindung testen</button><button id="nasNow">🗄 Jetzt abgleichen</button><button id="nasBackups">↩ Sicherung zurückholen …</button></div>
-        <pre id="nasTestOut" class="hint nas-test" hidden></pre>
-        <div id="nasBackupList" class="hint" hidden></div>
-        <p id="nasState" class="hint"></p>
-      </div>
       <div id="brainWrap" hidden>
         <h3>🧠 Second Brain <span class="beta-badge">Privat</span></h3>
         <p class="hint">Zwei Notizbücher: <b>deine Notizen</b> (Gedanken, Ideen, Projekte, Menschen, offene Punkte – sag z. B.
@@ -978,6 +892,136 @@
       </div>
     </div>
 
+    <div class="tab" data-tab="geraete" hidden>
+      <div id="syncOverviewWrap">
+        <h3>🔁 Was ist abgeglichen?</h3>
+        <p class="hint">Personas mit allem, was zu ihnen gehört (Texte, Stimme, Gedächtnis, Selbstbild, Geschichte, eigenes
+          Notizbuch, Verlauf und die Figur mit Bildern, Videos und Posen), dein Second Brain und die Erinnerungen werden
+          zwischen PC und Handy zusammengeführt – über die NAS und/oder das WLAN. Nie dabei: Einstellungen, Schlüssel,
+          Google-Anmeldung, Firmenwissen.</p>
+        <div class="row wrap"><button id="syncAllNow">🔁 Jetzt alles abgleichen</button><button id="nasBackupNow" hidden>🗄 Jetzt auf der NAS sichern</button></div>
+        <div id="syncOverview" class="hint sync-overview"></div>
+      </div>
+      <div id="nasWrap" hidden>
+        <h3>🗄 Synology NAS <span class="beta-badge">Privat</span></h3>
+        <p class="hint">PC und Handy gleichen Personas, Chatverlauf, Gedächtnis, Notizen, Erinnerungen und Figuren über einen
+          Ordner auf deiner Synology ab – gleich nach jeder Änderung, beim Öffnen und mit einem kurzen Check alle 30 Sekunden.
+          Dazu jeden Tag eine Sicherung (30 Tage).<br />
+          <b>Am Handy (und unterwegs): QuickConnect.</b> In DSM QuickConnect einschalten, in der File Station einen Ordner
+          anlegen (z. B. „ki-assistent“ in deinem Benutzerordner „home“) und hier eintragen:
+          <b>https://DEINE-ID.quickconnect.to/home/ki-assistent</b> – dazu Benutzer und Passwort (Benutzer ohne
+          Zwei-Faktor-Anmeldung).<br />
+          <b>Am PC: einfach den Ordner</b>, den der Synology-Client (oder ein Netzlaufwerk) einbindet – mit „📁 Ordner wählen“,
+          z. B. D:\SynologyDrive\ki-assistent. Die App schreibt hinein, die Synology überträgt es selbst.<br />
+          Im eigenen Netz geht auch WebDAV (http://IP-der-NAS:5005/home/ki-assistent).</p>
+        <div id="nasSetup" class="nas-setup">
+          <b>🧭 Schnell einrichten über QuickConnect</b>
+          <input id="nasQcId" type="text" placeholder="QuickConnect-ID (z. B. jens-nas – steht in DSM unter Externer Zugriff)" autocomplete="off" />
+          <select id="nasQcZiel">
+            <option value="/home/Drive/ki-assistent">Ordner in Synology Drive (empfohlen – der Drive-Client holt ihn auf den PC)</option>
+            <option value="/home/ki-assistent">Ordner im Benutzerordner (für ein Netzlaufwerk am PC)</option>
+          </select>
+          <div class="row">
+            <input id="nasQcUser" type="text" placeholder="Benutzer der NAS" autocomplete="off" style="flex:1" />
+            <input id="nasQcPass" type="password" placeholder="Passwort" autocomplete="new-password" style="flex:1" />
+          </div>
+          <button id="nasQcGo">🧭 Einrichten und testen</button>
+          <p class="hint">Die App legt den Ordner „ki-assistent“ auf der NAS selbst an, prüft Schreiben und Lesen und gleicht
+            gleich ab. Am PC erscheint der Ordner dann über den Synology Drive Client (unter „SynologyDrive“) – dort in der App
+            mit „📁 Ordner wählen“ auswählen. Oder hier unten alles von Hand eintragen.</p>
+        </div>
+        <div class="row">
+          <input id="nasUrl" type="text" placeholder="https://ID.quickconnect.to/home/ki-assistent – am PC auch ein Ordner" autocomplete="off" style="flex:1" />
+          <button id="nasPick" hidden title="Ordner des Synology-Clients wählen">📁 Ordner wählen</button>
+        </div>
+        <div class="row">
+          <input id="nasUser" type="text" placeholder="Benutzer der NAS" autocomplete="off" style="flex:1" />
+          <input id="nasPass" type="password" placeholder="Passwort" autocomplete="new-password" style="flex:1" />
+        </div>
+        <p class="hint">Das Passwort bleibt verschlüsselt auf diesem Gerät (wie die API-Schlüssel) und wird nirgends angezeigt.
+          Im eigenen Netz geht die Verbindung unverschlüsselt – für unterwegs Tailscale oder QuickConnect (verschlüsselt) verwenden.</p>
+        <input id="nasCrypt" type="password" autocomplete="new-password" placeholder="Passwort für die Verschlüsselung (optional, auf allen Geräten gleich)" />
+        <p class="hint">🔐 Mit Passwort für die Verschlüsselung liegt auf der NAS nur Datensalat (AES-256). Auf jedem Gerät
+          dasselbe Passwort eintragen; es bleibt verschlüsselt auf dem Gerät und geht nirgends hin. Vergessen = der Stand auf der
+          NAS ist nicht mehr lesbar (die Geräte selbst behalten alles).</p>
+        <label class="check"><input id="nasAuto" type="checkbox" /> Automatisch abgleichen (beim Öffnen und Verlassen, gleich nach Änderungen, Kurz-Check alle 30 Sekunden)</label>
+        <div class="row wrap"><button id="nasTest">🔌 Verbindung testen</button><button id="nasNow">🗄 Jetzt abgleichen</button><button id="nasBackups">↩ Sicherung zurückholen …</button></div>
+        <pre id="nasTestOut" class="hint nas-test" hidden></pre>
+        <div id="nasBackupList" class="hint" hidden></div>
+        <p id="nasState" class="hint"></p>
+      </div>
+      <div id="syncPcWrap" hidden>
+        <h3>Mit dem Handy abgleichen</h3>
+        <p class="hint">Personas samt Avatar, Posen und Schnellbefehlen sowie das gespeicherte Wissen direkt zwischen PC und Handy
+          übertragen – im eigenen WLAN, ohne Cloud. Auf dem Handy im <b>gleichen Bereich</b>: ⚙ → Sicherung &amp; Geräte → „Mit dem PC abgleichen“.
+          Windows fragt beim ersten Mal eventuell, ob der KI-Assistent im privaten Netzwerk erreichbar sein darf – bitte erlauben.</p>
+        <button id="syncPcStart">📶 Mit Handy abgleichen</button>
+        <div id="syncPcBox" hidden>
+          <div id="syncPcQr" style="width:180px;height:180px;background:#fff;border-radius:8px"></div>
+          <div id="syncPcInfo" class="hint"></div>
+          <button id="syncPcStop">Beenden</button>
+        </div>
+        <h3>🔄 Automatisch abgleichen</h3>
+        <label class="check"><input id="syncAuto" type="checkbox" /> Handy automatisch abgleichen (im eigenen WLAN)</label>
+        <p class="hint">Personas, Chatverlauf, Gedächtnis, Selbstbild und gespeichertes Wissen werden zwischen PC und Handy
+          zusammengeführt – von selbst, sobald das Handy im selben WLAN ist und der KI-Assistent hier läuft. Figuren (Bilder,
+          Videos, Posen) gehen nur mit, wenn sie geändert wurden. Nie dabei: Einstellungen, API-Schlüssel, Google-Anmeldung
+          und Firmenwissen. Gelöschtes wird auf beiden Geräten gelöscht. Unverschlüsselt im eigenen Netz, Zugang nur mit dem
+          Kopplungsschlüssel im QR-Code.</p>
+        <div id="syncAutoBox" hidden>
+          <div id="syncAutoQr" style="width:180px;height:180px;background:#fff;border-radius:8px"></div>
+          <div id="syncAutoInfo" class="hint"></div>
+          <div id="syncAutoLast" class="hint"></div>
+          <p class="hint">Ohne Kamera: „Adresse + Code anzeigen“ und beides am Handy unter „Mit dem PC abgleichen“ eintippen –
+            das Handy wird dabei gleich dauerhaft gekoppelt.</p>
+          <div class="row wrap">
+            <button id="syncAutoCode">Adresse + Code anzeigen</button>
+            <button id="syncAutoNew">Kopplung erneuern</button>
+          </div>
+        </div>
+      </div>
+      <div id="syncPhoneWrap">
+        <h3>Mit dem PC abgleichen <span class="beta-badge">Beta</span></h3>
+        <p class="hint">Am PC im <b>gleichen Bereich</b> (Dienstlich oder Privat) unter ⚙ → Sicherung &amp; Geräte „Mit Handy abgleichen“ öffnen,
+          dann hier den QR-Code fotografieren oder Adresse und Code eintippen. Beide Geräte im selben WLAN; die Daten gehen
+          direkt, ohne Cloud. Von Hand übertragen werden hier Personas und das gespeicherte Wissen – keine Schlüssel und
+          kein Firmenwissen.</p>
+        <div class="row wrap">
+          <button id="syncScan">📷 QR-Code scannen</button>
+          <button id="syncScanPhoto">🖼 Foto des QR-Codes wählen</button>
+        </div>
+        <input id="syncScanFile" type="file" accept="image/*" hidden />
+        <div class="row">
+          <input id="syncAddr" type="text" placeholder="Adresse, z. B. 192.168.1.20:52000" autocomplete="off" style="flex:2" />
+          <input id="syncCode" type="text" inputmode="numeric" placeholder="Code" autocomplete="off" style="flex:1" />
+          <button id="syncConnect">Verbinden</button>
+        </div>
+        <div id="syncList" class="kb-list"></div>
+        <button id="syncSend" hidden>⬆ Aktuelle Persona an den PC senden</button>
+        <div id="syncKnow" class="row wrap" hidden>
+          <button id="syncKnowGet">⬇ Wissen vom PC holen</button>
+          <button id="syncKnowSend">⬆ Wissen an den PC senden</button>
+        </div>
+        <h3>🔄 Automatisch abgleichen</h3>
+        <p class="hint">Einmal koppeln, dann gleicht das Handy Personas, Chatverlauf, Gedächtnis, Selbstbild und Wissen von
+          selbst mit dem PC ab, sobald es im selben WLAN ist (beim Öffnen, beim Verlassen, alle 5 Minuten und nach Änderungen).
+          Dazu am PC „Handy automatisch abgleichen“ einschalten und dessen QR-Code oben mit „📷 QR-Code scannen“ lesen.</p>
+        <p id="syncAutoState" class="hint"></p>
+        <div class="row wrap">
+          <button id="syncNow" hidden>🔄 Jetzt abgleichen</button>
+          <button id="syncUnpair" hidden>Kopplung lösen</button>
+        </div>
+      </div>
+      <div id="localBackupWrap">
+        <h3>🗂 Sicherungen auf diesem Gerät</h3>
+        <p class="hint">Einmal pro Woche sichert die App Personas (ohne Figuren), Verlauf, Gedächtnis, Wissen, Second Brain und
+          Erinnerungen auf dem Gerät (die letzten 6 bleiben). Mit 📤 als Datei speichern, z. B. um sie auf den PC zu bringen.</p>
+        <label class="check"><input id="autoBackupOn" type="checkbox" /> Jede Woche automatisch sichern</label>
+        <div class="row wrap"><button id="backupNowLocal">🗂 Jetzt sichern</button><button id="backupImportLocal">📥 Sicherungsdatei einlesen</button></div>
+        <input id="backupImportFile" type="file" accept=".kisicherung,.json" hidden />
+        <div id="localBackupList"></div>
+      </div>
+    </div>
     <div class="tab" data-tab="buero" hidden>
       <h3>Schnellbefehle</h3>
       <p class="hint">Eigene Knöpfe über dem Eingabefeld für wiederkehrende Aufgaben. <b>{text}</b> steht für den Text im
@@ -1136,38 +1180,6 @@
         <p class="hint">Läuft die App im <b>sicheren Ordner</b> (Samsung), hält Android sie an, sobald der Ordner sich sperrt (meist
           beim Ausschalten des Bildschirms) – dann kann das Aktivierungswort nicht zuhören. Abhilfe: im sicheren Ordner unter
           Einstellungen → „Automatisch sperren“ eine längere Zeit wählen.</p>
-        <div id="syncPhoneWrap">
-          <h3>Mit dem PC abgleichen <span class="beta-badge">Beta</span></h3>
-          <p class="hint">Am PC im <b>gleichen Bereich</b> (Dienstlich oder Privat) unter ⚙ → Wissen „Mit Handy abgleichen“ öffnen,
-            dann hier den QR-Code fotografieren oder Adresse und Code eintippen. Beide Geräte im selben WLAN; die Daten gehen
-            direkt, ohne Cloud. Von Hand übertragen werden hier Personas und das gespeicherte Wissen – keine Schlüssel und
-            kein Firmenwissen.</p>
-          <div class="row wrap">
-            <button id="syncScan">📷 QR-Code scannen</button>
-            <button id="syncScanPhoto">🖼 Foto des QR-Codes wählen</button>
-          </div>
-          <input id="syncScanFile" type="file" accept="image/*" hidden />
-          <div class="row">
-            <input id="syncAddr" type="text" placeholder="Adresse, z. B. 192.168.1.20:52000" autocomplete="off" style="flex:2" />
-            <input id="syncCode" type="text" inputmode="numeric" placeholder="Code" autocomplete="off" style="flex:1" />
-            <button id="syncConnect">Verbinden</button>
-          </div>
-          <div id="syncList" class="kb-list"></div>
-          <button id="syncSend" hidden>⬆ Aktuelle Persona an den PC senden</button>
-          <div id="syncKnow" class="row wrap" hidden>
-            <button id="syncKnowGet">⬇ Wissen vom PC holen</button>
-            <button id="syncKnowSend">⬆ Wissen an den PC senden</button>
-          </div>
-          <h3>🔄 Automatisch abgleichen</h3>
-          <p class="hint">Einmal koppeln, dann gleicht das Handy Personas, Chatverlauf, Gedächtnis, Selbstbild und Wissen von
-            selbst mit dem PC ab, sobald es im selben WLAN ist (beim Öffnen, beim Verlassen, alle 5 Minuten und nach Änderungen).
-            Dazu am PC „Handy automatisch abgleichen“ einschalten und dessen QR-Code oben mit „📷 QR-Code scannen“ lesen.</p>
-          <p id="syncAutoState" class="hint"></p>
-          <div class="row wrap">
-            <button id="syncNow" hidden>🔄 Jetzt abgleichen</button>
-            <button id="syncUnpair" hidden>Kopplung lösen</button>
-          </div>
-        </div>
       </div>
       <div id="privWrap" hidden>
         <h3>Notizen <span class="beta-badge">Privat</span></h3>
