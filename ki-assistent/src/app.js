@@ -3280,6 +3280,15 @@ async function warmupLocalStt(onProgress) {
 const WAKE_MODEL = 'onnx-community/whisper-tiny';
 
 let transcribeOverride = null; // nur für Tests
+const sttPrompt = () => `Gespräch mit dem Assistenten ${persona().name || 'Max'}.`;
+/** Hat die Erkennung nur ihren Hinweistext zurückgegeben (Rauschen, nichts gesagt)? */
+function sttPromptEcho(text) {
+  const norm = (t) => String(t ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const t = norm(text);
+  if (!t) return false;
+  const p = norm(sttPrompt());
+  return t === p || p.includes(t) || t.includes(p) || /\bgespräch mit dem assistenten\b/.test(t);
+}
 /** Spracherkennung; scheitert der Download des gewählten Modells, mit einem kleineren weiterversuchen. */
 const STT_FALLBACKS = ['onnx-community/whisper-base', 'onnx-community/whisper-tiny'];
 async function transcribeWithFallback(audio, { withConfidence = false } = {}) {
@@ -3289,7 +3298,8 @@ async function transcribeWithFallback(audio, { withConfidence = false } = {}) {
     if (keys.openai) {
       try {
         // kurzer Hinweis auf den Zusammenhang hilft der Erkennung (Namen, Thema); Sicherheit nur im Live-Gespräch
-        const prompt = `Gespräch mit dem Assistenten ${persona().name || 'Max'}.`;
+        // (bei reinem Rauschen gibt die Erkennung diesen Hinweis gern als „Text“ zurück – das fängt sttPromptEcho ab)
+        const prompt = sttPrompt();
         const r = await desktop.transcribeCloud(audio, stt.language, state.settings.sttCloudModel, { prompt, withConfidence });
         costs.add({ kind: 'stt', model: state.settings.sttCloudModel || 'gpt-4o-transcribe', seconds: audio.length / 16000 });
         if (typeof r === 'string') return withConfidence ? { text: r, conf: null } : r;
@@ -3436,14 +3446,25 @@ async function listenOnce({ handsFree = false } = {}) {
       if (handsFree) overheard('', 'nur kurzes Geräusch');
       return;
     }
+    // sehr kurz (unter 0,45 s Stimme, mit Auto/Headset unter 0,6 s): nur Zurufe wie „Stopp“ zählen – sonst sind es meist
+    // Fahr- oder Raumgeräusche, die die Erkennung zu „Sätzen“ macht
+    const shortOnly = handsFree && voiced < (state.voiceDevice ? 0.6 : 0.45);
     state.transcribing = true;
     updateBadge();
+    // gleich zeigen, dass etwas angekommen ist (auch in der Nur-Figur-Ansicht)
+    status(`🎙 Verstehe … (${voiced.toFixed(1)} s)`);
     const res = await transcribeWithFallback(audio, { withConfidence: handsFree });
     let text = (typeof res === 'string' ? res : res?.text ?? '').trim();
     state.timing.heard = performance.now();
     status('');
     state.transcribing = false;
     updateBadge();
+    if (sttPromptEcho(text)) {
+      logEv('STT', `verworfen (nur Rauschen – Hinweistext zurück): ${text}`);
+      if (handsFree) overheard('', 'nur Rauschen');
+      return;
+    }
+    if (shortOnly && !voiceCommand(text, persona().name)) return overheard(text, `zu kurz (${voiced.toFixed(2)} s Stimme)`);
     if (!text || NOISE.some((r) => r.test(text)) || isPhantom(text)) {
       if (text) logEv('STT', `verworfen (Erfindung der Erkennung): ${text}`);
       if (handsFree && audio.length > 16000) status('Nicht verstanden – bitte noch einmal sagen.');
@@ -12666,6 +12687,7 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  sttPromptEcho,
   forgetLast,
   markNotesDone,
   bridgeFrom,

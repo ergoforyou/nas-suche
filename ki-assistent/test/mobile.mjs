@@ -3677,6 +3677,16 @@ const b96 = await page.evaluate(() => {
   return out;
 });
 check(/Bleib beim Thema deines Gegenübers/.test(JSON.stringify(req96 ?? '')) && claudeRequests.length === reqCount96 && b96.gone && b96.bridge && b96.done === true, 'Gesprächsfaden: beim Thema bleiben, „Vergiss das“ ohne KI, Brücke zum neuen Chat, erledigt überall', JSON.stringify({ rule: !!req96, extra: claudeRequests.length - reqCount96, b96 }));
+// Beta 97: Rauschen im Auto – die Erkennung gibt ihren Hinweistext zurück; das darf nie als Nachricht ankommen
+const b97 = await page.evaluate(() => {
+  const app = window.__app;
+  const name = app.persona().name || 'Max';
+  return {
+    echo: app.sttPromptEcho(`Gespräch mit dem Assistenten ${name}.`) && app.sttPromptEcho('Gespräch mit dem Assistenten') && app.sttPromptEcho(`Gespräch mit dem Assistenten ${name}. Gespräch mit dem Assistenten ${name}.`),
+    normal: !app.sttPromptEcho('Wie wird das Wetter morgen?') && !app.sttPromptEcho('Stopp'),
+  };
+});
+check(b97.echo && b97.normal, 'Rauschen: Hinweistext der Spracherkennung wird verworfen, echte Sätze nicht', JSON.stringify(b97));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;
