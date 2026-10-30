@@ -6,6 +6,7 @@ import { OWN_TIDY_PROMPT, tidyInput, applyTidy, VORHABEN_MAX_TAG, nextStep, pick
 import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
+import { isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
 import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES, handoffCommand, newsRequest, whatsNew } from './gespraech.js';
 import synology from '../synology.js';
 import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
@@ -958,6 +959,14 @@ function buildMessages() {
   if ((state.voiceTurn || state.settings.handsFree) && state.talkMode !== 'genau' && p.style !== 'frei' && p.language !== 'en') ctx.push(RULE_LIVE);
   if (state.longTurn && p.language !== 'en') ctx.push(RULE_LONG_TURN);
   if (state.correction && p.language !== 'en') ctx.push(RULE_CORRECTION);
+  // Gesprächsfaden: beim Thema bleiben; Gesprochenes kann falsch erkannt sein → nachfragen statt springen
+  if (p.style !== 'frei' && p.language !== 'en') {
+    ctx.push(RULE_THREAD);
+    if (state.voiceTurn || state.settings.handsFree) ctx.push(RULE_VOICE_UNSURE);
+    if (state.unsureNow) ctx.push(RULE_UNSURE_NOW);
+  }
+  // neuer Chat: wo ihr zuletzt wart (nur in den ersten Nachrichten und wenn der vorige Chat frisch ist)
+  if (p.bruecke?.text && history().length <= 8 && Date.now() - (p.bruecke.t ?? 0) < 3 * 86400e3) ctx.push(bridgePrompt(p.bruecke, p.language === 'en' ? 'en' : 'de'));
   if (state.newsCtx != null && p.language !== 'en')
     ctx.push(state.newsCtx ? `Neu seit dem letzten Blick auf diesem Gerät (abgeglichen vom anderen Gerät):\n${state.newsCtx}\nErzähl das kurz und natürlich, das Wichtigste zuerst.` : 'Seit dem letzten Blick auf diesem Gerät ist nichts Neues dazugekommen – sag das kurz.');
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
@@ -972,12 +981,18 @@ function buildMessages() {
   if (p.immersion !== false) ctx.push(r.anchor(p.name || 'Max'));
   if (state.topicsNow?.length) ctx.push(topicsPrompt(state.topicsNow, p.language === 'en' ? 'en' : 'de'));
   const sys = parts.filter(Boolean).join('\n\n');
-  const ctxText = ctx.filter(Boolean).join('\n\n');
   const withFiles = attachAllowed();
   // Verlauf in Zehnerschritten kürzen statt bei jeder Frage (sonst ändert sich der Anfang jedes Mal und der
   // zwischengespeicherte Verlauf wäre wertlos): es gehen zwischen historyLimit und historyLimit + 9 Nachrichten mit
   const all = history();
   const start = Math.floor(Math.max(0, all.length - state.settings.historyLimit) / 10) * 10;
+  // langes Gespräch: was nicht mehr wörtlich mitgeht, als Zusammenfassung (statt hart abgeschnitten)
+  if (start > 0) {
+    const sum = state.settings.faden?.[p.id];
+    if (sum?.text && sum.first === all[0]?.id) ctx.push(earlierPrompt(sum.text, p.language === 'en' ? 'en' : 'de'));
+    summarizeEarlierSoon(p, all, start);
+  }
+  const ctxText = ctx.filter(Boolean).join('\n\n');
   const h = all.slice(start).map((m, i) => {
     // Verlauf entgiften: frühere Rollenbrüche („Als KI …“) nicht wieder mitschicken – außer es war die Antwort auf eine KI-Frage
     const clean = (c) => (p.immersion !== false && m.role === 'assistant' && !isAiQuestion(all[start + i - 1]?.content) ? stripOutOfRole(c).text || c : c);
@@ -1101,6 +1116,8 @@ function newChat() {
   const old = history();
   if (!old.length) return status('Neuer Chat – der Verlauf ist schon leer.');
   undoChat = { id: p.id, history: old };
+  bridgeFrom(p, old);
+  state.faden = null;
   state.history[p.id] = [];
   chatSerial++;
   pendingAttachments = [];
@@ -1121,6 +1138,75 @@ function newChat() {
   };
   note.appendChild(undo);
 }
+// ---- Gesprächsfaden (faden.js): laufende Zusammenfassung langer Gespräche, Brücke zum neuen Chat
+const EARLIER_PROMPT =
+  'Fasse den bisherigen Teil dieses Gesprächs für dich selbst in 3 bis 5 Sätzen zusammen: worum es ging, was ' +
+  'herauskam, was gerade offen ist und worüber ihr zuletzt gesprochen habt. Sachlich, aus deiner Sicht („wir …“). ' +
+  'Ist eine frühere Zusammenfassung dabei, bau sie mit ein. Antworte nur mit dem Text.';
+let earlierBusy = false;
+/** Ältere Teile eines langen Gesprächs im Hintergrund zusammenfassen (wenn die Grenze weiterrückt). */
+function summarizeEarlierSoon(p, all, start) {
+  const cut = all[start - 1];
+  const sum = state.settings.faden?.[p.id];
+  if (earlierBusy || !cut || state.settings.offline || budgetSaving()) return;
+  if (sum?.first === all[0]?.id && (sum.bis ?? 0) >= (cut.t ?? 0)) return;
+  earlierBusy = true;
+  const from = sum?.first === all[0]?.id ? all.findIndex((m) => (m.t ?? 0) > (sum.bis ?? 0)) : 0;
+  const talk = all
+    .slice(Math.max(0, from), start)
+    .filter((m) => typeof m.content === 'string' && m.content.trim())
+    .map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Ich'}: ${m.content.slice(0, 500)}`)
+    .join('\n')
+    .slice(-9000);
+  const input = `${sum?.first === all[0]?.id && sum.text ? `Frühere Zusammenfassung: ${sum.text}\n\n` : ''}${talk}`;
+  helperJson(EARLIER_PROMPT, input)
+    .then((text) => {
+      const t = String(text ?? '').replace(/^```\w*|```$/g, '').trim().slice(0, 1500);
+      if (!t) return;
+      state.settings.faden = { ...(state.settings.faden ?? {}), [p.id]: { first: all[0]?.id, bis: cut.t ?? Date.now(), text: t } };
+      logEv('FADEN', 'Früheren Teil des Gesprächs zusammengefasst');
+      save({ quiet: true });
+    })
+    .catch((e) => logEv('FADEN', e.message))
+    .finally(() => (earlierBusy = false));
+}
+/** Neuer Chat: das alte Gespräch gleich zusammenfassen – als Brücke für den neuen Chat und als Erinnerung (Episode). */
+function bridgeFrom(p, old) {
+  p.bruecke = plainBridge(old);
+  if (state.settings.faden) delete state.settings.faden[p.id];
+  const msgs = old.filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim() && (m.t ?? 0) > (p.episodeUntil ?? 0));
+  if (msgs.filter((m) => m.role === 'user').length < 2 || state.settings.offline || budgetSaving()) return;
+  const talk = msgs.map((m) => `${m.role === 'user' ? 'Gegenüber' : 'Ich'}: ${m.content.slice(0, 600)}`).join('\n').slice(-9000);
+  helperJson(EPISODE_PROMPT, talk)
+    .then((raw) => {
+      const e = parseEpisode(raw);
+      if (e.belanglos || !e.text) return;
+      p.bruecke = { text: e.text, offen: e.offen || '', t: Date.now() };
+      // das alte Gespräch ist aus dem Verlauf – die Abendrunde fände es nicht mehr: gleich als Erinnerung ablegen
+      if (p.memoryOn) {
+        const last = msgs.at(-1).t ?? Date.now();
+        p.episoden = [...(p.episoden ?? []), { id: newId(), von: msgs[0].t ?? last, bis: last, titel: e.titel || 'Gespräch', text: e.text, offen: e.offen, created: Date.now() }].slice(-EPISODEN_MAX);
+        p.episodeUntil = Math.max(p.episodeUntil ?? 0, last);
+        semKick();
+      }
+      logEv('FADEN', 'Voriger Chat zusammengefasst (Brücke)');
+      save({ quiet: true });
+    })
+    .catch((e) => logEv('FADEN', e.message));
+}
+/** „Vergiss das“: die letzte Eingabe samt Antwort aus dem Verlauf nehmen (geht dann auch nicht mehr an die KI). */
+function forgetLast() {
+  const h = history();
+  let i = h.length - 1;
+  while (i >= 0 && h[i].role !== 'user') i--;
+  if (i < 0) return false;
+  const gone = h.splice(i);
+  logEv('FADEN', `Vergessen: „${String(gone[0].content ?? '').slice(0, 60)}“`);
+  save();
+  renderChat();
+  output.setHistory(history());
+  return true;
+}
 // Sprachbefehl: einfach „Neuer Chat“ sagen
 const NEW_CHAT_COMMAND = /^(neuer chat|neues gespräch|new chat)[.!]?$/i;
 
@@ -1133,6 +1219,14 @@ async function send(text) {
     state.talkMode = mode === 'normal' ? null : mode;
     logEv('GESPRÄCH', `Art: ${MODE_NAMES[mode]}`);
     status(`💬 Gesprächsart: ${MODE_NAMES[mode]}`);
+  }
+  // „Vergiss das“ / „Das war Quatsch“: letzte Eingabe samt Antwort zurücknehmen – ohne KI
+  if (forgetCommand(text) && !pendingAttachments.length) {
+    const ok = forgetLast();
+    const reply = ok ? 'Okay, vergessen.' : 'Da gibt es nichts zu vergessen.';
+    status(`🧹 ${reply}`);
+    if (state.settings.speak && !state.dnd) tts.enqueue(reply, { mood: 'freundlich', text: reply });
+    return;
   }
   // „Mach am PC weiter“: Übergabe ablegen – das andere Gerät begrüßt mit dem Stand (über NAS/WLAN-Abgleich)
   const nach = BRAIN && !pendingAttachments.length ? handoffCommand(text) : null;
@@ -1209,6 +1303,9 @@ async function send(text) {
   renderPending();
   noteFeedback(persona(), text);
   const entry = { role: 'user', content: text, t: Date.now(), ...(attachments.length ? { attachments } : {}) };
+  // neues Gespräch (längere Pause): was schon mitging, darf wieder mit – innerhalb eines Gesprächs nur einmal
+  if (!state.faden || isSessionStart(history(), entry.t)) state.faden = { start: entry.t, shown: new Set(), first: true };
+  else state.faden.first = false;
   history().push(entry);
   state.turnTools = [];
   // erste Frage nach einer längeren Pause: offene Themen mitgeben (die KI darf bei Gelegenheit nachfragen)
@@ -1279,6 +1376,7 @@ async function send(text) {
     // angesprochene Themen nicht noch einmal mitgeben
     if (!error) for (const t of usedTopics) t.asked = t.changed = Date.now();
     state.topicsNow = [];
+    state.unsureNow = false;
     avatarState.wait = null;
     if (error) fireEvent('error', 4000);
     else if (created.length || wrote) fireEvent('success', 3500);
@@ -1380,8 +1478,15 @@ async function send(text) {
   if (BRAIN && state.brain?.length && !state.brainHits.length && !sem.ready(['b:']) && (RECALL_RE.test(text) || BRAIN_ASK_RE.test(text)))
     helpers.push(withLimit(brainSmart(text, 2), 2500, []).then((hits) => (state.brainHits = hits)));
   state.ownBrainHits = BRAIN && pp.brain?.length && text ? semMerge(brainSearchIndex(text, 2, {}, 'figur'), vec, `f:${pp.id}:`, (n) => `f:${pp.id}:${n.id}`, (key) => pp.brain.find((n) => `f:${pp.id}:${n.id}` === key), 2) : [];
-  state.ownBrainLoops = BRAIN && persona().brain?.length ? openLoops(persona().brain, 3) : [];
-  state.brainLoops = BRAIN && /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text) ? openLoops(state.brain, 10) : [];
+  // Gesprächsfaden: eigene Vorhaben nur zu Beginn eines Gesprächs; Notizen nur, wenn sie passen und noch nicht
+  // mitgingen (sonst bringt die Figur sie bei jeder Antwort wieder); Erledigtes nur, wenn ausdrücklich gefragt
+  const fd = state.faden ?? { shown: new Set(), first: true };
+  const askedNotes = RECALL_RE.test(text) || BRAIN_ASK_RE.test(text);
+  const askedLoops = /\b(offen|to-?do|erledigen|aufgaben?|muss ich|was steht an|vorhaben)\b/i.test(text);
+  state.ownBrainLoops = BRAIN && fd.first && persona().brain?.length ? onlyNew(openLoops(persona().brain, 3), fd.shown, (n) => `fl:${n.id}`) : [];
+  state.brainLoops = BRAIN && askedLoops ? openLoops(state.brain, 10) : [];
+  state.brainHits = onlyNew((state.brainHits ?? []).filter((n) => askedNotes || !n.erledigt), fd.shown, (n) => `b:${n.id}`, askedNotes);
+  state.ownBrainHits = onlyNew((state.ownBrainHits ?? []).filter((n) => askedNotes || !n.erledigt), fd.shown, (n) => `f:${n.id}`, askedNotes);
   // frühere Gespräche, die zur Frage passen (nur mit eingeschaltetem Gedächtnis)
   // klingt die Frage nach Erinnerung („weißt du noch …“), auch Umschreibungen verstehen (kurz das Hilfsmodell fragen)
   if (pp.memoryOn && pp.episoden?.length) {
@@ -3157,21 +3262,6 @@ function interrupt() {
   status('Unterbrochen – ich höre zu …');
 }
 
-/**
- * Hat das Mikrofon nur den Avatar selbst gehört (Lautsprecher ohne Kopfhörer)?
- * Nur prüfen, wenn das „Sprechen“ begann, während der Avatar redete – und dann Wortpaare vergleichen,
- * nicht einzelne Wörter (sonst würden normale Fragen wie „Wie geht es dir?“ fälschlich verworfen).
- */
-function isEcho(text) {
-  if (!state.spoken) return false;
-  const words = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter(Boolean);
-  const pairs = (w) => w.slice(1).map((x, i) => w[i] + ' ' + x);
-  const heard = pairs(words(text));
-  if (heard.length < 2) return false;
-  const said = new Set(pairs(words(state.spoken.slice(-600))));
-  return heard.filter((p) => said.has(p)).length / heard.length >= 0.6;
-}
-
 const waitIdle = async (ms) => {
   for (const end = Date.now() + ms; state.busy && Date.now() < end; ) await new Promise((r) => setTimeout(r, 50));
 };
@@ -3354,7 +3444,8 @@ async function listenOnce({ handsFree = false } = {}) {
     status('');
     state.transcribing = false;
     updateBadge();
-    if (!text || NOISE.some((r) => r.test(text))) {
+    if (!text || NOISE.some((r) => r.test(text)) || isPhantom(text)) {
+      if (text) logEv('STT', `verworfen (Erfindung der Erkennung): ${text}`);
       if (handsFree && audio.length > 16000) status('Nicht verstanden – bitte noch einmal sagen.');
       return;
     }
@@ -3362,7 +3453,12 @@ async function listenOnce({ handsFree = false } = {}) {
       const why = fragmentReason(text, res?.conf ?? null);
       if (why) return overheard(text, why);
     }
-    if (handsFree && duringSpeech && isEcho(text)) return;
+    // eigenes Echo der Figur – auch kurz nach dem Sprechen (Nachhall, Auto-Lautsprecher)
+    const echo = echoScore(text, state.spoken);
+    const sinceSpoke = Date.now() - (state.lastSpeakEnd ?? 0);
+    if ((duringSpeech && echo >= 0.6) || (!tts.speaking && sinceSpoke < 6000 && echo >= 0.5)) return overheard(text, 'eigenes Echo');
+    // unsicher erkannt (aber lang genug): die Figur soll im Zweifel nachfragen statt aufs Falsche einzugehen
+    state.unsureNow = res?.conf != null && res.conf < 0.6;
     // läuft ein Video: kurze Befehle (Stopp, Pause, weiter) gleich hier, sonst anhalten und nach der Antwort weiter
     if (clipPlaying && clipCommand(text)) return;
     if (clipPlaying) clipHoldForAnswer();
@@ -10509,10 +10605,37 @@ function ackReminder(key, was = 'erledigt') {
     r.at = Date.now() + 10 * 60e3;
     r.done = false;
     delete r.ack;
-  } else r.ack = Date.now();
+  } else {
+    r.ack = Date.now();
+    markNotesDone(r.text);
+  }
   r.changed = Date.now();
   logEv('ERINNERUNG', was);
   reminderChanged();
+}
+/** Erledigt wirkt überall: offene Notizen/Punkte mit demselben Inhalt gleich mit abhaken (beide Notizbücher). */
+function markNotesDone(text) {
+  if (!BRAIN) return 0;
+  const words = (t) => new Set(String(t ?? '').toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []);
+  const want = words(text);
+  if (want.size < 1) return 0;
+  let n = 0;
+  for (const note of [...(state.brain ?? []), ...(persona().brain ?? [])]) {
+    if (!note.offen || note.erledigt) continue;
+    const have = words(note.titel);
+    const common = [...want].filter((w) => have.has(w)).length;
+    // fast derselbe Titel (die meisten Wörter gleich)
+    if (common && common >= Math.max(1, Math.ceil(Math.min(want.size, have.size) * 0.75))) {
+      note.erledigt = note.changed = Date.now();
+      note.offen = false;
+      n++;
+    }
+  }
+  if (n) {
+    logEv('FADEN', `${n} passende(r) offene(r) Punkt(e) mit erledigt`);
+    save({ quiet: true });
+  }
+  return n;
 }
 /** Was in der Handy-Benachrichtigung gedrückt wurde, während die App zu war. */
 function takeReminderActions() {
@@ -12543,6 +12666,9 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  forgetLast,
+  markNotesDone,
+  bridgeFrom,
   syncOverviewLines,
   syncAllNow,
   nasPutFigure,

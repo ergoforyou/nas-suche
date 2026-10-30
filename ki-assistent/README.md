@@ -193,6 +193,14 @@ vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder 
 - **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
 - **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
+### Kohärentes Gespräch (Beta 96)
+
+- **Beim Thema bleiben:** Notizen, Vorhaben und offene Punkte gehen nur mit, wenn sie zur Frage passen – jedes Stück höchstens einmal je Gespräch; eigene Vorhaben der Figur nur zu Beginn eines Gesprächs; Erledigtes nur auf Nachfrage.
+- **Falsch Erkanntes:** Echo der Figur wird auch kurz nach dem Sprechen erkannt (Nachhall, Auto); typische Erfindungen der Spracherkennung („Untertitel …“, „Abonniert den Kanal“) werden verworfen; bei unsicherer Erkennung fragt die Figur nach, statt aufs Falsche einzugehen.
+- **„Vergiss das“ / „Das war Quatsch“** nimmt die letzte Eingabe samt Antwort aus dem Verlauf – ohne KI.
+- **Neuer Chat mit Brücke:** das alte Gespräch wird sofort zusammengefasst („Wo ihr zuletzt wart“) und als Erinnerung abgelegt; lange Gespräche werden laufend zusammengefasst statt abgeschnitten.
+- **Erledigt wirkt überall:** eine bestätigte Erinnerung hakt den passenden offenen Punkt im Second Brain mit ab.
+
 ### Sicherung & Geräte (Beta 94)
 
 - Eigener Reiter **⚙ → Sicherung & Geräte**: Synology-NAS, WLAN-Kopplung und Abgleich, Sicherungen auf dem Gerät – auch in der einfachen Ansicht.

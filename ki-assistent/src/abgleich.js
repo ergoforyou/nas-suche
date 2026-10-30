@@ -13,7 +13,7 @@ const SELF_MAX = 40;
 const REFLEX_MAX = 20;
 
 // Teile einer Persona, die nicht als „Text“ zählen: eigene Regeln beim Zusammenführen bzw. gerätebezogen
-const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'ziele', 'entwicklung', 'episoden', 'episodeUntil', 'signale', 'weekReviewAt', 'sicherungen', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp', 'brain', 'brainTidyAt']);
+const NOT_TEXT = new Set(['avatar', 'memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'ziele', 'entwicklung', 'episoden', 'episodeUntil', 'signale', 'weekReviewAt', 'sicherungen', 'reflectTurns', 'reflectedAt', 'updated', 'avatarStamp', 'brain', 'brainTidyAt', 'bruecke']);
 const newId = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 const norm = (x) => String(x ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -187,6 +187,8 @@ export function mergeSync(a, b) {
       brain: mergeNotes(pa.brain, pb.brain, { dead }),
       weekReviewAt: Math.max(pa.weekReviewAt ?? 0, pb.weekReviewAt ?? 0) || undefined,
       brainTidyAt: Math.max(pa.brainTidyAt ?? 0, pb.brainTidyAt ?? 0) || undefined,
+      // Brücke zum neuen Chat: die neuere gilt (auch am anderen Gerät weiß die Figur, wo ihr zuletzt wart)
+      bruecke: (pb.bruecke?.t ?? 0) > (pa.bruecke?.t ?? 0) ? pb.bruecke : pa.bruecke,
       signale: pa.signale,
       sicherungen: pa.sicherungen, // Sicherungen bleiben je Gerät
       reflexion: [...new Map([...(pa.reflexion ?? []), ...(pb.reflexion ?? [])].map((r) => [r.created, r])).values()]

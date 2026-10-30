@@ -3638,6 +3638,45 @@ const m90 = await page.evaluate(() => {
   return out;
 });
 check(m90.mode === 'kurz' && /ein, zwei Sätzen/.test(JSON.stringify(req90 ?? '')), 'Gesprächsart per Zuruf („Nur kurz bitte“) wirkt auf die Antwort', JSON.stringify({ m90, req: !!req90 }));
+// Beta 96: Gesprächsfaden – Regel „beim Thema bleiben“ geht mit, „Vergiss das“ nimmt das Letzte zurück (ohne KI),
+// neuer Chat bekommt eine Brücke, erledigte Erinnerung hakt den passenden offenen Punkt mit ab
+await page.evaluate(() => (window.__app.state.busy = false));
+claudeQueue.push(sayText('Der Mond ist heute fast voll.'));
+const before96 = claudeRequests.length;
+const n96 = await page.evaluate(() => document.querySelectorAll('.msg.assistant').length);
+await page.fill('#input', 'Wie sieht der Mond heute aus?');
+await page.click('#btnSend');
+await page.waitForFunction((n) => document.querySelectorAll('.msg.assistant').length > n && !window.__app.state.busy, n96, { timeout: 15000 }).catch(() => {});
+const req96 = claudeRequests.slice(before96).find((r) => JSON.stringify(r.messages ?? '').includes('Mond heute'));
+const reqCount96 = claudeRequests.length;
+await page.fill('#input', 'Vergiss das');
+await page.click('#btnSend');
+await page.waitForTimeout(400);
+const b96 = await page.evaluate(() => {
+  const app = window.__app;
+  const out = { gone: !app.history().some((m) => /Mond/.test(m.content ?? '')) && !app.history().some((m) => /Vergiss das/.test(m.content ?? '')) };
+  // Brücke ohne Hilfsmodell (offline): die letzten Themen
+  const p = app.persona();
+  const keepOff = app.state.settings.offline;
+  app.state.settings.offline = true;
+  app.bridgeFrom(p, [{ role: 'user', content: 'Urlaub in Italien planen', t: Date.now() }, { role: 'user', content: 'Was kostet die Fähre?', t: Date.now() }]);
+  app.state.settings.offline = keepOff;
+  out.bridge = /Italien/.test(p.bruecke?.text ?? '');
+  delete p.bruecke;
+  // erledigt wirkt überall
+  out.area = app.area;
+  if (app.area === 'privat' && app.state.brain) {
+    const note = { id: 'n96', titel: 'Reifen wechseln lassen', text: '', ordner: 'projekte', offen: true, created: Date.now(), changed: Date.now() };
+    app.state.brain.push(note);
+    out.n = app.markNotesDone('Reifen wechseln lassen');
+    out.inList = app.state.brain.includes(note);
+    out.done = !!note.erledigt;
+    out.titles = app.state.brain.filter((x) => x.erledigt).map((x) => x.titel).slice(-4);
+    if (app.state.brain.includes(note)) app.state.brain.splice(app.state.brain.indexOf(note), 1);
+  } else out.done = true; // nur im Bereich Privat (Second Brain)
+  return out;
+});
+check(/Bleib beim Thema deines Gegenübers/.test(JSON.stringify(req96 ?? '')) && claudeRequests.length === reqCount96 && b96.gone && b96.bridge && b96.done === true, 'Gesprächsfaden: beim Thema bleiben, „Vergiss das“ ohne KI, Brücke zum neuen Chat, erledigt überall', JSON.stringify({ rule: !!req96, extra: claudeRequests.length - reqCount96, b96 }));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;
