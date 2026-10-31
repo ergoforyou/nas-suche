@@ -11780,8 +11780,14 @@ async function nasPeek() {
   } else nasEtag ??= h.etag;
 }
 /** Verbindung testen: schreiben, lesen, aufräumen – mit verständlichem Hinweis, wenn etwas nicht geht. */
-async function nasTest() {
+async function nasTest(onLine = null) {
   const lines = [];
+  const push0 = lines.push.bind(lines);
+  lines.push = (...x) => {
+    const n = push0(...x);
+    onLine?.(lines);
+    return n;
+  };
   const name = `verbindungstest-${newId()}.txt`;
   const probe = 'KI-Assistent Verbindungstest';
   try {
@@ -12008,7 +12014,7 @@ $('syncAllNow').onclick = async () => {
 };
 $('nasBackupNow').onclick = () => syncAllNow({ backup: true });
 /** Schnell-Einrichtung über QuickConnect (z. B. am Handy): Adresse bauen, Passwort sichern, Ordner anlegen, testen. */
-async function nasQuickSetup({ id, ziel, user, pass }) {
+async function nasQuickSetup({ id, ziel, user, pass, onLine = null }) {
   const url = synology.quickConnectAddress(id, ziel);
   if (!url) return { ok: false, lines: ['❌ Das sieht nicht nach einer QuickConnect-ID aus (nur Buchstaben, Ziffern und Bindestriche, z. B. jens-nas).'] };
   if (!String(user ?? '').trim()) return { ok: false, lines: ['❌ Benutzer der NAS fehlt.'] };
@@ -12018,7 +12024,7 @@ async function nasQuickSetup({ id, ziel, user, pass }) {
   if (pass) await desktop.nasSetPassword(pass);
   logEv('NAS', `Schnell-Einrichtung (${ziel.includes('/Drive/') ? 'Synology Drive' : 'Benutzerordner'})`);
   // der Test schreibt eine Datei – dabei legt die NAS den Ordner (samt fehlenden Elternordnern) selbst an
-  const r = await nasTest();
+  const r = await nasTest(onLine);
   if (r.ok) {
     r.lines.unshift(`✅ Ordner auf der NAS: ${new URL(url).pathname}`);
     r.lines.push(
@@ -12030,26 +12036,83 @@ async function nasQuickSetup({ id, ziel, user, pass }) {
   renderNasState();
   return r;
 }
+// ---- Rückmeldung beim Einrichten: was gerade passiert (welcher Weg probiert wird), Schritte, Ergebnis – direkt unter dem Knopf
+let nasLive = null;
+desktop.onNasStep?.((t) => {
+  if (!nasLive) return;
+  nasLive.step = t;
+  nasLive.render();
+});
+/** Einrichten/Testen mit sichtbarem Fortschritt; out = Ausgabe-Element, btn = Knopf (gesperrt, solange es läuft). */
+async function nasWithFeedback(out, btn, label, run) {
+  const keepText = btn?.textContent;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Verbinde …';
+  }
+  out.hidden = false;
+  const t0 = Date.now();
+  let lines = [];
+  const render = () => {
+    const sec = Math.round((Date.now() - t0) / 1000);
+    out.textContent = [`⏳ ${label} … (${sec} s)`, ...lines, ...(nasLive?.step ? [`… ${nasLive.step}`] : [])].join('\n');
+  };
+  nasLive = { step: '', render };
+  render();
+  const tick = setInterval(render, 1000);
+  out.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  let r;
+  try {
+    r = await Promise.race([
+      run((l) => ((lines = [...l]), render())),
+      new Promise((ok) => setTimeout(() => ok({ ok: false, lines: [...lines, '❌ Keine Antwort nach 90 Sekunden'], hint: nasHint('nicht erreichbar') }), 90000)),
+    ]);
+  } catch (e) {
+    r = { ok: false, lines: [...lines, `❌ ${e.message}`], hint: nasHint(e.message) };
+  } finally {
+    clearInterval(tick);
+    nasLive = null;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = keepText;
+    }
+  }
+  const head = r.ok ? '✅ Verbunden – der Abgleich läuft ab jetzt automatisch.' : '❌ Nicht verbunden.';
+  out.textContent = [head, ...r.lines, ...(r.hint ? [`👉 ${r.hint}`] : [])].join('\n');
+  status(r.ok ? '🗄 NAS verbunden' : '🗄 NAS: nicht verbunden – Einzelheiten unter dem Knopf');
+  logEv('NAS', `${label}: ${r.ok ? 'ok' : r.lines.at(-1)}`);
+  return r;
+}
 $('nasQcGo').onclick = async () => {
-  $('nasTestOut').hidden = false;
-  $('nasTestOut').textContent = '🧭 Richte die NAS ein …';
-  const r = await nasQuickSetup({ id: $('nasQcId').value, ziel: $('nasQcZiel').value, user: $('nasQcUser').value, pass: $('nasQcPass').value });
+  const r = await nasWithFeedback($('nasQcOut'), $('nasQcGo'), 'Richte die NAS über QuickConnect ein', (onLine) =>
+    nasQuickSetup({ id: $('nasQcId').value, ziel: $('nasQcZiel').value, user: $('nasQcUser').value, pass: $('nasQcPass').value, onLine }),
+  );
   $('nasQcPass').value = '';
-  $('nasTestOut').textContent = [...r.lines, ...(r.hint ? [`👉 ${r.hint}`] : [])].join('\n');
   if (r.ok) nasSync({ manual: true });
 };
 $('nasTest').onclick = async () => {
-  $('nasTestOut').hidden = false;
-  $('nasTestOut').textContent = '🔌 Teste die Verbindung …';
-  const r = await nasTest();
-  $('nasTestOut').textContent = [...r.lines, ...(r.hint ? [`👉 ${r.hint}`] : []), ...(r.ok ? ['Alles bereit – der Abgleich läuft ab jetzt automatisch.'] : [])].join('\n');
+  const r = await nasWithFeedback($('nasTestOut'), $('nasTest'), 'Teste die Verbindung', (onLine) => nasTest(onLine));
   if (r.ok) nasSync({ manual: true });
 };
 $('nasPick').onclick = async () => {
-  const dir = await desktop.nasPickFolder?.().catch(() => null);
-  if (!dir) return;
+  // Rückmeldung statt Stille: Dialog offen, abgebrochen, Fehler – und nach der Wahl gleich testen
+  $('nasTestOut').hidden = false;
+  $('nasTestOut').textContent = '📁 Ordnerauswahl ist offen (eventuell hinter diesem Fenster) …';
+  let dir = null;
+  try {
+    dir = await desktop.nasPickFolder();
+  } catch (e) {
+    $('nasTestOut').textContent = `❌ Ordnerauswahl ging nicht: ${e.message}`;
+    return;
+  }
+  if (!dir) {
+    $('nasTestOut').textContent = 'Kein Ordner gewählt.';
+    return;
+  }
   nasField('url', dir);
   renderNasState();
+  const r = await nasWithFeedback($('nasTestOut'), $('nasPick'), `Prüfe den Ordner ${dir}`, (onLine) => nasTest(onLine));
+  if (r.ok) nasSync({ manual: true });
 };
 $('nasCrypt').onchange = async (e) => {
   try {

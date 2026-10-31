@@ -3739,6 +3739,37 @@ await page.waitForFunction(() => !window.__app.state.busy, null, { timeout: 1500
 await page.waitForTimeout(800);
 const req99 = claudeRequests.slice(before99).find((r) => JSON.stringify(r.messages ?? '').includes('wo ich dich unterbrochen habe'));
 check(b99.live && !!req99, 'Live-Text beim Sprechen; „weiter“ nach Unterbrechung macht dort weiter', JSON.stringify({ b99, resume: !!req99 }));
+// Beta 100: QuickConnect-Einrichtung zeigt direkt unter dem Knopf, was passiert, und am Ende klar „Verbunden“
+const b100 = await page.evaluate(async () => {
+  const app = window.__app;
+  const files = new Map();
+  const empty = new Uint8Array();
+  const keep = { req: window.desktop.nasReq, nas: app.state.settings.nas, pw: window.desktop.nasSetPassword };
+  window.desktop.nasSetPassword = async () => true;
+  window.desktop.nasReq = async ({ method, path, body }) => {
+    await new Promise((r) => setTimeout(r, 30));
+    const f = files.get(path);
+    if (method === 'GET') return f ? { status: 200, etag: '"x"', body: f } : { status: 404, etag: null, body: empty };
+    if (method === 'HEAD') return f ? { status: 200, etag: '"x"', body: empty } : { status: 404, etag: null, body: empty };
+    if (method === 'PUT') return files.set(path, new Uint8Array(body)), { status: 201, etag: '"x"', body: empty };
+    if (method === 'DELETE') return files.delete(path), { status: 204, etag: null, body: empty };
+    return { status: 405, etag: null, body: empty };
+  };
+  document.getElementById('nasQcId').value = 'jens-nas';
+  document.getElementById('nasQcUser').value = 'ki';
+  document.getElementById('nasQcPass').value = 'geheim';
+  document.getElementById('nasQcGo').click();
+  await new Promise((r) => setTimeout(r, 10));
+  const during = { text: document.getElementById('nasQcOut').textContent, disabled: document.getElementById('nasQcGo').disabled };
+  for (let i = 0; i < 50 && document.getElementById('nasQcGo').disabled; i++) await new Promise((r) => setTimeout(r, 100));
+  const after = document.getElementById('nasQcOut').textContent;
+  await new Promise((r) => setTimeout(r, 500));
+  window.desktop.nasReq = keep.req;
+  window.desktop.nasSetPassword = keep.pw;
+  app.state.settings.nas = keep.nas;
+  return { during, after };
+});
+check(/⏳/.test(b100.during.text) && b100.during.disabled && /✅ Verbunden/.test(b100.after) && /Schreiben/.test(b100.after), 'QuickConnect-Einrichtung: Fortschritt unter dem Knopf, am Ende klar verbunden', JSON.stringify(b100));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

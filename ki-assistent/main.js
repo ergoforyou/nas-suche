@@ -467,6 +467,12 @@ const quickConnect = qcLib.createQuickConnect({
     return { status: r.status, url: r.url, body: new Uint8Array(await r.arrayBuffer()) };
   },
 });
+// Fortschritt der Verbindung (welcher Weg gerade probiert wird) an die Oberfläche
+quickConnect.onStep = (t) => {
+  try {
+    win?.webContents.send('nas:step', t);
+  } catch {}
+};
 const nasCrypt = require('./nascrypt.js');
 // Am PC kann das Ziel auch ein lokaler Ordner sein (Synology-Client/Netzlaufwerk) – siehe naslocal.js
 const { isLocalNas, localNasReq } = require('./naslocal.js');

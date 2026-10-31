@@ -2,7 +2,7 @@
 // auf den Server der Region, Anmeldung, Dateien lesen/schreiben/löschen, bedingtes Schreiben, abgelaufene Sitzung.
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { parseQuickConnect, createQuickConnect, quickConnectAddress } = require('../synology.js');
+const { parseQuickConnect, createQuickConnect, quickConnectAddress, quickConnectCandidates } = require('../synology.js');
 
 let failed = 0;
 const check = (ok, name, info = '') => {
@@ -139,6 +139,35 @@ const tf = await msg(() => r('GET', 'stand.json'));
 check(/Zwei-Faktor/.test(tf), 'Zwei-Faktor-Konto verständlich gemeldet', tf);
 const noFolder = await msg(() => qc.req({ address: 'https://jens.quickconnect.to', user: 'jens', password: 'geheim', method: 'GET', path: 'stand.json' }));
 check(/Ordner/.test(noFolder), 'ohne Ordner: Hinweis', noFolder);
+
+// ID.quickconnect.to antwortet nur mit der Portal-Seite: Wege beim QuickConnect-Dienst erfragen und nacheinander probieren
+{
+  const tdx = new TextDecoder();
+  const tex = new TextEncoder();
+  const asked = [];
+  const steps = [];
+  const info = [{ errno: 0, server: { ddns: 'NULL', interface: [{ ip: '192.168.1.20' }], external: { ip: '1.2.3.4' } }, service: { port: 5001, ext_port: 5001, relay_port: 443 }, smartdns: { host: 'jens.direct.quickconnect.to' }, env: { relay_region: 'de3' } }];
+  check(quickConnectCandidates(info, 'jens').join(' ').includes('jens.de3.quickconnect.to') && quickConnectCandidates(info, 'jens')[0].includes('jens.direct.quickconnect.to'), 'Wege zur NAS aus der Auskunft des QuickConnect-Dienstes', quickConnectCandidates(info, 'jens').join(' | '));
+  const qc = createQuickConnect({
+    request: async (method, url) => {
+      asked.push(url.replace(/\?.*/, ''));
+      if (url.includes('global.quickconnect.to/Serv.php')) return { status: 200, url, body: tex.encode(JSON.stringify(info)) };
+      if (url.startsWith('https://jens.de3.quickconnect.to/webapi/query.cgi'))
+        return { status: 200, url, body: tex.encode(JSON.stringify({ success: true, data: { 'SYNO.API.Auth': { path: 'entry.cgi', maxVersion: 6 }, 'SYNO.FileStation.List': { path: 'entry.cgi' }, 'SYNO.FileStation.Download': { path: 'entry.cgi' }, 'SYNO.FileStation.Upload': { path: 'entry.cgi' }, 'SYNO.FileStation.Delete': { path: 'entry.cgi' } } })) };
+      if (url.includes('/webapi/query.cgi')) return { status: 200, url, body: tex.encode('<html>QuickConnect</html>') };
+      if (url.includes('entry.cgi') && method === 'POST') return { status: 200, url, body: tex.encode(JSON.stringify({ success: true, data: { sid: 'S', files: [{ code: 408 }] } })) };
+      return { status: 404, url, body: new Uint8Array() };
+    },
+  });
+  qc.onStep = (t) => steps.push(t);
+  const r = await qc.req({ address: 'https://jens.quickconnect.to/home/ki', user: 'ki', password: 'x', method: 'HEAD', path: 'stand.json' });
+  check(r.status === 404 && asked.some((u) => u.includes('Serv.php')) && asked.some((u) => u.startsWith('https://jens.de3.quickconnect.to')) && steps.some((t) => /Verbunden über jens\.de3/.test(t)), 'Portal-Seite → Weg über den QuickConnect-Dienst gefunden, Fortschritt gemeldet', JSON.stringify({ r: r.status, steps }));
+  // unbekannte ID
+  const qc2 = createQuickConnect({ request: async (m, url) => ({ status: 200, url, body: tex.encode(url.includes('Serv.php') ? JSON.stringify([{ errno: 4 }, { errno: 4 }]) : '<html></html>') }) });
+  const e2 = await qc2.req({ address: 'https://falsch.quickconnect.to/home/ki', user: 'ki', password: 'x', method: 'HEAD', path: 'a.json' }).catch((e) => e.message);
+  check(/unbekannt/.test(e2), 'Unbekannte QuickConnect-ID klar gemeldet', e2);
+  void tdx;
+}
 
 console.log(failed ? `${failed} Prüfung(en) fehlgeschlagen` : 'QuickConnect: alles in Ordnung');
 process.exit(failed ? 1 : 0);

@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('desktop', {
   nasHasCrypt: () => ipcRenderer.invoke('nas:hasCrypt'),
   nasIsLocal: (base) => ipcRenderer.invoke('nas:isLocal', base),
   nasPickFolder: () => ipcRenderer.invoke('nas:pickFolder'),
+  onNasStep: (cb) => ipcRenderer.on('nas:step', (_e, t) => cb(t)),
   onSyncRequest: (fn) => (syncHandler = fn),
   officePaste: (opts) => ipcRenderer.invoke('office:paste', opts),
   claudeHandoff: (opts) => ipcRenderer.invoke('claude:handoff', opts),

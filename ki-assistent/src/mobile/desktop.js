@@ -296,6 +296,7 @@ const api = {
     await storeKeys(k);
     return true;
   },
+  onNasStep: (cb) => (quickConnect.onStep = cb),
   nasHasCrypt: async () => AREA === 'privat' && !!(await getKeys()).naskrypt,
   nasIsLocal: async () => false,
 

@@ -64,8 +64,40 @@ function fileStatus(code) {
   return 500;
 }
 
-function createQuickConnect({ request }) {
+/**
+ * Wege zur NAS, wie sie der QuickConnect-Dienst nennt (Serv.php → get_server_info): direkte Adresse (smartdns),
+ * DDNS, öffentliche IP, Relay der Region und die Adressen im Heimnetz. Reihenfolge = Versuchsreihenfolge.
+ */
+function quickConnectCandidates(info, id) {
+  const out = [];
+  const add = (u) => u && !out.includes(u) && out.push(u);
+  for (const e of [].concat(info ?? [])) {
+    if (!e || e.errno) continue;
+    const sv = e.service ?? {};
+    const port = sv.ext_port || sv.port || 5001;
+    const https = (h, p = port) => (h && h !== 'NULL' ? `https://${h}${p && p !== 443 ? `:${p}` : ''}` : null);
+    add(https(e.smartdns?.host, 443));
+    add(https(e.smartdns?.host));
+    add(https(e.server?.ddns));
+    add(https(e.server?.fqdn));
+    add(https(e.server?.external?.ip));
+    if (e.env?.relay_region) add(`https://${id}.${e.env.relay_region}.quickconnect.to`);
+    if (sv.relay_dn) add(https(sv.relay_dn, sv.relay_port || 443));
+    if (sv.relay_ip) add(https(sv.relay_ip, sv.relay_port || 443));
+    // Heimnetz: DSM-Standard ohne Zertifikatsärger
+    for (const i of e.server?.interface ?? []) if (i.ip) add(`http://${i.ip}:${sv.port && sv.port !== 5001 ? sv.port - 1 : 5000}`);
+    for (const l of e.smartdns?.lan ?? []) add(`http://${l}:5000`);
+  }
+  return out;
+}
+
+function createQuickConnect({ request, onStep = null }) {
   const clients = new Map();
+  const step = (t) => {
+    try {
+      api.onStep?.(t);
+    } catch {}
+  };
   /** Ein angemeldeter Zugang je Adresse und Benutzer (die Sitzung bleibt, bis die NAS sie verwirft). */
   function client(address, user, password) {
     const qc = parseQuickConnect(address);
@@ -84,23 +116,76 @@ function createQuickConnect({ request }) {
     return c;
   }
 
+  const q = `/webapi/query.cgi?${form({ api: 'SYNO.API.Info', version: 1, method: 'query', query: 'SYNO.API.Auth,SYNO.FileStation.' })}`;
+  /** Antwortet unter dieser Adresse die DSM-Schnittstelle? → { base, apis } oder null */
+  const within = (pr, ms, what) => Promise.race([pr, new Promise((_, no) => setTimeout(() => no(new Error(`${what}: keine Antwort nach ${ms / 1000} s`)), ms))]);
+  async function probe(base) {
+    try {
+      const r = await within(request('GET', base + q, {}, null), 10000, 'Zeitüberschreitung');
+      const j = jsonOf(r.body);
+      if (!j?.success) return { fail: /quickconnect|<html/i.test(td.decode(r.body.slice(0, 2000))) ? 'html' : `status ${r.status}` };
+      return { base: r.url ? new URL(r.url).origin : base, apis: j.data ?? {} };
+    } catch (e) {
+      return { fail: e.message };
+    }
+  }
+  /** Beim QuickConnect-Dienst nachfragen, wie die NAS zu erreichen ist (auch über den Server der Region). */
+  async function serverInfo(id) {
+    const body = (srv) => te.encode(JSON.stringify([
+      { version: 1, command: 'get_server_info', stop_when_error: false, stop_when_success: false, id: 'dsm_portal_https', serverID: id, is_gofile: false },
+      { version: 1, command: 'get_server_info', stop_when_error: false, stop_when_success: false, id: 'dsm_portal', serverID: id, is_gofile: false },
+    ]));
+    const ask = async (host) => {
+      const r = await within(request('POST', `https://${host}/Serv.php`, { 'Content-Type': 'application/json' }, body()), 12000, 'QuickConnect-Dienst');
+      return jsonOf(r.body);
+    };
+    let j = await ask('global.quickconnect.to');
+    // ID liegt auf einem anderen Server: dort nachfragen
+    const sites = [].concat(j ?? []).flatMap((e) => e?.sites ?? []);
+    if (![].concat(j ?? []).some((e) => e && !e.errno) && sites.length) {
+      for (const site of sites) {
+        j = await ask(site).catch(() => null);
+        if ([].concat(j ?? []).some((e) => e && !e.errno)) break;
+      }
+    }
+    return j;
+  }
+
   async function start(c) {
     if (c.base && c.apis) return;
     const base = `https://${c.qc.id}.quickconnect.to`;
-    const q = `/webapi/query.cgi?${form({ api: 'SYNO.API.Info', version: 1, method: 'query', query: 'SYNO.API.Auth,SYNO.FileStation.' })}`;
-    const r = await request('GET', base + q, {}, null);
-    const j = jsonOf(r.body);
-    if (!j?.success) {
-      const html = /quickconnect|<html/i.test(td.decode(r.body.slice(0, 2000)));
-      throw new Error(
-        html
-          ? 'QuickConnect erreicht die NAS nicht – ist sie an, die QuickConnect-ID richtig und unter Systemsteuerung → Externer Zugriff → QuickConnect → Erweitert „DSM“ freigegeben?'
-          : `QuickConnect antwortet nicht wie erwartet (${r.status})`,
-      );
+    step(`QuickConnect „${c.qc.id}“ suchen …`);
+    let hit = await probe(base);
+    const tried = [`${base}: ${hit.fail ?? 'ok'}`];
+    if (!hit.base) {
+      // wie die Synology-Apps: beim QuickConnect-Dienst alle Wege erfragen und nacheinander probieren
+      step('Frage den QuickConnect-Dienst nach dem Weg zur NAS …');
+      const info = await serverInfo(c.qc.id).catch((e) => ({ err: e.message }));
+      const errs = [].concat(info ?? []).map((e) => e?.errno).filter(Boolean);
+      if (errs.length && errs.length === [].concat(info ?? []).length && [].concat(info ?? []).every((e) => e?.errno === 4)) {
+        throw new Error(`Die QuickConnect-ID „${c.qc.id}“ ist unbekannt – bitte in DSM unter Systemsteuerung → Externer Zugriff → QuickConnect nachsehen`);
+      }
+      const cands = quickConnectCandidates(info, c.qc.id).filter((u) => u !== base);
+      for (const [i, cand] of cands.entries()) {
+        step(`Weg ${i + 1} von ${cands.length}: ${cand.replace(/^https?:\/\//, '')} …`);
+        hit = await probe(cand);
+        tried.push(`${cand}: ${hit.fail ?? 'ok'}`);
+        if (hit.base) break;
+      }
     }
-    // QuickConnect leitet ggf. auf einen Server der Region weiter (z. B. jens.de3.quickconnect.to): dort weiter
-    c.base = r.url ? new URL(r.url).origin : base;
-    c.apis = j.data ?? {};
+    if (!hit.base) {
+      const e = new Error(
+        'QuickConnect erreicht die NAS nicht – ist sie an, die QuickConnect-ID richtig und unter Systemsteuerung → Externer Zugriff → QuickConnect → Erweitert „DSM“ freigegeben?',
+      );
+      e.tried = tried;
+      // welche Wege probiert wurden (hilft bei der Fehlersuche; geht nur ins Protokoll und die Testausgabe)
+      e.message += `\nProbiert: ${tried.map((t) => t.replace(/^https?:\/\//, '').slice(0, 90)).join(' · ')}`;
+      throw e;
+    }
+    c.tried = tried;
+    c.base = hit.base;
+    c.apis = hit.apis;
+    step(`Verbunden über ${c.base.replace(/^https?:\/\//, '')}`);
     for (const a of ['SYNO.API.Auth', 'SYNO.FileStation.List', 'SYNO.FileStation.Download', 'SYNO.FileStation.Upload', 'SYNO.FileStation.Delete']) {
       if (!c.apis[a]) throw new Error(`Die NAS bietet ${a} nicht an (File Station eingeschaltet?)`);
     }
@@ -124,7 +209,10 @@ function createQuickConnect({ request }) {
 
   /** Aufruf mit Sitzung; ist sie abgelaufen, einmal neu anmelden. */
   async function call(c, user, api, method, params, version = 2, retry = true) {
-    if (!c.sid) await login(c, user);
+    if (!c.sid) {
+      step('Anmelden …');
+      await login(c, user);
+    }
     const r = await request(
       'POST',
       url(c, api),
@@ -210,8 +298,9 @@ function createQuickConnect({ request }) {
     return { status: 405, etag: null, body: empty };
   }
 
-  return { req };
+  const api = { req, onStep, forget: () => clients.clear() };
+  return api;
 }
 
 module.exports = {
-  quickConnectAddress, parseQuickConnect, createQuickConnect };
+  quickConnectAddress, parseQuickConnect, createQuickConnect, quickConnectCandidates };
