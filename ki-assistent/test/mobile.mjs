@@ -3810,6 +3810,38 @@ const b101 = await page.evaluate(async () => {
   return out;
 });
 check(b101.ok && b101.fig && b101.mem && b101.daten && b101.index && b101.restored, 'Komplettsicherung: Figur + Gedächtnis je Persona, Daten, Verzeichnis; zurückgeholt genau so', JSON.stringify(b101));
+// Beta 102: Personas gezielt übertragen – Kachel listet sie, Teile wählbar; Senden legt sie bereit, Holen übernimmt genau so
+const b102 = await page.evaluate(async () => {
+  const app = window.__app;
+  const files = new Map();
+  const empty = new Uint8Array();
+  const keep = { req: window.desktop.nasReq, nas: app.state.settings.nas };
+  window.desktop.nasReq = async ({ method, path, body }) => {
+    const f = files.get(path);
+    if (method === 'GET') return f ? { status: 200, etag: '"x"', body: f } : { status: 404, etag: null, body: empty };
+    if (method === 'HEAD') return f ? { status: 200, etag: '"x"', body: empty } : { status: 404, etag: null, body: empty };
+    if (method === 'PUT') return files.set(path, new Uint8Array(body)), { status: 201, etag: '"x"', body: empty };
+    if (method === 'DELETE') return files.delete(path), { status: 204, etag: null, body: empty };
+    return { status: 405, etag: null, body: empty };
+  };
+  app.state.settings.nas = { url: 'https://jens.quickconnect.to/home/ki-assistent', user: 'ki', auto: false };
+  const p = app.persona();
+  p.memory = [...(p.memory ?? []), { id: 'm102', text: 'Jens mag Espresso', created: Date.now() }];
+  const r = await app.sendPersona(p.id, { figur: true, gedaechtnis: true, verlauf: false });
+  const out = { sent: r.ok && files.has('personas-index.json') && [...files.keys()].some((k) => k.startsWith(`persona-${p.id}-figur-`)) && files.has(`persona-${p.id}-gedaechtnis.json`) && !files.has(`persona-${p.id}-verlauf.json`) };
+  await app.renderTransfer();
+  out.rows = document.querySelectorAll('#transferList .transfer-row').length >= 1 && /Auf der NAS/.test(document.getElementById('transferList').textContent);
+  // „anderes Gerät“: Gedächtnis weg, dann holen
+  p.memory = p.memory.filter((m) => m.id !== 'm102');
+  const t = await app.takePersona(p.id, { figur: false, gedaechtnis: true, verlauf: false });
+  out.took = t.ok && app.persona().memory.some((m) => m.id === 'm102');
+  const tool = await app.runAppTool('persona_uebertragen', { aktion: 'liste' });
+  out.tool = tool.auf_der_nas?.length >= 1;
+  window.desktop.nasReq = keep.req;
+  app.state.settings.nas = keep.nas;
+  return out;
+});
+check(b102.sent && b102.rows && b102.took && b102.tool, 'Personas übertragen: Kachel, Teile wählbar, senden und genau so holen, per Zuruf', JSON.stringify(b102));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

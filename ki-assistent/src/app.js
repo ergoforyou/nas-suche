@@ -4202,6 +4202,7 @@ $('tabs').onclick = (e) => {
   if (tab === 'memory') renderMemory();
   if (tab === 'geraete') {
     renderSyncOverview();
+    renderTransfer().catch(() => {});
     renderBackupsLocal().catch(() => {});
   }
   if (tab === 'conn') {
@@ -7653,6 +7654,25 @@ async function runAppToolInner(name, input) {
     if (!desktop.news) throw new Error('Nachrichten sind hier nicht verfügbar');
     const ort = String(input?.ort ?? '').trim() || (await currentPlace());
     return desktop.news({ bereiche: input?.bereiche, ort, anzahl: input?.anzahl });
+  }
+  if (name === 'persona_uebertragen') {
+    const a = input?.aktion ?? 'liste';
+    if (a === 'liste') {
+      const idx = await pIndexGet().catch(() => ({}));
+      return {
+        hier: state.personas.map((p) => ({ name: p.name, gedaechtnis: p.memory?.length ?? 0, verlauf: (state.history[p.id] ?? []).length })),
+        auf_der_nas: Object.values(idx).map((e) => ({ name: e.name, von: e.von, wann: whenText(e.t), teile: e.zuletzt })),
+      };
+    }
+    const q = String(input?.persona ?? '').trim().toLowerCase();
+    const idx = a === 'holen' ? await pIndexGet() : {};
+    const pool = a === 'holen' ? Object.values(idx).map((e) => ({ id: e.id, name: e.name })) : state.personas;
+    const hit = q ? pool.find((x) => x.name.toLowerCase() === q) ?? pool.find((x) => x.name.toLowerCase().includes(q)) : a === 'senden' ? persona() : null;
+    if (!hit) return { ok: false, hinweis: `Keine Persona „${input?.persona ?? ''}“ ${a === 'holen' ? 'auf der NAS' : 'hier'} – nachfragen.` };
+    const want = [].concat(input?.inhalt ?? ['figur', 'gedaechtnis']).map(String);
+    const parts = { figur: want.includes('figur') || want.includes('alles'), gedaechtnis: want.includes('gedaechtnis') || want.includes('alles'), verlauf: want.includes('verlauf') || want.includes('alles') };
+    const r = a === 'holen' ? await takePersona(hit.id, parts) : await sendPersona(hit.id, parts);
+    return { ok: r.ok, ergebnis: r.lines.slice(0, 4) };
   }
   if (name === 'abgleich_sicherung') {
     const a = input?.aktion;
@@ -11922,6 +11942,7 @@ async function nasSync({ manual = false, backup = false } = {}) {
       save({ quiet: true });
       // Stand merken: der leichte Änderungs-Check erkennt dann, wenn das andere Gerät etwas Neues abgelegt hat
       nasEtag = put.etag || (await nasReq('HEAD', 'stand.json').catch(() => null))?.etag || null;
+      setTimeout(() => checkIncomingPersonas().catch(() => {}), 500);
       say(backup ? `🗄 Auf der NAS gesichert (Sicherung vom ${new Date().toLocaleDateString('de-DE')}) und abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.` : `🗄 Mit der NAS abgeglichen${figs ? ` – ${figs} Figur(en) übertragen` : ''}.`);
       return true;
     }
@@ -12398,6 +12419,189 @@ $('nasFullList').onclick = async () => {
     }),
   );
 };
+// ---- Personas gezielt übertragen (Kachel unter ⚙ → Sicherung & Geräte, auch per Zuruf): je Persona wählen, was
+// mitgeht – Figur, Gedächtnis, Verlauf. Auf der NAS liegt je Persona das zuletzt Geschickte (persona-…), dazu ein
+// Verzeichnis (personas-index.json): von welchem Gerät, wann, was. Das andere Gerät bietet es zum Übernehmen an.
+const PARTS = { figur: 'Figur', gedaechtnis: 'Gedächtnis', verlauf: 'Verlauf' };
+const OTHER = { pc: 'handy', handy: 'pc' };
+const pIndexGet = async () => {
+  const r = await nasReq('GET', 'personas-index.json').catch(() => null);
+  if (r?.status !== 200) return {};
+  try {
+    return JSON.parse(new TextDecoder().decode(r.body)).personas ?? {};
+  } catch {
+    return {};
+  }
+};
+const pIndexPut = (idx) => putJson('personas-index.json', { personas: idx });
+const memOf = (p) => Object.fromEntries(MEMORY_KEYS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]]));
+const whenText = (t) => (t ? new Date(t).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–');
+/** Eine Persona (Teile nach Wahl) auf die NAS schicken – fürs andere Gerät. */
+async function sendPersona(pid, parts, onLine = () => {}) {
+  const p = state.personas.find((x) => x.id === pid);
+  if (!p) throw new Error('Persona gibt es hier nicht');
+  if (!nasActive()) throw new Error('Erst die NAS einrichten (⚙ → Sicherung & Geräte)');
+  const lines = [];
+  const say = (l) => (lines.push(l), onLine(lines));
+  const idx = await pIndexGet();
+  const e = { ...(idx[pid] ?? {}), id: pid, name: p.name, von: DEVICE, an: OTHER[DEVICE], t: Date.now(), teile: { ...(idx[pid]?.teile ?? {}) }, gesehen: {} };
+  if (parts.figur) {
+    say(`📦 ${p.name}: Figur packen …`);
+    const fig = await packPersona(p, { withMemory: false, version: APP_VERSION });
+    const old = e.teile.figur;
+    const sent = await nasPutFigure(`persona-${pid}-figur-${Date.now()}.kiavatar`, fig);
+    if (old?.file) nasDelFigure(old);
+    e.teile.figur = { ...sent, t: Date.now(), bytes: fig.length };
+    say(`✅ Figur ${mb(fig.length)}`);
+  }
+  if (parts.gedaechtnis) {
+    const mem = memOf(p);
+    await putJson(`persona-${pid}-gedaechtnis.json`, mem);
+    e.teile.gedaechtnis = { file: `persona-${pid}-gedaechtnis.json`, t: Date.now(), n: p.memory?.length ?? 0 };
+    say(`✅ Gedächtnis (${p.memory?.length ?? 0} Erinnerungen, Selbstbild ${p.selbst?.length ?? 0}, Notizbuch ${p.brain?.length ?? 0})`);
+  }
+  if (parts.verlauf) {
+    const h = state.history[pid] ?? [];
+    await putJson(`persona-${pid}-verlauf.json`, { history: h });
+    e.teile.verlauf = { file: `persona-${pid}-verlauf.json`, t: Date.now(), n: h.length };
+    say(`✅ Verlauf (${h.length} Nachrichten)`);
+  }
+  e.zuletzt = Object.keys(PARTS).filter((k) => parts[k]);
+  idx[pid] = e;
+  await pIndexPut(idx);
+  logEv('NAS', `Persona ${p.name} geschickt (${e.zuletzt.map((k) => PARTS[k]).join(', ')})`);
+  return { ok: true, lines: [`✅ „${p.name}“ liegt bereit – ${MOBILE ? 'am PC' : 'am Handy'} zum Übernehmen.`, ...lines] };
+}
+/** Eine Persona (Teile nach Wahl) von der NAS holen und hier übernehmen. */
+async function takePersona(pid, parts, onLine = () => {}) {
+  const idx = await pIndexGet();
+  const e = idx[pid];
+  if (!e) throw new Error('Diese Persona liegt nicht auf der NAS');
+  const lines = [];
+  const say = (l) => (lines.push(l), onLine(lines));
+  let p = state.personas.find((x) => x.id === pid);
+  if (parts.figur && e.teile?.figur) {
+    say(`📦 ${e.name}: Figur holen …`);
+    const bytes = await nasGetFigure(e.teile.figur);
+    if (!bytes) throw new Error('Figur fehlt auf der NAS');
+    const data = await unpackPersona(bytes, (b, ext) => desktop.saveMedia(b, ext), { full: true, onProgress: (t) => onLine([...lines, `… ${t}`]) });
+    const keepMem = p ? memOf(p) : {};
+    const np = { ...data.persona, ...keepMem, id: pid, updated: Date.now(), avatarStamp: Date.now() };
+    if (p) state.personas[state.personas.indexOf(p)] = np;
+    else state.personas.push(np);
+    p = np;
+    say('✅ Figur übernommen');
+  }
+  if (!p) throw new Error('Für eine neue Persona zuerst die Figur mitholen');
+  if (parts.gedaechtnis && e.teile?.gedaechtnis) {
+    const mem = await getJson(e.teile.gedaechtnis.file);
+    for (const k of MEMORY_KEYS) if (mem[k] !== undefined) p[k] = mem[k];
+    p.updated = Date.now();
+    say(`✅ Gedächtnis übernommen (${p.memory?.length ?? 0} Erinnerungen)`);
+  }
+  if (parts.verlauf && e.teile?.verlauf) {
+    const v = await getJson(e.teile.verlauf.file);
+    state.history[pid] = v.history ?? [];
+    say(`✅ Verlauf übernommen (${state.history[pid].length} Nachrichten)`);
+  }
+  e.gesehen = { ...(e.gesehen ?? {}), [DEVICE]: Date.now() };
+  idx[pid] = e;
+  await pIndexPut(idx).catch(() => {});
+  stampSync(state, syncCache, { record: true });
+  save();
+  if (p === persona()) {
+    applyPersona();
+    renderChat();
+  }
+  renderTransfer().catch(() => {});
+  logEv('NAS', `Persona ${e.name} übernommen`);
+  return { ok: true, lines: [`✅ „${e.name}“ ist jetzt hier genau so wie ${e.von === 'pc' ? 'am PC' : 'am Handy'}.`, ...lines] };
+}
+let transferIdx = {};
+/** Kachel: alle Personas (hier und auf der NAS), je Persona Teile wählen, senden/holen. */
+async function renderTransfer() {
+  const wrap = document.getElementById('transferWrap');
+  if (!wrap) return;
+  wrap.hidden = AREA !== 'privat' || !desktop.nasReq;
+  if (wrap.hidden) return;
+  const list = $('transferList');
+  if (!nasActive()) {
+    list.textContent = 'Erst unten die NAS einrichten – dann lassen sich Personas hier gezielt hin- und herschicken.';
+    return;
+  }
+  transferIdx = await pIndexGet().catch(() => ({}));
+  const ids = [...new Set([...state.personas.map((p) => p.id), ...Object.keys(transferIdx)])];
+  list.replaceChildren(
+    ...ids.map((id) => {
+      const p = state.personas.find((x) => x.id === id);
+      const e = transferIdx[id];
+      const row = document.createElement('div');
+      row.className = 'transfer-row';
+      const fresh = e && e.von !== DEVICE && (e.t ?? 0) > (e.gesehen?.[DEVICE] ?? 0);
+      const here = p ? `Hier: Gedächtnis ${p.memory?.length ?? 0} · Selbstbild ${p.selbst?.length ?? 0} · Notizbuch ${p.brain?.length ?? 0} · Verlauf ${(state.history[id] ?? []).length}` : 'Hier: noch nicht vorhanden';
+      const there = e ? `Auf der NAS: ${e.von === 'pc' ? 'vom PC' : 'vom Handy'}, ${whenText(e.t)} (${(e.zuletzt ?? Object.keys(e.teile ?? {})).map((k) => PARTS[k]).join(', ')})` : 'Auf der NAS: noch nichts geschickt';
+      row.innerHTML = `<div class="tr-name"></div><div class="tr-meta"></div><div class="tr-meta"></div><div class="tr-parts"></div><div class="row wrap tr-btns"></div>`;
+      row.querySelector('.tr-name').textContent = `${p?.name ?? e?.name ?? 'Persona'}${p && p === persona() ? ' (aktiv)' : ''}`;
+      const [m1, m2] = row.querySelectorAll('.tr-meta');
+      m1.textContent = here;
+      m2.textContent = there;
+      if (fresh) m2.classList.add('tr-new'), (m2.textContent = `🆕 ${there}`);
+      const checks = {};
+      for (const [k, label] of Object.entries(PARTS)) {
+        const l = document.createElement('label');
+        const c = document.createElement('input');
+        c.type = 'checkbox';
+        c.checked = k !== 'verlauf' || !!e?.teile?.verlauf;
+        checks[k] = c;
+        l.append(c, label);
+        row.querySelector('.tr-parts').append(l);
+      }
+      const pick = () => Object.fromEntries(Object.entries(checks).map(([k, c]) => [k, c.checked]));
+      const btns = row.querySelector('.tr-btns');
+      if (p) {
+        const b = document.createElement('button');
+        b.textContent = `⬆ ${MOBILE ? 'An den PC' : 'Ans Handy'} schicken`;
+        b.onclick = () => nasWithFeedback($('transferOut'), b, `Schicke ${p.name}`, (onLine) => sendPersona(id, pick(), onLine), FULL_FB).then(() => renderTransfer());
+        btns.append(b);
+      }
+      if (e) {
+        const b = document.createElement('button');
+        b.textContent = '⬇ Hierher holen';
+        b.onclick = () => {
+          const parts = pick();
+          if (p && !confirm(`„${e.name}“ hier mit dem Stand ${e.von === 'pc' ? 'vom PC' : 'vom Handy'} (${whenText(e.t)}) überschreiben – ${Object.keys(parts).filter((k) => parts[k]).map((k) => PARTS[k]).join(', ')}?`)) return;
+          nasWithFeedback($('transferOut'), b, `Hole ${e.name}`, (onLine) => takePersona(id, parts, onLine), FULL_FB);
+        };
+        btns.append(b);
+      }
+      return row;
+    }),
+  );
+}
+/** Nach dem Abgleich: liegt eine Persona vom anderen Gerät bereit? Einmal Bescheid geben (mit Knopf). */
+let transferNoted = {};
+async function checkIncomingPersonas() {
+  if (!nasActive()) return;
+  const idx = await pIndexGet().catch(() => ({}));
+  for (const e of Object.values(idx)) {
+    if (e.von === DEVICE || (e.t ?? 0) <= (e.gesehen?.[DEVICE] ?? 0) || transferNoted[e.id] === e.t) continue;
+    transferNoted[e.id] = e.t;
+    const note = addBubble('note', `📦 „${e.name}“ ${e.von === 'pc' ? 'vom PC' : 'vom Handy'} liegt bereit (${(e.zuletzt ?? []).map((k) => PARTS[k]).join(', ')}). `);
+    const b = document.createElement('button');
+    b.textContent = 'Übernehmen';
+    b.onclick = async () => {
+      b.disabled = true;
+      const parts = Object.fromEntries((e.zuletzt ?? Object.keys(e.teile ?? {})).map((k) => [k, true]));
+      try {
+        const r = await takePersona(e.id, parts);
+        note.textContent = r.lines[0];
+      } catch (err) {
+        note.textContent = `📦 ${err.message}`;
+      }
+    };
+    note.appendChild(b);
+  }
+}
 // Gesperrt heißt: nichts sehen und nichts hören – Aktivierungswort, Live-Gespräch, Vorlesen und schwebende Figur
 // pausieren, bis mit Fingerabdruck/PIN entsperrt ist
 let liveBeforeLock = false;
@@ -13161,6 +13365,10 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  sendPersona,
+  takePersona,
+  renderTransfer,
+  checkIncomingPersonas,
   nasFullBackup,
   nasFullRestore,
   liveHearEvent,

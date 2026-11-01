@@ -281,6 +281,24 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'persona_uebertragen',
+    privatOnly: true,
+    description:
+      'Eine Persona gezielt zum anderen Gerät schicken oder von dort holen (über die NAS): „Schick Lina mit Gedächtnis ' +
+      'an den PC“ (senden), „Hol dir Max vom Handy“ (holen), „Welche Personas liegen auf der NAS?“ (liste). inhalt: was ' +
+      'mitgeht – figur (Bilder, Videos, Posen, Texte, Stimme), gedaechtnis (Erinnerungen, Selbstbild, Notizbuch), verlauf, ' +
+      'oder alles; ohne Angabe Figur und Gedächtnis. Ohne Persona beim Senden: die aktuelle. Sag danach kurz, was passiert ist.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        aktion: { type: 'string', enum: ['senden', 'holen', 'liste'] },
+        persona: { type: 'string', description: 'Name der Persona' },
+        inhalt: { type: 'array', items: { type: 'string', enum: ['figur', 'gedaechtnis', 'verlauf', 'alles'] } },
+      },
+      required: ['aktion'],
+    },
+  },
+  {
     name: 'abgleich_sicherung',
     description:
       'Abgleich zwischen PC und Handy und Sicherungen: „Sichere jetzt auf die NAS“ (sichern), „Gleich alles ab“ ' +
@@ -399,6 +417,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   erinnerungen_verwalten: '⏰ Schaue in die Erinnerungen …',
   nachrichten: '📰 Schaue in die Nachrichten …',
   abgleich_sicherung: '🔁 Gleiche ab …',
+  persona_uebertragen: '📦 Übertrage die Persona …',
 };
 
 module.exports = { APP_TOOLS, APP_TOOL_STATUS };

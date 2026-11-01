@@ -193,6 +193,12 @@ vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder 
 - **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
 - **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
+### Personas gezielt übertragen (Beta 102, Bereich Privat)
+
+- Kachel **📦 Personas übertragen** (⚙ → Sicherung & Geräte): alle Personas – hier und auf der NAS – mit Stand (Gedächtnis, Selbstbild, Notizbuch, Verlauf; von welchem Gerät, wann). Je Persona wählen, was mitgeht: **Figur**, **Gedächtnis**, **Verlauf** – dann „⬆ An den PC / Ans Handy schicken“ oder „⬇ Hierher holen“.
+- Das andere Gerät meldet nach dem Abgleich „📦 „Lina“ vom PC liegt bereit“ mit Knopf **Übernehmen**.
+- Per Zuruf: „Schick Lina mit Gedächtnis an den PC“, „Hol dir Max vom Handy“, „Welche Personas liegen auf der NAS?“.
+
 ### Komplettsicherung auf die NAS (Beta 101, Bereich Privat)
 
 - **📦 Jetzt komplett sichern** (⚙ → Sicherung & Geräte): je Persona die komplette Figur (Bilder, Videos, Posen, Texte, Stimme, Steckbrief) als `.kiavatar` (große in Teilen) und getrennt das Gedächtnis (Erinnerungen, Selbstbild, Tagebuch, Episoden, eigenes Notizbuch, Verlauf); dazu Second Brain, Erinnerungen, Orte, Wissen und Einstellungen (ohne Schlüssel/Passwörter und Gerätebezogenes); eine Inhaltsliste je Sicherung, die letzten 5 bleiben.
