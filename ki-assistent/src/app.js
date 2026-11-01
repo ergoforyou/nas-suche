@@ -12012,7 +12012,10 @@ $('syncAllNow').onclick = async () => {
   const d = await syncAllNow();
   if (!d.length) status('Noch kein Abgleich eingerichtet – siehe unten (NAS oder WLAN-Kopplung).');
 };
-$('nasBackupNow').onclick = () => syncAllNow({ backup: true });
+$('nasBackupNow').onclick = async () => {
+  await syncAllNow({ backup: true });
+  if (nasActive()) await nasWithFeedback($('nasFullOut'), $('nasBackupNow'), 'Sichere alles auf die NAS', (onLine) => nasFullBackup(onLine), FULL_FB);
+};
 /** Schnell-Einrichtung über QuickConnect (z. B. am Handy): Adresse bauen, Passwort sichern, Ordner anlegen, testen. */
 async function nasQuickSetup({ id, ziel, user, pass, onLine = null }) {
   const url = synology.quickConnectAddress(id, ziel);
@@ -12044,7 +12047,7 @@ desktop.onNasStep?.((t) => {
   nasLive.render();
 });
 /** Einrichten/Testen mit sichtbarem Fortschritt; out = Ausgabe-Element, btn = Knopf (gesperrt, solange es läuft). */
-async function nasWithFeedback(out, btn, label, run) {
+async function nasWithFeedback(out, btn, label, run, { timeout = 90000, okHead = '✅ Verbunden – der Abgleich läuft ab jetzt automatisch.', failHead = '❌ Nicht verbunden.' } = {}) {
   const keepText = btn?.textContent;
   if (btn) {
     btn.disabled = true;
@@ -12065,7 +12068,7 @@ async function nasWithFeedback(out, btn, label, run) {
   try {
     r = await Promise.race([
       run((l) => ((lines = [...l]), render())),
-      new Promise((ok) => setTimeout(() => ok({ ok: false, lines: [...lines, '❌ Keine Antwort nach 90 Sekunden'], hint: nasHint('nicht erreichbar') }), 90000)),
+      new Promise((ok) => setTimeout(() => ok({ ok: false, lines: [...lines, `❌ Keine Antwort nach ${Math.round(timeout / 1000)} Sekunden`], hint: nasHint('nicht erreichbar') }), timeout)),
     ]);
   } catch (e) {
     r = { ok: false, lines: [...lines, `❌ ${e.message}`], hint: nasHint(e.message) };
@@ -12077,9 +12080,9 @@ async function nasWithFeedback(out, btn, label, run) {
       btn.textContent = keepText;
     }
   }
-  const head = r.ok ? '✅ Verbunden – der Abgleich läuft ab jetzt automatisch.' : '❌ Nicht verbunden.';
-  out.textContent = [head, ...r.lines, ...(r.hint ? [`👉 ${r.hint}`] : [])].join('\n');
-  status(r.ok ? '🗄 NAS verbunden' : '🗄 NAS: nicht verbunden – Einzelheiten unter dem Knopf');
+  const head = r.ok ? okHead : failHead;
+  out.textContent = [...(head ? [head] : []), ...r.lines, ...(r.hint ? [`👉 ${r.hint}`] : [])].join('\n');
+  status(r.ok ? `🗄 ${label}: fertig` : `🗄 ${label}: nicht geklappt – Einzelheiten unter dem Knopf`);
   logEv('NAS', `${label}: ${r.ok ? 'ok' : r.lines.at(-1)}`);
   return r;
 }
@@ -12230,6 +12233,171 @@ async function nasRestore(day) {
   }
 }
 
+// ---- Komplettsicherung auf die NAS: je Persona die Figur (Bilder, Videos, Posen, Texte …) und getrennt ihr Gedächtnis
+// samt Verlauf, dazu Second Brain, Erinnerungen, Wissen und Einstellungen (ohne Geheimnisse). Eine Inhaltsliste je
+// Sicherung, ein Verzeichnis der letzten 5. Zurückholen setzt alles genau so – das andere Gerät übernimmt es.
+const FULL_KEEP = 5;
+const FULL_FB = { timeout: 30 * 60e3, okHead: '', failHead: '❌ Hat nicht geklappt.' };
+const MEMORY_KEYS = ['memory', 'selbst', 'reflexion', 'themen', 'kanon', 'gemeinsam', 'tagebuch', 'stimmung', 'ziele', 'entwicklung', 'episoden', 'episodeUntil', 'brain', 'brainTidyAt', 'signale', 'weekReviewAt', 'bruecke'];
+// gerätebezogen oder geheim – geht nicht in die Sicherung
+const SETTINGS_SKIP = ['nas', 'syncPair', 'faden', 'lastSeenAt', 'micId', 'micLabel', 'outputId', 'autoBackupAt', 'orte'];
+const fullStamp = () => new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+const putJson = async (name, obj) => {
+  const r = await nasReq('PUT', name, new TextEncoder().encode(JSON.stringify(obj)), { 'Content-Type': 'application/json' });
+  if (![200, 201, 204].includes(r.status)) throw new Error(`${name}: ${nasError(r.status)}`);
+};
+const getJson = async (name) => {
+  const r = await nasReq('GET', name);
+  if (r.status !== 200) throw new Error(`${name}: ${nasError(r.status)}`);
+  return JSON.parse(new TextDecoder().decode(r.body));
+};
+const fullIndex = async () => {
+  const r = await nasReq('GET', 'komplett-index.json').catch(() => null);
+  if (r?.status !== 200) return [];
+  try {
+    return JSON.parse(new TextDecoder().decode(r.body)).sicherungen ?? [];
+  } catch {
+    return [];
+  }
+};
+const mb = (n) => (n / 1e6 < 0.1 ? `${Math.max(1, Math.round(n / 1e3))} KB` : `${(n / 1e6).toFixed(1).replace('.', ',')} MB`);
+async function nasFullBackup(onLine = () => {}) {
+  if (!nasActive()) throw new Error('Erst die NAS einrichten');
+  const lines = [];
+  const say = (l) => (lines.push(l), onLine(lines));
+  const stamp = fullStamp();
+  const pre = `komplett-${stamp}`;
+  const manifest = { typ: 'ki-assistent-komplett', version: 1, area: AREA, t: Date.now(), geraet: DEVICE, app: APP_VERSION, personas: [] };
+  let total = 0;
+  for (const p of state.personas) {
+    say(`👤 ${p.name}: Figur packen …`);
+    const fig = await packPersona(p, { withMemory: false, version: APP_VERSION });
+    if (fig.length > NAS_FIG_MAX) say(`⚠️ ${p.name}: Figur ${mb(fig.length)} – größer als ${mb(NAS_FIG_MAX)}, wird trotzdem in Teilen gesichert`);
+    const figFile = `${pre}-figur-${p.id}.kiavatar`;
+    const sent = await nasPutFigure(figFile, fig);
+    const mem = Object.fromEntries(MEMORY_KEYS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]]));
+    mem.history = state.history[p.id] ?? [];
+    const memFile = `${pre}-gedaechtnis-${p.id}.json`;
+    await putJson(memFile, { typ: 'ki-assistent-gedaechtnis', id: p.id, name: p.name, ...mem });
+    const n = (x) => x?.length ?? 0;
+    const counts = { gedaechtnis: n(p.memory), selbstbild: n(p.selbst), tagebuch: n(p.tagebuch), episoden: n(p.episoden), notizbuch: n(p.brain), verlauf: n(mem.history) };
+    total += fig.length;
+    manifest.personas.push({ id: p.id, name: p.name, figur: { ...sent, bytes: fig.length }, gedaechtnis: { file: memFile }, counts });
+    say(`✅ ${p.name}: Figur ${mb(fig.length)}${sent.parts ? ` (${sent.parts} Teile)` : ''} · Gedächtnis ${counts.gedaechtnis} · Selbstbild ${counts.selbstbild} · Notizbuch ${counts.notizbuch} · Verlauf ${counts.verlauf}`);
+  }
+  say('🧠 Second Brain, Erinnerungen, Wissen, Einstellungen …');
+  const settings = Object.fromEntries(Object.entries(state.settings).filter(([k]) => !SETTINGS_SKIP.includes(k)));
+  const daten = { typ: 'ki-assistent-daten', activeId: state.activeId, brain: state.brain ?? [], erinnerungen: state.erinnerungen ?? [], saved: state.saved ?? [], orte: state.settings.orte ?? [], einstellungen: settings };
+  manifest.daten = { file: `${pre}-daten.json`, counts: { notizen: daten.brain.length, erinnerungen: daten.erinnerungen.length, wissen: daten.saved.length, orte: daten.orte.length } };
+  await putJson(manifest.daten.file, daten);
+  say(`✅ Second Brain ${daten.brain.length} Notizen · Erinnerungen ${daten.erinnerungen.length} · Wissen ${daten.saved.length} · Orte ${daten.orte.length} · Einstellungen`);
+  manifest.file = `${pre}-inhalt.json`;
+  await putJson(manifest.file, manifest);
+  // Verzeichnis: neueste zuerst, die ältesten (über 5) samt Dateien löschen
+  const idx = [{ file: manifest.file, t: manifest.t, geraet: DEVICE, personas: manifest.personas.map((x) => x.name), bytes: total }, ...(await fullIndex()).filter((x) => x.file !== manifest.file)];
+  const drop = idx.splice(FULL_KEEP);
+  await putJson('komplett-index.json', { sicherungen: idx });
+  for (const d of drop) {
+    try {
+      const m = await getJson(d.file);
+      for (const pp of m.personas ?? []) {
+        nasDelFigure(pp.figur);
+        nasReq('DELETE', pp.gedaechtnis.file).catch(() => {});
+      }
+      if (m.daten?.file) nasReq('DELETE', m.daten.file).catch(() => {});
+      nasReq('DELETE', d.file).catch(() => {});
+    } catch {}
+  }
+  state.settings.nas.fullAt = Date.now();
+  save({ quiet: true });
+  logEv('NAS', `Komplettsicherung: ${manifest.personas.length} Persona(s), ${mb(total)} Figuren`);
+  return { ok: true, lines: [`✅ Komplett gesichert (${new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}) – ${manifest.personas.length} Persona(s)`, ...lines] };
+}
+/** Komplettsicherung zurückholen: Personas mit Figur und Gedächtnis genau so, Daten; Einstellungen auf Wunsch. */
+async function nasFullRestore(file, { settings = false, onLine = () => {} } = {}) {
+  const lines = [];
+  const say = (l) => (lines.push(l), onLine(lines));
+  const m = await getJson(file);
+  if (m.typ !== 'ki-assistent-komplett') throw new Error('Das ist keine Komplettsicherung');
+  if (m.area && m.area !== AREA) throw new Error(`Die Sicherung stammt aus dem Bereich ${m.area === 'privat' ? 'Privat' : 'Dienstlich'}`);
+  // jetzigen Stand vorher sichern (klein, ohne Figuren) – falls man es sich anders überlegt
+  stampSync(state, syncCache);
+  noteDeletions(state, state.abgleich);
+  await nasReq('PUT', `vor-ruecksicherung-${fullStamp()}.json`, nasBody(), { 'Content-Type': 'application/json' }).catch(() => {});
+  const before = idsOf(state);
+  for (const e of m.personas ?? []) {
+    say(`👤 ${e.name}: Figur holen …`);
+    const bytes = await nasGetFigure(e.figur);
+    if (!bytes) throw new Error(`Figur von ${e.name} fehlt auf der NAS`);
+    const data = await unpackPersona(bytes, (b, ext) => desktop.saveMedia(b, ext), { full: true, onProgress: (t) => onLine([...lines, `… ${t}`]) });
+    const mem = await getJson(e.gedaechtnis.file);
+    const { history: hist = [], typ: _t, id: _i, name: _n, ...memParts } = mem;
+    const restored = { ...data.persona, ...memParts, id: e.id, updated: Date.now(), avatarStamp: Date.now() };
+    const i = state.personas.findIndex((x) => x.id === e.id);
+    if (i >= 0) state.personas[i] = restored;
+    else state.personas.push(restored);
+    state.history[e.id] = hist;
+    say(`✅ ${e.name}: Figur, Gedächtnis ${memParts.memory?.length ?? 0}, Verlauf ${hist.length}`);
+  }
+  const d = await getJson(m.daten.file);
+  state.brain = d.brain ?? [];
+  state.erinnerungen = d.erinnerungen ?? [];
+  if (Array.isArray(d.saved)) {
+    state.saved = d.saved;
+    saveSavedNow?.();
+  }
+  state.settings.orte = d.orte ?? [];
+  if (settings && d.einstellungen) {
+    for (const [k, v] of Object.entries(d.einstellungen)) if (!SETTINGS_SKIP.includes(k)) state.settings[k] = v;
+    say('✅ Einstellungen übernommen');
+  }
+  if (d.activeId && state.personas.some((x) => x.id === d.activeId)) state.activeId = d.activeId;
+  say(`✅ Second Brain ${state.brain.length} · Erinnerungen ${state.erinnerungen.length} · Wissen ${state.saved?.length ?? 0}`);
+  // was es nur jetzt gab, gilt als gelöscht; neuen Stand mit Markierung schreiben – das andere Gerät übernimmt ihn
+  const keep = idsOf(state);
+  const now = Date.now();
+  state.abgleich.deleted ??= {};
+  for (const id of before) if (!keep.has(id)) state.abgleich.deleted[id] = now;
+  for (const id of keep) delete state.abgleich.deleted[id];
+  stampSync(state, syncCache, { record: true });
+  const cur = await nasReq('GET', 'stand.json').catch(() => null);
+  let figuren = {};
+  try {
+    if (cur?.status === 200) figuren = JSON.parse(new TextDecoder().decode(cur.body)).figuren ?? {};
+  } catch {}
+  // die Figuren gleich als neuen Stand auf die NAS (Stempel sind neu) – beim nächsten Abgleich
+  await nasReq('PUT', 'stand.json', nasBody({ resetAt: now, figuren }), { 'Content-Type': 'application/json' });
+  state.settings.nas.resetSeen = now;
+  save();
+  applyPersona();
+  renderChat?.();
+  syncOrte?.();
+  setTimeout(() => nasSync().catch(() => {}), 1500);
+  logEv('NAS', `Komplettsicherung ${file} zurückgeholt`);
+  return { ok: true, lines: ['✅ Komplett zurückgeholt – das andere Gerät übernimmt den Stand beim nächsten Abgleich.', ...lines] };
+}
+$('nasFullNow').onclick = () => nasWithFeedback($('nasFullOut'), $('nasFullNow'), 'Sichere alles auf die NAS', (onLine) => nasFullBackup(onLine), FULL_FB);
+$('nasFullList').onclick = async () => {
+  const box = $('nasFullBox');
+  if (!nasActive()) return status('NAS: erst einrichten.');
+  box.hidden = false;
+  box.textContent = 'Suche Komplettsicherungen …';
+  const list = await fullIndex().catch(() => []);
+  if (!list.length) return (box.textContent = 'Noch keine Komplettsicherung auf der NAS – „📦 Jetzt komplett sichern“.');
+  box.replaceChildren(
+    ...list.map((x) => {
+      const b = document.createElement('button');
+      b.textContent = `↩ ${new Date(x.t).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${x.geraet === 'pc' ? 'PC' : 'Handy'} · ${(x.personas ?? []).join(', ')} · ${mb(x.bytes ?? 0)}`;
+      b.onclick = async () => {
+        if (!confirm(`Komplettsicherung vom ${b.textContent.slice(2)} zurückholen?\n\nPersonas (mit Figur und Gedächtnis), Verlauf, Second Brain, Erinnerungen und Wissen werden genau auf diesen Stand gesetzt – hier und beim nächsten Abgleich auch auf dem anderen Gerät. Der jetzige Stand wird vorher gesichert.`)) return;
+        const settings = confirm('Auch die Einstellungen übernehmen (Stimme, Anzeige, Gesprächsart …)? Schlüssel, Passwörter und gerätebezogene Dinge bleiben, wie sie sind.');
+        box.hidden = true;
+        await nasWithFeedback($('nasFullOut'), $('nasFullList'), 'Hole die Komplettsicherung zurück', (onLine) => nasFullRestore(x.file, { settings, onLine }), FULL_FB);
+      };
+      return b;
+    }),
+  );
+};
 // Gesperrt heißt: nichts sehen und nichts hören – Aktivierungswort, Live-Gespräch, Vorlesen und schwebende Figur
 // pausieren, bis mit Fingerabdruck/PIN entsperrt ist
 let liveBeforeLock = false;
@@ -12993,6 +13161,8 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  nasFullBackup,
+  nasFullRestore,
   liveHearEvent,
   liveHeard,
   liveHearWanted,

@@ -193,6 +193,11 @@ vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder 
 - **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
 - **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
+### Komplettsicherung auf die NAS (Beta 101, Bereich Privat)
+
+- **📦 Jetzt komplett sichern** (⚙ → Sicherung & Geräte): je Persona die komplette Figur (Bilder, Videos, Posen, Texte, Stimme, Steckbrief) als `.kiavatar` (große in Teilen) und getrennt das Gedächtnis (Erinnerungen, Selbstbild, Tagebuch, Episoden, eigenes Notizbuch, Verlauf); dazu Second Brain, Erinnerungen, Orte, Wissen und Einstellungen (ohne Schlüssel/Passwörter und Gerätebezogenes); eine Inhaltsliste je Sicherung, die letzten 5 bleiben.
+- **↩ Komplett zurückholen …**: setzt alles genau auf den Stand der Sicherung (Einstellungen auf Wunsch); der jetzige Stand wird vorher gesichert; das andere Gerät übernimmt den Stand beim nächsten Abgleich.
+
 ### Noch flüssiger (Beta 99)
 
 - **Live-Text:** was man sagt, erscheint schon beim Sprechen in der Statuszeile (auch in der Nur-Figur-Ansicht).

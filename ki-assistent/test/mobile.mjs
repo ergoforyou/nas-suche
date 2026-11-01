@@ -3770,6 +3770,46 @@ const b100 = await page.evaluate(async () => {
   return { during, after };
 });
 check(/⏳/.test(b100.during.text) && b100.during.disabled && /✅ Verbunden/.test(b100.after) && /Schreiben/.test(b100.after), 'QuickConnect-Einrichtung: Fortschritt unter dem Knopf, am Ende klar verbunden', JSON.stringify(b100));
+// Beta 101: Komplettsicherung – Figur und Gedächtnis je Persona getrennt, Daten, Inhaltsliste; zurückholen = genau so
+const b101 = await page.evaluate(async () => {
+  const app = window.__app;
+  const files = new Map();
+  const empty = new Uint8Array();
+  const keep = { req: window.desktop.nasReq, nas: app.state.settings.nas };
+  window.desktop.nasReq = async ({ method, path, body }) => {
+    const f = files.get(path);
+    if (method === 'GET') return f ? { status: 200, etag: '"x"', body: f } : { status: 404, etag: null, body: empty };
+    if (method === 'HEAD') return f ? { status: 200, etag: '"x"', body: empty } : { status: 404, etag: null, body: empty };
+    if (method === 'PUT') return files.set(path, new Uint8Array(body)), { status: 201, etag: '"x"', body: empty };
+    if (method === 'DELETE') return files.delete(path), { status: 204, etag: null, body: empty };
+    return { status: 405, etag: null, body: empty };
+  };
+  app.state.settings.nas = { url: 'https://jens.quickconnect.to/home/ki-assistent', user: 'ki', auto: false };
+  const p = app.persona();
+  p.memory = [...(p.memory ?? []), { id: 'm101', text: 'Jens fährt gern Rad', created: Date.now() }];
+  const memBefore = p.memory.length;
+  const histBefore = app.history().length;
+  const r = await app.nasFullBackup();
+  const names = [...files.keys()];
+  const out = {
+    ok: r.ok,
+    fig: names.some((n) => /^komplett-.*-figur-/.test(n)),
+    mem: names.some((n) => /^komplett-.*-gedaechtnis-/.test(n)),
+    daten: names.some((n) => /^komplett-.*-daten\.json$/.test(n)),
+    index: files.has('komplett-index.json'),
+  };
+  // etwas „kaputt machen“ und zurückholen
+  p.memory = [];
+  app.state.history[p.id] = [];
+  const idx = JSON.parse(new TextDecoder().decode(files.get('komplett-index.json'))).sicherungen;
+  const rr = await app.nasFullRestore(idx[0].file);
+  const p2 = app.state.personas.find((x) => x.id === p.id);
+  out.restored = rr.ok && p2.memory.length === memBefore && p2.memory.some((m) => m.id === 'm101') && (app.state.history[p.id] ?? []).length === histBefore;
+  window.desktop.nasReq = keep.req;
+  app.state.settings.nas = keep.nas;
+  return out;
+});
+check(b101.ok && b101.fig && b101.mem && b101.daten && b101.index && b101.restored, 'Komplettsicherung: Figur + Gedächtnis je Persona, Daten, Verzeichnis; zurückgeholt genau so', JSON.stringify(b101));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;
