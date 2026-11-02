@@ -3842,6 +3842,34 @@ const b102 = await page.evaluate(async () => {
   return out;
 });
 check(b102.sent && b102.rows && b102.took && b102.tool, 'Personas übertragen: Kachel, Teile wählbar, senden und genau so holen, per Zuruf', JSON.stringify(b102));
+// RunPod-Versuch: eigener Server nicht bereit → Claude springt ein, die Einstellung bleibt „Eigener Server“
+await page.evaluate(() => (window.__app.state.busy = false));
+claudeQueue.push(sayText('Ich springe kurz ein.'));
+const beforeE = claudeRequests.length;
+const keepE = await page.evaluate(() => {
+  const app = window.__app;
+  const keep = { provider: app.state.settings.provider, url: app.state.settings.eigenUrl, model: app.state.settings.eigenModel, ping: window.desktop.eigenPing };
+  window.desktop.eigenPing = async () => ({ ok: false, status: 502 });
+  app.state.settings.provider = 'eigen';
+  app.state.settings.eigenUrl = 'https://abc-8000.proxy.runpod.net';
+  app.state.settings.eigenModel = 'qwen32b';
+  app.state.eigen.ready = false;
+  window.__keepE = keep;
+  return true;
+});
+await page.fill('#input', 'Hallo eigener Server?');
+await page.click('#btnSend');
+await page.waitForFunction(() => !window.__app.state.busy, null, { timeout: 15000 }).catch(() => {});
+await page.waitForTimeout(500);
+const bE = await page.evaluate(() => {
+  const app = window.__app;
+  const out = { provider: app.state.settings.provider, swap: app.state.swapProvider };
+  const k = window.__keepE;
+  window.desktop.eigenPing = k.ping;
+  Object.assign(app.state.settings, { provider: k.provider, eigenUrl: k.url, eigenModel: k.model });
+  return out;
+});
+check(keepE && claudeRequests.length > beforeE && bE.provider === 'eigen' && !bE.swap, 'Eigener Server nicht bereit: Claude springt ein, Einstellung bleibt', JSON.stringify({ bE, claude: claudeRequests.length - beforeE }));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

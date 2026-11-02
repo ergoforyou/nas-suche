@@ -13,6 +13,7 @@ import wetter from '../../wetter.js';
 import nachrichten from '../../nachrichten.js';
 import synology from '../../synology.js';
 import nasCrypt from '../../nascrypt.js';
+import runpodLib from '../../runpod.js';
 import youtube from '../../youtube.js';
 import verkehr from '../../verkehr.js';
 
@@ -86,7 +87,7 @@ const safeBackup = (n) => {
 const vault = () => (window.KIKeys?.available?.() ? window.KIKeys : null);
 // nas / naskrypt: Passwort der NAS und für die Verschlüsselung – müssen wie die API-Schlüssel dauerhaft (verschlüsselt)
 // gespeichert werden; vorher fehlte das NAS-Passwort nach jedem Neustart der App
-const PROVIDERS = ['anthropic', 'openai', 'google', 'nas', 'naskrypt'];
+const PROVIDERS = ['anthropic', 'openai', 'google', 'nas', 'naskrypt', 'eigen', 'runpod'];
 let keys = null;
 async function loadKeys(path = areaPath('schluessel.json')) {
   const file = (await readJson(path)) ?? {};
@@ -233,7 +234,7 @@ const api = {
   // ---- Schlüssel (privater App-Speicher, mit dem Android-Keystore verschlüsselt)
   keyStatus: async () => {
     const k = await getKeys();
-    return { anthropic: !!k.anthropic, openai: !!k.openai, encrypted: !!vault() };
+    return { anthropic: !!k.anthropic, openai: !!k.openai, eigen: !!k.eigen, runpod: !!k.runpod, encrypted: !!vault() };
   },
   // ---- Synology NAS (WebDAV, vorerst nur Privat): Anfragen über Android selbst (die NAS erlaubt keine Zugriffe aus
   // der WebView heraus); das Passwort liegt verschlüsselt bei den Schlüsseln
@@ -297,6 +298,25 @@ const api = {
     return true;
   },
   onNasStep: (cb) => (quickConnect.onStep = cb),
+  // ---- Versuchsreihe „Eigener Server (RunPod)“
+  eigenPing: async (baseUrl) => {
+    const r = await nativeGet(apiUrl(baseUrl, '/v1/models'), { Authorization: `Bearer ${(await getKeys()).eigen || ''}` });
+    if (!r.ok) return { ok: false, status: r.status };
+    const j = await r.json().catch(() => ({}));
+    return { ok: true, models: (j?.data ?? []).map((m) => m.id) };
+  },
+  runpod: async ({ action, podId }) =>
+    runpodLib.runpodCtl({
+      action,
+      podId,
+      key: (await getKeys()).runpod,
+      // nativ (ohne Browser-Sperren)
+      fetchFn: async (url, { method = 'GET', headers = {}, body } = {}) => {
+        const r = await CapacitorHttp.request({ method, url, headers, ...(body ? { data: JSON.parse(body) } : {}), responseType: 'text', connectTimeout: 15000, readTimeout: 20000 });
+        const text = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+        return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => text, json: async () => JSON.parse(text) };
+      },
+    }),
   nasHasCrypt: async () => AREA === 'privat' && !!(await getKeys()).naskrypt,
   nasIsLocal: async () => false,
 
@@ -352,6 +372,10 @@ const api = {
           });
         } else if (provider === 'openai') {
           await chatOpenAI(await openaiClient(), { model, messages, effort }, send, ctrl.signal, { clientTools: mergeTools(useGoogle ? await googleTools() : null, useApp ? uiTools() : null) });
+        } else if (provider === 'eigen') {
+          // eigener Server (z. B. RunPod mit vLLM): OpenAI-kompatibel, mit eigenem Passwort
+          const client = new OpenAI({ ...CLOUD_OPTS, maxRetries: 1, apiKey: (await getKeys()).eigen || 'leer', baseURL: apiUrl(baseUrl, '/v1') });
+          await chatOpenAI(client, { model, messages }, send, ctrl.signal, { clientTools: useApp ? uiTools() : null });
         } else {
           const res = await fetch(apiUrl(baseUrl, '/v1/chat/completions'), {
             method: 'POST',
@@ -384,8 +408,8 @@ const api = {
         if (ctrl.signal.aborted) send('done');
         else {
           const SDK = provider === 'openai' ? OpenAI : Anthropic;
-          const name = provider === 'openai' ? 'ChatGPT' : provider === 'anthropic' ? 'Claude' : 'LM Studio';
-          send('error', provider === 'lmstudio' ? `${name}: ${err.message}` : friendlyCloudError(err, name, SDK));
+          const name = provider === 'openai' ? 'ChatGPT' : provider === 'anthropic' ? 'Claude' : provider === 'eigen' ? 'Eigener Server' : 'LM Studio';
+          send('error', provider === 'lmstudio' || provider === 'eigen' ? `${name}: ${err.status ? `${err.status} ` : ''}${err.message}` : friendlyCloudError(err, name, SDK));
         }
       } finally {
         running.delete(id);

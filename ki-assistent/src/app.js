@@ -277,7 +277,7 @@ const CLAUDE_MODELS = [
   ['claude-sonnet-5-5', 'Claude Sonnet 5.5 – ausgewogen'],
   ['claude-opus-5-5', 'Claude Opus 5.5 – am leistungsfähigsten'],
 ];
-const PROVIDER_NAMES = { lmstudio: 'LM Studio', anthropic: 'Claude', openai: 'ChatGPT' };
+const PROVIDER_NAMES = { lmstudio: 'LM Studio', anthropic: 'Claude', openai: 'ChatGPT', eigen: 'Eigener Server' };
 
 const RULES = {
   de: {
@@ -422,7 +422,8 @@ function save({ quiet = false } = {}) {
   saveTimer = setTimeout(() => {
     stampSync(state, syncCache);
     desktop.saveData({
-      settings: state.settings,
+      // während Claude kurz für den eigenen Server einspringt, bleibt gespeichert, was eingestellt ist
+      settings: state.swapProvider ? { ...state.settings, provider: state.swapProvider } : state.settings,
       personas: state.personas,
       activeId: state.activeId,
       history: state.history,
@@ -1084,6 +1085,7 @@ function llmParams(model, question, attachments) {
   const effort = s.claudeEffort === 'auto' ? (question == null ? 'low' : autoEffort(question, attachments)) : s.claudeEffort;
   if (s.provider === 'anthropic') return { provider: 'anthropic', model, effort };
   if (s.provider === 'openai') return { provider: 'openai', model, effort };
+  if (s.provider === 'eigen') return { provider: 'eigen', baseUrl: s.eigenUrl, model };
   return { provider: 'lmstudio', baseUrl: s.baseUrl, model, temperature: s.temperature };
 }
 
@@ -1091,6 +1093,16 @@ async function ensureModel() {
   const s = state.settings;
   // Kostenbremse: bis Monatsende das günstige Modell
   if (s.provider === 'anthropic') return budgetSaving() ? 'claude-haiku-5-5' : s.claudeModel || CLAUDE_MODELS[0][0];
+  if (s.provider === 'eigen') {
+    if (s.eigenModel) return s.eigenModel;
+    const r = await desktop.eigenPing(s.eigenUrl).catch(() => null);
+    if (r?.models?.[0]) {
+      s.eigenModel = r.models[0];
+      save();
+      return s.eigenModel;
+    }
+    throw new Error('Modellname fehlt (⚙ → Verbindung → Eigener Server)');
+  }
   if (s.provider === 'openai') {
     if (s.openaiModel) return s.openaiModel;
     const models = await desktop.openaiModels();
@@ -1386,6 +1398,10 @@ async function send(text) {
   };
 
   const finish = (error) => {
+    if (state.swapProvider) {
+      state.settings.provider = state.swapProvider;
+      state.swapProvider = null;
+    }
     clearTimeout(renderTimer);
     clearTimeout(fillerTimer);
     // angesprochene Themen nicht noch einmal mitgeben
@@ -1454,6 +1470,21 @@ async function send(text) {
     maybeListenHandsFree();
   };
 
+  // eigener Server: bereit? Sonst starten (auf Wunsch) und so lange Claude antworten lassen
+  if (state.settings.provider === 'eigen') {
+    eigenTouch();
+    const ok = await eigenReady();
+    if (!ok) {
+      if (state.settings.eigenAuto && state.settings.runpodPod) eigenStart({ quiet: true }).catch(() => {});
+      const claude = state.settings.eigenFallback !== false && (await desktop.keyStatus().catch(() => ({}))).anthropic;
+      if (claude) {
+        state.swapProvider = 'eigen';
+        state.settings.provider = 'anthropic';
+        status(state.eigen?.starting ? '🧪 Eigener Server startet noch – Claude antwortet so lange.' : '🧪 Eigener Server nicht erreichbar – Claude springt ein.');
+        logEv('EIGEN', 'nicht bereit – Claude springt ein');
+      }
+    }
+  }
   let model;
   try {
     model = await ensureModel();
@@ -4327,6 +4358,14 @@ function fillSettings() {
   fillMics();
 
   $('cUrl').value = s.baseUrl;
+  $('cEigenUrl').value = s.eigenUrl ?? '';
+  $('cEigenModel').value = s.eigenModel ?? '';
+  $('cRunpodPod').value = s.runpodPod ?? '';
+  $('cEigenAuto').checked = !!s.eigenAuto;
+  $('cEigenIdle').value = String(s.eigenIdle ?? 15);
+  $('cEigenFallback').checked = s.eigenFallback !== false;
+  $('cEigenTools').checked = s.eigenTools !== false;
+  renderEigenState();
   $('cTemp').value = s.temperature;
   $('cHistory').value = s.historyLimit;
   $('cOffline').checked = s.offline;
@@ -6957,11 +6996,90 @@ function toggleProviderFields() {
   $('cLocalWrap').hidden = p !== 'lmstudio';
   $('cClaudeWrap').hidden = p !== 'anthropic';
   $('cOpenaiWrap').hidden = p !== 'openai';
+  $('cEigenWrap').hidden = p !== 'eigen';
   $('cCloudHint').hidden = p === 'lmstudio';
   $('btnAttach').hidden = p !== 'anthropic';
   $('btnCamera').hidden = !MOBILE || p !== 'anthropic';
 }
 
+// ---- Versuchsreihe „Eigener Server (RunPod)“: Bereitschaft prüfen, Pod starten/stoppen, nach Ruhe automatisch stoppen
+state.eigen = { ready: false, checkedAt: 0, starting: false, lastUse: 0, startedByApp: false };
+const eigenTouch = () => (state.eigen.lastUse = Date.now());
+async function eigenReady({ force = false } = {}) {
+  const e = state.eigen;
+  if (!state.settings.eigenUrl) return false;
+  if (!force && e.ready && Date.now() - e.checkedAt < 60e3) return true;
+  const r = await withLimit(desktop.eigenPing(state.settings.eigenUrl).catch(() => null), 3500, null);
+  e.ready = !!r?.ok;
+  e.checkedAt = Date.now();
+  e.models = r?.models ?? e.models;
+  if (e.ready) e.starting = false;
+  renderEigenState();
+  return e.ready;
+}
+async function eigenStart({ quiet = false } = {}) {
+  const e = state.eigen;
+  if (e.starting) return;
+  e.starting = true;
+  e.startAt = Date.now();
+  renderEigenState();
+  try {
+    const st = await desktop.runpod({ action: 'status', podId: state.settings.runpodPod });
+    if (!/RUNNING/i.test(st.status)) {
+      await desktop.runpod({ action: 'start', podId: state.settings.runpodPod });
+      e.startedByApp = true;
+      logEv('EIGEN', 'Server gestartet');
+    }
+    if (!quiet) status('🧪 Server startet – das Modell lädt (1–3 Minuten) …');
+    // warten, bis das Modell antwortet (höchstens 6 Minuten)
+    for (let i = 0; i < 72 && e.starting; i++) {
+      if (await eigenReady({ force: true })) {
+        status('🧪 Eigener Server ist bereit.');
+        logEv('EIGEN', `bereit nach ${Math.round((Date.now() - e.startAt) / 1000)} s`);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 5000));
+      renderEigenState();
+    }
+  } catch (err) {
+    logEv('EIGEN', `Start: ${err.message}`);
+    if (!quiet) status(`🧪 ${err.message}`);
+    throw err;
+  } finally {
+    e.starting = false;
+    renderEigenState();
+  }
+}
+async function eigenStop() {
+  state.eigen.starting = false;
+  await desktop.runpod({ action: 'stop', podId: state.settings.runpodPod });
+  state.eigen.ready = false;
+  state.eigen.startedByApp = false;
+  logEv('EIGEN', 'Server gestoppt');
+  renderEigenState();
+}
+// nach der Ruhezeit stoppen (nur, solange die App läuft)
+setInterval(() => {
+  const s = state.settings;
+  const e = state.eigen;
+  if (s.provider !== 'eigen' || !s.eigenAuto || !s.runpodPod || !e.ready || e.starting) return;
+  if (Date.now() - (e.lastUse || Date.now()) > (s.eigenIdle ?? 15) * 60e3) {
+    logEv('EIGEN', `${s.eigenIdle ?? 15} min Ruhe – stoppe den Server`);
+    eigenStop().catch((err) => logEv('EIGEN', `Stopp: ${err.message}`));
+  }
+}, 60e3);
+function renderEigenState() {
+  const el = document.getElementById('cEigenState');
+  if (!el) return;
+  const e = state.eigen;
+  el.textContent = e.starting
+    ? `⏳ Server startet … ${Math.round((Date.now() - (e.startAt ?? Date.now())) / 1000)} s`
+    : e.ready
+      ? `✅ Bereit${e.models?.length ? ` – Modell: ${e.models.join(', ')}` : ''}${e.lastUse ? ` · zuletzt benutzt ${new Date(e.lastUse).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : ''}`
+      : state.settings.eigenUrl
+        ? '⏸ Nicht bereit (gestoppt oder lädt noch)'
+        : 'Adresse eintragen';
+}
 // ---------------------------------------------------------------- Google Kalender & Aufgaben
 const webActive = () => !LOCAL_ONLY && state.settings.provider === 'anthropic' && state.settings.claudeWeb;
 const userTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin';
@@ -7024,6 +7142,8 @@ async function refreshKeys() {
   $('cClaudeKey').placeholder = k.anthropic ? '•••••••• gespeichert – nur zum Ändern neu eingeben' : 'sk-ant-…';
   $('cOpenaiKey').placeholder = k.openai ? '•••••••• gespeichert – nur zum Ändern neu eingeben' : 'sk-…';
   $('cClaudeKeyDel').hidden = !k.anthropic;
+  $('cEigenKey').placeholder = k.eigen ? '•••••••• gespeichert – nur zum Ändern neu eingeben' : 'Passwort';
+  $('cRunpodKey').placeholder = k.runpod ? '•••••••• gespeichert – nur zum Ändern neu eingeben' : 'rpa_…';
   $('cOpenaiKeyDel').hidden = !k.openai;
   $('vCloudKeyInfo').textContent = k.openai ? '' : 'Für die OpenAI-Stimme bitte unter ⚙ → Verbindung einen OpenAI-Schlüssel hinterlegen.';
   return k;
@@ -7072,6 +7192,35 @@ const saveKey = (provider, inputId) => async () => {
   }
 };
 $('cClaudeKeySave').onclick = saveKey('anthropic', 'cClaudeKey');
+$('cEigenKeySave').onclick = saveKey('eigen', 'cEigenKey');
+$('cRunpodKeySave').onclick = saveKey('runpod', 'cRunpodKey');
+const eigenField = (id, key, val = (e) => e.target.value.trim()) => ($(id).onchange = (e) => ((state.settings[key] = val(e)), (state.eigen.ready = false), save(), renderEigenState()));
+eigenField('cEigenUrl', 'eigenUrl', (e) => e.target.value.trim().replace(/\/+$/, '').replace(/\/v1$/, ''));
+eigenField('cEigenModel', 'eigenModel');
+eigenField('cRunpodPod', 'runpodPod');
+eigenField('cEigenAuto', 'eigenAuto', (e) => e.target.checked);
+eigenField('cEigenIdle', 'eigenIdle', (e) => +e.target.value);
+eigenField('cEigenFallback', 'eigenFallback', (e) => e.target.checked);
+eigenField('cEigenTools', 'eigenTools', (e) => e.target.checked);
+$('cEigenTest').onclick = () =>
+  nasWithFeedback($('cEigenOut'), $('cEigenTest'), 'Teste den eigenen Server', async (onLine) => {
+    const lines = [];
+    const r = await desktop.eigenPing(state.settings.eigenUrl);
+    if (!r.ok) return { ok: false, lines: [`❌ Server antwortet mit ${r.status}${r.status === 401 ? ' – Passwort prüfen' : r.status === 404 || r.status === 502 ? ' – gestoppt oder lädt noch?' : ''}`] };
+    lines.push(`✅ Erreichbar – Modelle: ${r.models.join(', ') || '?'}`);
+    onLine(lines);
+    if (!state.settings.eigenModel && r.models[0]) {
+      state.settings.eigenModel = r.models[0];
+      $('cEigenModel').value = r.models[0];
+      save();
+    }
+    state.eigen.ready = true;
+    state.eigen.checkedAt = Date.now();
+    renderEigenState();
+    return { ok: true, lines };
+  }, { okHead: '✅ Der eigene Server ist bereit.', failHead: '❌ Nicht bereit.', timeout: 20000 });
+$('cEigenStart').onclick = () => eigenStart().catch(() => {});
+$('cEigenStop').onclick = () => eigenStop().then(() => status('🧪 Server gestoppt.'), (e) => status(`🧪 ${e.message}`));
 const deleteKey = (provider, name) => async () => {
   if (!confirm(`${name}-Schlüssel wirklich von diesem Rechner entfernen?`)) return;
   await desktop.setKey(provider, '');
@@ -7488,7 +7637,7 @@ $('areaCopyKeys').onclick = async () => {
 // bei späteren Fragen automatisch mit. Liegt in den Daten des Bereichs auf diesem Gerät.
 let savedIndex = null;
 const SAVED_MAX = 500;
-const appToolsActive = () => !LOCAL_ONLY && (state.settings.provider === 'anthropic' || state.settings.provider === 'openai');
+const appToolsActive = () => !LOCAL_ONLY && (state.settings.provider === 'anthropic' || state.settings.provider === 'openai' || (state.settings.provider === 'eigen' && state.settings.eigenTools !== false));
 function rebuildSaved() {
   savedIndex = buildIndex({ docs: (state.saved ?? []).map((e) => ({ name: e.title, entry: e, chunks: chunkText(e.text, 1600) })) });
   renderSaved();
@@ -13365,6 +13514,9 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  eigenReady,
+  eigenStart,
+  eigenStop,
   sendPersona,
   takePersona,
   renderTransfer,

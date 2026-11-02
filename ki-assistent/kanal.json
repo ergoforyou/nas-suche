@@ -1,4 +1,4 @@
 {
-  "kanal": "beta",
-  "hinweis": "Nur im Zweig claude/ki-assistent-beta: Die Android-App heißt „KI-Assistent Beta“ und hat eine eigene App-ID, sie lässt sich neben der normalen App installieren."
+  "kanal": "runpod",
+  "hinweis": "Nur im Zweig claude/ki-assistent-runpod: Versuchsreihe „Eigener Server (RunPod)“. Die App heißt „KI-Assistent RunPod“, hat eine eigene App-ID und eigene Daten – sie lässt sich neben der Beta installieren."
 }

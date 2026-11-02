@@ -716,6 +716,7 @@
           <option value="lmstudio">LM Studio – lokal auf diesem Rechner</option>
           <option value="anthropic">Claude (Anthropic) – Cloud, API-Schlüssel</option>
           <option value="openai">ChatGPT (OpenAI) – Cloud, API-Schlüssel</option>
+          <option value="eigen">Eigener Server (RunPod, Versuch) – eigenes Sprachmodell</option>
         </select>
       </label>
       <p class="hint warn" id="cCloudHint">Bei Cloud-Anbietern werden deine Nachrichten, der Systemprompt und das
@@ -809,6 +810,35 @@
         </div>
       </div>
 
+      <div id="cEigenWrap" hidden>
+        <p class="hint">🧪 <b>Versuchsreihe:</b> Ein eigenes Sprachmodell auf einem gemieteten Server (z. B. RunPod mit vLLM) –
+          OpenAI-kompatibel. Spracherkennung und Stimme bleiben wie eingestellt. Ist der Server (noch) nicht bereit, übernimmt
+          auf Wunsch Claude.</p>
+        <label>Adresse des Servers
+          <input id="cEigenUrl" type="text" placeholder="https://POD-ID-8000.proxy.runpod.net" autocomplete="off" />
+        </label>
+        <label>Modellname (wie bei --served-model-name)
+          <input id="cEigenModel" type="text" placeholder="qwen32b" autocomplete="off" />
+        </label>
+        <label>Passwort des Servers (--api-key)
+          <div class="row"><input id="cEigenKey" type="password" autocomplete="new-password" placeholder="Passwort" style="flex:1" /><button id="cEigenKeySave">Speichern</button></div>
+        </label>
+        <p class="hint">Für Starten/Stoppen aus der App (optional):</p>
+        <label>RunPod-API-Schlüssel (RunPod → Settings → API Keys)
+          <div class="row"><input id="cRunpodKey" type="password" autocomplete="new-password" placeholder="rpa_…" style="flex:1" /><button id="cRunpodKeySave">Speichern</button></div>
+        </label>
+        <label>Pod-ID
+          <input id="cRunpodPod" type="text" placeholder="z. B. abc123xyz" autocomplete="off" />
+        </label>
+        <label class="check"><input id="cEigenAuto" type="checkbox" /> Server automatisch starten, wenn ich spreche, und nach <select id="cEigenIdle"><option value="10">10</option><option value="15">15</option><option value="30">30</option><option value="60">60</option></select> Minuten Ruhe stoppen</label>
+        <label class="check"><input id="cEigenFallback" type="checkbox" /> Solange der Server nicht bereit ist, antwortet Claude</label>
+        <label class="check"><input id="cEigenTools" type="checkbox" /> Werkzeuge der App nutzen (Notizen, Erinnerungen …) – abschalten, falls das Modell sich dabei verhaspelt</label>
+        <div class="row wrap"><button id="cEigenTest">🔌 Testen</button><button id="cEigenStart">▶ Server starten</button><button id="cEigenStop">⏹ Server stoppen</button></div>
+        <pre id="cEigenOut" class="hint nas-test" hidden></pre>
+        <p id="cEigenState" class="hint"></p>
+        <p class="hint">⚠️ Läuft der Server, kostet er bei RunPod Geld – auch wenn die App zu ist. Die App stoppt ihn nach der Ruhezeit nur,
+          solange sie läuft; im Zweifel bei RunPod selbst stoppen.</p>
+      </div>
       <div id="cOpenaiWrap" hidden>
         <label>Modell
           <div class="row">

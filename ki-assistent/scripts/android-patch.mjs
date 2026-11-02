@@ -6,8 +6,11 @@ import path from 'node:path';
 const BASE = 'de.ergoforyou.kiassistent';
 // Beta-Linie (Datei kanal.json, nur im Beta-Zweig): eigene App-ID und eigener Name -> neben der normalen App installierbar
 const kanalFile = new URL('../kanal.json', import.meta.url);
-const BETA = fs.existsSync(kanalFile) && JSON.parse(fs.readFileSync(kanalFile, 'utf8')).kanal === 'beta';
-const APP = BETA ? `${BASE}.beta` : BASE;
+const KANAL = fs.existsSync(kanalFile) ? JSON.parse(fs.readFileSync(kanalFile, 'utf8')).kanal : '';
+const BETA = KANAL === 'beta' || KANAL === 'runpod';
+// Versuchsreihe RunPod: noch eine eigene App neben der Beta
+const APP = BETA ? `${BASE}.${KANAL}` : BASE;
+const APP_LABEL = KANAL === 'runpod' ? 'KI-Assistent RunPod' : 'KI-Assistent Beta';
 const shortcut = (id, label, action, icon = '@drawable/ic_ki_mic', cls = 'MainActivity') => `
     <shortcut android:shortcutId="${id}" android:enabled="true" android:icon="${icon}" android:shortcutShortLabel="@string/${label}">
         <intent android:action="android.intent.action.VIEW" android:targetPackage="${APP}" android:targetClass="${BASE}.${cls}">
@@ -397,7 +400,7 @@ const gradle = path.join(root, 'android/app/build.gradle');
 let g = fs.readFileSync(gradle, 'utf8');
 const [maj, min, pat] = version.split('.').map((n) => parseInt(n, 10));
 // Beta: Nummer hinter „-beta.“ – jede neue Beta hat eine höhere versionCode und installiert sich über die vorige
-const betaNo = Number(/-beta\.(\d+)/.exec(version)?.[1] ?? 0);
+const betaNo = Number(/-(?:beta|runpod)\.(\d+)/.exec(version)?.[1] ?? 0);
 const versionCode = BETA ? (maj * 10000 + min * 100 + pat) * 100 + betaNo : maj * 10000 + min * 100 + pat;
 // Fester Test-Signierschlüssel: Sonst signiert jeder Build mit einem neuen Zufallsschlüssel, und Android
 // verweigert das Update über die vorherige Version.
@@ -418,7 +421,7 @@ if (!g.includes('android-test.keystore')) {
 if (BETA) {
   g = g.replace(/applicationId "[^"]*"/, `applicationId "${APP}"`);
   const strings = path.join(root, 'android/app/src/main/res/values/strings.xml');
-  fs.writeFileSync(strings, fs.readFileSync(strings, 'utf8').replace(/(<string name="(?:app_name|title_activity_main)">)[^<]*/g, '$1KI-Assistent Beta'));
+  fs.writeFileSync(strings, fs.readFileSync(strings, 'utf8').replace(/(<string name="(?:app_name|title_activity_main)">)[^<]*/g, `$1${APP_LABEL}`));
 }
 // Orte: Google-Ortungsdienste (Geofencing) – genauer und sparsamer als der Näherungsalarm von Android
 if (!g.includes('play-services-location')) g = g.replace(/dependencies \{/, "dependencies {\n    implementation 'com.google.android.gms:play-services-location:21.3.0'");

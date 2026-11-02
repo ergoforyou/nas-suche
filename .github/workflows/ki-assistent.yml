@@ -108,7 +108,9 @@ jobs:
     runs-on: windows-latest
     env:
       # Beta-Linie: nur die Cloud-Ausgabe, als eigenes Programm „KI-Assistent Cloud Beta“ (eigener Datenordner)
-      BETA: ${{ contains(github.ref, 'ki-assistent-beta') && '1' || '' }}
+      BETA: ${{ (contains(github.ref, 'ki-assistent-beta') || contains(github.ref, 'ki-assistent-runpod')) && '1' || '' }}
+      KANAL: ${{ contains(github.ref, 'ki-assistent-runpod') && 'runpod' || 'beta' }}
+      KANAL_NAME: ${{ contains(github.ref, 'ki-assistent-runpod') && 'RunPod' || 'Beta' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -151,11 +153,11 @@ jobs:
         shell: bash
         run: >
           npx electron-builder --win portable nsis --publish never
-          -c.extraMetadata.edition=cloud -c.extraMetadata.kanal=beta
-          '-c.productName=KI-Assistent Cloud Beta' -c.appId=de.ergoforyou.kiassistent.cloud.beta
+          -c.extraMetadata.edition=cloud -c.extraMetadata.kanal=${{ env.KANAL }}
+          '-c.productName=KI-Assistent Cloud ${{ env.KANAL_NAME }}' -c.appId=de.ergoforyou.kiassistent.cloud.${{ env.KANAL }}
           -c.directories.output=release/cloud
-          '-c.nsis.artifactName=KI-Assistent-Cloud-Beta-${version}-Setup.${ext}'
-          '-c.portable.artifactName=KI-Assistent-Cloud-Beta-${version}-portable.${ext}'
+          '-c.nsis.artifactName=KI-Assistent-Cloud-${{ env.KANAL_NAME }}-${version}-Setup.${ext}'
+          '-c.portable.artifactName=KI-Assistent-Cloud-${{ env.KANAL_NAME }}-${version}-portable.${ext}'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Paketinhalt prüfen
@@ -172,7 +174,7 @@ jobs:
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BETA == '1' && 'KI-Assistent-Cloud-Beta' || 'KI-Assistent-Cloud' }}
+          name: ${{ env.BETA == '1' && format('KI-Assistent-Cloud-{0}', env.KANAL_NAME) || 'KI-Assistent-Cloud' }}
           path: |
             ki-assistent/release/cloud/*.exe
             ki-assistent/tts-server/*

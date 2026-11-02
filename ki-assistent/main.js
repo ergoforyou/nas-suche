@@ -33,8 +33,10 @@ const SMOKE = process.argv.includes('--smoke-test');
 // Jede Ausgabe hat ihren eigenen Datenordner (Personas, Bilder, Videos, Gedächtnis).
 const EDITION = process.env.KI_EDITION || require('./package.json').edition || 'cloud';
 // Beta-Linie (nur Cloud): eigener Name und damit eigener Datenordner – läuft neben der normalen Ausgabe
-const BETA = require('./package.json').kanal === 'beta';
-const APP_NAME = (EDITION === 'lokal' ? 'KI-Assistent' : 'KI-Assistent Cloud') + (BETA ? ' Beta' : '');
+const KANAL = require('./package.json').kanal;
+const BETA = KANAL === 'beta' || KANAL === 'runpod';
+// Versuchsreihe „Eigener Server (RunPod)“: eigener Name und eigener Datenordner, läuft neben der Beta
+const APP_NAME = (EDITION === 'lokal' ? 'KI-Assistent' : 'KI-Assistent Cloud') + (KANAL === 'runpod' ? ' RunPod' : BETA ? ' Beta' : '');
 app.setName(APP_NAME);
 app.setPath('userData', path.join(app.getPath('appData'), APP_NAME));
 ipcMain.on('app:edition', (e) => (e.returnValue = EDITION));
@@ -474,6 +476,7 @@ quickConnect.onStep = (t) => {
   } catch {}
 };
 const nasCrypt = require('./nascrypt.js');
+const { runpodCtl } = require('./runpod.js');
 // Am PC kann das Ziel auch ein lokaler Ordner sein (Synology-Client/Netzlaufwerk) – siehe naslocal.js
 const { isLocalNas, localNasReq } = require('./naslocal.js');
 async function remoteNasReq(base, user, method, rel, body, headers) {
@@ -1495,12 +1498,12 @@ function writeKey(name, value) {
 
 ipcMain.handle('keys:status', () => {
   const k = readKeyFile();
-  return { anthropic: !!k.anthropic, openai: !!k.openai, encrypted: safeStorage.isEncryptionAvailable() };
+  return { anthropic: !!k.anthropic, openai: !!k.openai, eigen: !!k.eigen, runpod: !!k.runpod, encrypted: safeStorage.isEncryptionAvailable() };
 });
 
 ipcMain.handle('keys:set', (_e, { provider, key }) => {
   if (EDITION === 'lokal') throw new Error('Diese Ausgabe nutzt keine Cloud-Anbieter.');
-  if (!['anthropic', 'openai'].includes(provider)) throw new Error('Unbekannter Anbieter');
+  if (!['anthropic', 'openai', 'eigen', 'runpod'].includes(provider)) throw new Error('Unbekannter Anbieter');
   const all = readKeyFile();
   const clean = String(key ?? '').trim();
   if (!clean) delete all[provider];
@@ -1801,6 +1804,21 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
     running.delete(id);
     return send('error', blocked);
   }
+  // Eigener Server (z. B. RunPod mit vLLM): OpenAI-kompatibel, mit eigenem Passwort
+  if (provider === 'eigen') {
+    try {
+      const OpenAI = require('openai').default;
+      const client = new OpenAI({ ...CLOUD_OPTS, apiKey: getKey('eigen') || 'leer', baseURL: apiUrl(baseUrl, '/v1') });
+      const clientTools = useApp ? appTools((name, input) => askRenderer('tool', { name, input }), { desktop: true, privat: AREA === 'privat' }) : null;
+      await chatOpenAI(client, { model, messages }, send, ctrl.signal, { clientTools });
+    } catch (err) {
+      if (ctrl.signal.aborted) send('done');
+      else send('error', `Eigener Server: ${err.status ? `${err.status} ` : ''}${err.message}`);
+    } finally {
+      running.delete(id);
+    }
+    return;
+  }
   if (provider === 'anthropic' || provider === 'openai') {
     const name = provider === 'anthropic' ? 'Claude' : 'ChatGPT';
     try {
@@ -1868,4 +1886,13 @@ ipcMain.on('llm:chat', async (e, { id, provider = 'lmstudio', baseUrl, model, me
   }
 });
 
+// Eigener Server: erreichbar und bereit? (GET /v1/models mit Passwort)
+ipcMain.handle('eigen:ping', async (_e, baseUrl) => {
+  const res = await fetch(apiUrl(baseUrl, '/v1/models'), { headers: { Authorization: `Bearer ${getKey('eigen') || ''}` }, signal: AbortSignal.timeout(5000) });
+  if (!res.ok) return { ok: false, status: res.status };
+  const j = await res.json().catch(() => ({}));
+  return { ok: true, models: (j.data ?? []).map((m) => m.id) };
+});
+// RunPod: Pod starten, stoppen, Zustand (nur mit eigenem RunPod-Schlüssel)
+ipcMain.handle('runpod:ctl', async (_e, { action, podId }) => runpodCtl({ action, podId, key: getKey('runpod'), fetchFn: fetch }));
 ipcMain.on('llm:abort', (_e, id) => running.get(id)?.abort());

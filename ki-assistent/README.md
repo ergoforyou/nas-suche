@@ -193,6 +193,18 @@ vorgelesen, abschaltbar). Die Suchdaten bleiben auf dem Gerät und werden weder 
 - **„Was kannst du alles?“** – die Figur schlägt in der eingebauten Hilfe nach (passend zu Gerät und Bereich).
 - **Selbsttest beim Start**: prüft Einstellungen und Daten und repariert Unstimmiges; Ergebnis unter „Läuft alles?“.
 
+### Versuchsreihe „Eigener Server (RunPod)“ (Zweig `claude/ki-assistent-runpod`)
+
+Eigene App **„KI-Assistent RunPod“** (Android) bzw. **„KI-Assistent Cloud RunPod“** (PC) – installiert sich neben der Beta, mit eigenen Daten (Personas per „📦 Personas übertragen“ von der NAS holen).
+
+- Neuer KI-Anbieter **Eigener Server (RunPod, Versuch)** unter ⚙ → Verbindung: Adresse (`https://POD-ID-8000.proxy.runpod.net`), Modellname (`--served-model-name`), Passwort (`--api-key`, verschlüsselt gespeichert). OpenAI-kompatibel (vLLM); Spracherkennung und Stimme bleiben wie eingestellt.
+- **🔌 Testen** zeigt, ob der Server bereit ist und welche Modelle er anbietet.
+- Optional mit RunPod-API-Schlüssel und Pod-ID: **▶ starten / ⏹ stoppen** aus der App, automatisch starten beim Sprechen und nach 10–60 Minuten Ruhe stoppen (nur solange die App läuft).
+- Ist der Server nicht bereit, antwortet auf Wunsch **Claude** (die Einstellung bleibt „Eigener Server“).
+- Werkzeuge der App (Notizen, Erinnerungen …) abschaltbar, falls das Modell sich dabei verhaspelt.
+
+Server einrichten (Kurzfassung): Modell auf die Netzwerk-Festplatte laden (`huggingface-cli download Qwen/Qwen2.5-32B-Instruct-AWQ --local-dir /workspace/models/qwen2.5-32b-awq`), Pod mit Image `vllm/vllm-openai:latest`, Start-Befehl `--model /workspace/models/qwen2.5-32b-awq --served-model-name qwen32b --max-model-len 16384 --gpu-memory-utilization 0.92 --enable-auto-tool-choice --tool-call-parser hermes --api-key …`, HTTP-Port 8000.
+
 ### Personas gezielt übertragen (Beta 102, Bereich Privat)
 
 - Kachel **📦 Personas übertragen** (⚙ → Sicherung & Geräte): alle Personas – hier und auf der NAS – mit Stand (Gedächtnis, Selbstbild, Notizbuch, Verlauf; von welchem Gerät, wann). Je Persona wählen, was mitgeht: **Figur**, **Gedächtnis**, **Verlauf** – dann „⬆ An den PC / Ans Handy schicken“ oder „⬇ Hierher holen“.

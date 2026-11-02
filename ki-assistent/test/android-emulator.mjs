@@ -8,8 +8,8 @@ import fs from 'node:fs';
 
 // Beta-Linie (kanal.json): eigene App-ID
 const kanal = new URL('../kanal.json', import.meta.url);
-const BETA = fs.existsSync(kanal) && JSON.parse(fs.readFileSync(kanal, 'utf8')).kanal === 'beta';
-const APP = BETA ? 'de.ergoforyou.kiassistent.beta' : 'de.ergoforyou.kiassistent';
+const KANAL = fs.existsSync(kanal) ? JSON.parse(fs.readFileSync(kanal, 'utf8')).kanal : '';
+const APP = KANAL === 'beta' || KANAL === 'runpod' ? `de.ergoforyou.kiassistent.${KANAL}` : 'de.ergoforyou.kiassistent';
 const ACT = `${APP}/de.ergoforyou.kiassistent.MainActivity`;
 const apk = process.argv[2];
 if (!apk) throw new Error('Pfad zur APK fehlt');
@@ -242,7 +242,7 @@ check(!(await run(`return KIDevice.backgroundRunning()`)), 'Hintergrund-Dienst l
 }
 
 // 4d) Beta: schwebende Figur über anderen Apps
-if (BETA) {
+if (KANAL === 'beta' || KANAL === 'runpod') {
   check(await run(`return typeof window.KIFloat?.now === 'function' && typeof window.KIFloat?.setListening === 'function' && typeof window.KIFloat?.free === 'function' && window.KIFloat.supported()`), 'Schwebende Figur: Schnittstelle vorhanden (auch ⛶ = sofort schweben)');
   adb('shell', 'appops', 'set', APP, 'SYSTEM_ALERT_WINDOW', 'allow');
   await sleep(500);
