@@ -3842,6 +3842,22 @@ const b102 = await page.evaluate(async () => {
   return out;
 });
 check(b102.sent && b102.rows && b102.took && b102.tool, 'Personas übertragen: Kachel, Teile wählbar, senden und genau so holen, per Zuruf', JSON.stringify(b102));
+// Beta 103: Live-Mitschrift nur auf Wunsch und nie mit Auto/Headset (dort das bewährte Zuhören)
+const b103 = await page.evaluate(() => {
+  const app = window.__app;
+  const keep = { hf: app.state.settings.handsFree, lh: app.state.settings.liveHear, dev: app.state.voiceDevice, eng: app.state.settings.sttEngine };
+  app.state.settings.handsFree = true;
+  app.state.settings.sttEngine = 'cloud';
+  delete app.state.settings.liveHear;
+  const out = { standard: app.liveHearWanted() };
+  app.state.settings.liveHear = true;
+  app.state.voiceDevice = 'Auto-Freisprechen';
+  out.auto = app.liveHearWanted();
+  Object.assign(app.state.settings, { handsFree: keep.hf, liveHear: keep.lh, sttEngine: keep.eng });
+  app.state.voiceDevice = keep.dev;
+  return out;
+});
+check(b103.standard === false && b103.auto === false, 'Live-Mitschrift: standardmäßig aus, mit Auto/Headset nie', JSON.stringify(b103));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

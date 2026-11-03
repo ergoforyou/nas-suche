@@ -515,6 +515,14 @@ function voiceRoute(on) {
   }
   if (on) state.voiceDevice = name;
   state.routeOn = !!on;
+  // Auto/Headset verbunden: Live-Mitschrift beenden, das bewährte Zuhören übernimmt
+  if (on && name && lh?.mic) {
+    logEv('ZUHÖREN', `Sprechgerät ${name} – bisheriges Zuhören`);
+    setTimeout(() => {
+      stopLiveHear();
+      maybeListenHandsFree();
+    }, 0);
+  }
   // während eines Gesprächs mit Auto/Headset das Mikrofon immer gleich öffnen (sonst beendet jeder Wechsel den „Anruf“)
   stt.forceAec = voiceSession() && !!state.voiceDevice;
   const el = document.getElementById('phAudioDev');
@@ -4322,7 +4330,7 @@ function fillSettings() {
   $('sBargeIn').checked = s.bargeIn;
   $('sMood').checked = s.moodTags !== false;
   $('sLivePause').value = String(s.livePauseMs);
-  $('sLiveHear').checked = s.liveHear !== false;
+  $('sLiveHear').checked = s.liveHear === true;
   $('sSens').value = s.sensitivity;
   fillMics();
 
@@ -13032,7 +13040,9 @@ async function startRealtime() {
 // Klappt die Verbindung nicht, läuft das bisherige Zuhören weiter.
 let lh = null;
 const liveHearWanted = () =>
-  MOBILE && state.settings.handsFree && state.settings.liveHear !== false && state.settings.sttEngine === 'cloud' && !state.settings.offline && !!desktop.realtimeConnect && !rt && !state.liveHearFailed && !state.inCall && !state.dictation && !state.longTalk;
+  // nur auf ausdrücklichen Wunsch (Test) und nie mit Auto/Headset – dort kommen sich die eigene Sprechverbindung und die
+  // Bluetooth-Sprechverbindung in die Quere (Verbindung baut sich auf und bricht ab); dort gilt das bewährte Zuhören
+  MOBILE && state.settings.handsFree && state.settings.liveHear === true && !state.voiceDevice && state.settings.sttEngine === 'cloud' && !state.settings.offline && !!desktop.realtimeConnect && !rt && !state.liveHearFailed && !state.inCall && !state.dictation && !state.longTalk;
 async function startLiveHear() {
   if (lh) return true;
   if (!(await desktop.keyStatus().catch(() => ({}))).openai) return false;
@@ -13040,8 +13050,19 @@ async function startLiveHear() {
   lh = { pc, held: false, guard: null, start: 0 };
   try {
     voiceRoute(true);
+    // Auto/Headset als Sprechgerät: hier nicht (siehe liveHearWanted) – gleich das bewährte Zuhören
+    if (state.voiceDevice) {
+      lh = null;
+      pc.close();
+      logEv('ZUHÖREN', `Sprechgerät ${state.voiceDevice} – bisheriges Zuhören`);
+      return false;
+    }
     micState(true);
     const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    if (!lh) {
+      mic.getTracks().forEach((t) => t.stop());
+      return false;
+    }
     lh.mic = mic;
     mic.getTracks().forEach((t) => pc.addTrack(t, mic));
     const dc = pc.createDataChannel('oai-events');
@@ -13068,6 +13089,16 @@ async function startLiveHear() {
     });
     await pc.setRemoteDescription({ type: 'answer', sdp: answer });
     lh.since = Date.now();
+    // Wächter: bricht die Verbindung ab oder kommt gar nichts zurück, sofort zurück zum bewährten Zuhören
+    const giveUp = (why) => {
+      if (!lh || lh.pc !== pc) return;
+      logEv('ZUHÖREN', `Live-Mitschrift ${why} – bisheriges Zuhören`);
+      state.liveHearFailed = true;
+      stopLiveHear();
+      maybeListenHandsFree();
+    };
+    pc.onconnectionstatechange = () => /failed|disconnected|closed/.test(pc.connectionState) && giveUp(`Verbindung ${pc.connectionState}`);
+    lh.watch = setTimeout(() => !lh?.events && giveUp('ohne Antwort nach 8 s'), 8000);
     logEv('ZUHÖREN', `live (Satzende nach Sinn${state.voiceDevice ? `, ${state.voiceDevice}` : ''})`);
     status('🎙 Ich höre zu – sprich einfach.');
     return true;
@@ -13083,6 +13114,7 @@ function stopLiveHear() {
   const l = lh;
   lh = null;
   clearInterval(l.guard);
+  clearTimeout(l.watch);
   if (l.held && tts.held) tts.release();
   try {
     l.dc?.close();
@@ -13106,6 +13138,7 @@ function liveHearRelease(why) {
 function liveHearEvent(ev) {
   const t = ev.type ?? '';
   if (!lh) return;
+  lh.events = (lh.events ?? 0) + 1;
   if (/input_audio_transcription\.delta$/.test(t)) {
     // Live-Text: was ankommt, gleich zeigen (auch in der Nur-Figur-Ansicht) – man sieht, dass es verstanden wird
     lh.partial = (lh.partial ?? '') + (ev.delta ?? '');
