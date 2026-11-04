@@ -3858,6 +3858,24 @@ const b103 = await page.evaluate(() => {
   return out;
 });
 check(b103.standard === false && b103.auto === false, 'Live-Mitschrift: standardmäßig aus, mit Auto/Headset nie', JSON.stringify(b103));
+// Beta 104: Abgleich je Persona abschaltbar – ausgenommen geht nicht hinaus und wird nicht überschrieben
+const b104 = await page.evaluate(() => {
+  const app = window.__app;
+  const p = app.persona();
+  const keep = { skip: app.state.settings.syncSkip, prompt: p.prompt };
+  app.state.settings.syncSkip = [p.id];
+  p.prompt = 'Lokale Fassung 104';
+  const out = { notOut: !app.syncOut().personas.some((x) => x.id === p.id) };
+  const remote = JSON.parse(JSON.stringify(app.syncSnapshot()));
+  const rp = remote.personas.find((x) => x.id === p.id);
+  if (rp) (rp.prompt = 'Fremde Fassung'), (rp.updated = Date.now() + 1e6);
+  app.syncMerge(remote);
+  out.kept = app.state.personas.find((x) => x.id === p.id)?.prompt === 'Lokale Fassung 104';
+  app.state.settings.syncSkip = keep.skip;
+  app.state.personas.find((x) => x.id === p.id).prompt = keep.prompt;
+  return out;
+});
+check(b104.notOut && b104.kept, 'Abgleich je Persona abschaltbar: geht nicht hinaus, wird nicht überschrieben', JSON.stringify(b104));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

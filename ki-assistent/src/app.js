@@ -11270,7 +11270,7 @@ desktop.onSyncRequest?.(async (op, data) => {
     syncMerge(data.stand);
     state.abgleich.last = Date.now();
     renderSyncState();
-    return { area: AREA, stand: syncSnapshot(state, state.abgleich) };
+    return { area: AREA, stand: syncOut() };
   }
   if (op === 'figur') {
     const p = state.personas.find((x) => x.id === data?.id);
@@ -11540,10 +11540,27 @@ function refreshSyncUi() {
 // (abgleich.js); Figuren gehen nur hinterher, wenn sie sich geändert haben.
 
 /** Fremden Stand mit dem eigenen zusammenführen und übernehmen. */
+// Personas, die auf diesem Gerät nicht automatisch abgeglichen werden sollen (Kachel „Personas übertragen“) – gehen
+// weder hinaus, noch werden sie vom anderen Gerät überschrieben
+const syncSkip = () => new Set(state.settings.syncSkip ?? []);
+function withoutSkipped(stand, skip = syncSkip()) {
+  if (!skip.size || !stand) return stand;
+  return { ...stand, personas: (stand.personas ?? []).filter((p) => !skip.has(p.id)), history: Object.fromEntries(Object.entries(stand.history ?? {}).filter(([id]) => !skip.has(id))) };
+}
+/** Was hinausgeht (NAS, WLAN): alles außer den hier ausgenommenen Personas. */
+const syncOut = (opts) => withoutSkipped(syncSnapshot(state, state.abgleich, opts));
 function syncMerge(remote) {
   stampSync(state, syncCache);
   noteDeletions(state, state.abgleich);
-  const m = mergeSync(syncSnapshot(state, state.abgleich, { limit: Infinity }), remote ?? {});
+  const skip = syncSkip();
+  const m = mergeSync(syncOut({ limit: Infinity }), withoutSkipped(remote ?? {}, skip));
+  // ausgenommene Personas bleiben hier genau, wie sie sind
+  for (const p of state.personas) {
+    if (!skip.has(p.id) || m.personas.some((x) => x.id === p.id)) continue;
+    const { avatar: _a, ...rest } = p;
+    m.personas.push({ ...rest, avatarStamp: p.avatarStamp ?? 0 });
+    m.history[p.id] = state.history[p.id] ?? [];
+  }
   applySync(m);
   return m;
 }
@@ -11694,7 +11711,7 @@ async function autoSync({ manual = false } = {}) {
     if (!target) throw new Error('PC nicht erreichbar (gleiches WLAN? KI-Assistent am PC offen?)');
     stampSync(state, syncCache);
     noteDeletions(state, state.abgleich);
-    const body = JSON.stringify({ area: AREA, stand: syncSnapshot(state, state.abgleich) });
+    const body = JSON.stringify({ area: AREA, stand: syncOut() });
     const r = await (await syncFetch('/abgleich', { method: 'POST', body, headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(90000) }, target)).json();
     syncMerge(r.stand);
     // Figuren: nur die, die sich geändert haben (Stand -1 = hier noch keine Figur)
@@ -11894,7 +11911,9 @@ async function nasSync({ manual = false, backup = false } = {}) {
       // Figuren: nur geänderte übertragen (Stand -1 = hier noch keine eigene Figur)
       const figuren = { ...(doc?.figuren ?? {}) };
       let figs = 0;
+      const skipFig = syncSkip();
       for (const p of state.personas) {
+        if (skipFig.has(p.id)) continue;
         const f = figuren[p.id];
         const mine = p.avatarStamp ?? 0;
         if (f && f.stamp > mine) {
@@ -11928,7 +11947,7 @@ async function nasSync({ manual = false, backup = false } = {}) {
         delete figuren[id];
       }
       const body = new TextEncoder().encode(
-        JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), ...(doc?.resetAt ? { resetAt: doc.resetAt } : {}), stand: syncSnapshot(state, state.abgleich), figuren }),
+        JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), ...(doc?.resetAt ? { resetAt: doc.resetAt } : {}), stand: syncOut(), figuren }),
       );
       const cond = got.status === 200 && got.etag ? { 'If-Match': got.etag } : got.status === 404 ? { 'If-None-Match': '*' } : {};
       const put = await nasReq('PUT', 'stand.json', body, { 'Content-Type': 'application/json', ...cond });
@@ -12174,7 +12193,7 @@ function adoptStand(stand) {
   applySync(m);
 }
 const nasBody = (extra = {}) =>
-  new TextEncoder().encode(JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), stand: syncSnapshot(state, state.abgleich), ...extra }));
+  new TextEncoder().encode(JSON.stringify({ typ: 'ki-assistent-stand', version: 1, area: AREA, geaendert: Date.now(), stand: syncOut(), ...extra }));
 /** Sicherungen der letzten 30 Tage auf der NAS suchen (HEAD je Tag – WebDAV-Listen kann das Handy nicht). */
 async function nasListBackups() {
   const days = Array.from({ length: 31 }, (_, i) => new Date(Date.now() - i * 86400e3).toISOString().slice(0, 10));
@@ -12554,6 +12573,31 @@ async function renderTransfer() {
       m1.textContent = here;
       m2.textContent = there;
       if (fresh) m2.classList.add('tr-new'), (m2.textContent = `🆕 ${there}`);
+      // automatischer Abgleich dieser Persona (Standard: an) – dann braucht es die Knöpfe unten gar nicht
+      if (p) {
+        const auto = document.createElement('label');
+        auto.className = 'check tr-auto';
+        const c = document.createElement('input');
+        c.type = 'checkbox';
+        c.checked = !syncSkip().has(id);
+        c.onchange = () => {
+          const set = syncSkip();
+          if (c.checked) set.delete(id);
+          else set.add(id);
+          state.settings.syncSkip = [...set];
+          save();
+          logEv('NAS', `${p.name}: automatischer Abgleich ${c.checked ? 'an' : 'aus'}`);
+          if (c.checked) nasSoon(500);
+          renderTransfer().catch(() => {});
+        };
+        const nas = state.settings.nas;
+        const fig = nas?.fig?.[id];
+        const st = syncSkip().has(id)
+          ? '⏸ aus – diese Persona bleibt auf diesem Gerät, wie sie ist'
+          : `✅ an – zuletzt abgeglichen ${whenText(nas?.last)}${fig?.st === 'ok' ? ' · Figur ✅' : fig?.st === 'gross' ? ` · Figur ⚠️ zu groß (${fig.mb} MB)` : ' · Figur ⏳ beim nächsten Abgleich'}${nas?.error ? ` · ⚠️ ${nas.error}` : ''}`;
+        auto.append(c, ` 🔁 Automatisch abgleichen (${st})`);
+        row.insertBefore(auto, row.querySelector('.tr-parts'));
+      }
       const checks = {};
       for (const [k, label] of Object.entries(PARTS)) {
         const l = document.createElement('label');
@@ -13398,6 +13442,7 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  syncOut,
   sendPersona,
   takePersona,
   renderTransfer,
