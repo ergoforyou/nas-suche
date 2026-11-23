@@ -1047,7 +1047,9 @@ function runSmokeTest() {
         const fg = await helperCmd('FG');
         console.log('Windows-Helfer: Zustand', st, '| Vordergrundfenster', fg);
         if (!(st >= 1) || !fg) return fail('Windows-Helfer antwortet nicht');
-        const cl = await helperCmd('CLAUDE');
+        // die Prozess-Suche ist beim ersten Mal langsam (neue Windows-Abbilder) – einmal nachfragen
+        let cl = await helperCmd('CLAUDE');
+        if (cl === null) cl = await helperCmd('CLAUDE');
         console.log('Claude-Fenster gesucht:', cl);
         if (cl === null) return fail('Windows-Helfer: Claude-Suche');
       }
