@@ -13,6 +13,7 @@ import wetter from '../../wetter.js';
 import nachrichten from '../../nachrichten.js';
 import synology from '../../synology.js';
 import nasCrypt from '../../nascrypt.js';
+import websuche from '../../websuche.js';
 import youtube from '../../youtube.js';
 import verkehr from '../../verkehr.js';
 
@@ -251,6 +252,8 @@ const api = {
   // Wetter (Open-Meteo): nur Ortsname/Koordinaten gehen hinaus
   weather: (o) => wetter.weather(o, { fetchFn: nativeGet }),
   news: (o) => nachrichten.news(o, { fetchFn: nativeGet }),
+  webSearch: (q) => websuche.searchWeb(q, { fetchFn: (u, o = {}) => nativeGet(u, o.headers) }),
+  webRead: (url) => websuche.readPage(url, { fetchFn: (u, o = {}) => nativeGet(u, o.headers) }),
   traffic: (o) => verkehr.traffic(o, { fetchFn: nativeGet }),
   // Sicherungen auf dem Gerät (Bereich getrennt): automatisch einmal pro Woche, „Zurückholen“ in der App
   backupSave: (name, value) => writeJson(areaPath(`sicherungen/${safeBackup(name)}`), value),

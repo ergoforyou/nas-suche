@@ -10,6 +10,7 @@ import { humorLevel, humorPrompt, humorCommand, HUMOR_NAMES } from './humor.js';
 import { looksEnglish, LANG_NUDGE, LANG_SLIP, isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
 import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES, handoffCommand, newsRequest, whatsNew } from './gespraech.js';
 import synology from '../synology.js';
+import websucheLib from '../websuche.js';
 import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
 import { markSections, indexSettings, searchSettings, runOnboarding } from './einrichtung.js';
 import { roundItems, nightJob, readNightResult, findOrt, ortWatch, ORTE_MAX, ORT_RADIUS, ORT_RADIEN, ortArt, hhmm, wannText, hereNow, isOffice, gruppenKey } from './begleiter.js';
@@ -976,6 +977,7 @@ function buildMessages() {
   }
   // neuer Chat: wo ihr zuletzt wart (nur in den ersten Nachrichten und wenn der vorige Chat frisch ist)
   if (p.bruecke?.text && history().length <= 8 && Date.now() - (p.bruecke.t ?? 0) < 3 * 86400e3) ctx.push(bridgePrompt(p.bruecke, p.language === 'en' ? 'en' : 'de'));
+  if (state.webCtx) ctx.push(state.webCtx);
   if (state.newsCtx != null && p.language !== 'en')
     ctx.push(state.newsCtx ? `Neu seit dem letzten Blick auf diesem Gerät (abgeglichen vom anderen Gerät):\n${state.newsCtx}\nErzähl das kurz und natürlich, das Wichtigste zuerst.` : 'Seit dem letzten Blick auf diesem Gerät ist nichts Neues dazugekommen – sag das kurz.');
   if (state.kbHits?.length) ctx.push(kbPrompt(state.kbHits, p.language === 'en' ? 'en' : 'de'));
@@ -1266,6 +1268,8 @@ async function send(text) {
   if (nach && nach !== DEVICE) return handoff(text, nach);
   // „Was gab's Neues?“: was seit dem letzten Blick auf diesem Gerät dazukam, geht mit an die Figur
   state.newsCtx = BRAIN && newsRequest(text) ? newsSince(state.seenBefore || Date.now() - 86400e3) : null;
+  // LM Studio hat keine Werkzeuge: bei Rechercheaufträgen vorab im Internet suchen
+  state.webCtx = state.settings.provider === 'lmstudio' && webSearchOn() && websucheLib.wantsSearch(text) ? await webPrefetch(text) : null;
   if (PRIV && realtimeCommand(text) === 'an' && desktop.realtimeConnect && !pendingAttachments.length) {
     addBubble('user', text);
     logEv('GESPRÄCH', 'Echtzeit per Zuruf');
@@ -4362,6 +4366,7 @@ function fillSettings() {
     fillSelect($('cClaudeModel'), knownModel ? CLAUDE_MODELS : [...CLAUDE_MODELS, [s.claudeModel, s.claudeModel]], s.claudeModel);
     $('cClaudeEffort').value = s.claudeEffort;
     $('cClaudeWeb').checked = s.claudeWeb;
+  $('cWebSuche').checked = s.webSuche !== false;
     $('cClaudeFiles').checked = s.claudeFiles;
   }
   toggleProviderFields();
@@ -6988,6 +6993,37 @@ function toggleProviderFields() {
   $('btnCamera').hidden = !MOBILE || p !== 'anthropic';
 }
 
+// ---- Internetsuche für alle KI-Anbieter (Claude hat zusätzlich seine eigene): DuckDuckGo/Wikipedia über websuche.js
+const webSearchOn = () => !LOCAL_ONLY && !state.settings.offline && state.settings.webSuche !== false && !!desktop.webSearch;
+/** Suchen und die beste Seite gleich mitlesen (das reicht kleinen Modellen meist für eine gute Antwort). */
+async function webResearch(q) {
+  const r = await desktop.webSearch(q);
+  logEv('SUCHE', `Internet (${r.quelle}): „${q.slice(0, 80)}“ – ${r.treffer.length} Treffer`);
+  let seite = null;
+  for (const t of r.treffer.slice(0, 2)) {
+    seite = await withLimit(desktop.webRead(t.url).catch(() => null), 7000, null);
+    if (seite?.text?.length > 300) break;
+  }
+  return { quelle: r.quelle, treffer: r.treffer, ...(seite ? { beste_seite: { ...seite, text: seite.text.slice(0, 4000) } } : {}) };
+}
+/** Für Modelle ohne Werkzeuge (LM Studio): klingt die Frage nach Recherche, vorab suchen und die Ergebnisse mitgeben. */
+const SEARCH_LEAD_RE = /^(hey |hallo |du,? )?(kannst du |könntest du |bitte )?(mal )?(such(e|st)?|recherchier\w*|google|schau)( mal| bitte)?( (im internet|online|im netz|im web))?( (nach|ob|was|wie|wann|wo))?[,:]?\s*/i;
+async function webPrefetch(text) {
+  const q = String(text ?? '').replace(SEARCH_LEAD_RE, '').replace(/[?!.]+$/, '').trim().slice(0, 200);
+  if (q.length < 3) return null;
+  status('🔎 Suche im Internet …');
+  try {
+    const r = await withLimit(webResearch(q), 12000, null);
+    if (!r) return null;
+    const list = r.treffer.slice(0, 5).map((t, i) => `${i + 1}. ${t.titel} (${t.url}): ${t.text}`).join('\n');
+    return `Ergebnisse einer Internetsuche (${r.quelle}) zu „${q}“:\n${list}${r.beste_seite ? `\n\nAus „${r.beste_seite.titel}“:\n${r.beste_seite.text.slice(0, 3000)}` : ''}\n\nBeantworte die Frage damit, in deiner Art und auf Deutsch, und nenne die Quelle (Seitentitel). Steht die Antwort nicht drin, sag das ehrlich.`;
+  } catch (e) {
+    logEv('SUCHE', `Internet: ${e.message}`);
+    return null;
+  } finally {
+    status('');
+  }
+}
 // ---------------------------------------------------------------- Google Kalender & Aufgaben
 const webActive = () => !LOCAL_ONLY && state.settings.provider === 'anthropic' && state.settings.claudeWeb;
 const userTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin';
@@ -7122,6 +7158,10 @@ $('cClaudeRefresh').onclick = async () => {
   } catch (e) {
     status(`Modelle konnten nicht geladen werden: ${e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
   }
+};
+$('cWebSuche').onchange = (e) => {
+  state.settings.webSuche = e.target.checked;
+  save();
 };
 $('cClaudeWeb').onchange = (e) => {
   state.settings.claudeWeb = e.target.checked;
@@ -7674,6 +7714,11 @@ async function runAppToolInner(name, input) {
       gespraeche: list.map((e) => ({ datum: new Date(e.von).toLocaleDateString('de-DE'), titel: e.titel, zusammenfassung: e.text, offen: e.offen || undefined })),
       ...(list.length ? {} : { hinweis: 'Nichts Passendes gefunden – Gespräche werden abends zusammengefasst, die von heute stehen noch im Verlauf.' }),
     };
+  }
+  if (name === 'internet_suchen') {
+    if (!webSearchOn()) throw new Error('Internetsuche ist ausgeschaltet oder offline');
+    if (input?.seite) return { seite: await desktop.webRead(String(input.seite)) };
+    return webResearch(String(input?.suche ?? ''));
   }
   if (name === 'nachrichten') {
     if (state.settings.offline) throw new Error('offline – keine Nachrichten abrufbar');
@@ -13460,6 +13505,8 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  webResearch,
+  webPrefetch,
   ThinkFilter,
   syncOut,
   sendPersona,

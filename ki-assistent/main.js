@@ -253,6 +253,17 @@ ipcMain.handle('weather:get', async (_e, opts = {}) => {
   if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
   return weather(opts, { fetchFn: (u) => net.fetch(u, { signal: AbortSignal.timeout(15000) }) });
 });
+// Internetsuche für alle KI-Anbieter (nicht nur Claude): nur der Suchbegriff bzw. die Adresse geht hinaus
+const websuche = require('./websuche.js');
+const webFetch = (u, o = {}) => net.fetch(u, { ...o, signal: AbortSignal.timeout(15000) });
+ipcMain.handle('web:search', async (_e, q) => {
+  if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
+  return websuche.searchWeb(q, { fetchFn: webFetch });
+});
+ipcMain.handle('web:read', async (_e, url) => {
+  if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
+  return websuche.readPage(url, { fetchFn: webFetch });
+});
 ipcMain.handle('news:get', async (_e, opts = {}) => {
   if (EDITION === 'lokal') throw new Error('Diese Ausgabe arbeitet ausschließlich lokal.');
   return news(opts, { fetchFn: (u) => net.fetch(u, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 KI-Assistent' } }) });

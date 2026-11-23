@@ -3889,6 +3889,19 @@ const b105 = await page.evaluate(() => {
   return { nudge: /Antworte ausschließlich auf Deutsch/.test(lastUser?.content ?? ''), harmony: out };
 });
 check(b105.nudge && b105.harmony === 'Hallo, wie geht es dir?', 'Lokale Modelle: Deutsch an der letzten Frage, Denk-Kanal herausgefiltert', JSON.stringify(b105));
+// Beta 106: Internetsuche für alle Anbieter – Werkzeug liefert Treffer + beste Seite; LM Studio sucht vorab
+const b106 = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = { s: window.desktop.webSearch, r: window.desktop.webRead };
+  window.desktop.webSearch = async (q) => ({ quelle: 'DuckDuckGo', treffer: [{ titel: 'Zoo Hannover', url: 'https://zoo.example', text: 'Öffnungszeiten 9–18 Uhr' }], q });
+  window.desktop.webRead = async (url) => ({ titel: 'Zoo Hannover – Infos', url, text: 'Täglich von 9 bis 18 Uhr geöffnet. '.repeat(20) });
+  const tool = await app.runAppTool('internet_suchen', { suche: 'Zoo Hannover Öffnungszeiten' });
+  const ctx = await app.webPrefetch('Such mal im Internet nach den Öffnungszeiten vom Zoo Hannover');
+  window.desktop.webSearch = keep.s;
+  window.desktop.webRead = keep.r;
+  return { tool: tool.treffer?.length === 1 && /geöffnet/.test(tool.beste_seite?.text ?? ''), ctx: /Ergebnisse einer Internetsuche/.test(ctx ?? '') && /Zoo Hannover/.test(ctx ?? '') && !/Such mal/.test(ctx ?? '') };
+});
+check(b106.tool && b106.ctx, 'Internetsuche: Werkzeug für alle Anbieter, Vorab-Suche bei LM Studio', JSON.stringify(b106));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

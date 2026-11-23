@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld('desktop', {
   claudeHandoff: (opts) => ipcRenderer.invoke('claude:handoff', opts),
   weather: (opts) => ipcRenderer.invoke('weather:get', opts),
   news: (opts) => ipcRenderer.invoke('news:get', opts),
+  webSearch: (q) => ipcRenderer.invoke('web:search', q),
+  webRead: (url) => ipcRenderer.invoke('web:read', url),
   traffic: (opts) => ipcRenderer.invoke('traffic:get', opts),
   officeCopy: (text) => ipcRenderer.invoke('office:copy', text),
   officeForeground: () => ipcRenderer.invoke('office:foreground'),

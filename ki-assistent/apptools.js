@@ -99,6 +99,23 @@ const APP_TOOLS = [
     },
   },
   {
+    name: 'internet_suchen',
+    description:
+      'Im Internet recherchieren (DuckDuckGo, ersatzweise Wikipedia) – nimm es, wenn du keine eigene Websuche hast und ' +
+      'dein Gegenüber etwas Aktuelles, Nachprüfbares oder dir Unbekanntes wissen will: Preise, Öffnungszeiten, ' +
+      'Termine, Ereignisse, Fakten zu Personen, Firmen, Produkten, „such mal im Internet …“. suche: der Suchbegriff ' +
+      '(kurz, wie in eine Suchmaschine). Liefert Treffer mit Kurztext und den Text der besten Seite; mit seite (eine ' +
+      'Adresse aus den Treffern) liest du eine bestimmte Seite genauer. Antworte danach in deiner Art und nenne die ' +
+      'Quelle (Seitentitel). Nichts Persönliches aus dem Gespräch in die Suche schreiben.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        suche: { type: 'string', description: 'Suchbegriff' },
+        seite: { type: 'string', description: 'Optional: Adresse einer Seite, die genauer gelesen werden soll' },
+      },
+    },
+  },
+  {
     name: 'nachrichten',
     description:
       'Holt die wichtigsten Nachrichten des Tages: lokal (zum Ort des Nutzers), Wetter, Wirtschaft, Deutschland, Welt ' +
@@ -418,6 +435,7 @@ const APP_TOOL_STATUS = { wissen_speichern: '💾 Speichere im Wissen …', wiss
   nachrichten: '📰 Schaue in die Nachrichten …',
   abgleich_sicherung: '🔁 Gleiche ab …',
   persona_uebertragen: '📦 Übertrage die Persona …',
+  internet_suchen: '🔎 Suche im Internet …',
 };
 
 module.exports = { APP_TOOLS, APP_TOOL_STATUS };
