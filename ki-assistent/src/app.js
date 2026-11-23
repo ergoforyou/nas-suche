@@ -7,7 +7,7 @@ import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
 import { humorLevel, humorPrompt, humorCommand, HUMOR_NAMES } from './humor.js';
-import { isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
+import { looksEnglish, LANG_NUDGE, LANG_SLIP, isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
 import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES, handoffCommand, newsRequest, whatsNew } from './gespraech.js';
 import synology from '../synology.js';
 import { bootStart, bootStable, bootNext, rememberError, lastErrors, STABLE_MS } from './startschutz.js';
@@ -1024,7 +1024,15 @@ function buildMessages() {
     ];
   }
   // andere Anbieter (LM Studio, ChatGPT): wie bisher ein gemeinsamer Systemtext
-  const all2 = [sys, ctxText].filter(Boolean).join('\n\n');
+  const de = p.language !== 'en';
+  const slip = de && state.langSlip > 0 ? LANG_SLIP : '';
+  const all2 = [sys, ctxText, slip].filter(Boolean).join('\n\n');
+  // lokale/eigene Modelle: die Sprache direkt an der letzten Frage nennen (vorn im langen Systemtext geht sie unter)
+  const local = state.settings.provider === 'lmstudio' || state.settings.provider === 'eigen';
+  if (de && local && state.settings.forceGerman !== false) {
+    const i = h.findLastIndex((m) => m.role === 'user' && typeof m.content === 'string');
+    if (i >= 0) h[i] = { ...h[i], content: `${h[i].content}\n\n${LANG_NUDGE}` };
+  }
   return all2 ? [{ role: 'system', content: all2 }, ...h] : h;
 }
 
@@ -1035,7 +1043,12 @@ class ThinkFilter {
     this.buf = '';
   }
   push(text) {
+    // gpt-oss & Co. (Harmony-Format): Denk-Kanal wie <think> behandeln, übrige Steuerzeichen entfernen
     this.buf += text;
+    this.buf = this.buf
+      .replace(/<\|channel\|>\s*(analysis|commentary)\s*<\|message\|>/g, '<think>')
+      .replace(/<\|end\|>\s*(<\|start\|>\s*assistant\s*)?<\|channel\|>\s*final\s*<\|message\|>/g, '</think>')
+      .replace(/<\|(start|channel|message|end|return)\|>(assistant|final)?/g, '');
     let out = '';
     for (;;) {
       if (this.inThink) {
@@ -1051,7 +1064,7 @@ class ThinkFilter {
         if (start < 0) {
           // mögliche angefangene Tags zurückhalten
           const keep = this.buf.lastIndexOf('<');
-          if (keep >= 0 && keep > this.buf.length - 8) {
+          if (keep >= 0 && keep > this.buf.length - 48) {
             out += this.buf.slice(0, keep);
             this.buf = this.buf.slice(keep);
           } else {
@@ -1438,6 +1451,11 @@ async function send(text) {
       const cut = !!state.cutId && state.cutId === state.currentChatId;
       state.cutId = null;
       const entry = { role: 'assistant', content: answer, t: Date.now(), ...(cut ? { cut: true } : {}), ...(created.length ? { files: created } : {}), ...(tools.length ? { tools } : {}) };
+      // ins Englische gerutscht (Deutsch gewollt)? Die nächsten Antworten ausdrücklich daran erinnern
+      if (persona().language !== 'en' && looksEnglish(answer)) {
+        state.langSlip = 3;
+        logEv('SPRACHE', `Antwort englisch (${state.settings.provider} ${state.settings.provider === 'lmstudio' ? state.settings.model ?? '' : ''}) – nächste Antworten mit Erinnerung`);
+      } else if (state.langSlip > 0) state.langSlip--;
       fillBubble(bubble, 'assistant', answer);
       decorateBubble(bubble, entry);
       history().push(entry);
@@ -13442,6 +13460,7 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  ThinkFilter,
   syncOut,
   sendPersona,
   takePersona,

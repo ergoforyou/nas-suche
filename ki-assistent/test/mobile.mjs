@@ -21,7 +21,7 @@ const server = http
   })
   .listen(8776);
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const page = await (await browser.newContext({ ...devices['Pixel 7'] })).newPage();
 // wie in der Android-WebView: keine Systemstimmen (speechSynthesis fehlt)
 await page.addInitScript(() => {
@@ -3876,6 +3876,19 @@ const b104 = await page.evaluate(() => {
   return out;
 });
 check(b104.notOut && b104.kept, 'Abgleich je Persona abschaltbar: geht nicht hinaus, wird nicht überschrieben', JSON.stringify(b104));
+// Beta 105: lokale Modelle – Deutsch direkt an der letzten Frage; Denk-Kanal (gpt-oss) wird nicht vorgelesen
+const b105 = await page.evaluate(() => {
+  const app = window.__app;
+  const keep = app.state.settings.provider;
+  app.state.settings.provider = 'lmstudio';
+  const msgs = app.buildMessages();
+  app.state.settings.provider = keep;
+  const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
+  const f = new app.ThinkFilter();
+  const out = f.push('<|channel|>analysis<|message|>We need to answer in German.<|end|><|start|>assistant<|channel|>final<|message|>Hallo, ') + f.push('wie geht es dir?') + f.flush();
+  return { nudge: /Antworte ausschließlich auf Deutsch/.test(lastUser?.content ?? ''), harmony: out };
+});
+check(b105.nudge && b105.harmony === 'Hallo, wie geht es dir?', 'Lokale Modelle: Deutsch an der letzten Frage, Denk-Kanal herausgefiltert', JSON.stringify(b105));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

@@ -83,3 +83,20 @@ export function plainBridge(history, n = 3) {
   if (!said.length) return null;
   return { text: `Zuletzt ging es um: ${said.map((m) => `„${m.content.trim().slice(0, 100)}“`).join(', ')}.`, t: Date.now() };
 }
+
+// ---- Sprache: lokale Modelle (LM Studio) rutschen gern ins Englische
+const EN = new Set(['the', 'and', 'is', 'are', 'you', 'your', 'to', 'of', 'it', 'that', 'this', 'with', 'for', 'what', 'have', 'can', 'will', 'be', 'not', 'there', 'here', 'about', 'just', 'so', 'do', 'if', 'my', 'me', 'we', 'they']);
+const DE = new Set(['der', 'die', 'das', 'und', 'ist', 'du', 'dein', 'ich', 'nicht', 'mit', 'zu', 'ein', 'eine', 'auf', 'für', 'es', 'sich', 'auch', 'wie', 'was', 'den', 'dem', 'noch', 'dann', 'aber', 'mal', 'wir', 'sie', 'hast', 'bin']);
+/** Ist die Antwort überwiegend englisch (obwohl Deutsch gewollt war)? */
+export function looksEnglish(text) {
+  const w = String(text ?? '').toLowerCase().match(/[a-zäöüß']+/g) ?? [];
+  if (w.length < 8) return false;
+  const en = w.filter((x) => EN.has(x)).length;
+  const de = w.filter((x) => DE.has(x)).length;
+  return en >= 4 && en > de * 1.5;
+}
+/** Kurze Erinnerung direkt an der letzten Frage (wirkt bei kleinen Modellen viel stärker als vorn im Systemtext). */
+export const LANG_NUDGE = '(Antworte ausschließlich auf Deutsch.)';
+export const LANG_SLIP =
+  'Deine letzte Antwort war (teilweise) englisch. Antworte ab jetzt wieder ausschließlich auf Deutsch – auch wenn du ' +
+  'auf Englisch nachdenkst oder Quellen englisch sind.';
