@@ -977,9 +977,19 @@ function defaultAvatarBounds() {
 
 // Selbsttest für die Build-Pipeline: startet die Oberfläche, öffnet Figur und Ausgabe und beendet sich.
 function runSmokeTest() {
+  // beenden: erst den Windows-Helfer (PowerShell) schließen – sonst hält er das Programm auf manchen Windows-Abbildern
+  // offen –, zur Sicherheit hart nach 5 s
+  const smokeExit = (code) => {
+    quitting = true;
+    try {
+      helper?.kill();
+    } catch {}
+    setTimeout(() => process.exit(code), 5000).unref?.();
+    app.exit(code);
+  };
   const fail = (why) => {
     console.error('SMOKE FAIL:', why);
-    app.exit(1);
+    smokeExit(1);
   };
   setTimeout(() => fail('Zeitüberschreitung'), 420000);
   win.webContents.on('preload-error', (_e, _p, err) => fail(err.message));
@@ -1109,8 +1119,7 @@ function runSmokeTest() {
       if (denied !== 403 || back.error || !pcSide.lina || pcSide.mem !== 1 || pcSide.fig !== -1 || !pcSide.msg || !back.stand?.personas?.some((p) => p.name === 'Handy-Lina'))
         return fail('Automatischer Abgleich');
       console.log('SMOKE OK');
-      quitting = true;
-      app.exit(0);
+      smokeExit(0);
     } catch (err) {
       fail(err.message);
     }
