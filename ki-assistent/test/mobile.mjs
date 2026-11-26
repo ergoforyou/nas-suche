@@ -3976,6 +3976,20 @@ const b107c = await page.evaluate(async () => {
   return { last, calls: reqs.length };
 });
 check(/^Das ist eine schöne Frage/.test(b107c.last ?? '') && /gute Idee, und du solltest es ausprobieren/.test(b107c.last ?? '') && !/That is/.test(b107c.last ?? '') && b107c.calls === 2, 'Deutsch-Wache: kippt mitten drin → Rest übersetzt, Anfang bleibt', JSON.stringify(b107c));
+// Beta 109: LM Studio hat keine Werkzeuge – Wetter wird vorab geholt und mitgegeben
+const b109 = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = { w: window.desktop.weather, provider: app.state.settings.provider };
+  let asked = null;
+  window.desktop.weather = async (o) => ((asked = o), { ort: o.ort, jetzt: { temp: 7, wetter: 'bewölkt' }, tage: [] });
+  app.state.settings.provider = 'lmstudio';
+  const ctx = await app.localPrefetch('Wie wird das Wetter morgen in Hamburg?');
+  const none = await app.localPrefetch('Erzähl mir einen Witz');
+  window.desktop.weather = keep.w;
+  app.state.settings.provider = keep.provider;
+  return { ort: asked?.ort, tage: asked?.tage, ctx: /Aktuelle Wetterdaten/.test(ctx ?? '') && /bewölkt/.test(ctx ?? ''), none };
+});
+check(b109.ort === 'Hamburg' && b109.tage === 7 && b109.ctx && b109.none === null, 'LM Studio: Wetter wird vorab geholt (Ort aus der Frage)', JSON.stringify(b109));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

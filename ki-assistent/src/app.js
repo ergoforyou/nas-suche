@@ -1274,7 +1274,7 @@ async function send(text) {
   // „Was gab's Neues?“: was seit dem letzten Blick auf diesem Gerät dazukam, geht mit an die Figur
   state.newsCtx = BRAIN && newsRequest(text) ? newsSince(state.seenBefore || Date.now() - 86400e3) : null;
   // LM Studio hat keine Werkzeuge: bei Rechercheaufträgen vorab im Internet suchen
-  state.webCtx = state.settings.provider === 'lmstudio' && webSearchOn() && websucheLib.wantsSearch(text) ? await webPrefetch(text) : null;
+  state.webCtx = state.settings.provider === 'lmstudio' ? await localPrefetch(text) : null;
   if (PRIV && realtimeCommand(text) === 'an' && desktop.realtimeConnect && !pendingAttachments.length) {
     addBubble('user', text);
     logEv('GESPRÄCH', 'Echtzeit per Zuruf');
@@ -7118,6 +7118,47 @@ async function webPrefetch(text) {
   } finally {
     status('');
   }
+}
+// ---- LM Studio hat keine Werkzeuge: Wetter, Nachrichten, Verkehr und Internetsuche vorab holen, wenn die Frage danach
+// klingt, und als Wissen mitgeben (die Figur antwortet dann damit)
+const WETTER_RE = /\b(wetter|regnet|regen|regnen|temperatur|wie warm|wie kalt|sonnig|sonne scheint|schnee|schneit|gewitter|sturm|wind|grad draußen|regenschirm)\b/i;
+const NEWS_RE = /\b(nachrichten|news|schlagzeilen|tagesschau|was ist (heute )?(in der welt )?los|was gibt'?s neues in der welt)\b/i;
+const VERKEHR_RE = /\b(stau|staus|verkehr|verkehrslage|baustelle|sperrung)\b|\bA ?\d{1,3}\b/;
+function ortAus(text) {
+  const m = String(text).match(/\b(?:in|für|bei|nach|um)\s+([A-ZÄÖÜ][\wäöüß.-]+(?:[ -][A-ZÄÖÜ][\wäöüß.-]+)?)/);
+  return m && !/^(Deutschland|Ordnung|Zukunft)$/.test(m[1]) ? m[1] : '';
+}
+const ctxJson = (o, max = 3000) => JSON.stringify(o).slice(0, max);
+async function localPrefetch(text) {
+  if (state.settings.offline || LOCAL_ONLY) return null;
+  const t = String(text ?? '');
+  const parts = [];
+  const tagesHint = /\bübermorgen\b/i.test(t) ? 3 : /\b(morgen|wochenende|woche|nächsten tage)\b/i.test(t) ? 7 : 2;
+  try {
+    if (WETTER_RE.test(t)) {
+      status('🌦 Schaue nach dem Wetter …');
+      const r = await withLimit(runAppTool('wetter', { ort: ortAus(t), tage: tagesHint }), 10000, null);
+      if (r) parts.push(`Aktuelle Wetterdaten (Open-Meteo, gerade abgerufen):\n${ctxJson(r)}\nNenne die Werte in deiner Art, auf Deutsch.`);
+    }
+    if (NEWS_RE.test(t)) {
+      status('📰 Schaue in die Nachrichten …');
+      const r = await withLimit(runAppTool('nachrichten', {}), 12000, null);
+      if (r) parts.push(`Aktuelle Nachrichten (gerade abgerufen):\n${ctxJson(r, 4000)}\nFasse je Bereich das Wichtigste kurz zusammen, auf Deutsch.`);
+    }
+    if (VERKEHR_RE.test(t)) {
+      status('🚗 Schaue nach dem Verkehr …');
+      const a = t.match(/\bA ?(\d{1,3})\b/)?.[1];
+      const r = await withLimit(runAppTool('verkehr', { ...(a ? { autobahn: `A${a}` } : {}), ort: ortAus(t) || undefined }), 12000, null);
+      if (r) parts.push(`Aktuelle Verkehrslage (Autobahn GmbH, gerade abgerufen):\n${ctxJson(r)}`);
+    }
+  } catch (e) {
+    logEv('WERKZEUG', `Vorab (LM Studio): ${e.message}`);
+  } finally {
+    status('');
+  }
+  if (!parts.length && webSearchOn() && websucheLib.wantsSearch(t)) return webPrefetch(t);
+  if (parts.length) logEv('WERKZEUG', `Vorab für LM Studio: ${parts.length} Abruf(e)`);
+  return parts.length ? parts.join('\n\n') : null;
 }
 // ---------------------------------------------------------------- Google Kalender & Aufgaben
 const webActive = () => !LOCAL_ONLY && state.settings.provider === 'anthropic' && state.settings.claudeWeb;
@@ -13600,6 +13641,7 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  localPrefetch,
   stripOrphanThink,
   webResearch,
   webPrefetch,
