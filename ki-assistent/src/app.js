@@ -1036,7 +1036,7 @@ function buildMessages() {
     if (i >= 0) h[i] = { ...h[i], content: `${h[i].content}\n\n${LANG_NUDGE}` };
   }
   // Qwen3 (Denkmodell): das lange, englische Vorab-Denken abschalten – schneller und bleibt deutsch
-  if (state.settings.provider === 'lmstudio' && /qwen3/i.test(state.settings.model ?? '') && state.settings.qwenThink !== true) {
+  if (state.settings.provider === 'lmstudio' && /qwen[\s._-]?3/i.test(state.settings.model ?? '') && state.settings.qwenThink !== true) {
     const i = h.findLastIndex((m) => m.role === 'user' && typeof m.content === 'string');
     if (i >= 0) h[i] = { ...h[i], content: `${h[i].content} /no_think` };
   }
