@@ -3902,6 +3902,31 @@ const b106 = await page.evaluate(async () => {
   return { tool: tool.treffer?.length === 1 && /geöffnet/.test(tool.beste_seite?.text ?? ''), ctx: /Ergebnisse einer Internetsuche/.test(ctx ?? '') && /Zoo Hannover/.test(ctx ?? '') && !/Such mal/.test(ctx ?? '') };
 });
 check(b106.tool && b106.ctx, 'Internetsuche: Werkzeug für alle Anbieter, Vorab-Suche bei LM Studio', JSON.stringify(b106));
+// Beta 107: Deutsch-Wache – LM Studio antwortet englisch → wird übersetzt, gezeigt/gespeichert wird Deutsch
+await page.evaluate(() => (window.__app.state.busy = false));
+const b107 = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = { chat: window.desktop.chat, provider: app.state.settings.provider, model: app.state.settings.model };
+  const reqs = [];
+  window.desktop.chat = (req, on) => {
+    reqs.push(req);
+    const isTranslate = /Übersetze den folgenden Text ins Deutsche/.test(req.messages?.[0]?.content ?? '');
+    const parts = isTranslate ? ['Klar, das Wetter in Hannover wird morgen sonnig ', 'und mild, so um die 15 Grad.'] : ['Sure! The weather in Hannover will be sunny ', 'and mild tomorrow, around 15 degrees. It is a ', 'great day to be outside with your friends.'];
+    let i = 0;
+    const tick = () => (i < parts.length ? (on({ type: 'delta', payload: parts[i++] }), setTimeout(tick, 20)) : on({ type: 'done' }));
+    setTimeout(tick, 20);
+    return Promise.resolve();
+  };
+  app.state.settings.provider = 'lmstudio';
+  app.state.settings.model = 'test-modell';
+  await app.send('Wie wird das Wetter morgen?');
+  for (let k = 0; k < 50 && app.state.busy; k++) await new Promise((r) => setTimeout(r, 100));
+  const last = app.history().at(-1);
+  Object.assign(window.desktop, { chat: keep.chat });
+  Object.assign(app.state.settings, { provider: keep.provider, model: keep.model });
+  return { last: last?.content, translated: reqs.length === 2, nudge: /Antworte ausschließlich auf Deutsch/.test(JSON.stringify(reqs[0]?.messages ?? '')) };
+});
+check(/Wetter in Hannover wird morgen sonnig/.test(b107.last ?? '') && b107.translated && b107.nudge, 'Deutsch-Wache: englische Antwort wird übersetzt, Deutsch wird gezeigt und gespeichert', JSON.stringify(b107));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;

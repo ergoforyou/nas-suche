@@ -95,6 +95,14 @@ export function looksEnglish(text) {
   const de = w.filter((x) => DE.has(x)).length;
   return en >= 4 && en > de * 1.5;
 }
+/** Für den Anfang einer Antwort (wenige Wörter): klar englischer Einstieg? */
+export function looksEnglishStart(text) {
+  const w = String(text ?? '').toLowerCase().match(/[a-zäöüß']+/g) ?? [];
+  if (w.length < 5) return false;
+  const en = w.filter((x) => EN.has(x)).length;
+  const de = w.filter((x) => DE.has(x)).length;
+  return en >= 2 && de === 0;
+}
 /** Kurze Erinnerung direkt an der letzten Frage (wirkt bei kleinen Modellen viel stärker als vorn im Systemtext). */
 export const LANG_NUDGE = '(Antworte ausschließlich auf Deutsch.)';
 export const LANG_SLIP =

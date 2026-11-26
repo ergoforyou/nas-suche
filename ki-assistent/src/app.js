@@ -7,7 +7,7 @@ import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
 import { humorLevel, humorPrompt, humorCommand, HUMOR_NAMES } from './humor.js';
-import { looksEnglish, LANG_NUDGE, LANG_SLIP, isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
+import { looksEnglish, looksEnglishStart, LANG_NUDGE, LANG_SLIP, isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
 import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES, handoffCommand, newsRequest, whatsNew } from './gespraech.js';
 import synology from '../synology.js';
 import websucheLib from '../websuche.js';
@@ -1393,6 +1393,13 @@ async function send(text) {
     state.spoken = (state.spoken + ' ' + s).slice(-1500); // für den Echo-Filter im Live-Gespräch
     tts.enqueue(s, { mood, text: s, gesture });
   });
+  // Deutsch-Wache (LM Studio/eigener Server): die ersten Worte prüfen, bevor etwas gezeigt oder gesprochen wird; ist es
+  // Englisch, still mitschreiben und am Ende übersetzen lassen – angezeigt und vorgelesen wird dann die deutsche Fassung
+  const langGate =
+    (state.settings.provider === 'lmstudio' || state.settings.provider === 'eigen') && persona().language !== 'en' && state.settings.forceGerman !== false;
+  let gateOpen = !langGate;
+  let gateBuf = '';
+  let translating = false;
   const filter = (text) => {
     const before = moods.current;
     const out = moods.push(text);
@@ -1584,7 +1591,22 @@ async function send(text) {
             fireEvent('bye', 5000);
           }
         }
+        if (!gateOpen) {
+          gateBuf += visible;
+          if (gateBuf.trim().length < 80) return;
+          gateOpen = true;
+          translating = looksEnglish(gateBuf) || looksEnglishStart(gateBuf);
+          answer += gateBuf;
+          if (translating) {
+            logEv('SPRACHE', 'Antwort beginnt englisch – wird übersetzt');
+            status('🇩🇪 Übersetze die Antwort ins Deutsche …');
+          } else splitter.push(gateBuf);
+          gateBuf = '';
+          if (!translating) renderTimer ??= setTimeout(render, 60);
+          return;
+        }
         answer += visible;
+        if (translating) return;
         splitter.push(visible);
         renderTimer ??= setTimeout(render, 60);
       } else if (ev.type === 'status') {
@@ -1599,9 +1621,49 @@ async function send(text) {
         created.push(ev.payload);
         status(`Datei erstellt: ${ev.payload.name}`);
       } else if (ev.type === 'error') finish(ev.payload);
-      else finish();
+      else {
+        // Antwort war kurz (unter 80 Zeichen): jetzt prüfen
+        if (!gateOpen) {
+          gateOpen = true;
+          answer += gateBuf;
+          translating = looksEnglish(gateBuf) || looksEnglishStart(gateBuf);
+          if (!translating) splitter.push(gateBuf);
+          gateBuf = '';
+        }
+        if (!translating) return finish();
+        // englisch geantwortet: ins Deutsche übersetzen lassen, dann zeigen und vorlesen
+        answer += filter(think.flush()) + moods.flush();
+        toGerman(answer)
+          .then((de) => {
+            if (de) {
+              answer = de;
+              logEv('SPRACHE', 'übersetzt');
+            }
+          })
+          .finally(() => {
+            translating = false;
+            status('');
+            splitter.push(answer);
+            finish();
+          });
+      }
     },
   );
+}
+/** Englische Antwort ins Deutsche bringen (gleiches Modell, ohne Denk-Abschnitte). '' = ging nicht. */
+async function toGerman(text) {
+  const raw = await withLimit(
+    helperJson(
+      'Übersetze den folgenden Text ins Deutsche. Behalte Ton, Persönlichkeit, Anrede (du), Emojis und Formatierung bei. ' +
+        'Gib ausschließlich die deutsche Übersetzung aus – keine Erklärungen, keine Anführungszeichen drumherum.',
+      text,
+    ),
+    45000,
+    '',
+  );
+  const f = new ThinkFilter();
+  const out = (f.push(String(raw ?? '')) + f.flush()).trim();
+  return out && !looksEnglish(out) ? out : '';
 }
 
 // ---------------------------------------------------------------- Gedächtnis

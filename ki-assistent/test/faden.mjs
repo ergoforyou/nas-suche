@@ -1,5 +1,5 @@
 // Gesprächsfaden (src/faden.js): neues Gespräch, nur einmal mitgeben, „Vergiss das“, Erfindungen, Echo, Brücke.
-import { looksEnglish, isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, plainBridge, bridgePrompt } from '../src/faden.js';
+import { looksEnglish, looksEnglishStart, isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, plainBridge, bridgePrompt } from '../src/faden.js';
 
 let failed = 0;
 const check = (ok, name, info = '') => {
@@ -22,5 +22,6 @@ const br = plainBridge([{ role: 'user', content: 'Urlaub in Italien planen' }, {
 check(/Italien/.test(br.text) && /Fähre/.test(br.text) && /voriger Chat/.test(bridgePrompt({ text: 'Wir planten Italien.', offen: 'Fähre buchen' })) && bridgePrompt(null) === '', 'Brücke zum neuen Chat');
 
 check(looksEnglish('Sure! Here is what you can do with the settings, and it is really simple to set up.') && !looksEnglish('Klar, das kannst du in den Einstellungen machen, das ist wirklich einfach.') && !looksEnglish('Okay, cool.'), 'Englische Antwort erkannt, deutsche nicht');
+check(looksEnglishStart('Sure! Here is the plan for') && !looksEnglishStart('Klar, hier ist der Plan für'), 'Englischer Einstieg erkannt');
 console.log(failed ? `${failed} Prüfung(en) fehlgeschlagen` : 'Gesprächsfaden: alles in Ordnung');
 process.exit(failed ? 1 : 0);
