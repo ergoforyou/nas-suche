@@ -7,7 +7,7 @@ import { SpeechInput, Embedder } from './stt.js';
 import { helpSearch, helpOverview, helpEntry } from './hilfe.js';
 import { repairSettings, checkData, runChecks } from './selbsttest.js';
 import { humorLevel, humorPrompt, humorCommand, HUMOR_NAMES } from './humor.js';
-import { looksEnglish, looksEnglishStart, LANG_NUDGE, LANG_SLIP, isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
+import { looksEnglish, looksEnglishStart, looksEnglishSentence, LANG_NUDGE, LANG_SLIP, isSessionStart, onlyNew, forgetCommand, isPhantom, echoScore, RULE_THREAD, RULE_VOICE_UNSURE, RULE_UNSURE_NOW, bridgePrompt, earlierPrompt, plainBridge } from './faden.js';
 import { voiceCommand, isCorrection, liveSilenceMs, dictEnd, RULE_LIVE, RULE_LONG_TURN, RULE_CORRECTION, talkMode, realtimeCommand, MODE_RULES, MODE_NAMES, handoffCommand, newsRequest, whatsNew } from './gespraech.js';
 import synology from '../synology.js';
 import websucheLib from '../websuche.js';
@@ -1035,6 +1035,11 @@ function buildMessages() {
     const i = h.findLastIndex((m) => m.role === 'user' && typeof m.content === 'string');
     if (i >= 0) h[i] = { ...h[i], content: `${h[i].content}\n\n${LANG_NUDGE}` };
   }
+  // Qwen3 (Denkmodell): das lange, englische Vorab-Denken abschalten – schneller und bleibt deutsch
+  if (state.settings.provider === 'lmstudio' && /qwen3/i.test(state.settings.model ?? '') && state.settings.qwenThink !== true) {
+    const i = h.findLastIndex((m) => m.role === 'user' && typeof m.content === 'string');
+    if (i >= 0) h[i] = { ...h[i], content: `${h[i].content} /no_think` };
+  }
   return all2 ? [{ role: 'system', content: all2 }, ...h] : h;
 }
 
@@ -1377,6 +1382,16 @@ async function send(text) {
   const guardRole = guardsRole(text);
   const slipped = [];
   const splitter = new SentenceSplitter((s) => {
+    // Deutsch-Wache: kippt die Antwort mitten drin ins Englische, ab diesem Satz still mitschreiben und am Ende
+    // nur den Rest übersetzen (der deutsche Anfang bleibt, wie er war)
+    if (langGate && !translating && looksEnglishSentence(s)) {
+      translating = true;
+      translateFrom = Math.max(0, answer.lastIndexOf(s.trim().slice(0, 40)));
+      logEv('SPRACHE', 'Antwort kippt ins Englische – der Rest wird übersetzt');
+      status('🇩🇪 Übersetze den Rest ins Deutsche …');
+      return;
+    }
+    if (translating) return;
     if (guardRole && isOutOfRole(s)) {
       slipped.push(s);
       return;
@@ -1400,6 +1415,7 @@ async function send(text) {
   let gateOpen = !langGate;
   let gateBuf = '';
   let translating = false;
+  let translateFrom = 0;
   const filter = (text) => {
     const before = moods.current;
     const out = moods.push(text);
@@ -1433,7 +1449,7 @@ async function send(text) {
     splitter.flush();
     bubble.classList.remove('typing');
     avatarState.thinking = false;
-    answer = answer.trim();
+    answer = stripOrphanThink(answer).trim();
     if (guardRole && slipped.length) {
       const stripped = stripOutOfRole(answer).text;
       logEv('ROLLE', `${slipped.length} Satz/Sätze aus der Rolle entfernt`);
@@ -1630,26 +1646,43 @@ async function send(text) {
           if (!translating) splitter.push(gateBuf);
           gateBuf = '';
         }
+        // Denkmodell ohne Anfangsmarke (z. B. Qwen3): alles bis „</think>“ war Überlegung, nicht Antwort
+        if (translating) {
+          answer += filter(think.flush()) + moods.flush();
+          if (answer.includes('</think>')) {
+            answer = stripOrphanThink(answer);
+            translateFrom = 0;
+            if (!looksEnglish(answer) && !looksEnglishStart(answer)) {
+              translating = false;
+              status('');
+              splitter.push(answer);
+              return finish();
+            }
+          }
+        }
         if (!translating) return finish();
-        // englisch geantwortet: ins Deutsche übersetzen lassen, dann zeigen und vorlesen
-        answer += filter(think.flush()) + moods.flush();
-        toGerman(answer)
+        // englisch geantwortet (ganz oder ab einem Satz): ins Deutsche übersetzen lassen, dann zeigen und vorlesen
+        const head = answer.slice(0, translateFrom);
+        const tail = answer.slice(translateFrom);
+        toGerman(tail)
           .then((de) => {
             if (de) {
-              answer = de;
-              logEv('SPRACHE', 'übersetzt');
+              answer = `${head}${head && !/\s$/.test(head) ? ' ' : ''}${de}`;
+              logEv('SPRACHE', translateFrom ? 'Rest übersetzt' : 'übersetzt');
             }
           })
           .finally(() => {
             translating = false;
             status('');
-            splitter.push(answer);
+            splitter.push(answer.slice(head.length));
             finish();
           });
       }
     },
   );
 }
+/** Überlegungen eines Denkmodells ohne Anfangsmarke (nur „</think>“ steht im Text) abschneiden. */
+const stripOrphanThink = (t) => (String(t).includes('</think>') ? String(t).slice(String(t).lastIndexOf('</think>') + 8).replace(/^\s+/, '') : String(t));
 /** Englische Antwort ins Deutsche bringen (gleiches Modell, ohne Denk-Abschnitte). '' = ging nicht. */
 async function toGerman(text) {
   const raw = await withLimit(
@@ -13567,6 +13600,7 @@ function startPhoneFeatures() {
 
 // Für Fehlersuche und den automatischen Selbsttest
 window.__app = {
+  stripOrphanThink,
   webResearch,
   webPrefetch,
   ThinkFilter,

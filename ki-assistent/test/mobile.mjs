@@ -3927,6 +3927,55 @@ const b107 = await page.evaluate(async () => {
   return { last: last?.content, translated: reqs.length === 2, nudge: /Antworte ausschließlich auf Deutsch/.test(JSON.stringify(reqs[0]?.messages ?? '')) };
 });
 check(/Wetter in Hannover wird morgen sonnig/.test(b107.last ?? '') && b107.translated && b107.nudge, 'Deutsch-Wache: englische Antwort wird übersetzt, Deutsch wird gezeigt und gespeichert', JSON.stringify(b107));
+// Beta 107b: Qwen3 – /no_think angehängt; englisches Vorab-Denken ohne <think>-Anfang wird abgeschnitten (nichts übersetzt)
+await page.evaluate(() => (window.__app.state.busy = false));
+const b107b = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = { chat: window.desktop.chat, provider: app.state.settings.provider, model: app.state.settings.model };
+  const reqs = [];
+  window.desktop.chat = (req, on) => {
+    reqs.push(req);
+    const parts = ['Okay, the user asks about the weather. I should answer in German and keep it short. ', 'Let me think about what to say here.\n</think>\n\n', 'Morgen wird es in Hannover sonnig und mild.'];
+    let i = 0;
+    const tick = () => (i < parts.length ? (on({ type: 'delta', payload: parts[i++] }), setTimeout(tick, 20)) : on({ type: 'done' }));
+    setTimeout(tick, 20);
+    return Promise.resolve();
+  };
+  app.state.settings.provider = 'lmstudio';
+  app.state.settings.model = 'qwen/qwen3-8b';
+  await app.send('Und übermorgen?');
+  for (let k = 0; k < 50 && app.state.busy; k++) await new Promise((r) => setTimeout(r, 100));
+  const last = app.history().at(-1)?.content;
+  Object.assign(window.desktop, { chat: keep.chat });
+  Object.assign(app.state.settings, { provider: keep.provider, model: keep.model });
+  return { last, calls: reqs.length, noThink: /\/no_think/.test(JSON.stringify(reqs[0]?.messages ?? '')) };
+});
+check(b107b.last === 'Morgen wird es in Hannover sonnig und mild.' && b107b.calls === 1 && b107b.noThink, 'Qwen3: /no_think, englisches Vorab-Denken abgeschnitten', JSON.stringify(b107b));
+// Beta 107c: Antwort kippt mitten drin ins Englische → deutscher Anfang bleibt, nur der Rest wird übersetzt
+await page.evaluate(() => (window.__app.state.busy = false));
+const b107c = await page.evaluate(async () => {
+  const app = window.__app;
+  const keep = { chat: window.desktop.chat, provider: app.state.settings.provider, model: app.state.settings.model };
+  const reqs = [];
+  window.desktop.chat = (req, on) => {
+    reqs.push(req);
+    const tr = /Übersetze den folgenden Text ins Deutsche/.test(req.messages?.[0]?.content ?? '');
+    const parts = tr ? ['Das ist eine gute Idee, und du solltest es ausprobieren.'] : ['Das ist eine schöne Frage, und ich denke gern darüber nach, wie wir das angehen. ', 'That is a good idea and you should try it with your friends. ', 'It will be fun for you.'];
+    let i = 0;
+    const tick = () => (i < parts.length ? (on({ type: 'delta', payload: parts[i++] }), setTimeout(tick, 20)) : on({ type: 'done' }));
+    setTimeout(tick, 20);
+    return Promise.resolve();
+  };
+  app.state.settings.provider = 'lmstudio';
+  app.state.settings.model = 'qwen/qwen3-8b';
+  await app.send('Was hältst du von einem Grillabend?');
+  for (let k = 0; k < 50 && app.state.busy; k++) await new Promise((r) => setTimeout(r, 100));
+  const last = app.history().at(-1)?.content;
+  Object.assign(window.desktop, { chat: keep.chat });
+  Object.assign(app.state.settings, { provider: keep.provider, model: keep.model });
+  return { last, calls: reqs.length };
+});
+check(/^Das ist eine schöne Frage/.test(b107c.last ?? '') && /gute Idee, und du solltest es ausprobieren/.test(b107c.last ?? '') && !/That is/.test(b107c.last ?? '') && b107c.calls === 2, 'Deutsch-Wache: kippt mitten drin → Rest übersetzt, Anfang bleibt', JSON.stringify(b107c));
 // Beta 91: NAS als Zentrale – Verbindungstest mit Hinweisen, leichter Änderungs-Check holt Neues vom anderen Gerät
 const b91 = await page.evaluate(async () => {
   const app = window.__app;
